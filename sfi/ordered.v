@@ -266,13 +266,35 @@ Local Ltac solve_flip :=
   cbv -[compare]; rewrite (compare_asym b a);
   destruct (a <=> b); simpl; congruence.
 
-Theorem lt_is_gt : (a <?  b) = (b >?  a). Proof. solve_flip. Qed.
-Theorem le_is_ge : (a <=? b) = (b >=? a). Proof. solve_flip. Qed.
+Theorem ltb_is_gtb : (a <?  b) = (b >?  a). Proof. solve_flip. Qed.
+Theorem leb_is_geb : (a <=? b) = (b >=? a). Proof. solve_flip. Qed.
 
 Theorem lt__gt : a <  b -> b >  a. Proof. solve_flip. Qed.
 Theorem gt__lt : a >  b -> b <  a. Proof. solve_flip. Qed.
 Theorem le__ge : a <= b -> b >= a. Proof. solve_flip. Qed.
 Theorem ge__le : a >= b -> b <= a. Proof. solve_flip. Qed.
+
+
+Ltac solve_negb :=
+  unfold ltb,gtb,leb,geb,nequiv_dec; destruct ((a <=> b) == _); reflexivity.
+
+Ltac solve_not :=
+  split; auto;
+  unfold lt,gt,le,ge; intros;
+  match goal with
+    | H : ~ ((a <=> b) <> ?C) |- _ =>
+      destruct ((a <=> b) == C) eqn:CMP; [tauto | exfalso; auto]
+  end.
+
+Theorem ltb_not_geb : a <?  b = negb (a >=? b). Proof. solve_negb. Qed. 
+Theorem gtb_not_leb : a >?  b = negb (a <=? b). Proof. solve_negb. Qed.
+Theorem leb_not_gtb : a <=? b = negb (a >?  b). Proof. solve_negb. Qed.
+Theorem geb_not_ltb : a >=? b = negb (a <?  b). Proof. solve_negb. Qed.
+
+Theorem lt_not_ge : a <  b <-> ~ a >= b. Proof. solve_not. Qed.
+Theorem gt_not_le : a >  b <-> ~ a <= b. Proof. solve_not. Qed.
+Theorem le_not_gt : a <= b <-> ~ a >  b. Proof. solve_not. Qed.
+Theorem ge_not_lt : a >= b <-> ~ a <  b. Proof. solve_not. Qed.
 
 End relationships.
 (* Need to generalize the variables *)
@@ -293,9 +315,9 @@ Hint Resolve @eq__leb  @eq__nltb @eq__geb @eq__ngtb
              @eq__le   @eq__nlt  @eq__ge  @eq__ngt
              @ltb__leb @gtb__geb
              @lt__le @gt__le
-             @lt_is_gt @le_is_ge
+             @ltb_is_gtb @leb_is_geb
              @lt__gt @gt__lt @le__ge @ge__le
-             @lt_iff_gt @le_iff_ge.
+             @ltb_not_geb @gtb_not_leb @leb_not_gtb @geb_not_ltb.
 
 Section decidability.
 

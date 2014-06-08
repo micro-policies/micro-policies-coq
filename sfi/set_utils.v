@@ -448,44 +448,6 @@ Proof.
 Qed.
 (*Global*) Hint Resolve @iterate_set.
 
-(*Theorem range_set : forall l h, is_set (range l h) = true.
-Proof. unfold range; auto. Qed.*)
-(*(*Global*) Hint Resolve @range_set.*)
-
-(*Lemma up_from_elts : forall x n e,
-  In e (up_from x n) <-> x <= e < x + Z_of_nat n.
-Proof.
-  intros; gdep x; induction n; intros.
-  - simpl; split; [inversion 1 | omega].
-  - simpl; rewrite Zpos_P_of_succ_nat; split.
-    + intros [Heq | Hin]; subst; try apply IHn in Hin; omega.
-    + destruct 1, (Z.eq_dec x e); [left; assumption | right; apply IHn; omega].
-Qed.*)
-
-(*Theorem range_elts : forall l h e,
-  In e (range l h) <-> l <= e <= h.
-Proof.
-  intros; unfold range; rewrite up_from_elts.
-  destruct (Z_le_dec 0 (h - l + 1)) as [pos | neg].
-  - rewrite Z2Nat.id; [omega | assumption].
-  - assert (Z.to_nat (h - l + 1) = 0%nat). {
-      destruct (h - l + 1).
-      - omega.
-      - contradict neg; cbv; discriminate.
-      - apply Z2Nat.inj_neg.
-    }
-    omega.
-Qed.*)
-
-(*Corollary range_empty : forall l h,
-  range l h = [] <-> l > h.
-Proof.
-  intros; rewrite nil_iff_not_in; split.
-  - intros NOT_IN; apply Znot_le_gt; intros LE.
-    apply NOT_IN with l, range_elts. omega.
-  - intros GT e IN. apply range_elts in IN. omega.
-Qed.*)
-
 End theorems.
 
 (* Can be updated automatically by an Emacs script; see `global-hint.el' *)

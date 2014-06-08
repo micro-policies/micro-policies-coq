@@ -20,25 +20,141 @@ Section WithClasses.
 
 Context (t : machine_types).
 Context {ops : machine_ops t}.
+Local Instance word_eqdec : EqDec (eq_setoid (word t)) := eq_word.
+Context `{word_ordered : Ordered (eqdec := word_eqdec) (word t)}.
+  (* TODO reify *)
 
-(* The coercion never coerced. *)
-(* Local Coercion Z_to_word : Z >-> word. *)
-Definition W0 := Z_to_word 0.
-Definition W1 := Z_to_word 1. 
+Notation W0 := (Z_to_word 0).
+Notation W1 := (Z_to_word 1).
 Open Scope word_scope.
-Local Notation word := (word t).
-Local Instance word_eqdec : EqDec (eq_setoid word) := eq_word.
-(* TODO All we need to do to finish moving from Zs to words is to expose the
-   orderedness of words, and then provide a definition for `range' with the
-   appropriate theorems.  *)
-Local Instance word_ordered : Ordered word. admit. Defined.
-Axiom range : word -> word -> list word.
 
+Local Notation word  := (word t).
 Local Notation value := word.
 
 (* I want to use S as a variable. *)
 Let S := Datatypes.S.
 Local Notation Suc := Datatypes.S.
+
+(**** RANGE ****)
+(* TODO abstract and reify *)
+Require Import ZArith.
+
+Hypothesis word_to_Z_succ : forall x y,
+  x < y -> word_to_Z (x + W1) = (word_to_Z x + 1)%Z.
+
+Hypothesis word_to_Z_compare : forall x y,
+  x <=> y = (word_to_Z x ?= word_to_Z y)%Z.
+
+Theorem word_succ_le_lt : forall x y, x < y -> x + W1 <= y.
+Proof.
+ intros.
+ unfold le; rewrite word_to_Z_compare;
+   fold (Zle (word_to_Z (x + W1)%word) (word_to_Z y)).
+ erewrite word_to_Z_succ by eassumption.
+ unfold lt in *; rewrite word_to_Z_compare in *;
+   fold (Zlt (word_to_Z x) (word_to_Z y)) in *;
+   omega.
+Qed.
+
+Theorem word_succ_ltb_bounded : forall x y,
+  x <? y = true -> x <? x + W1 = true.
+Proof.
+  intros x y; repeat rewrite ltb_lt; intros LT.
+  unfold lt; rewrite word_to_Z_compare;
+    fold (Zlt (word_to_Z x) (word_to_Z (x + W1))).
+  erewrite word_to_Z_succ by eassumption; omega.
+Qed.
+
+Fixpoint range' (meas : nat) (l h : word) : list word :=
+  match meas , l <=> h with
+    | O         , _  => []
+    | Suc meas' , Lt => l :: range' meas' (l + W1) h
+    | Suc meas' , Eq => [l]
+    | Suc meas' , Gt => []
+  end.
+
+Theorem range'_set : forall meas l h,
+  is_set (range' meas l h) = true.
+Proof.
+  induction meas as [|meas]; simpl; [reflexivity|].
+  intros l h; destruct (l <=> h) eqn:CMP; try reflexivity.
+  simpl; rewrite IHmeas.
+  destruct meas; simpl; [reflexivity|].
+  destruct (l + W1 <=> h) eqn:CMP';
+    solve [ reflexivity
+          | rewrite andb_true_r; eapply word_succ_ltb_bounded,ltb_lt,CMP ].
+Qed.
+
+Theorem range'_elts_ok : forall meas l h e,
+  In e (range' meas l h) -> l <= e <= h.
+Proof.
+  induction meas as [|meas]; [inversion 1|].
+  simpl; intros until 0; intros IN.
+  destruct (l <=> h) eqn:CMP; simpl in *.
+  - apply compare_eq in CMP; destruct IN as [EQ|[]];
+      repeat progress subst; auto 2.
+  - destruct IN as [EQ | IN]; subst; auto.
+    apply IHmeas in IN; destruct IN as [LT LE].
+    assert (l < l + W1) by
+      (apply ltb_lt, word_succ_ltb_bounded with h, ltb_lt; assumption).
+    split; eauto.
+  - inversion IN.
+Qed.
+
+Definition range (l h : word) :=
+  range' (Z.to_nat ((word_to_Z h - word_to_Z l) + 1)%Z) l h.
+
+Corollary range_set : forall l h, is_set (range l h) = true.
+Proof. intros until 0; apply range'_set. Qed.
+Hint Resolve range_set.
+
+Corollary range_elts_ok : forall l h e,
+  In e (range l h) -> l <= e <= h.
+Proof. intros until 0; apply range'_elts_ok. Qed.
+
+Theorem range_elts_all : forall l h e,
+  l <= e <= h -> In e (range l h).
+Proof.
+  unfold range; intros l h e [LE EH]; assert (LH : l <= h) by eauto.
+  remember (Z.to_nat ((word_to_Z h - word_to_Z l) + 1)%Z) as meas eqn:meas_def'.
+  assert (meas_def : meas = S (Z.to_nat (word_to_Z h - word_to_Z l))). {
+    rewrite Z2Nat.inj_add in meas_def'; try solve [vm_compute; inversion 1].
+    - rewrite plus_comm in meas_def'; simpl in meas_def'; exact meas_def'.
+    - apply Z.le_0_sub; unfold Zle; rewrite <- word_to_Z_compare; exact LH.
+  }
+  clear meas_def'; gdep e; gdep h; gdep l; induction meas; intros;
+    simpl in *; inversion meas_def; subst; clear meas_def.
+  destruct (l <=> h) eqn:CMP.
+  - apply compare_eq in CMP; apply le__lt_or_eq in EH; apply le__lt_or_eq in LE;
+      subst; destruct EH,LE; auto.
+    elim lt_asym with h e; assumption.
+  - simpl. apply le__lt_or_eq in LE; destruct LE as [LE | LE]; auto.
+    right. apply IHmeas; auto using word_succ_le_lt.
+    erewrite word_to_Z_succ by eassumption.
+    replace (word_to_Z h - (word_to_Z l + 1))%Z
+       with (word_to_Z h - word_to_Z l - 1)%Z
+         by omega.
+    rewrite <- Z2Nat.inj_succ.
+    + f_equal; omega.
+    + rewrite Z.sub_1_r; apply Zlt_0_le_0_pred,Z.lt_0_sub.
+      unfold Zlt; rewrite <- word_to_Z_compare; exact CMP.
+  - contradiction.
+Qed.
+
+Corollary range_elts : forall l h e,
+  In e (range l h) <-> l <= e <= h.
+Proof. split; [apply range_elts_ok | apply range_elts_all]. Qed.
+
+Corollary range_empty : forall l h,
+  range l h = [] <-> l > h.
+Proof.
+  intros; rewrite nil_iff_not_in; split.
+  - intros NOT_IN; apply gt_not_le; intros LE.
+    apply NOT_IN with l, range_elts; auto.
+  - intros GT e IN. apply range_elts in IN.
+    destruct IN; assert (l <= h) by eauto 2; auto.
+Qed.
+(***** END RANGE *****)
 
 Implicit Type pc : value.
 
@@ -827,9 +943,9 @@ Proof.
     repeat rewrite andb_true_iff in TEMP; destruct TEMP as [[GOODS NOL] CC].
   assert (IN : In c C) by (subst; eauto 2).
   let is_good := (subst c c' c_upd A'; unfold good_compartment; simpl;
-                  andb_true_split; eauto 2 (*using isolate_create_set_is_set*))
+                  andb_true_split; eauto 2)
   in assert good_compartment c     by (rewrite forallb_forall in GOODS; auto);
-     assert good_compartment c'    by admit(*is_good*); (* Relies on `range' *)
+     assert good_compartment c'    by is_good;
      assert good_compartment c_upd by is_good.
   assert (C'_NON_OVERLAPPING : forallb (non_overlapping c) (delete c C) =
                                true). {
@@ -848,14 +964,14 @@ Proof.
       try solve [subst A'; auto].
     subst A'; destruct (range _ _) eqn:RANGE;
       [|destruct (set_difference _ _); reflexivity].
-    (*apply range_empty in RANGE; omega.*)admit.
+    apply range_empty in RANGE; exfalso; auto.
   - intros c''; apply non_overlapping_subcompartment; auto; simpl.
     + apply nonempty_iff_in; rewrite existsb_exists in IC';
         destruct IC' as [pc' IC']; exists pc'; tauto.
     + subst c; intros a; rewrite set_difference_spec; tauto.
   - intros c''; apply non_overlapping_subcompartment; auto;
       subst c' A'; simpl in *.
-    + apply nonempty_iff_in; exists al; admit. (*apply range_elts; omega.*)
+    + apply nonempty_iff_in; exists al. apply range_elts; auto.
     + subst c; eapply subset_spec; eassumption.
   - unfold contained_compartments; subst c_upd c'; simpl.
     assert (In_dec : forall a A, In a A \/ ~ In a A). {
@@ -911,7 +1027,7 @@ Proof.
       destruct IN_a_alJ as [EQ | IN_J].
       * (* Unique proof *)
         subst a A'.
-        assert (IN_al_range : In al (range al ah)) by admit(*(apply range_elts; omega)*);
+        assert (IN_al_range : In al (range al ah)) by (apply range_elts; auto).
           specialize (SUBSET_A' IN_al_range).
         rewrite concat_in; exists A; split; auto.
         apply in_map_iff. exists c; subst c; auto.
