@@ -62,9 +62,15 @@ Record state := State {
   es : extra_state
 }.
 
-Class key_generator := {
-  mkkey_f : extra_state -> option (extra_state * key)
-}.
+(* TODO BCP: At the moment, the symbolic sealing machine uses a
+   concrete word for the extra state and generates keys just by
+   incrementing it (and then applying a word->key function, supplied
+   externally).  We need to decide what is the cleanest way to set
+   this up.  (Looking at it right now, I don't see much reason for the
+   extra generality.) *)
+
+Class key_generator := 
+  { mkkey_f : extra_state -> option (extra_state * key) }.
 
 Context `{key_generator}.
 
@@ -196,9 +202,13 @@ Inductive step (st st' : state) : Prop :=
        the datatype have parameters instead of indices?  If so, why -- does this
        make induction easier?
 
+       ANSWER: Yes, it makes reasoning easier.
+
    (2) What about using one of `decode_def' or `decode_rel' as above?  (Suitably
        renamed to just `decode'.)  This would clean up the step relation, but
        would it make proofs worse?
+
+       ANSWER: We should do this.
 
    (3) Should system call steps be specified inductively in the relation (like
        here), or as functions (like in memory safety)?  What are the
