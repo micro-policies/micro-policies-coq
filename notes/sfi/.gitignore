@@ -1,0 +1,6 @@
+sfi-rules.tex
+sfi-rules.v
+sfi-rules-all.tex
+*.aux
+*.log
+*.pdf

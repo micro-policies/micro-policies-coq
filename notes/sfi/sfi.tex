@@ -1,0 +1,718 @@
+\documentclass[12pt]{amsart}
+
+\newif\ifdraft\drafttrue
+
+\newcommand{\asz}[1]{\ifdraft\textcolor{violet}{[ASZ: #1]}\fi}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{fullpage}
+\usepackage{xcolor}
+
+\usepackage{amsmath,amsfonts,amsthm}
+\usepackage{thmtools}
+\usepackage{mathtools}
+
+\declaretheoremstyle[
+  headfont=\normalfont\bfseries,
+  notefont=\normalfont\bfseries, notebraces={(}{)},
+  bodyfont=\normalfont%\itshape
+]{myplain}
+
+\declaretheorem[style=myplain]{theorem}
+\declaretheorem[style=myplain]{lemma}
+\declaretheorem[style=myplain]{definition}
+
+% Cleveref (must be loaded late---after hyperref, no less!)
+\usepackage[noabbrev,capitalize,nameinlink]{cleveref}
+\newcommand{\creflastconjunction}{, and~}
+
+\newcommand*{\latin}[1]{\emph{#1}}
+\newcommand*{\term}[1]{\emph{#1}}
+\newcommand*{\N}{\mathbb{N}}
+\newcommand*{\Z}{\mathbb{Z}}
+
+% Colors
+\definecolor{dkblue}{rgb}{0,0.1,0.5}
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{dkred}{rgb}{0.6,0,0}
+\definecolor{dkpurple}{rgb}{0.7,0,0.4}
+\definecolor{olive}{rgb}{0.5, 0.5, 0.0}
+\definecolor{teal}{rgb}{0.0,0.5,0.5}
+
+\newcommand{\comm}[3]{\ifdraft\textcolor{#1}{[#2: #3]}\fi}
+\newcommand{\bcp}[1]{\comm{dkpurple}{BCP}{#1}} % Benjamin
+\newcommand{\ch}[1]{\comm{dkgreen}{CH}{#1}} % Catalin
+\newcommand{\apt}[1]{\comm{dkred}{APT}{#1}} % Andrew
+\newcommand{\aaa}[1]{\comm{blue}{AAA}{#1}} % Arthur
+
+\input{sfi-macros}
+\input{sfi-rules}
+
+\begin{document}
+
+\section{An outline of the software fault isolation machine}
+
+The goal of the software fault isolation (SFI) machine is compartmentalization:
+allowing a machine to subdivide its address space into multiple
+mutually-untrusting compartments.  This division is hierarchical: each
+compartment can, during execution, split off a sub-compartment out of its
+address space.
+
+To get this, we first define a general notion of what a compartment is.
+
+\begin{definition}[Compartment]\label{def:compartment}
+  A \term{compartment} $\compartment$ is a triple
+  $(\AddressSpace,\JumpTargets,\SharedMemory)$ of:
+  \begin{enumerate}
+  \item An \term{address space} $\AddressSpace \subseteq \N$ of addresses that
+    it is allowed to execute, read from, and write to;
+  \item A set of \term{jump targets} $\JumpTargets \subseteq \N$ of addresses
+    (presumably not in its address space) that it is allowed to jump to; and
+  \item A set of \term{shared memory locations} $\SharedMemory \subseteq \N$ of
+    addresses (presumably not in its address space) that it is allowed to write
+    to.
+  \end{enumerate}
+  All compartments are permitted to read all memory locations.
+\ch{This: (a) is super dangerous (see Heartbleed);
+%
+  (b) is kind of silly; we have a mechanism that can do it with no
+  additional overhead, still you chose to allow horrible
+  vulnerabilities for ``backwards'' compatibility with a 20+ years old
+  paper;
+%
+  (c) seems to contradict point (1).}\asz{These are fair points.  But this is a
+  really easy aspect of the design to change, so I didn't put much thought into
+  it after making the choice to stick with the Wahbe~\latin{et al.}\ model.
+  It's not that I'm opposed to changing it!}\ch{Let's change it then, and claim
+  is as a contribution}
+  We denote a set of compartments by
+$\Compartments$.
+\end{definition}
+
+The abstract machine model for SFI is given by a simple register-based machine
+with a single memory holding both instructions (encoded as numbers) and data.
+It executes the same set of instructions that we have defined above\asz{since
+  this will get plugged into the real paper rather than living independently as
+  it does now}, which have been encoded into their concrete numeric
+representations, in addition to one specialized instruction $\opcode{isolate}$
+for creating new compartments.\ch{Nitpicking: the way we abstract
+  monitor operations / system calls is not to new instructions.}\asz{Yes, I've
+  been meaning to change this but haven't gotten around to it.}
+
+\ch{The usage of $\N$ here is a bit disturbing. Our words are not
+  nats, but bit strings.}%
+\asz{True, this was an oversight.  Nothing here actually relies on $\N$, though,
+  and the Coq is in terms of \texttt{word}s.}
+
+\begin{definition}[SFI machine state]\label{def:sfi-machine-state}
+  An \term{SFI machine state} $\Machine$ is a quadruple
+  $(\pc,\Registers,\Memory,\Compartments)$ of
+  \begin{enumerate}
+  \item A \term{program counter} $\pc \in \N$ pointing at the to-be-executed
+    instruction;
+  \item A finite set of \term{registers} $\Registers : \mathit{reg} \to \N$;%
+    \asz{not sure exactly how to formalize the domain of $\Registers$ here}
+  \item A \term{memory} $\Memory : \N \to \N$ containing both code and data; and
+  \item A set of \term{compartments} $\Compartments$.
+  \end{enumerate}
+\end{definition}
+
+To enforce compartmentalization, we often need to check that an address
+$\pointer$ lies in a particular compartment's address space; we thus define the
+judgement $\Compartments \vdash \pointer \in (\AddressSpace, \JumpTargets,
+\SharedMemory)$ which is true exactly when $\pointer$ lies in the address space
+$\AddressSpace$ of some compartment in $\Compartments$, as we can see in
+\cref{fig:in-compartment}.  This figure also defines a similar judgement
+$\Compartments \vdash \pointer_1,\cdots,\pointer_k \in (\AddressSpace,
+\JumpTargets, \SharedMemory)$ to check that multiple addresses all lie in the
+same compartment.
+%
+\ch{This strange judgement seems to be mixing 2 different jugdments,
+  one that {\bf nondeterministically} looks up a component
+  $(\AddressSpace, \JumpTargets, \SharedMemory) \in \Compartments$,
+  and another one that tests whether an address is within bounds $p
+  \in \AddressSpace$.}%
+\asz{The reason it's one judgement for both is because you can't just ``look up
+  a component'' -- you have to look it up by some sort of key.  Here, the key is
+  the pointer $\pointer$, since that's what we need in practice.  (I'm open to
+  notational suggestions.)}
+%
+\ch{What's wrong with $(\AddressSpace, \JumpTargets, \SharedMemory)
+  \in \Compartments$ and $p \in \AddressSpace$? I think
+  nondeterminism does the trick perfectly, without introducing
+  real nondeterminism in the semantics when the components are disjoint.}
+
+\begin{figure}
+  \ottdefninXXcompartment{}
+  \par\vspace{\baselineskip}
+  \ottdefnmanyXXinXXcompartment{}
+  \vspace{-\baselineskip}
+  \caption{The definition of what it means for addresses to lie inside
+    compartments.}
+  \label{fig:in-compartment}
+\end{figure}
+
+Given this judgement, most of the step relations are immediately comprehensible;
+those instructions that involve neither memory accesses nor direct jumps behave
+the same as before, except with the additional check that $\Compartments \vdash
+\pc,\pc+1 \in (\AddressSpace, \JumpTargets, \SharedMemory)$; these simple rules
+are presented in \cref{fig:sfi-step-simple}.  The one exception is the
+\ottdrulename{step\_bnz\_nonzero} rule for relative branches; to jump a distance
+of $x$ from the current $\pc$, the check is of course $\Compartments \vdash
+\pc,\pc+x \in (\AddressSpace, \JumpTargets, \SharedMemory)$ instead.  These
+semantics\ch{rules?}
+guarantee that as long as execution begins in one compartment, it is
+not allowed to leave it except through certain permitted jumps.
+
+\begin{figure}
+  \begin{ottdefnblock}{$\mathcal{M} \ottsym{→} \mathcal{M}'$}
+                      {\ottcom{$\mathcal{M}$ steps to $\mathcal{M}'$}}
+    \ottusedrule{\ottdrulestepXXnop{}}\medskip
+    \ottusedrule{\ottdrulestepXXconst{}}\medskip
+    \ottusedrule{\ottdrulestepXXmov{}}\medskip
+    \ottusedrule{\ottdrulestepXXbinop{}}\medskip
+    \ottusedrule{\ottdrulestepXXbnzXXzero{}}\medskip
+    \ottusedrule{\ottdrulestepXXbnzXXnonzero{}}
+  \end{ottdefnblock}\vspace{-\baselineskip}
+  \caption{The standard portion of the SFI machine semantics.}
+  \label{fig:sfi-step-simple}
+\end{figure}
+
+The $\opcode{jump}$ instruction on the SFI machine is where the semantics of the
+compartments are the clearest, as we can see in \cref{fig:sfi-step-jump}.  We
+require that the target of a jump either lie in the same compartment
+($\Registers(r_{\mathit{tgt}}) \in \AddressSpace$) or be one of the approved
+entry points of another compartment that this compartment has been given access
+to ($\Registers(r_{\mathit{tgt}}) \in \JumpTargets$).  It is this second case
+alone that allows for execution to transfer between compartments.  On this
+machine, if we are using this to simulate a function call,\ch{That's a
+  JAL instruction not a JUMP}\asz{Either way -- the gains from JAL aren't huge
+  here because you can't automatically jump back.}\ch{This is a limitation of
+  your policy, while JAL is part of most calling conventions on RISC
+  machines.  We should stick to that, since otherwise the callee has no way
+  of knowing to which place it has to return. How to make the policy to allow
+  such returns is another issue, for which I think we need a better answer,
+  but still a different issue.}
+the target
+compartment must have the originating compartment as a permissible jump target
+\asz{a difference from the original paper, because we want to avoid protected
+  stacks}\ch{Protected stack would be a nice alternative if we can do
+  it with tags};
+registers can be used to pass function arguments and results, and are
+all caller-save.  It is necessary to clear all registers before
+inter-compartment jumps if the program wants to avoid leaking data between
+compartments.\ch{This seems like a very inefficient proposition, and
+  we're not enforcing this calling convention in any way.}\asz{I agree, but I
+  couldn't come up with a better option.  It's not unsafe \latin{per se},
+  because we still can't jump/write to bad locations, but leaking information
+  isn't great.  But without an internalized notion of ``private information'', I
+  don't see how to do better.}
+
+\begin{figure}
+  \begin{ottdefnblock}{$\mathcal{M} \ottsym{→} \mathcal{M}'$}
+                      {\ottcom{$\mathcal{M}$ steps to $\mathcal{M}'$}}
+    \ottusedrule{\ottdrulestepXXjump{}}
+  \end{ottdefnblock}\vspace{-\baselineskip}
+  \caption{Jumping on the SFI machine.}
+  \label{fig:sfi-step-jump}
+\end{figure}
+
+When accessing memory, we must also be compartment-aware.  For this model of
+SFI, loads and stores are \emph{asymmetric}, as we can see in
+\cref{fig:sfi-step-memory}.  The $\opcode{load}$ instruction standard in that it
+does \emph{not} check that the memory location it's reading is within the same
+compartment as the executing instruction; this means all memory on the machine
+is world-readable (which is particularly useful for passing large function
+arguments\ch{ and for Heartbleed}).
+The $\opcode{store}$ instruction, on the other hand, has a check
+similar to that of $\opcode{jump}$: for the most part, compartments are only
+allowed to write to their own address space ($\Registers(r_{\mathit{pdest}}) \in
+\AddressSpace$); however, if they've been given access to an approved shared
+variable, then they can write to it as well ($\Registers(r_{\mathit{pdest}}) \in
+\SharedMemory$).
+
+\begin{figure}
+  \begin{ottdefnblock}{$\mathcal{M} \ottsym{→} \mathcal{M}'$}
+                      {\ottcom{$\mathcal{M}$ steps to $\mathcal{M}'$}}
+    \ottusedrule{\ottdrulestepXXload{}}\medskip
+    \ottusedrule{\ottdrulestepXXstore{}}
+  \end{ottdefnblock}\vspace{-\baselineskip}
+  \caption{Memory access on the SFI machine.}
+  \label{fig:sfi-step-memory}
+\end{figure}
+
+The final feature this machine requires is the ability to create \emph{new}
+compartments, which is done via the slightly hideous-looking instruction
+$\opcode{isolate}$, as seen in \cref{fig:sfi-step-isolate}.  The
+$\opcode{isolate}$ instruction allows a compartment to carve a portion of itself
+off and use that as a brand-new compartment.  The instruction's effects break
+down as follows:
+\begin{enumerate}
+\item The address space of the new compartment is a contiguous subset of the
+  address space of the parent; the start- and endpoints of the new address space
+  are passed in via $r_{\mathit{src1}}$ and $r_{\mathit{src2}}$, respectively,
+  and the former must be smaller than the latter.
+
+\item The valid jump targets for the new compartment are some set of addresses
+  that are either (a) in the parent's address space or (b) valid jump targets
+  for the parent.  A pointer to them is passed in the register
+  $r_{\mathit{psrc3}}$.  The new jump targets must have been assembled in memory
+  in a standard length-encoded vector format: the initial value is the number of
+  jump targets, which is to be followed by that many addresses.
+
+\item The shared memory locations available to the new compartment are some set
+  of addresses that are either (a) in the parent's address space or (b) shared
+  memory locations available to the parent.  A pointer to them is passed in
+  the register $r_{\mathit{psrc4}}$.  The new shared memory locations must have been
+  assembled in memory in the same length-encoded vector format used for the jump
+  targets.
+
+\item The parent compartment is modified: the addresses used for the child
+  compartment are taken out of the parent's address space, and the initial
+  address of the child is added as a valid jump target.
+  \ch{Some strange asymmetry I don't like: the child has more access to the
+    parent than the parent has to the child.}%
+  \asz{I must have explained something badly here, or written something down
+    wrong -- that's not true (or at least, it shouldn't be).  What are you
+    referring to?}
+  \ch{As far at I understand isolate allows the parent to choose to
+    which of its addresses to give access to the child, but it doesn't
+    allow the parent to choose to which child addresses to give itself
+    access. This is a strange asymmetry, given that the parent is the
+    one creating the new component and still gets strictly less access
+    to it than the new component can get over the parent.}
+
+\item Finally, the new compartment is also inserted into the machine's set of
+  permitted compartments.
+\end{enumerate}
+This instruction is the only way that either the set of compartments or an
+individual compartment can be modified.
+
+\begin{figure}
+  \begin{ottdefnblock}{$\mathcal{M} \ottsym{→} \mathcal{M}'$}
+                      {\ottcom{$\mathcal{M}$ steps to $\mathcal{M}'$}}
+    \ottusedrule{\ottdrulestepXXisolate{}}
+  \end{ottdefnblock}\vspace{-\baselineskip}
+  \caption{Creating a new compartment on the SFI machine.}
+  \label{fig:sfi-step-isolate}
+\end{figure}
+
+\section{Definitions we may use and theorems we may prove}
+
+In order to guarantee that compartmentalization is meaningful, we will want to
+guarantee that all compartments are in control of distinct portions of the
+machine state, excepting those jump targets and memory locations they have
+voluntarily shared.
+%
+\ch{Children don't {\em voluntarily} share things (their start
+  address) to their parents, and that's just fine.}
+
+\begin{definition}[Non-overlapping compartments]\label{def:non-overlapping}
+  A set $\Compartments$ of compartments is \term{non-overlapping} when, for all
+  pairs of compartments $(\AddressSpace, \JumpTargets, \SharedMemory),
+  (\AddressSpace', \JumpTargets', \SharedMemory') \in \Compartments$, the two
+  address spaces do not coincide: $\AddressSpace \cap \AddressSpace' =
+  \emptyset$.
+\end{definition}
+
+We can guarantee that this notion is preserved by execution.
+
+\begin{lemma}[Preservation of non-overlapping compartments]
+\label{lem:non-overlapping}
+  Given two SFI machine states $\Machine$ and $\Machine'$ such that $\Machine
+  \stepsto \Machine'$, if $\Machine$'s compartments are non-overlapping, then so
+  are $\Machine'$'s.
+\end{lemma}
+
+Since machines are hierarchical, we can define terms expressing how they are
+related.
+
+\begin{definition}[Inter-compartment relations]
+\label{def:inter-compartment-relations}
+  Given two compartments $\compartment$ and $\compartment'$, we have the direct
+  relationships arising from $\opcode{isolate}$:
+  \begin{enumerate}
+  \item $\compartment$ is the \term{direct parent} of $\compartment'$, or
+    $\compartment'$ is the \term{direct child} of $\compartment$, if
+    $\compartment$ executed an $\opcode{isolate}$ instruction that created
+    $\compartment'$.
+    
+  \item $\compartment'$ is a \term{direct descendant} of $\compartment$ if
+    $\compartment$ executed an $\opcode{isolate}$ instruction that created a
+    \emph{different} compartment and updated $\compartment$ to be
+    $\compartment'$; this symmetrically makes $\compartment$ a \term{direct
+    ancestor} of $\compartment'$.
+  \end{enumerate}
+
+  We then define the \term{(indirect) descendant/ancestor} relation to be the
+  reflexive transitive closure of the direct descendant/ancestor relation, and
+  the \term{(indirect) parent/child} relations to be the direct parent/child
+  relationships except with the requirement that $\compartment$ created an
+  ancestor of $\compartment'$.
+
+  We define the \term{cone} of a compartment $\compartment$ to be those
+  compartments that are reflexively or transitively a child or descendant of
+  $\compartment$.
+\end{definition}
+
+We can then guarantee that compartments are only visible to their cone.
+
+\begin{lemma}[In-cone changes\asz{needs a better name}]\label{lem:in-cone-changes}
+  Suppose we have a machine state $\Machine$ with a compartment $\compartment =
+  (\AddressSpace, \JumpTargets, \SharedMemory)$ with an address $\pointer \in
+  \AddressSpace$ that is not a valid shared memory location for any of its
+  ancestors.  Then during any execution $\Machine \stepsto^* \Machine'$, the
+  only modifications to $\pointer$ can come from $\compartment$ or any
+  compartment in its cone.  Similarly, if $\pointer$ is not a valid jump target
+  for any ancestor of $\compartment$, then execution steps that set the $\pc$ to
+  $\pointer$ must have come from $\compartment$ or any compartment in its cone.%
+  \asz{Probably needs to be stated more cleanly, too.}
+\end{lemma}
+
+We have certain constraints on the steps an SFI machine may take: either they
+remain within the compartment, or they have been explicitly blessed.
+
+\begin{lemma}[Permitted execution steps]\label{lem:permitted-steps}
+  Given two SFI machine states $\Machine$ and $\Machine'$ such that $\Machine
+  \stepsto \Machine'$ and $\Compartments \vdash \pc \in \compartment =
+  (\AddressSpace, \JumpTargets, \SharedMemory)$.  Then either $\Compartments'
+  \vdash \pc' \in \compartment$ or $\pc' \in \JumpTargets$.  \asz{Modulo a
+    slight detail about what happens if the executed instruction was an
+    $\opcode{isolate}$ that remove $\pc+1$ from the instruction set -- but that
+    means that stepping further should crash, so it's ok!  The trickiest detail
+    about this is probably figuring out exactly how to phrase this lemma so that
+    it's most useful.}
+\end{lemma}
+
+We may state the following theorems about our SFI machine that characterize its
+desired behavior.
+
+% Restate to just talk about the initial set A, then we get the
+% compartmentalized version as a corollary.
+\begin{theorem}[Mutual independence]\label{thm:mutual-independence}
+  Between executions of a compartment, its strictly local state does not change.
+  More formally: suppose that we have an execution trace of an SFI machine given
+  by \[ (\pc,\Registers,\Memory,\Compartments) = \Machine \stepsto \Machine''_1
+  \stepsto^* \Machine''_n \stepsto \Machine' =
+  (\pc',\Registers',\Memory',\Compartments') \] such that both $\pc$ and $\pc'$
+  lie inside the same compartment $\compartment =
+  (\AddressSpace,\JumpTargets,\SharedMemory)$, but none of the $\pc''_i$ do.
+  Then \[ \Memory[\AddressSpace \setminus \SharedMemory] =
+  \Memory'[\AddressSpace \setminus \SharedMemory]. \]%
+  \asz{This needs to be sharpened to deal with the case where $\Machine$ splits
+    off a new compartment in its last step.  On the other hand, that can't put
+    execution into a new compartment in the current model, so it may just barely
+    be safe.  Proving the theorem will reveal all :-)}
+\end{theorem}
+
+\begin{theorem}[Compartment entry points]\label{thm:entry-points}
+  We can only enter a compartment by some address it has willingly exposed as a
+  jump target.  More formally: suppose that we have an execution trace of an SFI
+  machine given by \[ \Machine_0 \stepsto^* \Machine \stepsto \Machine' \] where
+  $\Compartments \vdash \pc \in \compartment = (\AddressSpace, \JumpTargets,
+  \SharedMemory)$.  \asz{We also need some sort of ``initial state'' guarantee.}
+  Then either $\pc' \in \AddressSpace$ as well, or $\Compartments' \vdash \pc'
+  \in \compartment' = (\AddressSpace', \JumpTargets', \SharedMemory')$ at some
+  prior step, the machine executed $\opcode{isolate}$ from compartment
+  $\compartment'$ with $\pc'$ in the jump targets vector.
+\end{theorem}
+
+\ch{I'm quite surprised that none of these properties reseambles
+  non-interference. You do seem to protect the integrity (but for
+  silly reasons not confidentiality) of components from other
+  components, up to certain well-defined ``declassification''
+  steps/points [the register contents are endorsed on calls].}%
+\asz{I think it's because SFI is about labeling addresses but not values.
+\ch{I still don't see why this means we can't achieve a non-interference
+  like property with this more coarse-grained mechanism.}
+  Mutual independence does have some of the NI feel to me, though.}
+\ch{Mutual independence still talks about single runs, while
+  non-interference talks about pairs of runs. Mutual independence
+  might be a nice lemma in a non-interference proof :)}
+
+\section{Differences from the original  paper}
+
+While this machine tries to hew closely to ``Efficient Software-Based Fault
+Isolation''~(Wahbe et.\ al,~1993), there are some differences.
+\begin{enumerate}
+\item Wahbe et.\ al instrument existing programs; this machine is designed for
+  programs working with SFI from the ground up.
+
+\item Wahbe et.\ al ultimately use a model which causes disallowed
+  inter-compartment jumps and stores to have essentially random
+  intra-compartment effects, in the name of efficiency; we stick with enforcing
+  failure on compartmentalization violations.
+
+\item Wahbe et. al are modeling a system where there is one trusted program
+  which calls out to mutually-unaware untrusted compartments; we model a system
+  with various mutually-untrusted compartments which can create children that
+  may or may not be mutually aware.
+  
+\item Wahbe et.\ al support inter-compartment procedure calls by marshalling
+  data analogously to an ordinary RPC, complete with trusted calling and
+  returning stubs; we do not have trusted code and do not wish to support a
+  protected stack, so we only support inter-compartment jumps and require the
+  user to manage simulating RPCs themself.
+
+\item Wahbe et.\ al supports detecting RPC crashes and can turn them into
+  graceful continuation of the calling compartment; we have neither RPCs nor the
+  ability to detect program crashes.
+\end{enumerate}
+
+The first two of these differences arise naturally from the nature of our
+tag-based architectural design as opposed to Wahbe et.\ al's instrumentation of
+existing code on existing architectures.  The third arises similarly, and
+generalizes the existing behavior.  The fourth and fifth differences are sadly
+unavoidable given some of our other design goals.\asz{This last needs to be
+  rephrased.}
+
+\section{Label model}
+
+Reifying this SFI model to the concrete machine is essentially done by turning
+the definition of a compartment ``inside out'' -- the abstract machine has a
+global state that keep track of a set of compartments and, for each one, the
+other locations it's allowed to jump or write to; the concrete label model has
+sprinkles this state over the entire machine memory, tagging each datum with
+information about which compartment it belongs to and which other compartments
+are allowed to jump or write to it.  Every location in memory is tagged with an
+SFI data label.\asz{Could be more clearly explained.}
+
+\begin{definition}[SFI data label]\label{def:sfi-data-label}
+  An \term{SFI data label} is a triple $(\Ccompartment,\CIncoming,\CWriters)$ of
+  \begin{enumerate}
+  \item A compartment ID $\Ccompartment \in \Z_{2^{32}}$ to which the tagged
+    datum belongs.
+  \item A set of \term{incoming compartments} $\CIncoming \subseteq
+    \Z_{2^{32}}$, which is the set of other compartments that are allowed to
+    jump to this location.
+  \item A set of \term{writers} $\CWriters \subseteq \Z_{2^{32}}$, which is the
+    set of other compartments that are allowed to write to this location.
+  \end{enumerate}
+\end{definition}
+
+The concrete program counter $\Cpc$ is always tagged with a single compartment
+ID that reflects the compartment that just executed an instruction; however, in
+order to permit inter-compartment jumps, we must record whether that instruction
+was a $\opcode{jump}$.
+
+\ch{It seems that this way of protecting jumps will have the same
+  delayed failure behavior as for CFI (actually mentioned bellow). The
+  lessons learned there could probably help here too: e.g.\ there we
+  add an extra step to the abstract machine and prove a standard
+  simulation property.}%
+\asz{Yes, definitely -- I'll take a look at that.}
+
+\begin{definition}[SFI $\Cpc$ label]\label{def:sfi-pc-label}
+  An \term{SFI $\Cpc$ label} is a tuple $(\Cpcstate, \Ccompartment)$, where
+  $\Cpcstate$ is either
+  \begin{enumerate}
+  \item An indication of intra-compartment execution, $\concrete{INTERNAL}$; or
+  \item An indication that the execution came from a (potentially
+    inter-compartmental) $\opcode{jump}$, written $\concrete{JUMPED}$.
+  \end{enumerate}
+\end{definition}
+
+Registers are always tagged with a dummy $\concrete{REG}$ tag, since they don't
+need to carry any compartmentalization information.
+%
+\ch{This is quite sad. I think it would be more helpful to tag
+  registers with the component that did the last write, and not allow
+  inter-component reads; or at least require explicit retagging for
+  this. This way the caller would no longer have to manually clear a
+  ton of registers, while still allowing data to be passed via
+  registers if necessary. Retagging could use instruction modifiers to
+  achieve lower overhead. Anyway, maybe this is just a compromise for
+  containing complexity.}%
+\asz{Exposing manual register retagging at the abstract level gets messy, since
+  right now the abstract machine has no notion of tags or of compartment IDs.
+  I'm not sure what you mean by ``instruction modifiers''.}
+
+We can use this to define the concrete SFI machine as the tagged concrete
+machine we are expecting.
+
+\begin{definition}[SFI concrete machine state]
+\label{def:sfi-concrete-machine-state}
+  An \term{SFI concrete machine state} $\CMachine$ is a triple
+  $(\Cpc@\Label_{\Cpc},\CRegisters,\CMemory)$ of
+  \begin{enumerate}
+  \item A \term{program counter} $\Cpc \in \Z_{2^{32}}$ pointing at the
+    to-be-executed instruction, with a tag $\Label_{\Cpc}$ indicating where the
+    transition to this instruction came from;
+  \item A finite set of \term{registers} $\CRegisters$ mapping registers to
+    labeled values $\concrete{x}@\Label$; and
+  \item A \term{memory} $\Memory$ mapping concrete addresses (elements of
+    $\Z_{2^{32}}$) to labeled values $\concrete{x}@\Label$.
+  \end{enumerate}
+  We discuss invariants on the labels below.
+\end{definition}
+
+This is sufficient to emulate the above machine; the only difference is that
+incorrectly changing the executing compartment (either by falling through to
+code out of the current compartment or executing a disallowed $\opcode{jump}$)
+fails one step later in this model.  Where in the abstract machine, we disallow
+\emph{transitions} that would change the current compartment illegally, on this
+machine we can only detect this when the $\Cpc$ tag disagrees with the tag on
+the instruction it is about to execute.  Writes can be caught immediately,
+however: while the TMU does not provide us the tag on the next instruction to be
+executed, it does provide us the tag on the the memory location to be written.
+
+To capture the essence of the can-execute check $\Compartments \vdash \pc,\pc+1
+\in (\AddressSpace,\JumpTargets,\SharedMemory)$ we see in nearly all abstract
+SFI machine instructions, we introduce the \term{can-execute} check seen in
+\cref{fig:can-execute}; $\Label_{\Cpc} \canexec \Label_{\concrete{I}} \in
+\Ccompartment$ precisely when
+\begin{enumerate}
+\item $\Label_{\Cpc}$ and $\Label_{\concrete{I}}$ are in the same compartment;
+  or
+\item $\Label_{\Cpc}$ indicates that we just jumped to the current instruction,
+  and $\Label_{\concrete{I}}$ contains the $\Cpc$'s compartment as a valid
+  incoming compartment.
+\end{enumerate}
+
+\begin{figure}
+  \ottdefncanXXexecute{}
+  \vspace{-\baselineskip}
+  \caption{The \term{can-execute} check: does the current $\Cpc$ permit an
+    instruction with the given data label to execute?  If so, in what
+    compartment?}
+  \label{fig:can-execute}
+\end{figure}
+
+The instructions that were simple in the abstract machine remain simple, as we
+can see in \cref{fig:sfi-concrete-step-simple}.  One thing to note is that the
+$\Cpc$ consistently changes labels from $\Label_{\Cpc}$ to
+$(\INTERNAL,\Ccompartment)$.  In most cases, these two will be the same (making
+this change a no-op), as the previous instruction will not have been a jump.
+However, recall from \cref{def:sfi-pc-label} that jumping produces a special
+$\JUMPED$ tag; fixing the return tags to be $\INTERNAL$ means that we do not
+maintain the $\JUMPED$ tag past one instruction, as is appropriate.
+
+\begin{figure}
+  \begin{ottdefnblock}{$\mathcal{M}_{\concrete{C}} \ottsym{→} \mathcal{M}_{\concrete{C}}'$}
+                      {\ottcom{$\mathcal{M}_{\concrete{C}}$ steps to $\mathcal{M}_{\concrete{C}}'$}}
+    \ottusedrule{\ottdrulecstepXXnop{}}\medskip
+    \ottusedrule{\ottdrulecstepXXconst{}}\medskip
+    \ottusedrule{\ottdrulecstepXXmov{}}\medskip
+    \ottusedrule{\ottdrulecstepXXbinop{}}\medskip
+    \ottusedrule{\ottdrulecstepXXbnzXXzero{}}\medskip
+    \ottusedrule{\ottdrulecstepXXbnzXXnonzero{}}
+  \end{ottdefnblock}\vspace{-\baselineskip}
+  \caption{The standard portion of the concrete SFI machine semantics.}
+  \label{fig:sfi-concrete-step-simple}
+\end{figure}
+
+Looking at \cref{fig:sfi-concrete-step-jump}, we immediately see a difference
+between the concrete and abstract machines: jumps to out-of-compartment
+locations don't fail for that reason!  Indeed, as mentioned above, we cannot
+inspect the tag on the next $\Cpc$ to find out if we have left our current
+compartment.  Thus, we must compare the $\Cpc$ tag and the instruction tag,
+which is what the can-execute relation does.  But to permit inter-compartment
+movement, we must have $\opcode{jump}$ produces the $\JUMPED$ tag; this allows
+the can-execute relation to notice that the previous instruction was a jump, and
+permit it if necessary.
+
+\begin{figure}
+  \begin{ottdefnblock}{$\mathcal{M}_{\concrete{C}} \ottsym{→} \mathcal{M}_{\concrete{C}}'$}
+                      {\ottcom{$\mathcal{M}_{\concrete{C}}$ steps to $\mathcal{M}_{\concrete{C}}'$}}
+    \ottusedrule{\ottdrulecstepXXjump{}}
+  \end{ottdefnblock}\vspace{-\baselineskip}
+  \caption{Jumping on the concrete SFI machine.}
+  \label{fig:sfi-concrete-step-jump}
+\end{figure}
+
+Accessing memory, as we can see in \cref{fig:sfi-concrete-step-memory}, is much
+more similar to the abstract machine.  Loads and stores continue to be
+\emph{asymmetric}, and $\opcode{store}$ \emph{can} check directly that the write
+it's performing is permitted.
+
+\begin{figure}
+  \begin{ottdefnblock}{$\mathcal{M}_{\concrete{C}} \ottsym{→} \mathcal{M}_{\concrete{C}}'$}
+                      {\ottcom{$\mathcal{M}_{\concrete{C}}$ steps to $\mathcal{M}_{\concrete{C}}'$}}
+    \ottusedrule{\ottdrulecstepXXload{}}\medskip
+    \ottusedrule{\ottdrulecstepXXstore{}}
+  \end{ottdefnblock}\vspace{-\baselineskip}
+  \caption{Memory access on the concrete SFI machine.}
+  \label{fig:sfi-concrete-step-memory}
+\end{figure}
+
+Finally, the rule for $\opcode{isolate}$ is presented in
+\cref{fig:sfi-concrete-step-isolate}.  The meaning of the arguments, and their
+correctness conditions, are the same between the concrete and abstract machines;
+however, because the tagging scheme used for the concrete machine differs from
+the global state scheme used for the abstract machine, we go over the retagging
+effects of this instruction.
+\begin{enumerate}
+\item We allocate a fresh compartment ID $\Ccompartment'$.
+  
+\item We retag the address space of the new compartment to lie in this new
+  compartment.
+
+\item The valid jump targets for the new compartment -- wherever they are in
+  memory -- are all retagged to add it to their set of permissible incoming
+  compartments.
+
+\item Similarly, the shared memory locations available to the new compartment
+  are all retagged to add it to their set of permissible writers.
+
+\item Finally, the first instruction of the new compartment has the old
+  compartment added as a permitted incoming compartment.
+\end{enumerate}
+
+\begin{figure}
+  \begin{ottdefnblock}{$\mathcal{M}_{\concrete{C}} \ottsym{→} \mathcal{M}_{\concrete{C}}'$}
+                      {\ottcom{$\mathcal{M}_{\concrete{C}}$ steps to $\mathcal{M}_{\concrete{C}}'$}}
+    \ottusedrule{\hspace*{-2em}\ottdrulecstepXXisolate{}}
+  \end{ottdefnblock}\vspace{-\baselineskip}
+  \caption{Creating a new compartment on the concrete SFI machine.\asz{Wow, this
+      rule needs to be cleaned up!}}
+  \label{fig:sfi-concrete-step-isolate}
+\end{figure}
+
+\section{Invariants for the concrete machine}
+
+\begin{definition}[SFI label invariants]\label{def:sfi-label-invariants}
+  For a concrete SFI machine, we wish to maintain the following label
+  invariants:
+  
+  \begin{enumerate}
+  \item All registers have the dummy tag $\REG$.
+  \item The $\Cpc$ has a $\Cpc$ tag (\cref{def:sfi-pc-label}), of the form
+    $(\Cpcstate,\Ccompartment)$.
+  \item All memory locations have a data tag (\cref{def:sfi-data-label}), of the
+    form $(\Ccompartment,\CIncoming,\CWriters)$.
+  \end{enumerate}
+\end{definition}
+
+\begin{lemma}[SFI register labels]\label{lem:sfi-register-labels}
+  Given two concrete SFI machine states $\CMachine$ and $\CMachine'$ such that
+  all of $\CMachine$'s registers are tagged $\REG$ and $\CMachine \stepsto
+  \CMachine'$, so are all of $\CMachine'$'s.
+\end{lemma}
+
+\begin{lemma}[The SFI $\Cpc$ label]\label{lem:sfi-pc-label}
+  Given two concrete SFI machine states $\CMachine$ and $\CMachine'$ such that
+  all of $\CMachine$'s registers have tags of the form
+  $(\Cpcstate,\Ccompartment)$ and $\CMachine \stepsto \CMachine'$, so do all of
+  $\CMachine'$'s.
+\end{lemma}
+
+\begin{lemma}[SFI memory labels]\label{lem:sfi-memory-labels}
+  Given two concrete SFI machine states $\CMachine$ and $\CMachine'$ such that
+  all of $\CMachine$'s registers have tags of the form
+  $(\Ccompartment,\CIncoming,\CWriters)$ and $\CMachine \stepsto \CMachine'$, so
+  do all of $\CMachine'$'s.
+\end{lemma}
+
+\begin{theorem}[SFI label invariant maintained]
+\label{thm:sfi-label-invariant-maintained}
+  Suppose that we have two concrete SFI machine states $\CMachine$ and
+  $\CMachine'$ such that $\CMachine$ respects the SFI label invariant
+  (\cref{def:sfi-label-invariants}) and $\CMachine \stepsto^* \CMachine'$.  The
+  $\CMachine'$ respects the label invariant as well.
+\end{theorem}
+\end{document}
+
+% LocalWords: LocalWords SFI retag retagging retagged

@@ -1,0 +1,6 @@
+*.aux
+*.log
+*.out
+*.bak
+main.pdf
+temp

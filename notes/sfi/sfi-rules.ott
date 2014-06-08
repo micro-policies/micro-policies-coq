@@ -1,0 +1,513 @@
+% This is an abstract machine based on the concrete semantics in "Efficient
+% Software Fault Isolation", by Wahbe et al. (SOSP 1993;
+% http://www.eecs.harvard.edu/~greg/cs255sp2004/wahbe93efficient.pdf), although
+% there are some differences beyond the fact that we aren't doing code rewriting
+% (for instance, (a) we handle inter-compartment calls by preserving registers
+% and allowing global reads, not by using stubs to perform marshalling; or (b)
+% the paper uses one trusted non-component and many untrusted components, where
+% we use hierarchically-created mutually-untrusting components.)
+
+metavar reg, r,
+        rsrc   {{tex r\multisub{\mathit{src} } }},
+        rpsrc  {{tex r\multisub{\mathit{psrc} } }},
+        rdest  {{tex r\multisub{\mathit{dest} } }},
+        rpdest {{tex r\multisub{\mathit{pdest} } }},
+        rtgt   {{tex r\multisub{\mathit{tgt} } }}
+        ::= {{com register}}
+
+indexvar i, j, k ::=
+
+grammar
+
+n, x, p {{tex \pointer}}, a, pc {{tex \pc}} :: 'nat_' ::= {{com $ℕ$}} {{coq nat}}
+  | Z       ::   :: Zero  {{com zero}}
+                          {{tex \mathrm{Z} }}
+                          {{coq O}}
+  | S n     ::   :: Succ  {{com successor}}
+                          {{tex \mathrm{S}\ [[n]] }}
+                          {{coq S [[n]]}}
+  | 0       :: S :: Lit0  {{com $0 = \mathrm{Z}$}}
+                          {{coq 0\%nat}}
+  | 1       :: S :: Lit1  {{com $1 = \mathrm{S}\ \mathrm{Z}$}}
+                          {{coq 1\%nat}}
+  | ( n )   :: S :: Paren {{coq [[n]]}}
+  | n1 + n2 :: M :: Plus  {{coq ([[n1]] + [[n2]])\%nat}}
+  | n1 · n2 :: M :: Times {{coq ([[n1]] * [[n2]])\%nat}}
+  
+phi {{tex φ}} :: 'pred_' ::= {{com predicates}}
+  | n1 = n2 ::   :: Eq
+  | n1 ≠ n2 ::   :: Neq
+  | n1 < n2 ::   :: Lt
+  | n1 ≤ n2 ::   :: Le
+  | n1 > n2 ::   :: Gt
+  | n1 ≥ n2 ::   :: Ge
+  | n  ∈ N  ::   :: In
+  | n  ∉ N  ::   :: NotIn
+
+N, X, P, A, J, S :: 'nats_' ::= {{com $\mathcal{P}(ℕ)$}}
+  | {}              ::   :: Empty
+  | { n ∈ N | phi } ::   :: Specification
+    {{tex \left\{\,[[n]] ∈ [[N]] \,\middle|\, [[phi]]\,\right\} }}
+  | { n1 , n2 }     ::   :: Pairing
+  | ⋃ N             ::   :: Union
+  | { n' | n ∈ N }  ::   :: Replacement
+    {{tex \left\{\,[[n']] \,\middle|\, [[n]] ∈ [[N]]\,\right\} }}
+  | ℕ               ::   :: Infinity
+  | ( N )           :: S :: Paren {{coq [[N]]}}
+  | { n }           ::   :: Singleton
+  | N1 ∪ N2         :: M :: Union2
+  | N1 ∖ N2         :: M :: Difference
+  | [ n1 , n2 ]     :: M :: RangeCC
+  | ( n1 , n2 ]     :: M :: RangeOC
+  | [ n1 , n2 )     :: M :: RangeCO
+  | ( n1 , n2 )     :: M :: RangeOO
+
+c {{tex \compartment}} :: 'compartment_' ::= {{com compartment}}
+  | ( A , J , S ) ::   :: Compartment {{com addresses, jump table, shared memory}}
+
+C {{tex \Compartments}} :: 'compartments_' ::= {{com compartment}}
+  | ·     ::   :: Empty {{tex \mathord{·} }}
+  | c ∷ C ::   :: Cons
+  | ( C ) :: S :: Paren {{coq [[C]]}}
+
+R {{tex \Registers}} :: 'registers_' ::= {{com registers ($\mathit{reg} → ℕ$)}}
+  | _ ↦ x       ::   :: Const {{com constant map}}
+  | R [ r ↦ x ] ::   :: Upd   {{com [[R]] with [[r]] set to [[x]]}}
+  | ( R )       :: S :: Paren {{coq [[R]]}}
+
+M {{tex \Memory}} :: 'memory_' ::= {{com memory ($ℕ → ℕ$)}}
+  | _ ↦ x       ::   :: Const {{com constant map}}
+  | M [ p ↦ x ] ::   :: Upd   {{com [[M]] with the value at address [[p]] set to [[x]]}}
+  | ( M )       :: S :: Paren {{coq [[M]]}}
+
+MM {{tex \Machine}} :: 'machine_' ::= {{com machine}}
+  | ( pc , R , M , C ) ::   :: Machine
+
+op {{tex \mathit{op} }} :: 'op_' ::= {{com binary operator}}
+  | ADD ::   :: ADD {{tex \operator{add} }}
+  | SUB ::   :: SUB {{tex \operator{sub} }}
+  | MUL ::   :: MUL {{tex \operator{mul} }}
+  | DIV ::   :: DIV {{tex \operator{div} }}
+  | EQ  ::   :: EQ  {{tex \operator{eq}  }}
+  | LT  ::   :: LT  {{tex \operator{lt}  }}
+  | LE  ::   :: LE  {{tex \operator{le}  }}
+  | GT  ::   :: GT  {{tex \operator{gt}  }}
+  | GE  ::   :: GE  {{tex \operator{ge}  }}
+
+instr {{tex \mathit{instr} }} :: 'instruction_' ::= {{com instruction}}
+  | NOP                               ::   :: NOP
+    {{tex \opcode{nop} }}
+  | CONST   x    rdest                ::   :: CONST
+    {{tex \opcode{const}\ [[x]]\ [[rdest]]}}
+  | MOV     rsrc rdest                ::   :: MOV
+    {{tex \opcode{mov}\ [[rsrc]]\ [[rdest]]}}
+  | BINOP   op rsrc1 rsrc2 rdest      ::   :: BINOP
+    {{tex \opcode{binop}\ [[op]]\ [[rsrc1]]\ [[rsrc2]]\ [[rdest]]}}
+  | LOAD    rpsrc rdest               ::   :: LOAD
+    {{tex \opcode{load}\ [[rpsrc]]\ [[rdest]]}}
+  | STORE   rsrc rpdest               ::   :: STORE
+    {{tex \opcode{store}\ [[rsrc]]\ [[rpdest]]}}
+  | JUMP    rtgt                      ::   :: JUMP
+    {{tex \opcode{jump}\ [[rtgt]]}}
+  | BNZ     rsrc x                    ::   :: BNZ
+    {{tex \opcode{bnz}\ [[rsrc]]\ [[x]]}}
+  | ISOLATE rsrc1 rsrc2 rpsrc3 rpsrc4 ::   :: ISOLATE
+    {{tex \opcode{isolate}\ [[rsrc1]]\ [[rsrc2]]\ [[rpsrc3]]\ [[rpsrc4]]}}
+
+Cn  {{tex \concrete{n} }},
+Cx  {{tex \concrete{x} }},
+Cy  {{tex \concrete{y} }},
+Cp  {{tex \Cpointer}},
+Ca  {{tex \concrete{a} }},
+Cc  {{tex \Ccompartment }},
+Cpc {{tex \Cpc}} :: 'word_' ::= {{com $ℤ_{2^{32} }$}}
+  | 0         :: S :: Lit0
+  | 1         :: S :: Lit1
+  | ( Cn )    :: S :: Paren {{coq [[Cn]]}}
+  | Cn1 + Cn2 :: M :: Plus
+
+CS {{tex \Cpcstate}} :: 'pc_state_' ::= {{com Kind of $\Cpc$ label}}
+  | INTERNAL :: :: PCInternalLabelKind {{com $\Cpc$ intra-compartment label tag }}
+  | JUMPED   :: :: PCJumpLabelKind     {{com $\Cpc$ intra-compartment label tag }}
+  
+L   {{tex \Label}},
+LI  {{tex \Label_{\concrete{I} } }},
+Lpc {{tex \Label_{\Cpc} }} :: 'label_' ::= {{com Labels}}
+  | ( Cc , CI , CW ) :: :: DataLabel     {{com data label}}
+  | ( CS , Cc )      :: :: PCLabel       {{com $\Cpc$ label}}
+  | REG              :: :: RegisterLabel {{com register}}
+
+Cv {{tex \concrete{v} }} :: 'labeled_datum_' ::= {{com $ℤ_{2^{32} } × \mathit{label}$}}
+  | Cx @ L :: :: LabeledDatum
+  
+CZ {{tex \concrete{Z} }},
+CI {{tex \CIncoming}},
+CW {{tex \CWriters}} :: 'words_' ::= {{com $\mathcal{P}(ℤ_{2^{32} })$}}
+  | { Cx }                :: M :: Singleton
+  | CZ1 ∪ CZ2             :: M :: Union
+  | [ Cn1 , Cn2 ]         :: M :: RangeCC
+  | unlabel ( CM ( CZ ) ) :: M :: UnlabelMapRange
+
+CR {{tex \CRegisters}} :: 'concrete_registers_' ::=
+  {{com registers ($\mathit{reg} → ℤ_{2^{32} } × \mathit{label}$)}}
+  | _ ↦ Cv        ::   :: Const {{com constant map}}
+  | CR [ r ↦ Cv ] ::   :: Upd   {{com [[CR]] with [[r]] set to [[Cv]]}}
+  | ( CR )        :: S :: Paren {{coq [[CR]]}}
+
+CM {{tex \CMemory}} :: 'concrete_memory_' ::=
+  {{com concrete (labeled) memory ($ℤ_{2^{32} } → ℤ_{2^{32} } × \mathit{label}$)}}
+  | _ ↦ Cv                                ::   :: Const {{com constant map}}
+  | CM [ Cp ↦ Cv ]                        ::   :: Upd   {{com [[CM]] with the value at address [[Cp]] set to [[Cv]]}}
+  | ( CM )                                :: S :: Paren {{coq [[CM]]}}
+  | map ( λ Cv . Cv' ) $ CM ( CZ ) :: M :: Map
+    {{com replace [[Cv]] with [[Cv']] at each location in [[CZ]] in the map [[CM]]}}
+
+CMM {{tex \CMachine}} :: 'concrete_machine_' ::= {{com machine}}
+  | ( Cpc @ L , CR , CM ) ::   :: Machine
+
+cinstr {{tex \mathit{cinstr} }} :: 'concrete_instruction_' ::=
+  {{com concrete instruction}}
+  | CNOP                               ::   :: NOP
+    {{tex \opcode{nop} }}
+  | CCONST   Cx    rdest               ::   :: CONST
+    {{tex \opcode{const}\ [[Cx]]\ [[rdest]]}}
+  | CMOV     rsrc rdest                ::   :: MOV
+    {{tex \opcode{mov}\ [[rsrc]]\ [[rdest]]}}
+  | CBINOP   op rsrc1 rsrc2 rdest      ::   :: BINOP
+    {{tex \opcode{binop}\ [[op]]\ [[rsrc1]]\ [[rsrc2]]\ [[rdest]]}}
+  | CLOAD    rpsrc rdest               ::   :: LOAD
+    {{tex \opcode{load}\ [[rpsrc]]\ [[rdest]]}}
+  | CSTORE   rsrc rpdest               ::   :: STORE
+    {{tex \opcode{store}\ [[rsrc]]\ [[rpdest]]}}
+  | CJUMP    rtgt                      ::   :: JUMP
+    {{tex \opcode{jump}\ [[rtgt]]}}
+  | CBNZ     rsrc Cx                   ::   :: BNZ
+    {{tex \opcode{bnz}\ [[rsrc]]\ [[Cx]]}}
+  | CISOLATE rsrc1 rsrc2 rpsrc3 rpsrc4 ::   :: ISOLATE
+    {{tex \opcode{isolate}\ [[rsrc1]]\ [[rsrc2]]\ [[rpsrc3]]\ [[rpsrc4]]}}
+  | ( cinstr )                         :: S :: Paren {{coq [[cinstr]]}}
+
+formula :: 'formula_' ::=
+  | judgement                     ::   :: judgement
+  | formula1 ... formulak         ::   :: dots
+  | ¬ formula                     :: M :: not
+  | formula1 ∧ formula2           :: M :: and
+  | formula1 ∨ formula2           :: M :: or
+  | n1  = n2                      :: M :: eq_nat
+  | N1  = N2                      :: M :: eq_nat_sets
+  | c1  = c2                      :: M :: eq_compartment
+  | C1  = C2                      :: M :: eq_compartments
+  | Cx1 = Cx2                     :: M :: eq_word
+  | Cv1 = Cv2                     :: M :: eq_value
+  | CZ1 = CZ2                     :: M :: eq_word_sets
+  | L1  = L2                      :: M :: eq_labels
+  | CM1 = CM2                     :: M :: eq_concrete_memories
+  | n1  ≠ n2                      :: M :: neq_nat
+  | N1  ≠ N2                      :: M :: neq_nat_sets
+  | c1  ≠ c2                      :: M :: neq_compartment
+  | C1  ≠ C2                      :: M :: neq_compartments
+  | Cx1 ≠ Cx2                     :: M :: neq_word
+  | Cv1 ≠ Cv2                     :: M :: neq_value
+  | CZ1 ≠ CZ2                     :: M :: neq_word_sets
+  | L1  ≠ L2                      :: M :: neq_labels
+  | CM1 ≠ CM2                     :: M :: neq_concrete_memories
+  | n ∈ N                         :: M :: nat_elem_set
+  | n ∉ N                         :: M :: nat_not_elem_set
+  | N1 ⊆ N2                       :: M :: nat_set_subseteq
+  | Cn ∈ CZ                       :: M :: word_elem_set
+  | Cn ∉ CZ                       :: M :: word_not_elem_set
+  | CZ1 ⊆ CZ2                     :: M :: word_set_subseteq
+  | ⌈ n  ⌉ = instr                :: M :: instr_decode
+  | ⌈ Cv ⌉ = cinstr @ L           :: M :: labeled_instr_decode
+  | Cc fresh                      :: M :: cid_fresh
+  | n1  ≤ n2                      :: M :: nat_le
+  | Cx1 ≤ Cx2                     :: M :: word_le
+  | Cx1 ≤ Cx2 ≤ Cx3               :: M :: word_in_range_le_le
+  | Cx1 ≤ Cx2 < Cx3               :: M :: word_in_range_le_lt
+  | ∀ Cx . formula                :: M :: forall_word
+  | ∃ Cx . formula                :: M :: exists_word
+  | ∃ CZ . formula                :: M :: exists_words
+  | ∃ L  . formula                :: M :: exists_label
+  | ∃ Cc , CI , CW . formula      :: M :: exists_data_label
+  | ∃ Cx , Cc , CI , CW . formula :: M :: exists_data_labeled_data
+  | ∃ Cx , L . formula            :: M :: exists_labeled_data
+  | formula1 → formula2           :: M :: implies
+  | ( formula )                   :: S :: paren
+
+terminals :: 'terminals_' ::=
+  | →        :: :: stepsto     {{tex \stepsto}}
+  | INTERNAL :: :: INTERNAL    {{tex \INTERNAL}}
+  | JUMPED   :: :: JUMPED      {{tex \JUMPED}}
+  | REG      :: :: REG         {{tex \REG}}
+  | @        :: :: labeled     {{tex \labeled}}
+  | ⊢_→      :: :: vdash_arrow {{tex \canexec}}
+  | fresh    :: :: fresh       {{tex \text{fresh} }}
+  | .        :: :: dot         {{tex \mathbin{.} }}
+  | map      :: :: map         {{tex \text{map}\ }}
+  | $        :: :: application {{tex \ }}
+  | unlabel  :: :: unlabel     {{tex \text{unlabel} }}
+  
+funs reg_get ::= fun
+  R ( r ) :: n :: reg_get
+by
+  (_ ↦ x)(r)   === x
+  R[r  ↦ x](r) === x
+  R[r' ↦ x](r) === R(r)
+
+funs mem_get ::= fun
+  M ( p ) :: n :: mem_get
+by
+  (_ ↦ x)(p)   === x
+  M[p  ↦ x](p) === x
+  M[p' ↦ x](p) === M(p)
+
+funs creg_get ::= fun
+  CR ( r ) :: Cv :: creg_get
+by
+  (_ ↦ Cv)(r)    === Cv
+  CR[r  ↦ Cv](r) === Cv
+  CR[r' ↦ Cv](r) === CR(r)
+
+funs cmem_get ::= fun
+  CM ( Cp ) :: Cv :: cmem_get
+by
+  (_ ↦ Cv)(Cp)     === Cv
+  CM[Cp  ↦ Cv](Cp) === Cv
+  CM[Cp' ↦ Cv](Cp) === CM(Cp)
+
+funs instr_encode ::= fun
+  ⌊ instr ⌋ :: n :: instr_encode
+by
+
+funs interpret_binop ::= fun
+  ⟦ op ⟧ ( n1 , n2 ) :: n :: interpret_binop
+by
+
+funs cinterpret_binop ::= fun
+  ⟦ op ⟧ ( Cn1 , Cn2 ) :: Cn :: cinterpret_binop
+by
+
+funs delete_compartment ::= fun
+  C0 ∖ c :: C :: delete_compartment
+by
+  ·        ∖ c === ·
+  (c  ∷ C) ∖ c === C
+  (c' ∷ C) ∖ c === c' ∷ (C ∖ c)
+
+defns
+Jop :: '' ::=
+  %%%%%%%%%% Abstract %%%%%%%%%%
+
+  defn C ⊢ p ∈ ( A , J , S ) :: :: in_compartment :: 'ic_'
+       {{com Given the set [[C]] of compartments, [[p]] is in the compartment
+             $(\text{[[A]]},\text{[[J]]},\text{[[S]]})$}} by
+
+              p ∈ A
+    ------------------------- :: here
+    (A,J,S) ∷ C ⊢ p ∈ (A,J,S)
+    
+      C ⊢ p ∈ (A,J,S)
+    ------------------- :: there
+    c ∷ C ⊢ p ∈ (A,J,S)
+
+  defn C ⊢ p1 , ... , pk ∈ ( A , J , S ) :: :: many_in_compartment :: 'ics_'
+       {{com $\pointer_1$ through $\pointer_k$ are in the same compartment}} by
+
+   C ⊢ p1 ∈ (A,J,S) ... C ⊢ pk ∈ (A,J,S)
+   ------------------------------------- :: all_same
+          C ⊢ p1,...,pk ∈ (A,J,S)
+  
+  defn MM → MM' :: :: step :: 'step_' {{com [[MM]] steps to [[MM']]}} by
+
+    ⌈M(pc)⌉ = NOP    C ⊢ pc,pc+1 ∈ (A,J,S)
+    -------------------------------------- :: nop
+           (pc,R,M,C) → (pc+1,R,M,C)
+
+    ⌈M(pc)⌉ = CONST x rdest    C ⊢ pc,pc+1 ∈ (A,J,S)
+    ------------------------------------------------ :: const
+          (pc,R,M,C) → (pc+1,R[rdest ↦ x],M,C)
+
+    ⌈M(pc)⌉ = MOV rsrc rdest    C ⊢ pc,pc+1 ∈ (A,J,S)
+    ------------------------------------------------- :: mov
+       (pc,R,M,C) → (pc+1,R[rdest ↦ R(rsrc)],M,C)
+
+    ⌈M(pc)⌉ = BINOP op rsrc1 rsrc2 rdest    C ⊢ pc,pc+1 ∈ (A,J,S)
+    ------------------------------------------------------------- :: binop
+      (pc,R,M,C) → (pc+1,R[rdest ↦ ⟦op⟧(R(rsrc1),R(rsrc2))],M,C)
+
+    ⌈M(pc)⌉ = LOAD rpsrc rdest    C ⊢ pc,pc+1 ∈ (A,J,S)
+    --------------------------------------------------- :: load
+       (pc,R,M,C) → (pc+1,R[rdest ↦ M(R(rpsrc))],M,C)
+
+    ⌈M(pc)⌉ = STORE rsrc rpdest    C ⊢ pc,pc+1 ∈ (A,J,S)    R(rpdest) ∈ A ∪ S
+    ------------------------------------------------------------------------- :: store
+                 (pc,R,M,C) → (pc+1,R,M[R(rpdest) ↦ R(rsrc)],C)
+
+    ⌈M(pc)⌉ = JUMP rtgt    C ⊢ pc ∈ (A,J,S)    R(rtgt) ∈ A ∪ J
+    ---------------------------------------------------------- :: jump
+                   (pc,R,M,C) → (R(rtgt),R,M,C)
+
+    ⌈M(pc)⌉ = BNZ rsrc x    R(rsrc) = 0    C ⊢ pc,pc+1 ∈ (A,J,S)
+    ------------------------------------------------------------ :: bnz_zero
+                     (pc,R,M,C) → (pc+1,R,M,C)
+
+    % Or: pc+x ∈ A ∪ J.  But I don't think so.
+    ⌈M(pc)⌉ = BNZ rsrc x    R(rsrc) ≠ 0    C ⊢ pc,pc+x ∈ (A,J,S)
+    ------------------------------------------------------------ :: bnz_nonzero
+                     (pc,R,M,C) → (pc+x,R,M,C)
+    
+    % Update to a system call; also, remove added jump target, and change it to
+    % a "NEW_JUMP_TARGET" system call (and a "NEW_SHARED_MEMORY" one, too?)
+    ⌈M(pc)⌉ = ISOLATE rsrc1 rsrc2 rpsrc3 rpsrc4    C ⊢ pc,pc+1 ∈ (A,J,S)
+    A' = [R(rsrc1),R(rsrc2)]    A' ⊆ A    R(rsrc1) ≤ R(rsrc2)
+    J' = { M(p + 1 + R(rpsrc3)) | p ∈ [0,M(R(rpsrc3))) }    J' ⊆ A ∪ J
+    S' = { M(p + 1 + R(rpsrc4)) | p ∈ [0,M(R(rpsrc4))) }    S' ⊆ A ∪ S
+    c  = (A ∖ A', J ∪ {R(rsrc1)}, S)    c' = (A', J', S')
+    C' = c ∷ c' ∷ (C ∖ (A,J,S))
+    ------------------------------------------------------------------- :: isolate
+                        (pc,R,M,C) → (pc+1,R,M,C')
+
+  %%%%%%%%%% Concrete %%%%%%%%%%
+  
+  defn Lpc ⊢_→ LI ∈ Cc :: :: can_execute :: 'can_execute_'
+  {{com The $\Cpc$ label [[Lpc]] permit the execution of an instruction tagged [[LI]]; this instruction is happening in the compartment [[Cc]]}}
+  by
+  
+  --------------------------- :: internal
+  (CS,Cc) ⊢_→ (Cc,CI,CW) ∈ Cc
+
+               Cc ∈ CI             
+  --------------------------------- :: jumped_out
+  (JUMPED,Cc) ⊢_→ (Cc',CI,CW) ∈ Cc'
+  
+  defn CMM → CMM' :: :: cstep :: 'cstep_' {{com [[CMM]] steps to [[CMM']]}} by
+
+    ⌈CM(Cpc)⌉ = CNOP @ LI           Lpc ⊢_→ LI ∈ Cc
+    ----------------------------------------------- :: nop
+    (Cpc@Lpc,CR,CM) → ((Cpc+1)@(INTERNAL,Cc),CR,CM)
+
+    ⌈CM(Cpc)⌉ = (CCONST Cx rdest) @ LI              Lpc ⊢_→ LI ∈ Cc
+    --------------------------------------------------------------- :: const
+    (Cpc@Lpc,CR,CM) → ((Cpc+1)@(INTERNAL,Cc),CR[rdest ↦ Cx@REG],CM)
+
+    ⌈CM(Cpc)⌉ = (CMOV rsrc rdest) @ LI                Lpc ⊢_→ LI ∈ Cc
+    ----------------------------------------------------------------- :: mov
+    (Cpc@Lpc,CR,CM) → ((Cpc+1)@(INTERNAL,Cc),CR[rdest ↦ CR(rsrc)],CM)
+
+    ⌈CM(Cpc)⌉ = (CBINOP op rsrc1 rsrc2 rdest) @ LI             Lpc ⊢_→ LI ∈ Cc
+    CR(rsrc1) = Cx1 @ REG    CR(rsrc2) = Cx2 @ REG
+    -------------------------------------------------------------------------- :: binop
+    (Cpc@Lpc,CR,CM) → ((Cpc+1)@(INTERNAL,Cc),CR[rdest ↦ ⟦op⟧(Cx1,Cx2)@REG],CM)
+
+    ⌈CM(Cpc)⌉ = (CLOAD rpsrc rdest) @ LI            Lpc ⊢_→ LI ∈ Cc
+    CR(rpsrc) = Cp @ REG    CM(Cp) = Cx @ L
+    --------------------------------------------------------------- :: load
+    (Cpc@Lpc,CR,CM) → ((Cpc+1)@(INTERNAL,Cc),CR[rdest ↦ Cx@REG],CM)
+
+    ⌈CM(Cpc)⌉ = (CSTORE rsrc rpdest) @ LI                  Lpc ⊢_→ LI ∈ Cc
+    CR(rsrc) = Cx @ REG
+    CR(rpdest) = Cp @ REG    CM(Cp) = Cy @ (Cc',CI',CW')
+    Cc = Cc' ∨ Cc ∈ CW'
+    ---------------------------------------------------------------------- :: store
+    (Cpc@Lpc,CR,CM) → ((Cpc+1)@(INTERNAL,Cc),CR,CM[Cp ↦ Cx @ (Cc',CI,CW)])
+
+    % We could avoid the JUMPED/INTERNAL stuff by reading through Cpc', but our
+    % machine doesn't do that.
+    ⌈CM(Cpc)⌉ = (CJUMP rtgt) @ LI    Lpc ⊢_→ LI ∈ Cc
+    CR(rtgt) = Cpc' @ REG
+    ------------------------------------------------ :: jump
+       (Cpc@Lpc,CR,CM) → (Cpc'@(JUMPED,Cc),CR,CM)
+
+    ⌈CM(Cpc)⌉ = (CBNZ rsrc Cx) @ LI    Lpc ⊢_→ LI ∈ Cc
+    CR(rsrc) = 0@REG
+    -------------------------------------------------- :: bnz_zero
+     (Cpc@Lpc,CR,CM) → ((Cpc+1)@(INTERNAL,Cc),CR,CM)
+
+    ⌈CM(Cpc)⌉ = (CBNZ rsrc Cx) @ LI    Lpc ⊢_→ LI ∈ Cc
+    CR(rsrc) ≠ 0@REG
+    -------------------------------------------------- :: bnz_nonzero
+     (Cpc@Lpc,CR,CM) → ((Cpc+Cx)@(INTERNAL,Cc),CR,CM)
+    
+    ⌈CM(Cpc)⌉ = (CISOLATE rsrc1 rsrc2 rpsrc3 rpsrc4) @ LI    Lpc ⊢_→ LI ∈ Cc
+    CR(rsrc1) = Cp1@REG    CR(rsrc2) = Cp2@REG    CR(rpsrc3) = Cp3@REG    CR(rpsrc4) = Cp4@REG
+    Cp1 ≤ Cp2
+    CM(Cp3)    = Cn3@L3     CM(Cp4)    = Cn4@L4
+    %
+    Cc' fresh
+    %
+    ∀ Cp . Cp1 ≤ Cp ≤ Cp2 → ∃ Cx,CW,CI . CM(Cp) = Cx@(Cc,CI,CW)
+    ∀ Cp . Cp3+1 ≤ Cp ≤ Cp3+1+Cn3 → ∃ Cp',L . CM(Cp) = Cp'@L ∧ ∃ Cx,Cc'',CI,CW . CM(Cp') = Cx@(Cc'',CI,CW) ∧ (Cc = Cc'' ∨ Cc ∈ CI)
+    ∀ Cp . Cp4+1 ≤ Cp ≤ Cp4+1+Cn4 → ∃ Cp',L . CM(Cp) = Cp'@L ∧ ∃ Cx,Cc'',CI,CW . CM(Cp') = Cx@(Cc'',CI,CW) ∧ (Cc = Cc'' ∨ Cc ∈ CW)
+    %
+    CM' = map (λ Cx@(Cc1,CI1,CW1) . Cx@(Cc', CI1, CW1)) $ CM([Cp1,Cp2])
+    CM''  = map (λ Cx@(Cc2,CI2,CW2) . Cx@(Cc2, CI2 ∪ {Cc'}, CW2)) $ CM'(unlabel(CM'([Cp3+1,Cp3+1+Cn3])))
+    CM''' = map (λ Cx@(Cc3,CI3,CW3) . Cx@(Cc3, CI3, CW3 ∪ {Cc'})) $ CM''(unlabel(CM''([Cp4+1,Cp4+1+Cn4])))
+    %
+    ------------------------------------------------------------------------------------------ :: isolate
+    (Cpc@Lpc,CR,CM) → ((Cpc+1)@(INTERNAL,Cc),CR,CM''')
+
+embed 
+{{tex-preamble
+  \usepackage[utf8]{inputenc}
+  \usepackage{newunicodechar}
+  
+  \usepackage{mathtools}
+  \usepackage{amssymb}
+  
+  % Temporarily change catcodes of < and > so that they can replace { and },
+  % thus avoiding double closing curlies.
+  \catcode`<=1
+  \catcode`>=2
+  
+  \newunicodechar{ℕ}<\mathbb{N}> 
+  \newunicodechar{ℤ}<\mathbb{Z}>
+  \newunicodechar{φ}<\varphi>
+  \newunicodechar{≠}<\neq>
+  \newunicodechar{≤}<\leqslant>
+  \newunicodechar{≥}<\geqslant>
+  \newunicodechar{∈}<\in>
+  \newunicodechar{∉}<\not\in>
+  \newunicodechar{⋅}<\cdot> % The real cdot
+  \newunicodechar{·}<\cdot> % What Agda's input method produces by default:
+                            % U+00B7 MIDDLE DOT
+  \newunicodechar{∀}<\forall>
+  \newunicodechar{∃}<\exists>
+  \newunicodechar{⋃}<\bigcup>
+  \newunicodechar{∪}<\cup>
+  \newunicodechar{∖}<\setminus>
+  \newunicodechar{∷}<\dblcolon>
+  \newunicodechar{→}<\to>
+  \newunicodechar{↦}<\mapsto>
+  \newunicodechar{⌊}<\lfloor>
+  \newunicodechar{⌋}<\rfloor>
+  \newunicodechar{⌈}<\lceil>
+  \newunicodechar{⌉}<\rceil>
+  \newunicodechar{¬}<\lnot>
+  \newunicodechar{∧}<\land>
+  \newunicodechar{∨}<\lor>
+  \newunicodechar{⊢}<\vdash>
+  \newunicodechar{⟦}<\mathopen{[\![}>
+  \newunicodechar{⟧}<\mathclose{]\!]}>
+  \newunicodechar{⊆}<\subseteq>
+  \newunicodechar{×}<\times>
+  \newunicodechar{λ}<\lambda>
+  
+  \newcommand*{\mathsc}[1]{\text<\textsc{#1}>}
+
+  % a\multisub{x}b     = a_x b
+  % a\multisub{x}_y    = a_{xy}
+  % a\multisub[i]{x}b  = a_x b
+  % a\multisub[i]{x}_y = a_{xiy}
+  \makeatletter
+  \newcommand*{\multisub}[2][]{%
+    _\bgroup#2\@ifnextchar{_}{#1\multisub@add}{\egroup}%
+  }
+  \newcommand*{\multisub@add}{}
+  \def\multisub@add_#1{#1\egroup}
+  \makeatother
+  
+  \catcode`<=12
+  \catcode`>=12
+
+  \input{sfi-macros}
+}}

@@ -1,0 +1,809 @@
+\documentclass{article}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{stmaryrd}
+\usepackage{supertabular}
+\usepackage{fullpage}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyvrb}
+\usepackage{xspace}
+\usepackage{hyperref}
+\usepackage[normalem]{ulem}
+
+\input{temp/defns}
+
+\renewcommand{\ottkw}[1]{\mathsf{#1}}
+
+\definecolor{dkblue}{rgb}{0,0.1,0.5}
+\definecolor{bluegreen}{rgb}{0,0.5,0.5}
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{dkred}{rgb}{0.6,0,0}
+\definecolor{dkpurple}{rgb}{0.7,0,0.4}
+\definecolor{purple}{rgb}{0.7,0,0.7}
+\definecolor{olive}{rgb}{0.5, 0.5, 0.0}
+\definecolor{teal}{rgb}{0.0,0.5,0.5}
+
+\definecolor{darkred}{rgb}{.8,0,0}
+\newcommand{\finish}[1]{{\color{darkred}\em (#1)}}
+
+\newcommand{\comm}[3]{\textcolor{#1}{[#2: #3]}}
+\newcommand{\bcp}[1]{{\color{blue}\em (BCP: #1)}}
+\newcommand{\amd}[1]{{\color{purple}\em (AMD: #1)}}
+\newcommand{\ud}[1]{{\color{cyan}[UD -- #1]}}
+\newcommand{\ch}[1]{{\color{dkblue}\em (CH: #1)}}
+\newcommand{\aaa}[1]{{\color{dkgreen}\em (AAA: #1)}}
+\newcommand{\md}[1]{{\color{dkred}\em (MD: #1)}}
+\newcommand{\apt}[1]{{\color{red}\em (APT: #1)}}
+
+\makeatletter
+\newcommand*{\EG}{e.g.,\xspace}
+\newcommand*{\IE}{i.e.,\xspace}
+\newcommand*{\ETAL}{et al.\xspace}
+\newcommand*{\ETC}{etc\@ifnextchar{.}{}{.\xspace}}
+\makeatother
+
+\newcommand{\micro}{$\mu$}
+\newcommand{\uP}{\micro policy\xspace}
+\newcommand{\uPs}{\micro policies\xspace}
+\newcommand{\UPs}{\micro Policies\xspace}
+\newcommand{\UPuP}{Abstract \uPP}
+\newcommand{\uPuP}{abstract \uPP}
+\newcommand{\uPP}{\micro PP\xspace}
+
+\begin{document}
+
+\title{(Stackful) Stock Pico-Machine}
+\maketitle
+
+\section{Proposed Short-Term Goals}
+
+\begin{itemize}
+\item Goal 1: Developing a set of micro-policies for obtaining {\bf
+    stack and kernel protection}, as well as {\bf (dynamic) type and
+    memory safety}, on a simplified model of a conventional
+  architecture (\EG MIPS) extended with tags and a TMU.
+\item Goal 2: verifying the correctness of these micro-policies with
+  respect to a higher-level abstract machine using previous ideas such
+  as refinement and verified structured code generators. There will be
+  at least 2 abstract machines on top of each other, illustrating one
+  particular way to do vertical/sequential micro-policy composition.
+\item Goal 3 (stretch): The kernel virtualizes the services
+  of the TMU, so that higher-level micro-policies can be stacked
+  on top. Actually building one such policy on top is a stretch goal,
+  but maybe if we chose something much simpler than IFC
+  (dynamic-sealing or signatures or metadata), this becomes more
+  realistic in the short term. Otherwise this is future work, and we
+  can allude in the paper that that's our longer term plan.
+  \ch{The memory protection policy is, however, quite high level
+      and would already illustrate this kind of vertical sequential
+      composition. I'm getting more and more convinced that we don't
+      need anything on top for the moment.}
+\item Goal 4 (stretch): Extend this to a MIPS I, MIPS II, or MIPS32
+  (but still without the floating point stuff; the MIPS32 model
+  from RockSalt has 53 instructions and also excludes coprocessor and
+  floating point support). Even without this
+  extension, would it be fair to call our model a small RISC CPU
+  inspired by MIPS, especially if we go with the jump-and-link?
+  Could we maybe even call it Featherweight MIPS or $\mu$MIPS?
+  \ch{The $[[AddRule]]$ instruction is very unMIPSy and unRISCy, as it
+    does a ton of memory reads. Could we at least make it work with (a
+    fix set of 8) registers, instead of memory?\apt{And use the same
+    set of registers to pass information into the fault handler?
+    \ch{The problem with that is that we would need to save all these
+      registers first, so that when we return to user code it can
+      resume in exactly the same state. And I don't know of a way
+      to do that. Maybe we just need TMURead instruction for
+      reading these things out little by little (in a similar
+      way to TMUL mentioned below)}
+    So like the POPL-pico-machine scheme, except using registers rather
+    than kernel memory? Seems good. But of course, $[[AddRule]]$ is already
+    a very unrealistic instruction anyway, since it assumes that the 
+    cache is infinite.}}
+  \ch{Something more RISCy would be the TMUL instruction in SAFE that
+    loads only one of the fields of the rule at a time, as specified
+    by a register (0-8 for M vector fields, 9-17 for R vector fields,
+    18 to install the rule); see section 17.2.1 in isaSpec3.pdf}
+  \ch{Anyway, this seems easy to fix if we ever get there.}
+
+\bcp{Besides MIPS, we should consider the new RISC-V instruction set from
+  Berkeley.}
+\item Potential titles:
+  \begin{itemize}
+  \item Low-level Safety Micro-Policies
+  \item Formally Verified Low-level Safety Tagging Schemes
+  \end{itemize}
+\item Target: \href{http://csf2014.di.univr.it/}{CSF 2014}, most
+  probable deadline is first week of February (less than 3 months)
+\end{itemize}
+
+\section{Concrete Machine Definitions}
+
+A state $[[S]]$ has 5 components:
+\begin{itemize}
+\item memory $[[M]]$ (function from words to atoms)
+\item register file $[[R]]$  (function from register numbers to atoms)
+\item rule cache $[[K]]$ (set of rules; can grow arbitrarily large --
+  so no rule is ever evicted from the cache)
+\item program counter PC=$[[pc@tpc]]$ (a special register)
+\item stack pointer $[[sp]]$ (a special register; for now untagged);
+  as the stack grows the stack pointer decreases
+\end{itemize}
+
+\noindent
+Notes:
+\begin{itemize}
+\item Programs are stored in memory, and words are decoded into
+  instructions using a $[[D(w)]]$ partial function.
+\item The initial memory is assumed to store the kernel
+  code starting at address 0 (the entry point for the fault handler).
+  The stack pointer initially stores the largest memory address.
+\item On this machine the kernel ($[[tpc]]$ = KMODE/KERNEL) does use the TMU, but
+  hopefully it always hits in the cache because of the ground rules.
+  \ch{for stack protection this is easier said than done}
+\item There is no separate user/kernel bit; the convention is that
+  $[[tpc]]=[[KERNEL]]$ means running in kernel mode, and otherwise
+  it's user mode.
+\item Some instructions are marked privileged, but it's
+  the TMU that enforces that they are only called in kernel mode.
+\end{itemize}
+
+
+\medskip
+\ottgrammartabular{\ottw\ottinterrule}
+
+\ottgrammartabular{
+\otta\ottinterrule
+\otti\ottinterrule
+\ottop\ottinterrule
+\ottS\ottinterrule
+\ottk\ottinterrule
+\ottki\ottinterrule
+\ottko\ottinterrule
+}
+
+\begin{ottdefnblock}[#1]{$\ottnt{S_{{\mathrm{1}}}}  \longrightarrow  \ottnt{S_{{\mathrm{2}}}}$}{}
+\ottusedrule{\ottdruleStepXXConstXXHit{}}
+\ottusedrule{\ottdruleStepXXBinOpXXHit{}}
+\ottusedrule{\ottdruleStepXXLoadXXHit{}}
+\ottusedrule{\ottdruleStepXXStoreXXHit{}}
+\ottusedrule{\ottdruleStepXXJumpXXHit{}}
+\ottusedrule{\ottdruleStepXXBnzXXHit{}}
+\ottusedrule{\ottdruleStepXXCallXXHit{}}
+\ottusedrule{\ottdruleStepXXReturnXXHit{}}
+\ottusedrule{\ottdruleStepXXAddRuleXXHit{}}
+\ottusedrule{\ottdruleStepXXGetTagXXHit{}}
+\ottusedrule{\ottdruleStepXXPutTagXXHit{}}
+\ottusedrule{\ottdruleStepXXMiss{}}
+\end{ottdefnblock}
+
+\apt{rule(M) and $M[\leftarrow \kappa_i]$ don't seem to be defined.}
+\ch{Indeed, neither is $[[k hit K]]$}
+
+\apt{What happens if the stack overflows on a STEP\_MISS?}
+\ch{Good point; I haven't thought about it. We could maybe give a way
+  to the kernel to explicitly read the label of the location pointed
+  by the $[[sp]]$ and make the fault handler block right away if it
+  ran out of stack? This would still not work because of the $[[M[sp
+  <- pc@tr] ]]$ overwrite in the rule (that overwrite has more
+  problems; see below).}
+
+\ch{There is also a problem with the $[[M[sp <- pc@tr] ]]$ overwrite;
+  it should actually be $[[pc]]@(\mathsf{STACK}~[[tr]])$, but this
+  exposes stack protection (not just the existence of a kernel) to the
+  hardware. However, even with this fix, this overwrite makes it
+  impossible(?) for the kernel to detect stack overflows. We could
+  make the HW also do the overwrite check, but then it seems that
+  we're baking even more of the stack protection into the HW.}
+
+\bcp{I guess there are at least two separate issues here: (1) What
+  observable behavior results if the stack overflows during the fault
+  handler, and (2) is it feasible to reason about the way it actually
+  happens?  (E.g., an infinite loop through the fault handler might be fine
+  observationally but hard to reason about.)}
+
+\section{Baseline SAFEty \uPs}
+
+These policies are meant to recover what was lost when moving from a
+SAFE to an un-SAFE machine. They are both very useful in themselves
+and serve as a base on which to build more interesting \uPs.
+%
+The nice thing about this organization is it would allow us to define
+a baseline machine abstracting the details away, and everything we do
+on top of this machine can have some relevance to both SAFE and stock
+architectures.
+
+\subsection{Combined Call Stack and Kernel Protection}
+
+Combining call stack and kernel protection into one single \uP makes
+sense, because the two are not at all independent. In particular, the
+stack has to remember whether a call was made from kernel or user
+mode, so that returning from kernel mode to kernel mode can be treated
+differently than returning from kernel model to user mode. For calls
+the stack model depends on the kernel model, while for returns the
+kernel model depends on the stack model, so it seems hard (if at all
+possible) to tease these two apart. Furthermore, combining the two is
+not difficult.
+
+\apt{I remain confused about why stack and kernel protection need to be considered
+together.  Again, if we adopt a jump-and-link instruction that just stores
+the old PC/TAG into a designated register, there is no need for a special hardware
+sp --- the stack simply doesn't show up at the hardware level, so there is nothing
+to protect. Returning is just an indirect jump to the saved PC/TAG, which 
+may or may not result in a change from kernel to user. What am I missing?}
+\ch{All the details I guess, including everything about tags. Just to
+  make sure I understand this proposal at least at the high level: the
+  end goal would still be to provide a protected kernel {\bf and a
+    protected stack} (separate or not, but still there), just that the
+  HW wouldn't need to know anything about the stack?
+\apt{My thought was: yes, you can have a protected stack if you want; 
+  but if you don't need recursion, you don't need a stack.} 
+This seems
+  valuable irrespective of the rest (\EG irrespective of splitting
+  stack from kernel protection or not), given our current apparent
+  need to make the HW aware not just about the stack but also about
+  the stack protection model.  However, in this jump-and-link world,
+  would the kernel itself use this stack in any way or would the
+  cache faults, system calls and returns to user code,
+  as well as the internal kernel procedure calls
+  be all done with jump-and-link? Put in other words, is
+  abstract stack a service only user code can use? Because yes, in
+  this case the stack could probably come on top of kernel
+  protection. So far I was assuming the kernel would itself be using
+  the (same) stack though. Will we ever need recursion in the kernel?
+  And if so could we have a separate kernel stack?}
+\apt{I think so.}
+
+\ottusedrule{\ottdruleStepXXJALXXHit{}}
+\ottusedrule{\ottdruleStepXXMissNew{}}
+
+\ch{Wrote down the rules for JAL and the modified miss rule that
+  does a JAL into the kernel (returns from subroutines happen via
+  $[[Jump ra]]$).
+  While this makes the HW agnostic of the
+  stack and could help us tease apart kernel and stack protection, I
+  don't think it changes anything about the ground rule problem for
+  the kernel. Unless we do something smart, the kernel can still fault
+  when doing a JAL or Jump; even on Store and Load, \EG if trying to save
+  registers it got from the user to the stack and restore them later.
+  This problem seems completely independent to the stack problem(s).\apt{right!}
+  And we can't let the kernel fault in this world, because on faults
+  the $[[ra]]$/$[[epc]]$ gets overwritten, and that would happen even before we
+  can safely store it somewhere (the Store itself might be the one
+  causing the fault).}\apt{OK, you've identified an important point:
+  built-in stack support would be needed to handle recursive \emph{faults} even
+  if we don't write recursive functions. So hopefully we can avoid recursive faults.}\ch{Would it help if we distinguished kernel faults from
+  ordinary faults in the semantics? Could we do anything different in
+  that case?}
+
+\ch{Actually, I'm not even sure about the new miss rule. It overwrites
+  the $[[ra]]$ register, and the kernel has no way of restoring that
+  back.  This already seems like a very bad thing, since now user code
+  can get its $[[ra]]$ zapped at any time. Maybe faults should write
+  the return address into a separate kra (kernel return address)
+  register? \apt{Yes. Cf. the MIPS EPC register.} 
+  And then the kernel could maybe use privileged
+  instructions to save and restore this register (and all others it
+  overwrites actually)? The rules for these privileged instructions
+  would need to be baked into the semantics -- they can't rely on the
+  TMU / ground rules. Anyway, once the kernel is done it needs to jump
+  to kra, instead of to ra.}\ch{Added an epc register!}
+
+\ch{Looking at EPC, one annoying thing is that our fault handler can't
+  just turn off interrupts like the MIPS interrupt handlers do, since
+  with tags the semantics of most machine instructions is not really
+  defined in the absence of the TMU, and we need something very
+  specific and much more sophisticated than the ``use a default tag''
+  strategy in the POPL paper.}
+
+\ottusedrule{\ottdruleStepXXKJEPC{}}
+
+\ch{An \sout{not so great} idea: We could have a privileged instruction
+  KJEPC, which allows the kernel to return without consulting the
+  cache; it uses the epc atom verbatim. This seems a bit like cheating
+  (i.e. baking a bit of the kernel protection micro-policy into the
+  hardware), \sout{and we would anyway need similar rules for Load and
+    Store, so that the fault handler can save the registers it
+    touches, probably to some kernel memory/stack from where it can
+    restore them all at the end.}}
+\ch{Maybe we don't need kernel variants of Load and Store after
+  all. For saving a register (say r1) the fault handler can simply
+  first read off the tag of this register to a special kernel register
+  (the MIPS has 2 such registers: k0 and k1) (GetTag r1 k0), then it
+  can write the tag to kernel memory/stack (Store k0 ksp; Subi ksp 1
+  ksp), then erase the tag (Const KERNEL k0; SetTag r1 k0), then write
+  the payload to kernel memory/stack (Store r1 ksp; Subi ksp 1
+  ksp). The two Stores won't fault because both atoms they write are
+  tagged KERNEL. Restoring registers would be analogous. {\bf So is
+    adding the KJEPC instruction an acceptable amount of cheating to
+    make this all work? Since EPC is a special register, we would
+    anyway need some instruction to access it.} We could drop the
+  $[[tpc = KERNEL]]$ part of the stepping rule and turn it into a
+  ground rule, if it makes this more swallowable (this would at
+  least match what we currently do in the other privileged rules).}
+\apt{Adding a special KJEPC doesn't seem too bad to me, especially if there is
+no other way to access the EPC register programmatically. And after all,
+we have already hardwired the KERNEL pc tag into the faulting rule.
+But perhaps a bolder approach is worth considering.
+Have we discussed hardware support
+for a generic ``copy through'' kind of pseudo-tag in the R-vector, 
+i.e. one which says ``use M-vector tag such-and-so unchanged'' ?
+Seems something like this (a) would be pretty easy to implement in HW; 
+(b) could potentially help cache utilization a lot.}
+
+% \ch{Anyway, can somebody articulate what's wrong with baking in kernel
+%   protection into the hardware completely? My intuition is that there
+%   would be more direct ways of baking it in though (\EG the kernel bit
+%   in the POPL paper). Unfortunately so far I couldn't find any better
+%   solution. Either this or letting the kernel fault to itself and
+%   exposing the stack to prevent infinite regression.}
+
+\ch{For more information about jump-and-link see the
+  \href{https://en.wikibooks.org/wiki/MIPS_Assembly/Control_Flow_Instructions}{MIPS
+    Assembly WikiBook}}
+
+\ch{The MIPS does have registers sp (stack pointer) and fp (frame
+  pointer), but they are regular registers accessed by regular
+  instructions. It's only a convention that sp points to the top of
+  the stack, and fp to the base of the current stack frame.  There
+  seem to be
+  \href{http://www.linux-mips.org/wiki/WhatsWrongWithO32N32N64}{many
+    different calling conventions for MIPS}, but the most commonly
+  used
+  (\href{http://math-atlas.sourceforge.net/devel/assembly/mipsabi32.pdf}{o32
+    ABI}) involves 6 regular registers (4 for arguments, 2 for
+  results) and saves the rest on the stack. The things passed in
+  registers are still allocated space by the caller on the stack, so
+  that the callee can save them there if needed. See
+  \href{https://en.wikipedia.org/wiki/Calling_convention\#MIPS}{Wikipedia}
+  and
+  \href{http://www.cs.iastate.edu/~cs321/MD00565-2B-MIPS32-QRC-01.01.pdf}{Mips32
+    Instruction Set Quick Reference} and
+  \href{http://people.openrays.org/~comcat/godson/doc/See.MIPS.Run.2nd.en.pdf}{See
+    MIPS run Linux}.}
+
+
+\ch{Started working this out in detail in {\tt coq/StackAndKernel.v}}
+
+\ch{TODO: Define the abstract machine corresponding to this model}
+
+\subsection{Basic Types and Memory Protection}
+
+\ch{Could further split memory protection into a malloc-like allocator
+  (in kernel or user space?), and a tag-based memory protection
+  mechanism similar to what me and Maxime were working on. The focus
+  should be on the latter, not on the former -- if time is tight we
+  might even add a malloc instruction to the machine.}
+
+\ch{
+Distinguishing between pointers and everything else is needed for
+memory protection, so it seems reasonable to also distinguish
+instructions from integers at this point and save ourselves the
+trouble of proving a trivial refinement step.}
+
+\ch{There is more about this micro-policy in:
+{\tt verif/notes/2013-05-memory-protection-no-free}
+  (although we might want to have free on a stock machine without
+   garbage collection)
+{\tt users/catalin/internships/micro-policies}
+  (most of Section 2 is about this).
+Should slowly bring all that in here.}
+
+\section{Other \uPs}
+
+These things could go on top of the baseline safety abstract machine,
+but only as a stretch goal, and probably just one of them.
+
+\newcommand{\TAG}[1]{\mbox{\sc #1}}
+
+Here are the \uPs mentioned in the NSF proposal:
+\begin{itemize}
+  \item IFC
+  \item CFI
+  \item data race detection
+  \item linear pointers, guaranteeing absence of aliasing
+  \item refining pointers into a more expressive form of
+    ``capabilities'' by tagging them with subsets of
+    $\{\TAG{readable}$, $\TAG{writeable}$, $\TAG{jumpable}$,
+    $\TAG{callable}\}$
+  \item closures (\IE first-class functions, or code pointers together
+  with protected local environments)
+  \ch{I'm still confused by BCPs proposal of something closure-like}
+  \item authorities\ch{This wasn't in the NSF proposal; the main
+      question is {\bf authority for what?} Some instances are: IFC
+      declassification, access control (clearance raising), and
+      signing. But then, is there a general notion of authority that
+      works outside of / can be instantiated to these specific scenarios?}
+  \item dynamic sealing~\cite{Morris::73,SumiiPierce01,SumiiPierce2004}
+        and trademarks~\cite{Morris::73} (the latter
+    can for instance be used to cache the result of dynamic
+    contracts)
+  \item user-defined metadata (\IE providing system calls for
+    setting and getting metadata to arbitrary values)
+  \item dynamic type tags for low level languages like C (where the
+    main point is to obtain type safety), and for high-level ones like
+    Scheme or Ocaml (where the main point is to reduce the cost of
+    type safety using hardware acceleration
+  \item higher-order contracts~\cite{FindlerF02}
+    (recent proposals~\cite{DimoulasFFF11} use sophisticated mechanisms
+     for tracking components and assigning blame that could probably
+     be encoded as tags)
+  \item taint tracking
+  \item isolation (in place of VM)
+\end{itemize}
+
+\section{Homeless}
+
+\subsection{Stack Protection}
+
+\renewcommand{\TAG}[1]{\ensuremath{\textit{TAG}_{#1}}}
+\newcommand{\TAGPC}{\ensuremath{\textit{TAG}_{PC}}}
+\newcommand{\KERNEL}{\ensuremath{\textit{KERNEL}}}
+\newcommand{\KERNELENTRY}{\ensuremath{\textit{KERNEL-ENTRY}}}
+\newcommand{\STACK}{\ensuremath{\textit{STACK}}}
+\newcommand{\STACKBASE}{\ensuremath{\textit{STACK-BASE}}}
+\newcommand{\EMPTY}{\ensuremath{\textit{EMPTY}}}
+
+A first whack at a stack protection \uP
+(ignoring all other aspects for now):
+\begin{itemize}
+\item Only one interesting tag: $\STACK$,
+  and some unspecified non-$\STACK$ tags
+  \ch{The assumption here is that the call stack only stores return
+    addresses, which are not themselves tagged. We would need an
+    extension to support IFC, where the return addresses themselves
+    need to be tagged (and the same if the stack were to store things
+    like arguments and results on the stack).}
+\item Initialization: sp points to the first atom from a contiguous
+  block of memory tagged $\STACK$.
+  These tags never change. We prevent stack overflows by not
+  allowing Calls to overwrite non-$\STACK$ elements. We prevent stack
+  underflows by preventing the $[[sp]]$ from pointing to a non-$\STACK$
+  element after a Return (i.e. reading from a non-$\STACK$ element).
+  \ch{This assumes that there are addresses higher than the stack;
+    which is not the case with the simple layout discussed above.
+    Otherwise could make the machine check explicitly for stack
+    underflows. Or we could waste one atom by adding a terminator atom
+    that's not tagged $\STACK$.}
+\item Call:\\
+{\bf Allow condition}:
+%  (\TAGPC \not=\KERNEL \Rightarrow \TAG{1} \not= \KERNEL) \land
+    $\TAG{2} = \STACK$
+%(non-kernel code cannot jump in the middle of the kernel and
+(no stack overflow)\\
+{\bf Result tag}: $\TAG{2}$ (not changing the tag)\\
+{\bf PC tag}: $\TAGPC$
+(we're not using the pc tag for protecting the stack)
+
+\item Return:\\
+{\bf Allow condition:} $\TAG{1} = \STACK$
+(no stack underflow)\\
+{\bf Result tag}: nothing
+(not changing tag, because we're not changing any memory either,
+ we're just reading from memory and bumping the $[[sp]]$)\\
+{\bf PC tag}: $\TAGPC$
+
+\item Load:\\
+{\bf Allow condition:} $\TAG{2} \not= \STACK$
+(Load can't read from the stack)
+
+\item Store:\\
+{\bf Allow condition:} $\TAG{3} \not= \STACK$
+(Store can't write to the stack)
+
+Note: It doesn't really matter if a stack cell is empty or full
+-- and that's what the $sp$ tracks anyway.
+This means we don't need $\EMPTY$ for preventing stack overflows.
+We can do this with the $\STACK$ label only.
+
+\end{itemize}
+
+\aaa{Q: What would we need a stack protection model for? Two things
+  come to my mind: ensuring IFC soundness and preventing buffer
+  overflow attacks. If these are the only reasons, then having stack
+  protection as a stand-alone policy might not even be necessary. For
+  control flow, CFI would probably be enough; for IFC, we might be
+  able to solve the problem by making the BCALL system call protect
+  the return address, and ignore tag propagation in the rules of
+  regular instructions.}
+\ch{I think stack protection is a very useful baseline property,
+  useful for it's own good, irrespective of which other policies we
+  want to build on top of that. In a way, it's making a non-SAFE
+  machine closer to as SAFE machine.}
+
+\subsection{Hardware layer}
+
+A sketch of the Stock Pico-Machine (a very tiny starting point, which will
+be extended during the project).  \bcp{Would be nice to give it a memorable
+  name!  ``Stock pico-machine'' is just a placeholder.}  This is just like
+the POPL pico-machine, except...
+\begin{itemize}
+\item It uses registers instead of putting everything on the stack
+\item No privilege bit (we use only tags for protection)
+\item Rule cache is stored outside the memory, as a separate part of the
+machine state, and has arbitrary size.
+\item Static rules are supported (by just starting the machine with some
+rules already in the cache).
+\item CALL and RETURN instructions use an in-memory stack:
+\begin{itemize}
+\item One of the registers is designated as the stack pointer, SP
+
+\ch{so I guess we're talking about a register machine with an in-memory call
+  stack}\bcp{Right: I forgot to say that!  I've wondered whether a stack
+  machine might also work, but I'm not sure -- remember that in the original
+  picomachine we had to play some special games with annotating the CALL
+  instruction...}
+
+  \ch{Q: Is the SP register itself ever tagged in an interesting
+    way, or can we assume it's not tagged at all?}
+  \bcp{Good question!  I guess I'd tag it by default, just for regularity,
+    but I'm not sure how this tag might be used.}
+  \amd{In product model, I imagine StackPointer being a form of type tag.
+    That might then be used to write policies limiting what can be done to
+    StackPointer.  I'm starting to get some ideas about how certain tags
+    (like this one) might be exposed to microarchitecture as bits when they
+    are loaded into the RF.}
+
+\item CALL stores the current PC (with tag) at the address in SP and
+decrements SP
+  \ch{Q: is the stack also used for argument passing or are we
+      just using registers for that (like in the micro machine)?} \bcp{My
+      idea was the latter.}
+\item RETURN does the opposite
+\end{itemize}
+
+\item \amd{any support for closures and FramePointers?}\bcp{Good question!
+  Even in the current version, we can get something like the effect of
+  closures using tags (see footnote below), but perhaps hardware support is
+  also good.}
+
+\item New instructions \ch{they are all privileged, right?}\bcp{No: there's
+  no built-in of privilege (I forgot to say that too).  We use tags to
+  protect kernel instructions and data.}:
+\begin{itemize}
+\item ADDRULE: Takes the M- and R-vector memory locations, interprets them
+as a rule, and adds that rule to the rule cache
+\item GETTAG: Moves information from tag to payload
+  \ch{What's the tag of the result?}\bcp{Whatever the static rule says it is!}
+\item PUTTAG: Moves information from payload to tag
+\end{itemize}
+\item On a cache miss, the machine writes the current M-vector to a fixed
+set of memory addresses and simulates a call (using the rule for CALL to
+calculate tags!) to a fixed location in low memory
+
+\ch{If the stack were used for CALL arguments then we could just use
+  the stack?}\bcp{Yes.  Or we could use a fixed set of registers that -- by
+  convention (enforced by static rules) are never used for anything else.
+  Don't think it matters greatly.}
+\end{itemize}
+
+\finish{Question: The registers are not automatically saved, restored, or
+  masked on CALL and RETURN.  Can we still implement BCALL/BRETURN?}
+\bcp{Maybe it has to be implemented as a system service -- part of the IFC
+  label model API.  I.e., the user program puts the ``call data'' (address
+  to call, bitmasks for registers to be masked, registers to be saved) in
+  specified registers and calls system service, which does the saving /
+  masking of registers and then performs the call to the user's subroutine;
+  on return, user's subroutine actually returns to system service, which
+  undoes the masking, etc., and returns back to caller.  This sounds much
+  slower than the hardware mechanisms used in SAFE, but maybe it would at
+  least functionally do the right thing?}
+
+\ch{The control flow integrity paper~\cite{AbadiBEL09} uses a machine
+  in the style of some earlier TAL machine~\cite{HamidSTMN02}. We
+  could also take some inspiration from these machines, but the style
+  of our pico/micro machines seems cleaner.}
+\bcp{Feel free to suggest modifications -- this was just a first cut.}
+
+\ch{Instructions are stored in memory and tagged, so one of the inputs
+  of the TMU is the tag on the currently executed instruction.}
+\bcp{Right.}
+
+\ch{The fault handler prevents LOADS and STORES for stack addresses,
+  right?  This is an invariant on the rules we ever add to the TMU
+  (static rules can't prevent something from being added later to the
+  rule cache).}
+\bcp{Right.}
+
+\amd{Can we support things like BCALL/BRETURN with a sequence of
+  instructions and a Policy?  Maybe there's a sequence of instructions
+  prior to the actual that mark things (add a tag) as write-only.  Maybe
+  this is supported by hardware by just setting a bit on the register (like
+  current SAFE), but that's just an optimization for adding a new field to
+  the tag metadata.  Then, the policy forbids overwriting these things.
+  Similarly, the discipline is for the callee to kill things that are not
+  write-only.   Maybe the hardware return does need to check that the
+  appropriate things are killed (again, really done with bit-vectors in the
+  implementaiton).  For the designated return value, maybe we have metadata
+  and policy that says a particular tag cannot be overwritten, it only
+  allows something to write to it if that thing is marked in a way that
+  canflowto the current IFC tag...then the value is written with the tag.
+  So, the values in registers with these values become the breturn
+  registers.   If we are trying to remain compatible with some base ISA,
+  maybe the B-ness of a call/return is communicated in the label on the
+  instruction. ---- more details to work out, but sketching a direction to consider...   }
+
+\aaa{The problem with this approach is that we would need to make
+  calls and returns special at the ISA level (by introducing the
+  bit-vectors), which could be too specific to IFC.}
+
+\section{Fault Handler Interface}
+
+We want to build a fault handler that enforces several policies
+simultaneously, creating a ``product'' policy. We assume that policies
+are independent for now. If we ignore system calls for now, this can
+even work for policies that are not too dependent on each other (IFC
+and memory safety?).
+
+\begin{itemize}
+\item Each tag is a pointer to a tuple of \(n\) sub-tags, each of them
+  related to one of the policies we want to combine
+\item Fault handler keeps a vector of sub-handlers, one for each policy
+\item On fault, handler fetches the faulting M-vector and builds one
+  M-vector per policy, by extracting the appropriate fields from each
+  tag in the M-vector.
+\item For each policy
+  \begin{itemize}
+  \item handler calls that policy's sub-handler, passing it the
+    corresponding M-vector components as an argument.
+  \item sub-handler analyzes its input and checks whether this
+    combination is allowed. If so, it returns the result tags;
+    otherwise it returns false.
+  \item If any sub-handler returns false, then halt the program;
+    otherwise, combine all the result tags in a single R-vector, and
+    write the pair (M-vector, R-vector) to the cache.
+  \end{itemize}
+\end{itemize}
+
+\subsection{Super Homeless}
+
+All kernel memory and data structures are tagged KERNEL or KERNELENTRY.  The
+CALL instruction sets the PC tag to CALLING.  Executing an instruction @
+KERNELENTRY with PC @ CALLING sets the PC to KERNEL.  The rest of the kernel
+instructions are tagged KERNEL and cannot be executed without PC @ KERNEL.
+Kernel memory locations are tagged KERNEL and cannot be accessed without PC
+@ KERNEL.\footnote{Note that this scheme generalizes to other sorts of
+  protected objects / pseudo-closures.  We just need a kernel routine that
+  blesses things in the right way.  There are some tricky bits about
+  initialization, though -- how does the kernel routine know that
+  {its caller}
+%    \amd{the thing it is called by?}\bcp{oops -- I meant call{\em er}!}
+  is authorized to turn some memory into a closure?  Maybe some more
+  mechanism is needed -- e.g., maybe we first need some kind of memory
+  protection mechanism.  Or maybe you should only be able to build closures
+  our of memory labeled EMPTY.  Or...}
+
+\amd{probably want to work on some distinction between pico-machine-kernel
+  and monolithic-os-kernel.  I'd want to emphasize that the kernel you are
+  discussing here is small and verified...and would ultimately be a more
+  primitive thing around which the functionality of the OS kernel would later
+  be built.}
+
+Then a cache fault just has to execute a pseudo-CALL to a fixed location,
+pushing the current M-vector onto the stack after the return address (while
+checking that the current tags of the stack memory locations are @EMPTY --
+or maybe this tells us that it's easier to store the M-vector somewhere in
+memory, tagged @KERNEL).
+
+Finally, we need a way to get a rule into the cache.  One way is to store
+the M+R-vector someplace (cache or fixed memory locations) and have an
+instruction that stores that line into the cache.  (This assumes a cache of
+infinite size; we can also have a GC rule that just drops a line from the
+cache nondeterministically.  Or we could model it more accurately.  But this
+seems like needless detail.  Easiest just to let the cache be infinite
+size.  Then we don't even need to deal with static rules -- they are just
+rules that happen to be pre-initialized.) 
+
+In general, stack instructions need to check that the memory at the current 
+stack pointer is tagged @EMPTY.  And the stack needs to be protected
+somehow. 
+
+\ch{If the pc tag become CALLING on calls then we would be losing the
+  IFC taint? Are we doing product label models already?}
+\bcp{Yes, I realized this was an issue recently.  Need to think more
+  carefully about the details...}
+
+\section{Discussions}
+
+\apt{1. There are many places where tags are really wanted on memory addresses,
+rather than or in addition to the tags on the contents (e.g. distinguishing
+user data from kernel data, supporting safe memory allocation, etc.)  We are
+essentially handling this by converting the tag on the contents into a pair
+(address-tag, real-contents-tag).  This is really just a hack, although it
+may be an important one. I think it would be clearer to define the machine with
+tags on addresses, at least initially, and then explain generically how
+the hack can be used to push them into the values --- assuming that is really
+desirable from a hardware point of view.}
+\ch{I'm actually quite fine with the pair encoding (very often tags
+  have to be drawn from some rather complicated datatype, so pairs are
+  not a scare for me at all). AFAIK the chances for having two tags
+  per memory location in real hardware are basically null (AFAIK even
+  one tag per atom is already causing Andre lots of trouble in terms
+  of energy consumption; and 100\% memory overhead is already a big
+  scare), so the best bet is to do it in the micro-policies that
+  actually need it. If this idiom is so generally useful we could
+  think of a special ``memory-address-tag-real-contents-split''
+  micro-policy, although I'm not convinced this is such an important
+  pattern it needs a separate policy.}
+\apt{It seems extremely premature to say ``the hardware will or will
+not be able to do something.''  I thought the whole point of this exercise
+was to investigate and verify clean and useful abstractions for tag-based processing.
+Using tags on values to express facts about the addresses in which those
+values happen to live may be useful, but it sure ain't clean.
+\ch{The hardware doesn't really know whether the tag is on the
+  address or the payload or both. It's only the software that
+  uses the tag in a particular way.\apt{I don't really understand this.
+  Surely from the HW's perspective the tag is definitely on 
+  the payload.}}
+And it also seems (at least naively) fundamentally inefficient, 
+in the sense that tag values have to be recomputed whenever a value moves
+in and out of memory -- although perhaps that cost is just in the noise.
+But anyway, if we wanted to implement address tags in hardware, there's no reason why
+we would have to store a separate tag for each location: large blocks of
+contiguous addresses are likely to share the same tag, and address tagging
+is relatively static, so a completely different scheme (more akin to a VM page 
+directory) might be appropriate, and might not be very expensive.}
+\ch{OK, this is indeed an interesting idea, I can think about it more once
+  the more urgent problems are solved. I don't think much would change
+  conceptually if we went from one model to the other anyway.}
+
+\apt{
+2. Assuming we can distinguish code memory from data memory (either by adopting
+point 1 \ch{I don't really see why we would need 1 for achieving this;
+  anyway, distinguishing code memory from data memory could be done in
+  a micro-policy.}
+or by separating them in the machine state itself, as in the POPL pico 
+machine\ch{This is one unrealistic assumption I would very much like to get
+  rid off for this machine though.  
+  If such a restriction brings some big
+  benefit (which I'm not convinced at the moment), it should be
+  done by software not by hardware}\apt{Actually, this assumption is not all 
+  that unrealistic; e.g. many embedded systems have Harvard architectures. 
+  Unless we're actually interested in self-modifying code, it seems like a harmless 
+  restriction. As to benefit: the most obvious one is integrity of kernel code, which 
+  otherwise has to be maintained as an explicit invariant in proofs. }
+  \ch{OK, I guess we would still look more like a simplification to make
+    our life easier in the proofs, than to support embedded processors}),
+do we really need tags on the instructions themselves? (I realize that
+if instructions live in ordinary memory they will have tags anyhow; the question
+is whether that is useful.)  In particular, can't we do without KENTRY?
+Consider: there is no real harm done if user code jumps
+into the middle of kernel code, so long as the pc tag doesn't change to Kernel.
+(While the pc tag is still User, we can use rules to prevent access to kernel
+data or privileged instructions, which is all that matters.)
+So the key thing is to prevent user code from jumping via a code pointer tagged Kernel, 
+unless it is one of a known set of entry points deliberately made available to user code
+(e.g. at startup or via a previous system call).  All we need to do is use
+tag rules to prevent address arithmetic on Kernel-tagged code pointers by
+user-mode code.}
+\ch{From 10000 feet this seems like a potential alternative to having
+  KENTRY-tagged points in the kernel. In which way is this any better
+  than the KENTRY solution though? Is there a problem with the KENTRY
+  solution which we're trying to solve? Because the instruction memory
+  separation + the need to bless these Kernel pointers in advance
+  seems like extra overhead that would need to be justified. I also
+  don't understand how all these Kernel-blessed pointers could be made
+  available via a system call, given that system calls would require
+  Kernel-blessed pointers to start with.\apt{Certainly at least one blessed pointer
+  would need to be there at user-mode start up}.} 
+\apt{I'm not saying there is anything wrong with KENTRY-tags, just that they require 
+  tagging of instructions, which might otherwise be avoidable.  
+  The idea of accessing kernel routines through capabilities is a fairly
+  standard one, and the fact that we could easily use tagging to maintain
+  the integrity of the entry point addresses and hence use them directly 
+  as capabilities seems kind of cool. I don't see that there is any ``extra overhead.''}
+\ch{OK, it seems that the potential goal and design space is larger
+  than I considered so far. For now, I would still like to make
+  progress on something that looks reasonable, and backtrack on any of
+  these open points later on if necessary (\EG for easier
+  verification).}
+
+\apt{3. To add another run-before-we-can-walk proposal, before I forget it:
+perhaps we should sketch out what hardware support for partial don't-care
+bitfields within a tag might look like. Seems like this could be a big win
+for cache utilization. Of course, as I think we've discussed, it could get quite
+complicated to implement in HW.}
+
+\end{document}
+
+% LocalWords:  BCP TODO
