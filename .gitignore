@@ -4,3 +4,6 @@
 *.bak
 main.pdf
 temp
+*.glob
+*.v.d
+*.vo
