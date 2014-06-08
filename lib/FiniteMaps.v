@@ -196,7 +196,7 @@ Module FiniteTotalMap (I : INDEXED_TYPE) <: MAP.
 End FiniteTotalMap.
 
 (* ASZ: Is there a better way to re-export the modules themselves (_not_ their
-   contents than just defining them anew? *)
+   contents) than just defining them anew? *)
 
 Module Type INDEXED_TYPE := INDEXED_TYPE.
 
