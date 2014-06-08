@@ -155,26 +155,27 @@ Hint Unfold ra_in_user.
 Record kernel_invariant : Type := {
   kernel_invariant_statement :> Concrete.memory mt ->
                                 Concrete.registers mt ->
-                                Concrete.rules (word mt) -> Prop;
+                                Concrete.rules (word mt) ->
+                                Symbolic.internal_state mt -> Prop;
 
   kernel_invariant_upd_mem :
-    forall regs mem1 mem2 cache addr w1 ut b w2
-           (KINV : kernel_invariant_statement mem1 regs cache)
+    forall regs mem1 mem2 cache addr w1 ut b w2 int
+           (KINV : kernel_invariant_statement mem1 regs cache int)
            (GET : Concrete.get_mem mem1 addr = Some w1@(encode (USER ut b)))
            (UPD : Concrete.upd_mem mem1 addr w2 = Some mem2),
-      kernel_invariant_statement mem2 regs cache;
+      kernel_invariant_statement mem2 regs cache int;
 
   kernel_invariant_upd_reg :
-    forall mem regs cache r w1 ut1 b1 w2 ut2 b2
-           (KINV : kernel_invariant_statement mem regs cache)
+    forall mem regs cache r w1 ut1 b1 w2 ut2 b2 int
+           (KINV : kernel_invariant_statement mem regs cache int)
            (GET : Concrete.get_reg regs r = w1@(encode (USER ut1 b1))),
-      kernel_invariant_statement mem (Concrete.upd_reg regs r w2@(encode (USER ut2 b2))) cache;
+      kernel_invariant_statement mem (Concrete.upd_reg regs r w2@(encode (USER ut2 b2))) cache int;
 
   kernel_invariant_store_mvec :
-    forall mem mem' mvec regs cache
-           (KINV : kernel_invariant_statement mem regs cache)
+    forall mem mem' mvec regs cache int
+           (KINV : kernel_invariant_statement mem regs cache int)
            (MVEC : Concrete.store_mvec ops mem mvec = Some mem'),
-      kernel_invariant_statement mem' regs cache
+      kernel_invariant_statement mem' regs cache int
 }.
 
 Hint Resolve kernel_invariant_upd_mem.
@@ -225,7 +226,7 @@ Definition wf_entry_points cmem :=
 
 Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
   in_user st' = true /\
-  let '(Symbolic.State mem regs pc@tpc) := st in
+  let '(Symbolic.State mem regs pc@tpc int) := st in
   let 'Concrete.mkState mem' regs' cache pc'@tpc' epc := st' in
   pc = pc' /\
   match decode tpc' with
@@ -238,7 +239,7 @@ Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
   mvec_in_kernel mem' /\
   ra_in_user regs' /\
   wf_entry_points mem' /\
-  ki mem' regs' cache.
+  ki mem' regs' cache int.
 
 Lemma refine_memory_upd amem cmem cmem' addr v v' t t' :
   refine_memory amem cmem ->
@@ -622,7 +623,7 @@ Lemma hit_simulation ast cst cst' :
     refine_state ast' cst'.
 Proof.
   intros REF [INUSER INUSER' STEP].
-  destruct ast as [amem areg [apc tapc]].
+  destruct ast as [amem areg [apc tapc] int].
   inv STEP; simpl in REF;
   destruct REF
     as (_ & ? & ? & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV);
@@ -649,7 +650,7 @@ Proof.
   | OLD : Concrete.get_reg ?reg ?r = _
     |- context[Concrete.upd_reg ?reg ?r ?v@(encode (USER ?t false))] =>
     (destruct (refine_registers_upd _ v _ t REFR OLD) as (? & ? & ?);
-     pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ _ v t false KINV OLD))
+     pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ _ v t false _ KINV OLD))
     || let op := current_instr_opcode in fail 3 op
   end;
 
@@ -721,8 +722,8 @@ Definition user_regs_unchanged cregs cregs' :=
 
 (* XXX: a bit of a lie now, given that the kernel can now return to a system call *)
 Hypothesis handler_correct_allowed_case :
-  forall mem mem' cmvec rvec reg cache old_pc,
-    ki mem reg cache ->
+  forall mem mem' cmvec rvec reg cache old_pc int,
+    ki mem reg cache int ->
     match decode_mvec cmvec with
     | Some mvec => handler mvec
     | None => None
@@ -742,11 +743,11 @@ Hypothesis handler_correct_allowed_case :
       user_regs_unchanged reg (Concrete.regs st') /\
       Concrete.pc st' = old_pc /\
       wf_entry_points (Concrete.mem st') /\
-      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st').
+      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int.
 
 Hypothesis handler_correct_disallowed_case :
-  forall mem mem' cmvec reg cache old_pc st',
-    ki mem reg cache ->
+  forall mem mem' cmvec reg cache old_pc int st',
+    ki mem reg cache int ->
     match decode_mvec cmvec with
     | Some mvec => handler mvec
     | None => None
@@ -761,15 +762,15 @@ Hypothesis handler_correct_disallowed_case :
 
 Hypothesis syscalls_correct_allowed_case :
   forall amem areg apc tpc amem' areg' apc' tpc' cmem creg cache old_pc epc addr sc
-         tpc'' tpc''' ic, (* XXX: Maybe quantifying over tpcs and ic is asking too much? *)
-    ki cmem creg cache ->
+         tpc'' tpc''' ic int int', (* XXX: Maybe quantifying over tpcs and ic is asking too much? *)
+    ki cmem creg cache int ->
     refine_memory amem cmem ->
     refine_registers areg creg ->
     cache_correct cache ->
     mvec_in_kernel cmem ->
     wf_entry_points cmem ->
     Symbolic.get_syscall table addr = Some sc ->
-    Symbolic.sem sc (Symbolic.State amem areg apc@tpc) = Some (Symbolic.State amem' areg' apc'@tpc') ->
+    Symbolic.sem sc (Symbolic.State amem areg apc@tpc int) = Some (Symbolic.State amem' areg' apc'@tpc' int') ->
     exists cmem' creg' cache' epc',
       kernel_user_exec (Concrete.mkState cmem
                                          (Concrete.upd_reg creg ra
@@ -785,7 +786,7 @@ Hypothesis syscalls_correct_allowed_case :
       mvec_in_kernel cmem' /\
       ra_in_user creg' /\
       wf_entry_points cmem' /\
-      ki cmem' creg' cache'.
+      ki cmem' creg' cache' int'.
 
 Hypothesis syscalls_correct_disallowed_case :
   forall ast cst cst' cst'' addr sc,
@@ -835,14 +836,20 @@ Lemma state_on_syscalls st st' :
          (STEP : Concrete.step _ masks st st'),
     Concrete.mem st' = Concrete.mem st /\
     Concrete.cache st' = Concrete.cache st /\
-    exists r i tpc ti t1,
+    exists r i tpc ic ti t1 old told trpc tr,
       Concrete.regs st' =
       Concrete.upd_reg (Concrete.regs st) ra
-                       (common.val (Concrete.pc st) + Z_to_word 1)%word@(encode (USER tpc false)) /\
+                       (common.val (Concrete.pc st) + Z_to_word 1)%word@(encode (USER tr false)) /\
+      common.tag (Concrete.pc st') = encode (USER trpc true) /\
+      common.tag (Concrete.pc st) = encode (USER tpc ic) /\
       Concrete.get_mem (Concrete.mem st) (common.val (Concrete.pc st)) =
       Some i@(encode (USER ti false)) /\
       decode_instr i = Some (Jal _ r) /\
-      Concrete.get_reg (Concrete.regs st) r = (common.val (Concrete.pc st'))@(encode (USER t1 false)).
+      Concrete.get_reg (Concrete.regs st) r = (common.val (Concrete.pc st'))@(encode (USER t1 false)) /\
+      Concrete.get_reg (Concrete.regs st) ra = old@(encode (USER told false)) /\
+      Concrete.cache_lookup _ (Concrete.cache st) masks
+                            (encode_mvec (mvec_of_umvec ic (mkMVec JAL tpc ti [t1; told]))) =
+      Some (encode_rvec (rvec_of_urvec JAL (mkRVec trpc tr))).
 Proof.
   intros.
   inv STEP;
@@ -855,7 +862,9 @@ Proof.
   try rewrite kernel_tag_correct in *;
   try solve [repeat simpl_word_lift; simpl in *; discriminate].
   repeat (split; eauto).
-  do 5 eexists. eauto.
+  unfold encode_mvec, encode_rvec, mvec_of_umvec, rvec_of_urvec. simpl.
+  do 10 eexists.
+  repeat (split; eauto).
 Qed.
 
 Lemma miss_simulation ast cst cst' :
@@ -868,7 +877,7 @@ Proof.
   intros REF [kst ISUSER STEP KEXEC].
   assert (KER : in_kernel kst = true).
   { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
-  destruct ast as [amem areg [apc tapc]], cst as [cmem cregs cache [cpc cpct] cepc].
+  destruct ast as [amem areg [apc tapc] int], cst as [cmem cregs cache [cpc cpct] cepc].
   assert (REF' := REF).
   destruct REF' as (_ & ? & Ht & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV).
   destruct (decode cpct) as [[tpc' ? | | ]|] eqn:TAG; try solve [intuition].
@@ -886,7 +895,7 @@ Proof.
               | Some mvec => handler mvec
               | None => None
               end) as [rvec|] eqn:HANDLER.
-    + destruct (handler_correct_allowed_case cmem mvec cregs apc@cpct KINV HANDLER STORE CACHE)
+    + destruct (handler_correct_allowed_case cmem mvec cregs apc@cpct int KINV HANDLER STORE CACHE)
         as (cst'' & KEXEC' & CACHE' & LOOKUP & MVEC' &
             HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
       assert (EQ := kernel_user_exec_determ KEXEC' KEXEC). subst cst''.
@@ -928,32 +937,40 @@ Proof.
       assert (ISUSER' : in_kernel cst' = false).
       { destruct KEXEC. eauto. }
       apply EXEC in KEXEC.
-      destruct (handler_correct_disallowed_case cmem mvec KINV HANDLER STORE ISUSER' KEXEC).
+      destruct (handler_correct_disallowed_case cmem mvec int KINV HANDLER STORE ISUSER' KEXEC).
   - right. rewrite andb_true_iff in SYSCALL. destruct SYSCALL as [S1 S2].
     destruct (Concrete.get_mem (Concrete.mem kst) (common.val (Concrete.pc kst)))
       as [[i it]|] eqn:GET; try discriminate.
     rewrite eqb_true_iff in S2. subst.
     exploit state_on_syscalls; eauto. simpl.
-    intros (EM & ER & r & w & tpc & ti & t1 & EC & MEM & DEC & REG).
-    rewrite EM in GET.
+    intros (EM & ER & r & w & tpc & ic & ti & t1 & old & told & trpc & tr &
+            EC & MEM & ? & INST & DEC & PC' & RA' & LOOKUP').
+    rewrite EM in GET. subst.
     assert (SYSCALL : exists sc, Symbolic.get_syscall table (common.val (Concrete.pc kst)) = Some sc).
     { unfold wf_entry_points in WFENTRYPOINTS. rewrite WFENTRYPOINTS.
       rewrite GET. apply eqb_refl. }
     destruct SYSCALL as [sc GETSC].
-    destruct (Symbolic.sem sc (Symbolic.State amem areg apc@tapc)) as [ast'|] eqn:SCEXEC.
-    + destruct ast' as [amem' areg' [apc' tapc']].
+    destruct (Symbolic.sem sc (Symbolic.State amem areg apc@tapc int)) as [ast'|] eqn:SCEXEC.
+    + destruct ast' as [amem' areg' [apc' tapc'] int'].
       destruct kst as [kmem kregs kcache [kpc kpct] kepc]. subst. simpl in *.
-      unfold word_lift in S1.
-      destruct (decode kpct) as [[t [|]| |]|] eqn:TAG'; try discriminate.
-      apply encodeK in TAG'. clear S1. subst.
+      rewrite decodeK in TAG. simpl in TAG. inv TAG.
       exploit syscalls_correct_allowed_case; eauto.
       intros (cmem' & creg' & cache' & pct' & EXEC' &
-              REFM' & REFR' & CACHE' & MVEC' & RA' & WFENTRYPOINTS' & KINV').
+              REFM' & REFR' & CACHE' & MVEC' & RA'' & WFENTRYPOINTS' & KINV').
       generalize (kernel_user_exec_determ KEXEC EXEC'). intros ?. subst.
-      exists (Symbolic.State amem' areg' apc'@tapc'). split; eauto.
+      exploit CACHE; try eassumption.
+      { simpl.
+        unfold word_lift.
+        now rewrite decodeK. }
+      intros (mvec & rvec & E1 & E2 & HANDLER).
+      apply encode_mvec_inj in E1; eauto. subst.
+      unfold handler in HANDLER. simpl in HANDLER.
+      match_inv.
+      exists (Symbolic.State amem' areg' apc'@tapc' int'). split; eauto.
       eapply Symbolic.step_syscall; eauto.
-      * apply REFM in MEM; eauto.
-      * apply REFR. apply REG.
+      * apply REFM in INST; eauto.
+      * apply REFR. apply PC'.
+      * apply REFR. eauto.
       * unfold refine_state, in_user, word_lift. simpl.
         rewrite decodeK. simpl.
         repeat (split; eauto).
@@ -1215,10 +1232,10 @@ Proof.
 Qed.
 
 (* Just for automation *)
-Let kernel_invariant_ra_upd mem regs cache w t:
-  ki mem regs cache ->
+Let kernel_invariant_ra_upd mem regs cache int w t:
+  ki mem regs cache int ->
   ra_in_user regs ->
-  ki mem (Concrete.upd_reg regs ra w@(encode (USER t false))) cache.
+  ki mem (Concrete.upd_reg regs ra w@(encode (USER t false))) cache int.
 Proof.
   intros KINV RA.
   unfold ra_in_user, word_lift in RA.
@@ -1297,7 +1314,7 @@ Lemma forward_simulation ast ast' cst :
     exec (Concrete.step _ masks) cst cst' /\
     refine_state ast' cst'.
 Proof.
-  destruct ast as [amem aregs [apc tapc]], cst as [cmem cregs cache [cpc cpct] epc].
+  destruct ast as [amem aregs [apc tapc] int], cst as [cmem cregs cache [cpc cpct] epc].
   unfold refine_state. simpl.
   intros REF STEP.
   destruct REF as (KER & ? & ? & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV).
@@ -1306,7 +1323,7 @@ Proof.
   subst cpc tapc cpct.
   inv STEP;
   try match goal with
-  | H : Symbolic.State _ _ _ = Symbolic.State _ _ _ |- _ =>
+  | H : Symbolic.State _ _ _ _ = Symbolic.State _ _ _ _ |- _ =>
     inv H
   end;
   match_data;
@@ -1351,9 +1368,9 @@ Proof.
       let STORE := fresh "STORE" in
       destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE];
       pose proof (store_mvec_mvec_in_kernel _ _ STORE);
-      pose proof (kernel_invariant_store_mvec ki _ _ _ _ KINV STORE);
+      pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE);
       let HANDLER' := constr:(symbolic_handler_concrete_handler _ ic HANDLER) in
-      destruct (handler_correct_allowed_case _ cmvec _ pc@(encode (USER tpc ic)) KINV HANDLER' STORE CACHE)
+      destruct (handler_correct_allowed_case _ cmvec _ pc@(encode (USER tpc ic)) _ KINV HANDLER' STORE CACHE)
         as ([? ? ? [? ?] ?] &
             KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
       simpl in PC'; inv PC';
@@ -1389,6 +1406,8 @@ Proof.
       ]] (* || let op := current_instr_opcode in fail 3 "failed miss case" op *)
     ]
   end.
+
+  admit.
 
   admit.
 

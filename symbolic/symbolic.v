@@ -220,3 +220,4 @@ Arguments Symbolic.memory t {_}.
 Arguments Symbolic.registers t {_}.
 Arguments Symbolic.syscall t {_}.
 Arguments Symbolic.tag t {_}.
+Arguments Symbolic.internal_state t {_}.
