@@ -39,11 +39,11 @@ Class abstract_params := {
 
 Class params_spec (ap : abstract_params) := {
 
-  imem_axioms : PartMaps.axioms get_imem upd_imem;
-  
-  dmem_axioms : PartMaps.axioms get_dmem upd_dmem;
-  
-  reg_axioms : PartMaps.axioms get_reg upd_reg
+  imem_axioms :> PartMaps.axioms get_imem upd_imem;
+
+  dmem_axioms :> PartMaps.axioms get_dmem upd_dmem;
+
+  reg_axioms :> PartMaps.axioms get_reg upd_reg
 
 }.
 
