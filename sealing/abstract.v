@@ -23,9 +23,9 @@ Class abstract_types := {
 Context {abt : abstract_types}.
 
 Inductive value := 
-| VWord : word t -> value
-| VSealed : word t -> key -> value
-| VKey : key -> value.
+| VWord   : word t        -> value
+| VKey    :           key -> value
+| VSealed : word t -> key -> value.
 
 Class abstract_params := {
   get_mem : memory -> word t -> option value;

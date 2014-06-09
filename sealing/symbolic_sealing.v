@@ -22,9 +22,9 @@ Class symbolic_sealing_types := {
 Context {sst : symbolic_sealing_types}.
 
 Inductive stag :=
+| WORD   :        stag
 | KEY    :        stag
-| SEALED : key -> stag
-| WORD   :        stag.
+| SEALED : key -> stag.
 
 Class symbolic_sealing_params := {
   get_mem : memory -> word t -> option (atom (word t) stag);
