@@ -11,7 +11,7 @@ Generalizable Variables A.
 
 Section functions.
 
-Context `{ORD : Ordered A}.
+Context `{ord : Ordered A}.
 
 (* *Strictly* ordered, so no duplicates. *)
 Fixpoint is_set (xs : list A) : bool :=

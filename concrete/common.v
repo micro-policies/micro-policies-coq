@@ -129,7 +129,7 @@ Class machine_ops (t : machine_types) := {
   eq_word  :> EqDec (eq_setoid (word t));
   ord_word :> Ordered (word t);
 
-  eq_reg :> EqDec (eq_setoid (word t));
+  eq_reg :> EqDec (eq_setoid (reg t));
 
   ra : reg t
 

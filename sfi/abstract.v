@@ -21,8 +21,6 @@ Section WithClasses.
 Context (t    : machine_types)
         {ops  : machine_ops t}
         {spec : machine_ops_spec ops}.
-Existing Instance eq_word.
-Existing Instance ord_word.
 
 Notation W0 := (Z_to_word 0).
 Notation W1 := (Z_to_word 1).
