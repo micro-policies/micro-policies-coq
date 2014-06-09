@@ -159,22 +159,22 @@ Infix ">"  := gt : ordered_scope.
 Infix "<=" := le : ordered_scope.
 Infix ">=" := ge : ordered_scope.
 
-Notation "x <? y <? z" := (x <? y && y <? z)
+Notation "x <? y <? z" := ((x <? y) && (y <? z))
   (at level 70, y at next level, no associativity) : ordered_scope.
-Notation "x <? y <=? z" := (x <? y && y <=? z)
+Notation "x <? y <=? z" := ((x <? y) && (y <=? z))
   (at level 70, y at next level, no associativity) : ordered_scope.
-Notation "x <=? y <? z" := (x <=? y && y <? z)
+Notation "x <=? y <? z" := ((x <=? y) && (y <? z))
   (at level 70, y at next level, no associativity) : ordered_scope.
-Notation "x <=? y <=? z" := (x <=? y && y <=? z)
+Notation "x <=? y <=? z" := ((x <=? y) && (y <=? z))
   (at level 70, y at next level, no associativity) : ordered_scope.
 
-Notation "x >? y >? z" := (x >? y && y >? z)
+Notation "x >? y >? z" := ((x >? y) && (y >? z))
   (at level 70, y at next level, no associativity) : ordered_scope.
-Notation "x >? y >=? z" := (x >? y && y >=? z)
+Notation "x >? y >=? z" := ((x >? y) && (y >=? z))
   (at level 70, y at next level, no associativity) : ordered_scope.
-Notation "x >=? y >? z" := (x >=? y && y >? z)
+Notation "x >=? y >? z" := ((x >=? y) && (y >? z))
   (at level 70, y at next level, no associativity) : ordered_scope.
-Notation "x >=? y >=? z" := (x >=? y && y >=? z)
+Notation "x >=? y >=? z" := ((x >=? y) && (y >=? z))
   (at level 70, y at next level, no associativity) : ordered_scope.
 
 Notation "x < y < z" := (x < y /\ y < z)
