@@ -208,7 +208,8 @@ Inductive step (st st' : state) : Prop :=
                  forall (OLD : get_reg reg ra = Some old@told),
                  let mvec := mkMVec JAL tpc ti [t1; told] in
                  forall (ALLOWED : handler mvec = Some rvec),
-                 forall (CALL : sem sc (State mem reg pc@tpc int) = Some st'),
+                 forall (CALL : sem sc st = Some st'),
+                        (* could use the tpc from rvec instead of st? *)
                  step st st'.
 
 End WithClasses.

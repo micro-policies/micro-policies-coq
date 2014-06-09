@@ -13,7 +13,7 @@ Require Import FiniteMaps.
 Require Import common.
 Require Import concrete.
 Require Import utils.
-Require Import ordered.
+Require Import lib.ordered.
 
 Import DoNotation.
 
