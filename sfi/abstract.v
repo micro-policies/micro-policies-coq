@@ -22,10 +22,7 @@ Context (t    : machine_types)
         {ops  : machine_ops t}
         {spec : machine_ops_spec ops}.
 
-Notation W0 := (Z_to_word 0).
-Notation W1 := (Z_to_word 1).
 Open Scope word_scope.
-
 Local Notation word  := (word t).
 Local Notation value := word.
 
@@ -40,10 +37,34 @@ Require Import ZArith.
 Fixpoint range' (meas : nat) (l h : word) : list word :=
   match meas , l <=> h with
     | O         , _  => []
-    | Suc meas' , Lt => l :: range' meas' (l + W1) h
+    | Suc meas' , Lt => l :: range' meas' (l + 1) h
     | Suc meas' , Eq => [l]
     | Suc meas' , Gt => []
   end.
+
+Lemma addw_succ : forall w1 w2,
+  w1 < w2 -> word_to_Z (w1 + Z_to_word 1)%w = (word_to_Z w1 + 1)%Z.
+Proof.
+  intros x y LT.
+  rewrite <- (word_to_ZK x) at 1; rewrite <- (word_to_ZK 1).
+  rewrite addwP.
+  repeat rewrite Z_to_wordK;
+    try solve [ reflexivity
+              | generalize min_word_bound, max_word_bound; omega ].
+  assert (word_to_Z min_word <= word_to_Z x)%Z by
+    (rewrite <- word_to_Z_le; apply lew_min).
+  assert (word_to_Z y <= word_to_Z max_word)%Z by 
+    (rewrite <- word_to_Z_le; apply lew_max).
+  assert (word_to_Z x < word_to_Z max_word)%Z by
+    (apply word_to_Z_lt in LT; omega).
+  omega.
+Qed.  
+
+Lemma lebw_succ : forall x y, x < y -> x <? x + 1 = true.
+Proof.
+  intros x y LT. apply addw_succ in LT.
+  rewrite word_to_Z_ltb, LT, Z.ltb_lt; omega.
+Qed.
 
 Theorem range'_set : forall meas l h,
   is_set (range' meas l h) = true.
@@ -52,11 +73,8 @@ Proof.
   intros l h; destruct (l <=> h) eqn:CMP; try reflexivity.
   simpl; rewrite IHmeas.
   destruct meas; simpl; [reflexivity|].
-  destruct (l + W1 <=> h) eqn:CMP';
-    solve [ reflexivity
-          | rewrite andb_true_r; eapply word_succ_ltb_bounded;
-            (* I had to split the `eapply' up; I don't know why. *)
-            eapply ltb_lt,CMP ].  
+  destruct (l + 1 <=> h) eqn:CMP';
+    solve [ reflexivity | rewrite andb_true_r; eapply lebw_succ; eassumption ].
 Qed.
 
 Theorem range'_elts_ok : forall meas l h e,
@@ -69,9 +87,7 @@ Proof.
       repeat progress subst; auto 2 with ordered.
   - destruct IN as [EQ | IN]; subst; auto with ordered.
     apply IHmeas in IN; destruct IN as [LT LE].
-    assert (l < l + W1) by
-      (apply ltb_lt; apply word_succ_ltb_bounded with h; apply ltb_lt;
-       assumption).
+    assert (l < l + 1) by (eapply ltb_lt,lebw_succ; eassumption).
     split; eauto with ordered.
   - inversion IN.
 Qed.
@@ -86,6 +102,16 @@ Hint Resolve range_set.
 Corollary range_elts_ok : forall l h e,
   In e (range l h) -> l <= e <= h.
 Proof. intros until 0; apply range'_elts_ok. Qed.
+
+Lemma addw_le : forall x y,
+  x < y -> x + 1 <= y.
+Proof.
+  intros x y LT.
+  apply word_to_Z_le.
+  erewrite addw_succ by eassumption.
+  apply word_to_Z_lt in LT.
+  omega.
+Qed.
 
 Theorem range_elts_all : forall l h e,
   l <= e <= h -> In e (range l h).
@@ -105,14 +131,14 @@ Proof.
       subst; destruct EH,LE; auto with ordered.
     elim (lt_asym h e); assumption.
   - simpl. apply le__lt_or_eq in LE; destruct LE as [LE | LE]; auto.
-    right. apply IHmeas; auto using word_succ_le_lt.
-    erewrite word_to_Z_succ by eassumption.
+    right; apply IHmeas; eauto using addw_le.
+    erewrite addw_succ by eassumption.
     replace (word_to_Z h - (word_to_Z l + 1))%Z
        with (word_to_Z h - word_to_Z l - 1)%Z
          by omega.
     rewrite <- Z2Nat.inj_succ.
     + f_equal; omega.
-    + rewrite Z.sub_1_r; apply Zlt_0_le_0_pred,Z.lt_0_sub,word_to_Z_lt;
+    + rewrite Z.sub_1_r; apply Zlt_0_le_0_pred, Z.lt_0_sub, word_to_Z_lt;
         exact CMP.
   - contradiction.
 Qed.
@@ -252,8 +278,8 @@ Notation "'do' 'guard' cond ; rest" :=
 
 Definition isolate_create_set (M : memory)
                               (base size : value) : option (list value) :=
-  let pre_set := map (fun p : value => get_mem M (p + W1 + base))
-                     (range W0 (size - W1)) in
+  let pre_set := map (fun p : value => get_mem M (p + 1 + base))
+                     (range 0 (size - 1)) in
   do guard forallb is_some pre_set;
   Some (to_set (cat_somes pre_set)).
 
@@ -282,8 +308,8 @@ Definition isolate_fn (MM : state) : option state :=
                 , S >> in
   let c'    := <<A',J',S'>> in
   let C'    := c_upd :: c' :: delete c C in
-  do guard existsb (equiv_decb (pc + W1)) (address_space c_upd);
-  Some (mk_state (pc + W1) R M C').
+  do guard existsb (equiv_decb (pc + 1)) (address_space c_upd);
+  Some (mk_state (pc + 1) R M C').
 
 Definition isolate :=
   {| address   := isolate_addr
@@ -295,7 +321,7 @@ Let table := isolate :: othercalls.
 Definition get_syscall (addr : value) : option syscall :=
   find (fun sc => address sc ==b addr) table.
 
-Notation simple_step C pc c := (C ⊢ pc, pc + W1 ∈ c).
+Notation simple_step C pc c := (C ⊢ pc, pc + 1 ∈ c).
 
 Implicit Type pc_val : value.
 
@@ -304,14 +330,14 @@ Inductive step : state -> state -> Prop :=
                  forall (PC    : get_mem      M pc   = Some pc_val),
                  forall (INST  : decode_instr pc_val = Some (Nop _)),
                  forall (STEP  : simple_step C pc c),
-                 step (mk_state pc R M C) (mk_state (pc + W1) R M C)
+                 step (mk_state pc R M C) (mk_state (pc + 1) R M C)
 
 | step_const :   forall pc R M C c pc_val x rdest R',
                  forall (PC    : get_mem      M pc   = Some pc_val),
                  forall (INST  : decode_instr pc_val = Some (Const _ x rdest)),
                  forall (STEP  : simple_step C pc c),
                  forall (UPD   : upd_reg R rdest (imm_to_word x) = Some R'),
-                 step (mk_state pc R M C) (mk_state (pc + W1) R' M C)
+                 step (mk_state pc R M C) (mk_state (pc + 1) R' M C)
 
 | step_mov   :   forall pc R M C c pc_val rsrc rdest x R',
                  forall (PC    : get_mem      M pc   = Some pc_val),
@@ -319,7 +345,7 @@ Inductive step : state -> state -> Prop :=
                  forall (STEP  : simple_step C pc c),
                  forall (GET   : get_reg R rsrc = Some x),
                  forall (UPD   : upd_reg R rdest x = Some R'),
-                 step (mk_state pc R M C) (mk_state (pc + W1) R' M C)
+                 step (mk_state pc R M C) (mk_state (pc + 1) R' M C)
 
 | step_binop :   forall pc R M C c pc_val op rsrc1 rsrc2 rdest x1 x2 R',
                  forall (PC    : get_mem      M pc   = Some pc_val),
@@ -328,7 +354,7 @@ Inductive step : state -> state -> Prop :=
                  forall (GETR1 : get_reg R rsrc1 = Some x1),
                  forall (GETR2 : get_reg R rsrc2 = Some x2),
                  forall (UPDR  : upd_reg R rdest (binop_denote op x1 x2) = Some R'),
-                 step (mk_state pc R M C) (mk_state (pc + W1) R' M C)
+                 step (mk_state pc R M C) (mk_state (pc + 1) R' M C)
 
 | step_load  :   forall pc R M C c pc_val rpsrc rdest p x R',
                  forall (PC    : get_mem      M pc   = Some pc_val),
@@ -337,7 +363,7 @@ Inductive step : state -> state -> Prop :=
                  forall (GETR  : get_reg R rpsrc = Some p),
                  forall (GETM  : get_mem M p     = Some x),
                  forall (UPDR  : upd_reg R rdest x = Some R'),
-                 step (mk_state pc R M C) (mk_state (pc + W1) R' M C)
+                 step (mk_state pc R M C) (mk_state (pc + 1) R' M C)
 
 | step_store :   forall pc R M C c pc_val rsrc rpdest x p M',
                  forall (PC    : get_mem      M pc   = Some pc_val),
@@ -347,7 +373,7 @@ Inductive step : state -> state -> Prop :=
                  forall (GETRD : get_reg R rpdest = Some p),
                  forall (VALID : In p (address_space c ++ shared_memory c)),
                  forall (UPDR  : upd_mem M p x = Some M'),
-                 step (mk_state pc R M C) (mk_state (pc + W1) R M' C)
+                 step (mk_state pc R M C) (mk_state (pc + 1) R M' C)
 
 | step_jump  :   forall pc R M C c pc_val rtgt pc',
                  forall (PC    : get_mem      M pc   = Some pc_val),
@@ -361,7 +387,7 @@ Inductive step : state -> state -> Prop :=
                  forall (PC    : get_mem      M pc   = Some pc_val),
                  forall (INST  : decode_instr pc_val = Some (Bnz _ rsrc x)),
                  forall (GETR  : get_reg R rsrc = Some b),
-                 let pc' := pc + (if b == W0 then W1 else imm_to_word x) in
+                 let pc' := pc + (if b == 0 then 1 else imm_to_word x) in
                  forall (STEP  : C ⊢ pc,pc' ∈ c),
                  step (mk_state pc R M C) (mk_state pc' R M C)
 
@@ -375,7 +401,7 @@ Inductive step : state -> state -> Prop :=
                  forall (GETR  : get_reg R rtgt = Some pc'),
                  forall (USER  : get_syscall pc' = None),
                  forall (VALID : In pc' (address_space c ++ jump_targets c)),
-                 forall (UPDR  : upd_reg R ra (pc + W1) = Some R'),
+                 forall (UPDR  : upd_reg R ra (pc + 1) = Some R'),
                  step (mk_state pc R M C) (mk_state pc' R' M C)
 
 | step_syscall : forall pc R M C c pc_val rtgt sc_addr sc MM',

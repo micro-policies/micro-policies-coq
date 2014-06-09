@@ -110,15 +110,8 @@ Class machine_ops (t : machine_types) := {
   (* CH: I think it would be nicer to have Z_to_imm be partial *)
   Z_to_imm : Z -> imm t;
   imm_to_word : imm t -> word t;
-
-  (* ASZ: Why is this in the class, rather than a free function defined as
-     `Z_to_word 0`? *)
-  zero_word : word t;
-
-  (* ASZ: I think we need this to be able to talk about overflow *)
+  
   min_word : word t;
-  (* ASZ: Are words signed or unsigned?  Given `opp_word`, I think signed.  (See
-     `int_32.v` for why this comes up here.) *)
   max_word : word t;
   (* CH: I think it would be nicer to have Z_to_imm be partial *)
   Z_to_word : Z -> word t;
@@ -140,33 +133,28 @@ Notation "-%w" := opp_word.
 Notation "x + y" := (add_word x y) : word_scope.
 Notation "- x" := (opp_word x) : word_scope.
 Notation "x - y" := (add_word x (opp_word y)) : word_scope.
-Notation "0" := zero_word : word_scope.
+Notation "0" := (Z_to_word 0) : word_scope.
+Notation "1" := (Z_to_word 1) : word_scope.
 
 Delimit Scope word_scope with w.
 
 (* CH: At some point should prove or at least test that the concrete
    instantiation satisfies these *)
 (* ASZ: We now (June 9, 2014) have proofs of everything except decodeK (aka "the
-   hard one") for the 32-bit machine in int_32.v.  (There are some sticky
-   details with the preconditions for addwP and oppwP; the code in int_32.v
-   asserts the commented-out conditions locally, so we know the suggested
-   preconditions work.) *)
+   hard one") for the 32-bit machine in int_32.v. *)
 Class machine_ops_spec t (ops : machine_ops t) := {
 
   decodeK : forall i, decode_instr (encode_instr i) = Some i;
 
-  (* ASZ: Not sure if this is the right bound to use. *)
   min_word_bound : (word_to_Z min_word <= 0)%Z;
   
   max_word_bound : (15 < word_to_Z max_word)%Z;
-
+  
   word_to_ZK : forall w, Z_to_word (word_to_Z w) = w;
 
   Z_to_wordK : forall z,
-                 (0 <= z <= word_to_Z max_word)%Z ->
+                 (word_to_Z min_word <= z <= word_to_Z max_word)%Z ->
                  word_to_Z (Z_to_word z) = z;
-
-  zerowP : word_to_Z 0%w = 0%Z;
 
   addwP : forall x y, (Z_to_word x + Z_to_word y)%w = Z_to_word (x + y)%Z;
 
@@ -174,10 +162,9 @@ Class machine_ops_spec t (ops : machine_ops t) := {
 
   word_to_Z_compare : forall x y,
     x <=> y = (word_to_Z x ?= word_to_Z y)%Z;
-  
-  word_to_Z_succ : forall w1 w2,
-    w1 < w2 -> word_to_Z (w1 + Z_to_word 1)%w = (word_to_Z w1 + 1)%Z
 
+  lew_min : forall w, min_word <= w;
+  lew_max : forall w, w <= max_word
 }.
 
 Section WordArith.
@@ -206,21 +193,19 @@ Qed.
 
 Lemma add0w : left_id 0 +%w.
 Proof.
-intros x.
-now rewrite <-(word_to_ZK x), <-(word_to_ZK 0), zerowP, addwP, Z.add_0_l.
+now intros x; rewrite <-(word_to_ZK x), addwP, Z.add_0_l.
 Qed.
 
 Lemma addNw : left_inverse 0 -%w +%w.
 Proof.
 intros x.
-rewrite <-(word_to_ZK x), <-(word_to_ZK 0), zerowP, oppwP, addwP.
+rewrite <-(word_to_ZK x), oppwP, addwP.
 now rewrite Z.add_opp_diag_l. (* What a name! *)
 Qed.
 
 Lemma addw0 : right_id 0 +%w.
 Proof.
-intros x.
-now rewrite <-(word_to_ZK x), <-(word_to_ZK 0), zerowP, addwP, Z.add_0_r.
+now intros x; rewrite <-(word_to_ZK x), addwP, Z.add_0_r.
 Qed.
 
 Lemma addwN : right_inverse 0 -%w +%w.
@@ -259,6 +244,64 @@ Proof. intros y; exact (can_inj (addwK y)). Qed.
 from ssralg.v in ssreflect to keep the nice structure. *)
 
 End WordArith.
+
+Section WordCompare.
+
+Context {t : machine_types}
+        {op : machine_ops t}
+        {ops : machine_ops_spec op}.
+
+Local Open Scope Z.
+Local Open Scope word_scope.
+Local Open Scope ordered.
+
+Local Ltac reflect thm :=
+  intros until 0;
+  repeat first [ rewrite ltb_lt | rewrite gtb_gt
+               | rewrite leb_le | rewrite geb_ge ];
+  apply thm.
+
+Local Ltac comparison :=
+  intros until 0; unfold lt,gt,le,ge,Zlt,Zgt,Zle,Zge;
+  rewrite word_to_Z_compare; split; auto.
+
+Ltac comparison_b :=
+  intros; unfold ltb,gtb,leb,geb,Z.ltb,Z.gtb,Z.leb,Z.geb;
+  rewrite word_to_Z_compare; destruct (word_to_Z _ ?= word_to_Z _); reflexivity.
+
+Theorem word_to_Z_lt : forall x y, x <  y <-> (word_to_Z x <  word_to_Z y)%Z.
+Proof. comparison. Qed.
+
+Theorem word_to_Z_gt : forall x y, x >  y <-> (word_to_Z x >  word_to_Z y)%Z.
+Proof. comparison. Qed.
+
+Theorem word_to_Z_le : forall x y, x <= y <-> (word_to_Z x <= word_to_Z y)%Z.
+Proof. comparison. Qed.
+
+Theorem word_to_Z_ge : forall x y, x >= y <-> (word_to_Z x >= word_to_Z y)%Z.
+Proof. comparison. Qed.
+
+Theorem word_to_Z_ltb : forall x y, x <?  y = (word_to_Z x <?  word_to_Z y)%Z.
+Proof. comparison_b. Qed.
+
+Theorem word_to_Z_gtb : forall x y, x >?  y = (word_to_Z x >?  word_to_Z y)%Z.
+Proof. comparison_b. Qed.
+
+Theorem word_to_Z_leb : forall x y, x <=? y = (word_to_Z x <=? word_to_Z y)%Z.
+Proof. comparison_b. Qed.
+
+Theorem word_to_Z_geb : forall x y, x >=? y = (word_to_Z x >=? word_to_Z y)%Z.
+Proof. comparison_b. Qed.
+
+Corollary lew_minmax' : min_word <= max_word.
+Proof.
+  generalize min_word_bound,max_word_bound; rewrite word_to_Z_le; omega.
+Qed.
+
+Corollary lew_minmax : forall w, min_word <= w <= max_word.
+Proof. split; [apply lew_min | apply lew_max]. Qed.
+
+End WordCompare.
 
 Section Coding.
 
@@ -319,7 +362,8 @@ Definition op_to_word (o : opcode) : word t :=
 Lemma op_to_wordK : pcancel op_to_word word_to_op.
 Proof.
   unfold pcancel, word_to_op, op_to_word; intros o.
-  assert (H := max_word_bound).
+  assert (H1 := max_word_bound).
+  assert (H2 := min_word_bound).
   rewrite Z_to_wordK; destruct o; try reflexivity; simpl; try omega;   destruct b; try reflexivity; omega.
 Qed.
 
@@ -352,75 +396,3 @@ End Coding.
 Record atom V T := Atom { val : V; tag : T }.
 
 Notation "x @ t" := (Atom x t) (at level 5, format "x '@' t").
-
-Section WordCompare.
-
-Context {t : machine_types}
-        {op : machine_ops t}
-        {ops : machine_ops_spec op}.
-
-Local Open Scope Z.
-Local Open Scope word_scope.
-Local Open Scope ordered.
-Local Notation W1 := (Z_to_word 1).
-
-Local Ltac reflect thm :=
-  intros until 0;
-  repeat first [ rewrite ltb_lt | rewrite gtb_gt
-               | rewrite leb_le | rewrite geb_ge ];
-  apply thm.
-
-Local Ltac comparison :=
-  intros until 0; unfold lt,gt,le,ge,Zlt,Zgt,Zle,Zge;
-  rewrite word_to_Z_compare; split; auto.
-
-Ltac comparison_b :=
-  intros; unfold ltb,gtb,leb,geb,Z.ltb,Z.gtb,Z.leb,Z.geb;
-  rewrite word_to_Z_compare; destruct (word_to_Z _ ?= word_to_Z _); reflexivity.
-
-Theorem word_to_Z_lt : forall x y, x <  y <-> (word_to_Z x <  word_to_Z y)%Z.
-Proof. comparison. Qed.
-
-Theorem word_to_Z_gt : forall x y, x >  y <-> (word_to_Z x >  word_to_Z y)%Z.
-Proof. comparison. Qed.
-
-Theorem word_to_Z_le : forall x y, x <= y <-> (word_to_Z x <= word_to_Z y)%Z.
-Proof. comparison. Qed.
-
-Theorem word_to_Z_ge : forall x y, x >= y <-> (word_to_Z x >= word_to_Z y)%Z.
-Proof. comparison. Qed.
-
-Theorem word_to_Z_ltb : forall x y, x <?  y = (word_to_Z x <?  word_to_Z y)%Z.
-Proof. comparison_b. Qed.
-
-Theorem word_to_Z_gtb : forall x y, x >?  y = (word_to_Z x >?  word_to_Z y)%Z.
-Proof. comparison_b. Qed.
-
-Theorem word_to_Z_leb : forall x y, x <=? y = (word_to_Z x <=? word_to_Z y)%Z.
-Proof. comparison_b. Qed.
-
-Theorem word_to_Z_geb : forall x y, x >=? y = (word_to_Z x >=? word_to_Z y)%Z.
-Proof. comparison_b. Qed.
-
-(* The x < y constraint in theormes guarantees that x is not INT_MAX. *)
-
-Theorem word_succ_le_lt : forall x y, x < y -> x + W1 <= y.
-Proof.
- intros; erewrite word_to_Z_le, word_to_Z_succ by eassumption.
- rewrite word_to_Z_lt in *; omega.
-Qed.
-
-Theorem word_succ_leb_ltb : forall x y, x <? y = true -> x + W1 <=? y = true.
-Proof. reflect word_succ_le_lt. Qed.
-
-Theorem word_succ_lt_bounded : forall x y,
-  x < y -> x < x + W1.
-Proof.
-  intros; erewrite word_to_Z_lt, word_to_Z_succ by eassumption; omega.
-Qed.
-
-Theorem word_succ_ltb_bounded : forall x y,
-  x <? y = true -> x <? x + W1 = true.
-Proof. reflect word_succ_lt_bounded. Qed.
-
-End WordCompare.

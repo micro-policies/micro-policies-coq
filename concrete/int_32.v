@@ -103,9 +103,7 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   Z_to_imm := repr;
 
   imm_to_word i := i;
-
-  zero_word := repr 0;
-
+  
   min_word := repr min_signed;
   (* ASZ: If this is `max_unsigned`, then `word_to_Z` needs to be `unsigned`,
      but then `opp_word` breaks. *)
@@ -125,7 +123,6 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   eq_reg := _; (* In-scope type class instance *)
 
   ra := repr 0
-
 |}.
 (* Removing Program causes Coq not to find concrete_int_32_t *)
 
@@ -163,6 +160,22 @@ Proof.
     rewrite Zmod_mod; reflexivity.
 Qed.
 
+Lemma compare_signed : forall x y, (x <=> y) = (signed x ?= signed y)%Z.
+Proof.
+  simpl; intros; unfold Int32Ordered.int_compare,lt.
+  destruct (x == y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
+  destruct (zlt (signed x) (signed y)) as [LT | GE]; [auto with zarith|].
+  unfold Zge in GE; destruct (_ ?= _)%Z eqn:CMP.
+  + apply Z.compare_eq in CMP.
+    destruct x as [x px], y as [y py].
+    unfold signed,unsigned in CMP; simpl in CMP.
+    destruct (zlt x half_modulus),(zlt y half_modulus); ssubst;
+    solve [omega
+          | contradict NE; apply mkint_eq; solve [reflexivity | omega]].
+  + congruence.
+  + reflexivity.
+Qed.
+
 Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
   constructor.
@@ -172,34 +185,21 @@ Proof.
   - reflexivity.
   - simpl. apply repr_signed.
   - simpl; intros. apply signed_repr. compute -[Zle] in *; omega.
-  - reflexivity.
   - exact add_repr.
   - exact neg_repr.
-  - simpl; intros.
-    unfold Int32Ordered.int_compare,lt.
-    destruct (x == y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
-    destruct (zlt (signed x) (signed y)) as [LT | GE]; [auto with zarith|].
-    unfold Zge in GE; destruct (_ ?= _)%Z eqn:CMP.
-    + apply Z.compare_eq in CMP.
-      destruct x as [x px], y as [y py].
-      unfold signed,unsigned in CMP; simpl in CMP.
-      destruct (zlt x half_modulus),(zlt y half_modulus); ssubst;
-        solve [omega
-              | contradict NE; apply mkint_eq; solve [reflexivity | omega]].
-    + congruence.
-    + reflexivity.
-  - simpl; intros w1 w2 LT.
-    unfold ordered.lt, compare,
-           Int32Ordered.int_ordered, Int32Ordered.int_compare,
-           lt
-      in LT.
-    destruct (w1 == w2) as [EQ | NE],
-             (zlt (signed w1) (signed w2)) as [ZLT | ZGT];
-      try discriminate; clear LT; rename ZLT into LT.
-    assert (in_range : (min_signed <= signed w1 + 1 <= max_signed)%Z) by
-      (generalize (signed_range w1),(signed_range w2); omega).
-    rewrite <- (signed_repr _ in_range), add_signed.
-    reflexivity.
+  - exact compare_signed.
+  - intros w.
+    assert (min_signed <= word_to_Z w) by apply signed_range.
+    unfold min_word,word_to_Z,concrete_int_32_ops,le in *.
+    rewrite compare_signed,signed_repr by
+      (generalize (signed_range (repr 0)); omega).
+    assumption.
+  - intros w.
+    assert (word_to_Z w <= max_signed) by apply signed_range.
+    unfold max_word,word_to_Z,concrete_int_32_ops,le in *.
+    rewrite compare_signed,signed_repr by
+      (generalize (signed_range (repr 0)); omega).
+    assumption.
 Defined.
 
 Import Concrete.
