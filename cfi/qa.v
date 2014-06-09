@@ -19,40 +19,26 @@ Context {t : machine_types}.
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
 
-(* CH: Either I'm very confused, or this is a silly instantiation *)
-Definition tag := rules.tag (@user_tag t).
-
 Class sym_cfi_params := {
   memory : Type;
   registers : Type;
 
-  get_mem : memory -> word t -> option (atom (word t) tag);
-  upd_mem : memory -> word t -> atom (word t) tag -> option memory;
+  get_mem : memory -> word t -> option (atom (word t) (@cfi_tag t));
+  upd_mem : memory -> word t -> atom (word t) (@cfi_tag t) -> option memory;
 
-  (* Contrary to concrete machine, here register access and update
-     might fail, since they might correspond to kernel registers *)
-
-  get_reg : registers -> reg t -> option (atom (word t) tag);
-  upd_reg : registers -> reg t -> atom (word t) tag -> option registers
-
-}.
-
-Class params_spec (ap : sym_cfi_params) := {
-
-  mem_axioms : PartMaps.axioms get_mem upd_mem;
-  
-  reg_axioms : PartMaps.axioms get_reg upd_reg
+  get_reg : registers -> reg t -> option (atom (word t) (@cfi_tag t));
+  upd_reg : registers -> reg t -> atom (word t) (@cfi_tag t) -> option registers
 
 }.
 
 Context {scp : sym_cfi_params}.
 
-Variable valid_jmp : word t -> word t-> bool.
+Variable valid_jmp : word t -> word t -> bool.
 
 Program Instance sym_cfi : (Symbolic.symbolic_params t) := {
   memory := memory;
   registers := registers;
-  tag := tag;
+  tag := cfi_tag;
 
   get_mem := get_mem;
   upd_mem := upd_mem;
@@ -74,30 +60,26 @@ Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
 
 Open Scope word_scope.
 
-Definition csucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
-  let pc_t' := common.tag (Symbolic.pc st') in
-  let pc_t := common.tag (Symbolic.pc st) in
-  let pc_s := common.val (Symbolic.pc st) in
-  let pc_s' := common.val (Symbolic.pc st') in
-  match pc_t', pc_t with
-    | rules.KERNEL, _
-    | _, rules.KERNEL => true
-    | _, _ =>
-      match (get_mem (Symbolic.mem st) pc_s) with
-        | Some i =>
-          match decode_instr (common.val i) with
-            | Some (Jump r) => valid_jmp pc_s pc_s'
-            | Some (Jal r) => valid_jmp pc_s pc_s'
-            | Some (Bnz r imm) => 
-              (pc_s' ==b pc_s .+1) || (pc_s' ==b pc_s + imm_to_word imm)
-            | None => false
-            | _ => pc_s' ==b pc_s .+1
-          end
+Definition csucc (st : Abstract.state t) (st' : Abstract.state t) : bool :=
+  let pc_t' := common.tag (Abstract.pc st') in
+  let pc_t := common.tag (Abstract.pc st) in
+  let pc_s := common.val (Abstract.pc st) in
+  let pc_s' := common.val (Abstract.pc st') in
+  match (get_mem (Abstract.mem st) pc_s) with
+    | Some i =>
+      match decode_instr (common.val i) with
+        | Some (Jump r) => valid_jmp pc_s pc_s'
+        | Some (Jal r) => valid_jmp pc_s pc_s'
+        | Some (Bnz r imm) => 
+          (pc_s' ==b pc_s .+1) || (pc_s' ==b pc_s + imm_to_word imm)
         | None => false
+        | _ => pc_s' ==b pc_s .+1
       end
+    | None => false
   end.
 
 Definition initial (s : Symbolic.state t) := True.
+
 
 Program Instance symbolic_cfi_machine : cfi_machine t := {|
   state := Symbolic.state t;

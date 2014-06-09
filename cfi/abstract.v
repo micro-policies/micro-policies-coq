@@ -293,6 +293,10 @@ Proof.
      destruct (IRRED CONTRA).
 Qed.
 
+  
+    
+  
+
 End WithClasses.
 
 End Abstract.
