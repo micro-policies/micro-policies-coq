@@ -17,10 +17,7 @@ Class abstract_types := {
   memory : Type;
   registers : Type;
   
-  key : Type;
-  extra_state : Type
-(* APT: It seems weird to abstract over extra_state at this machine level.
-        Why not just be explicit about whatever concrete state is needed? *)
+  key : Type
 }.
 
 Context {abt : abstract_types}.
@@ -61,31 +58,20 @@ Record state := State {
   mem : memory;
   regs : registers;
   pc : word t;
-  es : extra_state
+  keys : list key
 }.
 
-(* TODO BCP: At the moment, the symbolic sealing machine uses a
-   concrete word for the extra state and generates keys just by
-   incrementing it (and then applying a word->key function, supplied
-   externally).  We need to decide what is the cleanest way to set
-   this up.  (Looking at it right now, I don't see much reason for the
-   extra generality.) *)
-(* APT: +1 for being less general *)
-(* CH:
-   (1) What's wrong with being general?
-   (2) How about having all past generated keys as the extra state at
-       this level, so that we can state as an axiom on mkkey_f that
-       keys are not repeated. (This would solve APTs comment below,
-       and would make it maybe more obvious that we're not repeating
-       keys than checking for integer overflows. *)
-
-Class key_generator := 
-  { mkkey_f : extra_state -> option (extra_state * key) }.
+Class key_generator := {
+  mkkey_f : list key -> option (list key * key);
+ 
+  (* This ensures freshness without fixing a generation strategy *)
+  mkkey_fresh : forall ks ks' k,
+                  mkkey_f ks = Some (ks', k) ->
+                  ~In k ks /\ In k ks' /\ incl ks ks'
+}.
 
 Context `{key_generator}.
 
-(* APT: mkkey_f seems badly under-specified, e.g., it might generate the same key twice.  *)
-   
 Definition syscall_addrs := [mkkey_addr; seal_addr; unseal_addr].
 
 Notation "x '=?' y" := (x = Some y) (at level 99).
