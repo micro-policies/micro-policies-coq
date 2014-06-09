@@ -255,9 +255,5 @@ Module IntIndexed (WS : Integers.WORDSIZE) <: INDEXED_TYPE.
   Theorem index_inj : forall x y : int, index x = index y -> x = y.
   Proof. auto using intval_inj, ZIndexed.index_inj. Qed.
 
-  Theorem eq : forall x y : int, {x = y} + {x <> y}.
-  Proof.
-    intros x y; generalize (eq_spec x y); intros Heq.
-    destruct (eq x y); [left | right]; exact Heq.
-  Qed.
+  Definition eq : forall x y : int, {x = y} + {x <> y} := eq_dec.
 End IntIndexed.

@@ -1,4 +1,4 @@
-Require Import List Bool ZArith Sorted Coqlib lib.utils list_utils ordered.
+Require Import List Bool ZArith Sorted Coqlib lib.utils lib.ordered list_utils.
 Require Import Coq.Classes.SetoidDec.
 Import ListNotations.
 Local Open Scope bool_scope.

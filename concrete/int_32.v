@@ -12,11 +12,13 @@ Require Import FiniteMaps.
 Require Import common.
 Require Import concrete.
 Require Import utils.
+Require Import ordered.
 
 Import DoNotation.
 
 (* We have to use the same Int module that the maps use. *)
-Module Int32Indexed := IntIndexed Wordsize_32.
+Module Int32Ordered := IntOrdered Wordsize_32.
+Module Int32Indexed := Int32Ordered.IntIndexed.
 Module Int32        := Int32Indexed.Int.
 Import Int32.
 
@@ -113,14 +115,14 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 
   opp_word := neg;
 
-  eq_word x y := Int32.eq_dec x y;
+  eq_word := _; (* In-scope type class instance *)
+  ord_word := _; (* In-scope type class instance *)
 
-  eq_reg x y := Int32.eq_dec x y;
+  eq_reg := _; (* In-scope type class instance *)
 
   ra := repr 0
 
 |}.
-
 (* Removing Program causes Coq not to find concrete_int_32_t *)
 
 Import Concrete.

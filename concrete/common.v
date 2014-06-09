@@ -1,8 +1,10 @@
 Require Import List.
+
 Require Import Arith.
 Require Import ZArith.
 Require Import Bool.
 Require Import Coq.Classes.SetoidDec.
+Require Import lib.ordered.
 
 Require Import utils.
 
@@ -53,7 +55,7 @@ Definition opcodes :=
 
 (* This should be a proof by reflexion... *)
 Lemma opcodesP : forall op, In op opcodes.
-Proof. intros []; compute; eauto 17; intros []; eauto 16. Qed.
+Proof. intros []; try intros []; vm_compute; auto 17. Qed.
 
 Record machine_types := {
   word : Type;
@@ -118,7 +120,8 @@ Class machine_ops (t : machine_types) := {
 
   add_word : word t -> word t -> word t;
   opp_word : word t -> word t;
-  eq_word :> EqDec (eq_setoid (word t));
+  eq_word  :> EqDec (eq_setoid (word t));
+  ord_word :> Ordered (word t);
 
   eq_reg :> EqDec (eq_setoid (word t));
 
@@ -154,7 +157,6 @@ Class machine_ops_spec t (ops : machine_ops t) := {
   addwP : forall w1 w2, word_to_Z (w1 + w2)%w = (word_to_Z w1 + word_to_Z w2)%Z;
 
   oppwP : forall w, word_to_Z (- w)%w = (- word_to_Z w)%Z
-
 }.
 
 Section WordArith.

@@ -1,6 +1,6 @@
 Require Import List Arith Sorted Bool.
 Require Import Coq.Classes.SetoidDec.
-Require Import lib.utils concrete.common list_utils set_utils ordered.
+Require Import lib.utils concrete.common lib.ordered list_utils set_utils.
 
 Import DoNotation.
 
@@ -20,9 +20,8 @@ Section WithClasses.
 
 Context (t : machine_types).
 Context {ops : machine_ops t}.
-Local Instance word_eqdec : EqDec (eq_setoid (word t)) := eq_word.
-Context `{word_ordered : Ordered (eqdec := word_eqdec) (word t)}.
-  (* TODO reify *)
+Existing Instance eq_word.
+Existing Instance ord_word.
 
 Notation W0 := (Z_to_word 0).
 Notation W1 := (Z_to_word 1).
@@ -81,8 +80,10 @@ Proof.
   simpl; rewrite IHmeas.
   destruct meas; simpl; [reflexivity|].
   destruct (l + W1 <=> h) eqn:CMP';
-    solve [ reflexivity
-          | rewrite andb_true_r; eapply word_succ_ltb_bounded,ltb_lt,CMP ].
+    try solve [ reflexivity
+          | rewrite andb_true_r; eapply word_succ_ltb_bounded;
+            (* I had to split the `eapply' up; I don't know why. *)
+            eapply ltb_lt,CMP ].
 Qed.
 
 Theorem range'_elts_ok : forall meas l h e,
@@ -92,12 +93,13 @@ Proof.
   simpl; intros until 0; intros IN.
   destruct (l <=> h) eqn:CMP; simpl in *.
   - apply compare_eq in CMP; destruct IN as [EQ|[]];
-      repeat progress subst; auto 2.
-  - destruct IN as [EQ | IN]; subst; auto.
+      repeat progress subst; auto 2 with ordered.
+  - destruct IN as [EQ | IN]; subst; auto with ordered.
     apply IHmeas in IN; destruct IN as [LT LE].
     assert (l < l + W1) by
-      (apply ltb_lt, word_succ_ltb_bounded with h, ltb_lt; assumption).
-    split; eauto.
+      (apply ltb_lt; apply word_succ_ltb_bounded with h; apply ltb_lt;
+       assumption).
+    split; eauto with ordered.
   - inversion IN.
 Qed.
 
@@ -115,7 +117,8 @@ Proof. intros until 0; apply range'_elts_ok. Qed.
 Theorem range_elts_all : forall l h e,
   l <= e <= h -> In e (range l h).
 Proof.
-  unfold range; intros l h e [LE EH]; assert (LH : l <= h) by eauto.
+  unfold range; intros l h e [LE EH];
+    assert (LH : l <= h) by eauto with ordered.
   remember (Z.to_nat ((word_to_Z h - word_to_Z l) + 1)%Z) as meas eqn:meas_def'.
   assert (meas_def : meas = S (Z.to_nat (word_to_Z h - word_to_Z l))). {
     rewrite Z2Nat.inj_add in meas_def'; try solve [vm_compute; inversion 1].
@@ -126,8 +129,8 @@ Proof.
     simpl in *; inversion meas_def; subst; clear meas_def.
   destruct (l <=> h) eqn:CMP.
   - apply compare_eq in CMP; apply le__lt_or_eq in EH; apply le__lt_or_eq in LE;
-      subst; destruct EH,LE; auto.
-    elim lt_asym with h e; assumption.
+      subst; destruct EH,LE; auto with ordered.
+    elim (lt_asym h e); assumption.
   - simpl. apply le__lt_or_eq in LE; destruct LE as [LE | LE]; auto.
     right. apply IHmeas; auto using word_succ_le_lt.
     erewrite word_to_Z_succ by eassumption.
@@ -150,9 +153,9 @@ Corollary range_empty : forall l h,
 Proof.
   intros; rewrite nil_iff_not_in; split.
   - intros NOT_IN; apply gt_not_le; intros LE.
-    apply NOT_IN with l, range_elts; auto.
+    apply NOT_IN with l, range_elts; auto with ordered.
   - intros GT e IN. apply range_elts in IN.
-    destruct IN; assert (l <= h) by eauto 2; auto.
+    destruct IN; assert (l <= h) by eauto 2 with ordered; auto.
 Qed.
 (***** END RANGE *****)
 
@@ -971,11 +974,11 @@ Proof.
     + subst c; intros a; rewrite set_difference_spec; tauto.
   - intros c''; apply non_overlapping_subcompartment; auto;
       subst c' A'; simpl in *.
-    + apply nonempty_iff_in; exists al. apply range_elts; auto.
+    + apply nonempty_iff_in; exists al. apply range_elts; auto with ordered.
     + subst c; eapply subset_spec; eassumption.
   - unfold contained_compartments; subst c_upd c'; simpl.
     assert (In_dec : forall a A, In a A \/ ~ In a A). {
-      clear; intros; destruct (existsb (equiv_decb a) A) eqn:EX.
+      clear -ops; intros; destruct (existsb (equiv_decb a) A) eqn:EX.
       - apply in_existsb_equiv_decb in EX; auto.
       - right. intro IN_a; apply existsb_equiv_decb_in in IN_a; congruence.
     }
@@ -1027,8 +1030,9 @@ Proof.
       destruct IN_a_alJ as [EQ | IN_J].
       * (* Unique proof *)
         subst a A'.
-        assert (IN_al_range : In al (range al ah)) by (apply range_elts; auto).
-          specialize (SUBSET_A' IN_al_range).
+        assert (IN_al_range : In al (range al ah)) by
+          (apply range_elts; auto with ordered).
+        specialize (SUBSET_A' IN_al_range).
         rewrite concat_in; exists A; split; auto.
         apply in_map_iff. exists c; subst c; auto.
       * (* Proof (1) *)

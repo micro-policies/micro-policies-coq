@@ -5,6 +5,7 @@ lib/Maps.v
 lib/Integers.v
 lib/utils.v
 lib/FiniteMaps.v
+lib/ordered.v
 
 concrete/common.v
 concrete/concrete.v
@@ -37,7 +38,6 @@ memory_safety/refinementAQ.v
 sfi/abstract.v
 sfi/set_utils.v
 sfi/list_utils.v
-sfi/ordered.v
 
 sealing/abstract.v
 sealing/symbolic_sealing.v

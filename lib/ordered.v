@@ -1,5 +1,8 @@
 Require Import Coq.Classes.SetoidDec Coqlib utils.
 Require Import Compare_dec ZArith. (* For instances *)
+Require Integers FiniteMaps. (* For instances *)
+
+Create HintDb ordered discriminated.
 
 (*** Type classes and instances ***)
 
@@ -16,7 +19,8 @@ Class Ordered A `{eqdec : ! EqDec (eq_setoid A)} :=
                                      compare a c = Gt }.
 
 Hint Resolve @compare_refl @compare_asym
-             @compare_eq @compare_lt_trans @compare_gt_trans.
+             @compare_eq @compare_lt_trans @compare_gt_trans
+  : ordered.
 
 Delimit Scope ordered_scope with ordered.
 Open Scope ordered_scope.
@@ -45,6 +49,64 @@ Proof.
   - apply Zcompare_Lt_trans.
   - apply Zcompare_Gt_trans.
 Defined.
+
+Module IntOrdered (WS : Integers.WORDSIZE).
+  (* We need integers that are indexable and orderable, so... *)
+  Module IntIndexed := FiniteMaps.IntIndexed WS.
+  Import IntIndexed.
+  Import IntIndexed.Int.
+
+  Instance int_eqdec : EqDec (eq_setoid int) := eq_dec.
+  
+  Definition int_compare (a b : int) : comparison :=
+    if a == b
+    then Eq
+    else if lt a b
+         then Lt
+         else Gt.
+  
+  Instance int_ordered : Ordered int.
+  Proof.
+    apply Build_Ordered with int_compare; unfold int_compare; intros.
+    - destruct (a == a); [reflexivity | congruence].
+    - destruct (a == b), (b == a); auto; try congruence.
+      unfold lt;
+        destruct (zlt (signed a) (signed b)), (zlt (signed b) (signed a));
+        try solve [auto | omega].
+      repeat match goal with
+        | GE : (signed ?x >= signed ?y)%Z |- _ =>
+          apply Z.ge_le,Z_le_lt_eq_dec in GE; destruct GE as [LT|EQ];
+            [| generalize (eq_signed x y); intros ES;
+               rewrite EQ,eq_false,zeq_true in ES by assumption;
+               discriminate ]
+      end.
+      omega.
+    - destruct (a == b); [auto | destruct (lt a b); discriminate].
+    - unfold lt in *;
+        destruct (a == b), (b == c),
+                 (zlt (signed a) (signed b)), (zlt (signed b) (signed c));
+        try congruence.
+      destruct (a == c), (zlt (signed a) (signed c)); ssubst;
+        first [reflexivity | omega].
+    - unfold lt in *;
+        destruct (a == b), (b == c),
+                 (zlt (signed a) (signed b)), (zlt (signed b) (signed c));
+        try congruence.
+      destruct (a == c), (zlt (signed a) (signed c)); ssubst;
+        try first [reflexivity | omega].
+      repeat match goal with
+        | [GE : (signed ?x >= signed ?y)%Z |- _] =>
+          apply Z.ge_le,Z_le_lt_eq_dec in GE;
+          let GT := fresh GT in
+          let EQ := fresh EQ in
+          destruct GE as [GT | EQ]; try omega
+      end.
+      generalize (eq_signed b c); intros ES.
+      match goal with EQ : signed b = signed c |- _ =>
+        rewrite EQ,eq_false,zeq_true in ES by assumption; discriminate
+      end.
+  Defined.
+End IntOrdered.
 
 Instance comparison_eqdec : EqDec (eq_setoid comparison).
 Proof. cbv; intros c1 c2; fold (c1 <> c2); decide equality. Defined.
@@ -165,7 +227,8 @@ End reflections.
 
 Hint Resolve @ltb_lt   @gtb_gt   @leb_le   @geb_ge
              @ltb_nlt  @gtb_ngt  @leb_nle  @geb_nge
-             @lt_cases @gt_cases @le_cases @ge_cases. 
+             @lt_cases @gt_cases @le_cases @ge_cases
+  : ordered.
 
 Section reflexivity_irreflexivity.
 
@@ -189,7 +252,8 @@ Theorem ge_refl   : a >= a.  Proof. solve_same. Qed.
 End reflexivity_irreflexivity.  
 
 Hint Resolve @ltb_irrefl @gtb_irrefl @leb_refl @geb_refl
-             @lt_irrefl  @gt_irrefl  @le_refl  @ge_refl.
+             @lt_irrefl  @gt_irrefl  @le_refl  @ge_refl
+  : ordered.
 
 Section nonstrict_equivalences.
 
@@ -210,7 +274,8 @@ Theorem leb_is_ltb_or_eq : DECOMPOSE_B leb ltb. Proof. solve_bool. Qed.
 Theorem geb_is_gtb_or_eq : DECOMPOSE_B geb gtb. Proof. solve_bool. Qed.
 
 Local Ltac solve_to :=
-  unfold lt,gt,le,ge; destruct (a <=> b) eqn:E; solve [eauto | congruence].
+  unfold lt,gt,le,ge; destruct (a <=> b) eqn:E;
+    solve [eauto with ordered | congruence].
 
 Local Ltac solve_from :=
   unfold lt,gt,le,ge; destruct 1; [|subst; rewrite compare_refl]; congruence.
@@ -233,14 +298,15 @@ Corollary ge_iff_gt_or_eq : a >= b <-> a > b \/ a = b. Proof. solve_iff. Qed.
 End nonstrict_equivalences.
 
 Hint Resolve @le__lt_or_eq @ge__gt_or_eq
-             @lt_or_eq__le @gt_or_eq__ge.
+             @lt_or_eq__le @gt_or_eq__ge
+  : ordered.
 
 Section relationships.
 
 Context `{ORD : Ordered A}.
 Variables a b : A.
 
-Local Ltac solve_eq := intros; subst; auto.
+Local Ltac solve_eq := intros; subst; auto with ordered.
   
 Theorem eq__leb  : a = b -> a <=? b = true.  Proof. solve_eq. Qed.
 Theorem eq__nltb : a = b -> a <?  b = false. Proof. solve_eq. Qed.
@@ -259,8 +325,8 @@ Local Ltac solve_cmp :=
 Theorem ltb__leb : a <? b = true -> a <=? b = true. Proof. solve_cmp. Qed.
 Theorem gtb__geb : a >? b = true -> a >=? b = true. Proof. solve_cmp. Qed.
 
-Theorem lt__le : a < b -> a <= b. Proof. auto. Qed.
-Theorem gt__le : a > b -> a >= b. Proof. auto. Qed.
+Theorem lt__le : a < b -> a <= b. Proof. auto with ordered. Qed.
+Theorem gt__le : a > b -> a >= b. Proof. auto with ordered. Qed.
 
 Local Ltac solve_flip :=
   cbv -[compare]; rewrite (compare_asym b a);
@@ -273,7 +339,6 @@ Theorem lt__gt : a <  b -> b >  a. Proof. solve_flip. Qed.
 Theorem gt__lt : a >  b -> b <  a. Proof. solve_flip. Qed.
 Theorem le__ge : a <= b -> b >= a. Proof. solve_flip. Qed.
 Theorem ge__le : a >= b -> b <= a. Proof. solve_flip. Qed.
-
 
 Ltac solve_negb :=
   unfold ltb,gtb,leb,geb,nequiv_dec; destruct ((a <=> b) == _); reflexivity.
@@ -317,7 +382,8 @@ Hint Resolve @eq__leb  @eq__nltb @eq__geb @eq__ngtb
              @lt__le @gt__le
              @ltb_is_gtb @leb_is_geb
              @lt__gt @gt__lt @le__ge @ge__le
-             @ltb_not_geb @gtb_not_leb @leb_not_gtb @geb_not_ltb.
+             @ltb_not_geb @gtb_not_leb @leb_not_gtb @geb_not_ltb
+  : ordered.
 
 Section decidability.
 
@@ -329,15 +395,17 @@ Proof.
   cbv -[compare]; destruct (a <=> b) eqn:E; try apply compare_eq in E; auto.
 Qed.
 
-Local Ltac solve_two   := destruct trichotomy; auto.
-Local Ltac solve_three := destruct trichotomy as [[? | ?] | ?]; auto.
+Local Ltac solve_two   := destruct trichotomy; auto with ordered.
+Local Ltac solve_three := destruct trichotomy as [[?|?]|?]; auto with ordered.
 Local Ltac solve_dec   := solve [solve_two | solve_three].
 
 Corollary le_gt_dec : {a <= b} + {a > b}. Proof. solve_dec. Qed.
 Corollary ge_lt_dec : {a >= b} + {a < b}. Proof. solve_dec. Qed.
 
-Corollary le_lt_dec : {a <= b} + {b < a}. Proof. destruct le_gt_dec; auto. Qed.
-Corollary ge_gt_dec : {a >= b} + {b > a}. Proof. destruct ge_lt_dec; auto. Qed.
+Corollary le_lt_dec : {a <= b} + {b < a}.
+Proof. destruct le_gt_dec; auto with ordered. Qed.
+Corollary ge_gt_dec : {a >= b} + {b > a}.
+Proof. destruct ge_lt_dec; auto with ordered. Qed.
 
 End decidability.
 
@@ -437,7 +505,8 @@ End transitivity.
 Hint Resolve @ltb_trans     @gtb_trans     @leb_trans     @geb_trans
              @lt_trans      @gt_trans      @le_trans      @ge_trans
              @ltb_leb_trans @gtb_geb_trans @leb_ltb_trans @geb_gtb_trans
-             @lt_le_trans   @gt_ge_trans   @le_lt_trans   @ge_gt_trans.
+             @lt_le_trans   @gt_ge_trans   @le_lt_trans   @ge_gt_trans
+  : ordered.
 
 Section asymmetry.
 
@@ -480,7 +549,8 @@ Theorem geb_sym_eq : EQ_SYM_B geb. Proof. solve_bool. Qed.
 End asymmetry.
 
 Hint Resolve @ltb_asym @gtb_asym @leb_sym_eq @geb_sym_eq
-             @lt_asym  @gt_asym  @le_sym_eq  @ge_sym_eq.
+             @lt_asym  @gt_asym  @le_sym_eq  @ge_sym_eq
+  : ordered.
 
 (* I could continue proving theorems -- so many theorems!  But I'm hopeful this
    will, at least initially, be enough. *)
