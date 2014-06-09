@@ -54,7 +54,7 @@ Program Instance sym_cfi : (Symbolic.symbolic_params t) := {
   get_reg := get_reg;
   upd_reg := upd_reg;
 
-  handler := cfi_rules.handler valid_jmp;
+  handler := cfi_rules.cfi_handler valid_jmp;
 
   internal_state := unit
 }.

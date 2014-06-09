@@ -49,23 +49,25 @@ Variable valid_jmp : word t -> word t -> bool.
 (* Uncertain how we handle syscalls*)
 Definition cfi_handler (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
   match umvec with
-  | mkMVec JUMP (INSTR (Some n)) (INSTR (Some m)) _
-  | mkMVec JAL (INSTR (Some n)) (INSTR (Some m)) _  =>
+  | mkMVec   JUMP   (INSTR (Some n))  (INSTR (Some m))  _
+  | mkMVec   JAL    (INSTR (Some n))  (INSTR (Some m))  _  =>
     if valid_jmp n m then Some (mkRVec (INSTR (Some m)) DATA)
     else None
-  | mkMVec JUMP DATA (INSTR (Some n)) _
-  | mkMVec JAL DATA (INSTR (Some n)) _  => 
+  | mkMVec   JUMP   DATA  (INSTR (Some n))  _
+  | mkMVec   JAL    DATA  (INSTR (Some n))  _  => 
     Some (mkRVec (INSTR (Some n)) DATA)
-  | mkMVec JUMP DATA (INSTR NONE) _
-  | mkMVec JAL DATA (INSTR NONE) _ =>
+  | mkMVec   JUMP   DATA  (INSTR NONE)  _
+  | mkMVec   JAL    DATA  (INSTR NONE)  _  =>
     None
-  | mkMVec STORE (INSTR (Some n)) (INSTR (Some m)) [_ ; _ ; DATA] =>
+  | mkMVec   STORE  (INSTR (Some n))  (INSTR (Some m))  [_ ; _ ; DATA]  =>
     if valid_jmp n m then Some (mkRVec DATA DATA) else None
-  | mkMVec STORE DATA (INSTR None) [_ ; _ ; DATA] => Some (mkRVec DATA DATA)
-  | mkMVec STORE _ _ _ => None
-  | mkMVec _ (INSTR (Some n)) (INSTR (Some m)) _ => 
+  | mkMVec   STORE  DATA  (INSTR None)  [_ ; _ ; DATA]  => 
+    Some (mkRVec DATA DATA)
+  | mkMVec   STORE  _  _  _  => None
+  | mkMVec    _    (INSTR (Some n))  (INSTR (Some m))  _  => 
     if valid_jmp n m then Some (mkRVec DATA DATA) else None
-  | mkMVec _ DATA (INSTR None) _ => Some (mkRVec DATA DATA)
+  | mkMVec    _    DATA  (INSTR None)  _  => 
+    Some (mkRVec DATA DATA)
   | mkMVec _ _ _ _ => None
   end.
 
