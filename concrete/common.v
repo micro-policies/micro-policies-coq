@@ -168,36 +168,16 @@ Class machine_ops_spec t (ops : machine_ops t) := {
 
   zerowP : word_to_Z 0%w = 0%Z;
 
-  (* ASZ: We need a no-overflow condition for this to be true.  I think the
-     given one is right, as long as we add a min_word. *)
-  addwP : forall w1 w2,
-            (* (word_to_Z min_word          <=
-                word_to_Z w1 + word_to_Z w2 <=
-                word_to_Z max_word)%Z -> *)
-            (* ASZ: Commented out for now so as not to break all of
-               WordArith. *)
-            word_to_Z (w1 + w2)%w = (word_to_Z w1 + word_to_Z w2)%Z;
+  addwP : forall x y, (Z_to_word x + Z_to_word y)%w = Z_to_word (x + y)%Z;
 
-  (* ASZ: This is false without a no-overflow condition.  The given one is true
-     for 2's-complement arithmetic, but are we ok with specifying it that
-     strongly?  *)
-  oppwP : forall w,
-            (* w <> min_word -> *)
-            (* ASZ: Commented out for now so as not to break all of
-               WordArith. *)
-            word_to_Z (- w)%w = (- word_to_Z w)%Z;
+  oppwP : forall x, (- Z_to_word x)%w = Z_to_word (- x)%Z;
 
-  (* ASZ: This is always true, but the other direction isn't necessarily. *)
-  (* ASZ: Maxime, should this be renamed to match the others?  I can't figure
-     out the conventions. *)
   word_to_Z_compare : forall x y,
     x <=> y = (word_to_Z x ?= word_to_Z y)%Z;
   
-  (* ASZ: We need to know that w1 < w2 for some w2 to protect against overflow
-     -- for instance, this is not true if w1 = INT_MAX. *)
-  (* ASZ: This can be a lemma once we fix addwP *)
   word_to_Z_succ : forall w1 w2,
     w1 < w2 -> word_to_Z (w1 + Z_to_word 1)%w = (word_to_Z w1 + 1)%Z
+
 }.
 
 Section WordArith.
@@ -211,30 +191,37 @@ Context {t : machine_types}
 Lemma word_to_Z_inj : injective word_to_Z.
 Proof. exact (can_inj word_to_ZK). Qed.
 
-Ltac toZ := apply word_to_Z_inj; repeat rewrite ?zerowP, ?addwP, ?oppwP.
-
 Lemma addwA : associative +%w.
 Proof.
-now intros w1 w2 w3; toZ; rewrite Z.add_assoc.
+intros x y z.
+rewrite <-(word_to_ZK x), <-(word_to_ZK y), <-(word_to_ZK z), !addwP.
+now rewrite Z.add_assoc.
 Qed.
 
 Lemma addwC : commutative +%w.
 Proof. 
-now intros w1 w2; toZ; rewrite Z.add_comm.
+intros x y.
+now rewrite <-(word_to_ZK x), <-(word_to_ZK y), !addwP, Z.add_comm.
 Qed.
 
 Lemma add0w : left_id 0 +%w.
 Proof.
-now intros w; toZ; rewrite Z.add_0_l.
+intros x.
+now rewrite <-(word_to_ZK x), <-(word_to_ZK 0), zerowP, addwP, Z.add_0_l.
 Qed.
 
 Lemma addNw : left_inverse 0 -%w +%w.
 Proof.
-now intros w; toZ; rewrite Z.add_opp_diag_l. (* What a name! *)
+intros x.
+rewrite <-(word_to_ZK x), <-(word_to_ZK 0), zerowP, oppwP, addwP.
+now rewrite Z.add_opp_diag_l. (* What a name! *)
 Qed.
 
 Lemma addw0 : right_id 0 +%w.
-Proof. now intros x; rewrite addwC, add0w. Qed.
+Proof.
+intros x.
+now rewrite <-(word_to_ZK x), <-(word_to_ZK 0), zerowP, addwP, Z.add_0_r.
+Qed.
 
 Lemma addwN : right_inverse 0 -%w +%w.
 Proof. now intros x; rewrite addwC, addNw. Qed.
