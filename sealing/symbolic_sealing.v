@@ -61,10 +61,10 @@ Definition sealing_handler (mv : MVec stag) : option (RVec stag) :=
   match mv with
   | mkMVec NOP       _ _ []           => Some (mkRVec none none)
   | mkMVec CONST     _ _ []           => Some (mkRVec none WORD)
-  | mkMVec MOV       _ _ [top1]       => Some (mkRVec none top1)
+  | mkMVec MOV       _ _ [tsrc]       => Some (mkRVec none tsrc)
   | mkMVec (BINOP _) _ _ [WORD; WORD] => Some (mkRVec none WORD)
-  | mkMVec LOAD      _ _ [WORD; top2] => Some (mkRVec none top2)
-  | mkMVec STORE     _ _ [WORD; top2] => Some (mkRVec none top2)
+  | mkMVec LOAD      _ _ [WORD; tmem] => Some (mkRVec none tmem)
+  | mkMVec STORE     _ _ [WORD; tsrc] => Some (mkRVec none tsrc)
   | mkMVec JUMP      _ _ [WORD]       => Some (mkRVec none none)
   | mkMVec BNZ       _ _ [WORD]       => Some (mkRVec none none)
   | mkMVec JAL       _ _ [WORD]       => Some (mkRVec none WORD)
