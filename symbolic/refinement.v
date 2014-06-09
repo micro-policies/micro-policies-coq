@@ -1328,6 +1328,24 @@ Proof.
   destruct_mvec_fields; simpl in *; now rewrite H.
 Qed.
 
+Ltac solve_refine_state :=
+  unfold in_user, word_lift in *; simpl in *;
+  repeat rewrite decodeK; simpl in *;
+  try match goal with
+  | USERREGS : user_regs_unchanged ?cregs _,
+    H : Concrete.get_reg ?cregs ?r = _ |- _ =>
+    simpl in USERREGS; rewrite (USERREGS r) in H
+  end;
+  repeat match goal with
+  | |- _ /\ _ =>
+    split;
+    eauto using user_mem_unchanged_refine_memory,
+                refine_registers_upd', user_regs_unchanged_refine_registers,
+                user_regs_unchanged_ra_in_user, ra_in_user_upd,
+                mvec_in_kernel_user_upd, wf_entry_points_user_upd,
+                no_syscall_no_entry_point, kernel_invariant_ra_upd
+  end.
+
 Lemma forward_simulation ast ast' cst :
   refine_state ast cst ->
   Symbolic.step table ast ast' ->
@@ -1374,15 +1392,8 @@ Proof.
         end
       end;
       try solve [eexists; split;
-      [apply exec_one; solve_concrete_step|
-       unfold in_user, word_lift in *; simpl in *;
-       repeat rewrite decodeK; simpl in *;
-       repeat match goal with
-       | |- _ /\ _ =>
-         split; eauto using mvec_in_kernel_user_upd, ra_in_user_upd,
-                            wf_entry_points_user_upd, no_syscall_no_entry_point,
-                            refine_registers_upd'
-       end]]
+                 [apply exec_one; solve_concrete_step|solve_refine_state]]
+
         (* || let op := current_instr_opcode in fail 3 "failed hit case" op *)
     |
       (* Cache miss case, fault handler will execute *)
@@ -1405,32 +1416,35 @@ Proof.
           try solve [eapply exec_until_weaken; eapply KEXEC];
           try solve [eapply exec_one; solve_concrete_step]
         )
-      |
-        unfold in_user, word_lift in *; simpl in *;
-        repeat rewrite decodeK; simpl in *;
-        try match goal with
-        | USERREGS : user_regs_unchanged ?cregs _,
-          H : Concrete.get_reg ?cregs ?r = _ |- _ =>
-          simpl in USERREGS; rewrite (USERREGS r) in H
-        end;
-        try solve [
-          repeat match goal with
-          | |- _ /\ _ =>
-            split;
-            eauto using user_mem_unchanged_refine_memory,
-                        refine_registers_upd', user_regs_unchanged_refine_registers,
-                        user_regs_unchanged_ra_in_user, ra_in_user_upd,
-                        mvec_in_kernel_user_upd, wf_entry_points_user_upd,
-                        no_syscall_no_entry_point, kernel_invariant_ra_upd
-          end
-        ]
-      ]] (* || let op := current_instr_opcode in fail 3 "failed miss case" op *)
+      | solve_refine_state ] ]
+      (* || let op := current_instr_opcode in fail 3 "failed miss case" op *)
     ]
   end.
 
-  admit.
+  - subst mvec.
+    destruct ast' as [amem' areg' [apc' tapc'] int'].
+    exploit syscalls_correct_allowed_case; eauto.
+    intros (cmem' & creg' & cache' & epc' &
+            KEXEC & REFM' & REFR' & CACHE' & MVEC' & RA' & WFENTRYPOINTS' & KINV').
+    eexists. split.
+    + eapply re_step; trivial; [solve_concrete_step|].
+      eapply exec_until_weaken.
+      eassumption.
+    + solve_refine_state.
 
-  admit.
+  - subst mvec.
+    destruct ast' as [amem' areg' [apc' tapc'] int'].
+    exploit syscalls_correct_allowed_case; eauto using user_regs_unchanged_refine_registers.
+    intros (cmem' & creg' & cache' & epc' &
+            KEXEC' & REFM'' & REFR'' & CACHE'' & MVEC'' & RA'' & WFENTRYPOINTS'' &
+            KINV''').
+    eexists. split.
+    + eapply re_step; trivial; [solve_concrete_step|].
+      eapply restricted_exec_trans.
+      { eapply exec_until_weaken. eassumption. }
+      eapply re_step; trivial; [solve_concrete_step|].
+      eapply exec_until_weaken. eassumption.
+    + solve_refine_state.
 
 Qed.
 
