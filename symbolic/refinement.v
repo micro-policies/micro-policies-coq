@@ -1218,6 +1218,23 @@ Ltac match_data :=
     destruct (PartMaps.upd_inv (Symbolic.reg_axioms (t := mt)) _ _ _ UPD) as [old Hold];
     apply REFR in Hold;
     assert (UPD' := refine_registers_upd' _ _ REFR UPD)
+
+  | REFM : refine_memory ?smem ?cmem,
+    USERMEM : user_mem_unchanged ?cmem ?cmem' |- _ =>
+    match goal with
+    | _ : refine_memory smem cmem' |- _ => fail 1
+    | |- _ => idtac
+    end;
+    pose proof (user_mem_unchanged_refine_memory REFM USERMEM)
+
+  | REFR : refine_registers ?sregs ?cregs,
+    USERREGS : user_regs_unchanged ?cregs ?cregs' |- _ =>
+    match goal with
+    | _ : refine_registers sregs cregs' |- _ => fail 1
+    | |- _ => idtac
+    end;
+    pose proof (user_regs_unchanged_refine_registers REFR USERREGS)
+
   end.
 
 Ltac user_data_unchanged :=
@@ -1346,6 +1363,18 @@ Ltac solve_refine_state :=
                 no_syscall_no_entry_point, kernel_invariant_ra_upd
   end.
 
+Ltac analyze_syscall :=
+  match goal with
+  | H : Symbolic.sem _ _ = Some ?ast' |- _ =>
+    destruct ast' as [amem' aregs' [apc' tapc'] int'];
+    exploit syscalls_correct_allowed_case; eauto;
+    intros;
+    repeat match goal with
+    | H : exists _, _ |- _ => destruct H
+    | H : _ /\ _ |- _ => destruct H
+    end
+  end.
+
 Lemma forward_simulation ast ast' cst :
   refine_state ast cst ->
   Symbolic.step table ast ast' ->
@@ -1381,16 +1410,7 @@ Proof.
       intros; subst rvec';
       unfold encode_mvec, encode_rvec, rvec_of_urvec in LOOKUP; simpl in *;
       match_data;
-      try match op with
-      | JAL =>
-        destruct ast' as [amem' aregs' apc'];
-        exploit syscalls_correct_allowed_case; eauto;
-        intros; clear tnone_correct;
-        repeat match goal with
-        | H : exists _, _ |- _ => destruct H
-        | H : _ /\ _ |- _ => destruct H
-        end
-      end;
+      try analyze_syscall;
       try solve [eexists; split;
                  [apply exec_one; solve_concrete_step|solve_refine_state]]
 
@@ -1406,8 +1426,9 @@ Proof.
         as ([? ? ? [? ?] ?] &
             KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
       simpl in PC'; inv PC';
-      generalize (user_mem_unchanged_refine_memory REFM USERMEM); intros; match_data;
+      match_data;
       unfold encode_mvec, encode_rvec, rvec_of_urvec in *; simpl in *;
+      try analyze_syscall;
       try solve [eexists; split;
       [
         eapply re_step; trivial; [solve_concrete_step|];
@@ -1421,24 +1442,13 @@ Proof.
     ]
   end.
 
-  - subst mvec.
-    destruct ast' as [amem' areg' [apc' tapc'] int'].
-    exploit syscalls_correct_allowed_case; eauto.
-    intros (cmem' & creg' & cache' & epc' &
-            KEXEC & REFM' & REFR' & CACHE' & MVEC' & RA' & WFENTRYPOINTS' & KINV').
-    eexists. split.
+  - eexists. split.
     + eapply re_step; trivial; [solve_concrete_step|].
       eapply exec_until_weaken.
       eassumption.
     + solve_refine_state.
 
-  - subst mvec.
-    destruct ast' as [amem' areg' [apc' tapc'] int'].
-    exploit syscalls_correct_allowed_case; eauto using user_regs_unchanged_refine_registers.
-    intros (cmem' & creg' & cache' & epc' &
-            KEXEC' & REFM'' & REFR'' & CACHE'' & MVEC'' & RA'' & WFENTRYPOINTS'' &
-            KINV''').
-    eexists. split.
+  - eexists. split.
     + eapply re_step; trivial; [solve_concrete_step|].
       eapply restricted_exec_trans.
       { eapply exec_until_weaken. eassumption. }
