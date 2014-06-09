@@ -101,11 +101,17 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 
   imm_to_word i := i;
 
+  zero_word := repr 0;
+
+  max_word := repr max_unsigned;
+
   Z_to_word i := repr i;
 
   word_to_Z i := signed i;
 
   add_word := add;
+
+  opp_word := neg;
 
   eq_word x y := Int32.eq_dec x y;
 

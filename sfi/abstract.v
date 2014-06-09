@@ -49,7 +49,7 @@ Theorem word_succ_le_lt : forall x y, x < y -> x + W1 <= y.
 Proof.
  intros.
  unfold le; rewrite word_to_Z_compare;
-   fold (Zle (word_to_Z (x + W1)%word) (word_to_Z y)).
+   fold (Zle (word_to_Z (x + W1)%w) (word_to_Z y)).
  erewrite word_to_Z_succ by eassumption.
  unfold lt in *; rewrite word_to_Z_compare in *;
    fold (Zlt (word_to_Z x) (word_to_Z y)) in *;

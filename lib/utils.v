@@ -1912,3 +1912,117 @@ Fixpoint sequence A n (v : Vector.t (option A) n) : option (Vector.t A n) :=
   end.
 
 End vectors.
+
+(* Borrowed from ssr *)
+Module Option.
+
+Definition apply aT rT (f : aT -> rT) x u :=
+  match u with Some y => f y | _ => x end.
+
+Definition default T := apply (fun x : T => x).
+
+Definition bind aT rT (f : aT -> option rT) := apply f None.
+
+Definition map aT rT (f : aT -> rT) := bind (fun x => Some (f x)).
+
+End Option.
+
+Notation oapp := Option.apply.
+Notation odflt := Option.default.
+Notation obind := Option.bind.
+Notation omap := Option.map.
+Notation some := (@Some _) (only parsing).
+
+Section Injections.
+
+(* rT must come first so we can use @ to mitigate the Coq 1st order   *)
+(* unification bug (e..g., Coq can't infer rT from a "cancel" lemma). *)
+Variables (rT aT : Type) (f : aT -> rT).
+
+Definition injective := forall x1 x2, f x1 = f x2 -> x1 = x2.
+
+Definition pcancel g := forall x, g (f x) = Some x.
+
+Definition ocancel (g : aT -> option rT) h := forall x, oapp h x (g x) = x.
+
+Definition cancel g := forall x, g (f x) = x.
+
+Lemma can_pcan g : cancel g -> pcancel (fun y => Some (g y)).
+Proof. now intros fK x; rewrite fK. Qed.
+
+Lemma pcan_inj g : pcancel g -> injective.
+Proof.
+intros fK x y eq_f.
+apply (f_equal g) in eq_f.
+rewrite !fK in eq_f.
+now injection eq_f as ->.
+Qed.
+
+Lemma can_inj g : cancel g -> injective.
+Proof.
+intros can_g; apply can_pcan in can_g.
+now revert can_g; apply pcan_inj.
+Qed.
+
+End Injections.
+
+Lemma Some_inj {T} : injective (@Some T).
+Proof. now intros x y H; injection H. Qed.
+
+(* Notations for argument transpose *)
+Notation "f ^~ y" := (fun x => f x y)
+  (at level 10, y at level 8, no associativity, format "f ^~  y") : fun_scope.
+Notation "@^~ x" := (fun f => f x)
+  (at level 10, x at level 8, no associativity, format "@^~  x") : fun_scope.
+
+Section OperationProperties.
+
+Open Scope fun_scope.
+
+Variables S T R : Type.
+
+Section SopTisR.
+Implicit Type op :  S -> T -> R.
+Definition left_inverse e inv op := forall x, op (inv x) x = e.
+Definition right_inverse e inv op := forall x, op x (inv x) = e.
+Definition left_injective op := forall x, injective (op^~ x).
+Definition right_injective op := forall y, injective (op y).
+End SopTisR.
+
+Section SopTisS.
+Implicit Type op :  S -> T -> S.
+Definition right_id e op := forall x, op x e = x.
+Definition left_zero z op := forall x, op z x = z.
+Definition right_commutative op := forall x y z, op (op x y) z = op (op x z) y.
+Definition left_distributive op add :=
+  forall x y z, op (add x y) z = add (op x z) (op y z).
+Definition right_loop inv op := forall y, cancel (op^~ y) (op^~ (inv y)).
+Definition rev_right_loop inv op := forall y, cancel (op^~ (inv y)) (op^~ y).
+End SopTisS.
+
+Section SopTisT.
+Implicit Type op :  S -> T -> T.
+Definition left_id e op := forall x, op e x = x.
+Definition right_zero z op := forall x, op x z = z.
+Definition left_commutative op := forall x y z, op x (op y z) = op y (op x z).
+Definition right_distributive op add :=
+  forall x y z, op x (add y z) = add (op x y) (op x z).
+Definition left_loop inv op := forall x, cancel (op x) (op (inv x)).
+Definition rev_left_loop inv op := forall x, cancel (op (inv x)) (op x).
+End SopTisT.
+
+Section SopSisT.
+Implicit Type op :  S -> S -> T.
+Definition self_inverse e op := forall x, op x x = e.
+Definition commutative op := forall x y, op x y = op y x.
+End SopSisT.
+
+Section SopSisS.
+Implicit Type op :  S -> S -> S.
+Definition idempotent op := forall x, op x x = x.
+Definition associative op := forall x y z, op x (op y z) = op (op x y) z.
+Definition interchange op1 op2 :=
+  forall x y z t, op1 (op2 x y) (op2 z t) = op2 (op1 x z) (op1 y t).
+End SopSisS.
+
+End OperationProperties.

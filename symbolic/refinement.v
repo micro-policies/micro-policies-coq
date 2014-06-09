@@ -774,7 +774,7 @@ Hypothesis syscalls_correct_allowed_case :
     exists cmem' creg' cache' epc',
       kernel_user_exec (Concrete.mkState cmem
                                          (Concrete.upd_reg creg ra
-                                                           (old_pc + Z_to_word 1)%word@(encode (USER tpc'' ic)))
+                                                           (old_pc + Z_to_word 1)%w@(encode (USER tpc'' ic)))
                                          cache
                                          addr@(encode (USER tpc''' true)) epc)
                        (Concrete.mkState cmem' creg' cache'
@@ -839,7 +839,7 @@ Lemma state_on_syscalls st st' :
     exists r i tpc ic ti t1 old told trpc tr,
       Concrete.regs st' =
       Concrete.upd_reg (Concrete.regs st) ra
-                       (common.val (Concrete.pc st) + Z_to_word 1)%word@(encode (USER tr false)) /\
+                       (common.val (Concrete.pc st) + Z_to_word 1)%w@(encode (USER tr false)) /\
       common.tag (Concrete.pc st') = encode (USER trpc true) /\
       common.tag (Concrete.pc st) = encode (USER tpc ic) /\
       Concrete.get_mem (Concrete.mem st) (common.val (Concrete.pc st)) =

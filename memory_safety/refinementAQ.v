@@ -89,10 +89,10 @@ reflexivity.
 Admitted.
 
 Lemma refine_ptr_rev b base nonce w : mi b = Some (base,nonce) ->
-  refine_val (Abstract.ValPtr (b, sub_word w base)) w (PTR nonce).
+  refine_val (Abstract.ValPtr (b, w - base)%w) w (PTR nonce).
 Proof.
 intros ?.
-assert (addwK : add_word base (sub_word w base) = w).
+assert (addwK : add_word base (w - base)%w = w).
   admit.
 rewrite <-addwK at 2.
 now constructor.
@@ -101,14 +101,14 @@ Qed.
 Definition refine_memory (amem : Abstract.memory mt) (qamem : QuasiAbstract.memory mt) :=
   forall b base nonce off, mi b = Some (base,nonce) ->
   exists v w ty, Abstract.get_memv amem (b,off) = Some v
-    /\ QuasiAbstract.get_mem qamem (base+off)%word = Some w@M(nonce,ty)
+    /\ QuasiAbstract.get_mem qamem (base+off)%w = Some w@M(nonce,ty)
     /\ refine_val v w ty.
 
 Lemma refine_memory_get amem qamem (b : Abstract.block) (base nonce off : word mt) 
            (x : Abstract.value mt) w ty :
          refine_memory amem qamem ->
          mi b = Some (base,nonce) ->
-         QuasiAbstract.get_mem qamem (base + off)%word = Some w@M(nonce,ty) ->
+         QuasiAbstract.get_mem qamem (base + off)%w = Some w@M(nonce,ty) ->
          refine_val x w ty ->
          Abstract.get_memv amem (b, off) = Some x.
 Proof.
@@ -152,7 +152,11 @@ Qed.
 Lemma get_mem_memv amem base off v fr : Abstract.get_mem amem base = Some fr ->
   index_list_Z (word_to_Z off) fr = Some v ->
   Abstract.get_memv amem (base,off) = Some v.
-Admitted.
+Proof.
+intros get_base index_off.
+unfold Abstract.get_memv.
+now simpl; rewrite get_base.
+Qed.
 
 Lemma refine_memory_get' amem qamem (w1 w2 w3 w4 : word mt) pt ty :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
@@ -185,7 +189,53 @@ Lemma refine_memory_upd amem qamem qamem' w1 w2 pt ty n fr fr' x :
          exists amem', Abstract.upd_mem amem (fst pt) fr' = Some amem'
          /\ refine_memory amem' qamem'.
 Proof.
-admit.
+intros rmem rpt upd_w1 get_pt update_pt rx.
+destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
+exists amem'; split; try assumption.
+intros b base nonce off mi_b.
+destruct (b =? fst pt)%Z eqn:eq_b.
+  apply Z.eqb_eq in eq_b.
+  rewrite eq_b.
+  unfold Abstract.get_memv.
+  simpl; rewrite (PartMaps.get_upd_eq upd_pt).
+  destruct (eq_word off (snd pt)) as [->|neq_off].
+    { exists x; exists w2; exists ty; repeat split; try assumption.
+      + now rewrite (update_list_Z_spec _ _ _ update_pt).
+      + assert (eq_w1 : (base + snd pt)%w = w1).
+          replace pt with (fst pt, snd pt) in rpt.
+            now inversion rpt; congruence.
+          now destruct pt.
+        rewrite eq_w1.
+        rewrite (PartMaps.get_upd_eq upd_w1).
+        assert (eq_n : n = nonce).
+          replace pt with (fst pt, snd pt) in rpt.
+            now inversion rpt; congruence.
+          now destruct pt.
+        congruence. }
+  rewrite <-(update_list_Z_spec2 _ _ update_pt).
+    { destruct (rmem b base nonce off mi_b) as (v & w & ty' & get_b & ? & ?).
+      exists v; exists w; exists ty'; repeat split; try assumption.
+      + unfold Abstract.get_memv in get_b. 
+        simpl in get_b.
+        now rewrite eq_b, get_pt in get_b.
+      + assert (neq_w1 : (base + off)%w <> w1).
+          admit.
+        now rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
+    }
+  (* TODO: generic lemmas on injectivity and cancellation *)
+  admit.
+destruct (rmem b base nonce off mi_b) as (v & w & ty' & get_b & ? & ?).
+exists v; exists w; exists ty'; repeat split; try assumption.
+  unfold Abstract.get_memv in *.
+  assert (neq_b : b <> fst pt).
+    admit.
+  rewrite (PartMaps.get_upd_neq neq_b upd_pt).
+  simpl in *.
+  destruct (Abstract.get_mem amem b); try discriminate.
+  now rewrite get_b.
+assert (neq_w1 : (base + off)%w <> w1).
+  admit.
+now rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
 Qed.
 
 Definition refine_registers (aregs : Abstract.registers mt)
@@ -314,11 +364,10 @@ Hint Resolve refine_memory_get_int.
 (* Should the blocks of the abstract machine be words or integers? *) (* In the
 second case, the axiom below should be refined. using a bound on the memory
 size. *)
-Axiom addwA : forall w1 w2 w3, (w1 + (w2 + w3) = w1 + w2 + w3)%word.
 
 Lemma refine_pc_inv mi nonce apcb apci pc :
   refine_val mi (Abstract.ValPtr (apcb, apci)) pc (PTR nonce) ->
-  exists base, mi apcb = Some (base, nonce) /\ (base + apci)%word = pc.
+  exists base, mi apcb = Some (base, nonce) /\ (base + apci)%w = pc.
 Proof.
 intros H; inversion H.
 now exists base; split.
