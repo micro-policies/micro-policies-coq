@@ -18,8 +18,9 @@ Open Scope Z_scope.
 
 Section WithClasses.
 
-Context (t : machine_types).
-Context {ops : machine_ops t}.
+Context (t    : machine_types)
+        {ops  : machine_ops t}
+        {spec : machine_ops_spec ops}.
 Existing Instance eq_word.
 Existing Instance ord_word.
 
@@ -38,32 +39,6 @@ Local Notation Suc := Datatypes.S.
 (* TODO abstract and reify *)
 Require Import ZArith.
 
-Hypothesis word_to_Z_succ : forall x y,
-  x < y -> word_to_Z (x + W1) = (word_to_Z x + 1)%Z.
-
-Hypothesis word_to_Z_compare : forall x y,
-  x <=> y = (word_to_Z x ?= word_to_Z y)%Z.
-
-Theorem word_succ_le_lt : forall x y, x < y -> x + W1 <= y.
-Proof.
- intros.
- unfold le; rewrite word_to_Z_compare;
-   fold (Zle (word_to_Z (x + W1)%w) (word_to_Z y)).
- erewrite word_to_Z_succ by eassumption.
- unfold lt in *; rewrite word_to_Z_compare in *;
-   fold (Zlt (word_to_Z x) (word_to_Z y)) in *;
-   omega.
-Qed.
-
-Theorem word_succ_ltb_bounded : forall x y,
-  x <? y = true -> x <? x + W1 = true.
-Proof.
-  intros x y; repeat rewrite ltb_lt; intros LT.
-  unfold lt; rewrite word_to_Z_compare;
-    fold (Zlt (word_to_Z x) (word_to_Z (x + W1))).
-  erewrite word_to_Z_succ by eassumption; omega.
-Qed.
-
 Fixpoint range' (meas : nat) (l h : word) : list word :=
   match meas , l <=> h with
     | O         , _  => []
@@ -80,10 +55,10 @@ Proof.
   simpl; rewrite IHmeas.
   destruct meas; simpl; [reflexivity|].
   destruct (l + W1 <=> h) eqn:CMP';
-    try solve [ reflexivity
+    solve [ reflexivity
           | rewrite andb_true_r; eapply word_succ_ltb_bounded;
             (* I had to split the `eapply' up; I don't know why. *)
-            eapply ltb_lt,CMP ].
+            eapply ltb_lt,CMP ].  
 Qed.
 
 Theorem range'_elts_ok : forall meas l h e,
@@ -123,7 +98,7 @@ Proof.
   assert (meas_def : meas = S (Z.to_nat (word_to_Z h - word_to_Z l))). {
     rewrite Z2Nat.inj_add in meas_def'; try solve [vm_compute; inversion 1].
     - rewrite plus_comm in meas_def'; simpl in meas_def'; exact meas_def'.
-    - apply Z.le_0_sub; unfold Zle; rewrite <- word_to_Z_compare; exact LH.
+    - apply Z.le_0_sub, word_to_Z_le; exact LH.
   }
   clear meas_def'; gdep e; gdep h; gdep l; induction meas; intros;
     simpl in *; inversion meas_def; subst; clear meas_def.
@@ -139,8 +114,8 @@ Proof.
          by omega.
     rewrite <- Z2Nat.inj_succ.
     + f_equal; omega.
-    + rewrite Z.sub_1_r; apply Zlt_0_le_0_pred,Z.lt_0_sub.
-      unfold Zlt; rewrite <- word_to_Z_compare; exact CMP.
+    + rewrite Z.sub_1_r; apply Zlt_0_le_0_pred,Z.lt_0_sub,word_to_Z_lt;
+        exact CMP.
   - contradiction.
 Qed.
 

@@ -156,7 +156,16 @@ Class machine_ops_spec t (ops : machine_ops t) := {
 
   addwP : forall w1 w2, word_to_Z (w1 + w2)%w = (word_to_Z w1 + word_to_Z w2)%Z;
 
-  oppwP : forall w, word_to_Z (- w)%w = (- word_to_Z w)%Z
+  oppwP : forall w, word_to_Z (- w)%w = (- word_to_Z w)%Z;
+
+  (* ASZ: We need to know that w1 < w2 for some w2 to protect against overflow
+     -- for instance, this is not true if w1 = INT_MAX. *)
+  word_to_Z_succ : forall w1 w2,
+    w1 < w2 -> word_to_Z (add_word w1 (Z_to_word 1)) = (word_to_Z w1 + 1)%Z;
+
+  (* ASZ: This is always true, but the other direction isn't necessarily. *)
+  word_to_Z_compare : forall x y,
+    x <=> y = (word_to_Z x ?= word_to_Z y)%Z
 }.
 
 Section WordArith.
@@ -324,3 +333,75 @@ End Coding.
 Record atom V T := Atom { val : V; tag : T }.
 
 Notation "x @ t" := (Atom x t) (at level 5, format "x '@' t").
+
+Section Properties.
+
+Context {t : machine_types}
+        {op : machine_ops t}
+        {ops : machine_ops_spec op}.
+
+Local Open Scope Z.
+Local Open Scope word_scope.
+Local Open Scope ordered.
+Local Notation W1 := (Z_to_word 1).
+
+Local Ltac reflect thm :=
+  intros until 0;
+  repeat first [ rewrite ltb_lt | rewrite gtb_gt
+               | rewrite leb_le | rewrite geb_ge ];
+  apply thm.
+
+Local Ltac comparison :=
+  intros until 0; unfold lt,gt,le,ge,Zlt,Zgt,Zle,Zge;
+  rewrite word_to_Z_compare; split; auto.
+
+Ltac comparison_b :=
+  intros; unfold ltb,gtb,leb,geb,Z.ltb,Z.gtb,Z.leb,Z.geb;
+  rewrite word_to_Z_compare; destruct (word_to_Z _ ?= word_to_Z _); reflexivity.
+
+Theorem word_to_Z_lt : forall x y, x <  y <-> (word_to_Z x <  word_to_Z y)%Z.
+Proof. comparison. Qed.
+
+Theorem word_to_Z_gt : forall x y, x >  y <-> (word_to_Z x >  word_to_Z y)%Z.
+Proof. comparison. Qed.
+
+Theorem word_to_Z_le : forall x y, x <= y <-> (word_to_Z x <= word_to_Z y)%Z.
+Proof. comparison. Qed.
+
+Theorem word_to_Z_ge : forall x y, x >= y <-> (word_to_Z x >= word_to_Z y)%Z.
+Proof. comparison. Qed.
+
+Theorem word_to_Z_ltb : forall x y, x <?  y = (word_to_Z x <?  word_to_Z y)%Z.
+Proof. comparison_b. Qed.
+
+Theorem word_to_Z_gtb : forall x y, x >?  y = (word_to_Z x >?  word_to_Z y)%Z.
+Proof. comparison_b. Qed.
+
+Theorem word_to_Z_leb : forall x y, x <=? y = (word_to_Z x <=? word_to_Z y)%Z.
+Proof. comparison_b. Qed.
+
+Theorem word_to_Z_geb : forall x y, x >=? y = (word_to_Z x >=? word_to_Z y)%Z.
+Proof. comparison_b. Qed.
+
+(* The x < y constraint in theormes guarantees that x is not INT_MAX. *)
+
+Theorem word_succ_le_lt : forall x y, x < y -> x + W1 <= y.
+Proof.
+ intros; erewrite word_to_Z_le, word_to_Z_succ by eassumption.
+ rewrite word_to_Z_lt in *; omega.
+Qed.
+
+Theorem word_succ_leb_ltb : forall x y, x <? y = true -> x + W1 <=? y = true.
+Proof. reflect word_succ_le_lt. Qed.
+
+Theorem word_succ_lt_bounded : forall x y,
+  x < y -> x < x + W1.
+Proof.
+  intros; erewrite word_to_Z_lt, word_to_Z_succ by eassumption; omega.
+Qed.
+
+Theorem word_succ_ltb_bounded : forall x y,
+  x <? y = true -> x <? x + W1 = true.
+Proof. reflect word_succ_lt_bounded. Qed.
+
+End Properties.
