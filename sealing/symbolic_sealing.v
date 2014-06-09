@@ -110,6 +110,8 @@ Import DoNotation.
 (* BCP: Added this, using Arthur's new internal_state field... *)
 Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc int := s in
+  (* CH: Shouldn't we be checking for overflows here
+         and failing if we detect one? *)
   let int' := add_word int (Z_to_word 1) in
   do reg' <- upd_reg reg syscall_ret (int@KEY);
   Some (Symbolic.State mem reg' pc int').
