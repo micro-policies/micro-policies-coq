@@ -36,6 +36,7 @@ memory_safety/refinementAQ.v
 # memory-safety/fault_handler_spec.v
 
 sfi/abstract.v
+sfi/ranges.v
 sfi/set_utils.v
 sfi/list_utils.v
 

@@ -84,6 +84,7 @@ VFILES:=sealing/symbolic_sealing.v\
   sealing/abstract.v\
   sfi/list_utils.v\
   sfi/set_utils.v\
+  sfi/ranges.v\
   sfi/abstract.v\
   memory_safety/refinementAQ.v\
   memory_safety/abstract.v\
