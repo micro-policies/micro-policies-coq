@@ -8,6 +8,7 @@ Require Import Coq.Classes.SetoidDec.
 
 Import ListNotations.
 
+Require Import Coqlib.
 Require Import FiniteMaps.
 Require Import common.
 Require Import concrete.
@@ -99,17 +100,20 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
          | (PUTTAG, r1, r2, r3, _) => PutTag _ r1 r2 r3
          end;
 
-  Z_to_imm z := repr z;
+  Z_to_imm := repr;
 
   imm_to_word i := i;
 
   zero_word := repr 0;
 
-  max_word := repr max_unsigned;
+  min_word := repr min_signed;
+  (* ASZ: If this is `max_unsigned`, then `word_to_Z` needs to be `unsigned`,
+     but then `opp_word` breaks. *)
+  max_word := repr max_signed;
 
-  Z_to_word i := repr i;
+  Z_to_word := repr;
 
-  word_to_Z i := signed i;
+  word_to_Z := signed;
 
   add_word := add;
 
@@ -124,6 +128,80 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 
 |}.
 (* Removing Program causes Coq not to find concrete_int_32_t *)
+
+Lemma unpack_pack : forall x1 x2 x3 x4 x5,
+  unpack (pack x1 x2 x3 x4 x5) = Some (x1,x2,x3,x4,x5).
+Proof.
+  (* TODO Prove our packing function correct. *)
+Admitted.
+
+Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
+Proof.
+  constructor.
+  - unfold encode_instr,decode_instr,concrete_int_32_ops;
+      intros; destruct i; rewrite unpack_pack; reflexivity.
+  - vm_compute; inversion 1.
+  - reflexivity.
+  - simpl. apply repr_signed.
+  - simpl; intros. apply signed_repr. compute -[Zle] in *; omega.
+  - reflexivity.
+  - intros.
+    assert (bounded : (word_to_Z min_word          <=
+                       word_to_Z w1 + word_to_Z w2 <=
+                       word_to_Z max_word)%Z) by admit.
+    (* ASZ: The above, or something much like it, will be a parameter to this
+       function once we fix its type. *)
+    simpl in *.
+    assert (min_signed <= max_signed)%Z by
+      (generalize (signed_range zero); omega).
+    repeat rewrite signed_repr in bounded by auto with zarith.
+    rewrite add_signed; apply signed_repr; assumption.
+  - (* This isn't true.  An example: *)
+    intros.
+    assert (ok : w <> min_word) by admit.
+    (* ASZ: The above, or something much like it, will be a parameter to this
+       function once we fix its type. *)
+    simpl.
+    rewrite <- sub_zero_r, sub_signed; apply signed_repr.
+    generalize (signed_range w); intros [low high].
+    split; apply Z.opp_le_mono; rewrite Z.opp_involutive.
+    + eapply Zle_trans; [eassumption|]. vm_compute; inversion 1.
+    + replace (- max_signed)%Z  with (min_signed + 1)%Z by reflexivity.
+      assert (signed w <> min_signed). {
+        intros EQ; destruct w as [w pw]; unfold signed in *; simpl in *. 
+        destruct (zlt w half_modulus) as [LT | GE].
+        - subst; vm_compute in pw; destruct pw; discriminate.
+        - apply ok, mkint_eq.
+          replace w with (min_signed + modulus)%Z by omega.
+          reflexivity.
+      }
+      omega.
+  - simpl; intros.
+    unfold Int32Ordered.int_compare,lt.
+    destruct (x == y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
+    destruct (zlt (signed x) (signed y)) as [LT | GE]; [auto with zarith|].
+    unfold Zge in GE; destruct (_ ?= _)%Z eqn:CMP.
+    + apply Z.compare_eq in CMP.
+      destruct x as [x px], y as [y py].
+      unfold signed,unsigned in CMP; simpl in CMP.
+      destruct (zlt x half_modulus),(zlt y half_modulus); ssubst;
+        solve [omega
+              | contradict NE; apply mkint_eq; solve [reflexivity | omega]].
+    + congruence.
+    + reflexivity.
+  - simpl; intros w1 w2 LT.
+    unfold ordered.lt, compare,
+           Int32Ordered.int_ordered, Int32Ordered.int_compare,
+           lt
+      in LT.
+    destruct (w1 == w2) as [EQ | NE],
+             (zlt (signed w1) (signed w2)) as [ZLT | ZGT];
+      try discriminate; clear LT; rename ZLT into LT.
+    assert (in_range : (min_signed <= signed w1 + 1 <= max_signed)%Z) by
+      (generalize (signed_range w1),(signed_range w2); omega).
+    rewrite <- (signed_repr _ in_range), add_signed.
+    reflexivity.
+Defined.
 
 Import Concrete.
 

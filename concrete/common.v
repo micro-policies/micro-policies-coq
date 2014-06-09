@@ -111,10 +111,16 @@ Class machine_ops (t : machine_types) := {
   Z_to_imm : Z -> imm t;
   imm_to_word : imm t -> word t;
 
-  (* CH: I think it would be nicer to have Z_to_imm be partial *)
+  (* ASZ: Why is this in the class, rather than a free function defined as
+     `Z_to_word 0`? *)
   zero_word : word t;
 
+  (* ASZ: I think we need this to be able to talk about overflow *)
+  min_word : word t;
+  (* ASZ: Are words signed or unsigned?  Given `opp_word`, I think signed.  (See
+     `int_32.v` for why this comes up here.) *)
   max_word : word t;
+  (* CH: I think it would be nicer to have Z_to_imm be partial *)
   Z_to_word : Z -> word t;
   word_to_Z : word t -> Z;
 
@@ -140,10 +146,18 @@ Delimit Scope word_scope with w.
 
 (* CH: At some point should prove or at least test that the concrete
    instantiation satisfies these *)
+(* ASZ: We now (June 9, 2014) have proofs of everything except decodeK (aka "the
+   hard one") for the 32-bit machine in int_32.v.  (There are some sticky
+   details with the preconditions for addwP and oppwP; the code in int_32.v
+   asserts the commented-out conditions locally, so we know the suggested
+   preconditions work.) *)
 Class machine_ops_spec t (ops : machine_ops t) := {
 
   decodeK : forall i, decode_instr (encode_instr i) = Some i;
 
+  (* ASZ: Not sure if this is the right bound to use. *)
+  min_word_bound : (word_to_Z min_word <= 0)%Z;
+  
   max_word_bound : (15 < word_to_Z max_word)%Z;
 
   word_to_ZK : forall w, Z_to_word (word_to_Z w) = w;
@@ -154,18 +168,36 @@ Class machine_ops_spec t (ops : machine_ops t) := {
 
   zerowP : word_to_Z 0%w = 0%Z;
 
-  addwP : forall w1 w2, word_to_Z (w1 + w2)%w = (word_to_Z w1 + word_to_Z w2)%Z;
+  (* ASZ: We need a no-overflow condition for this to be true.  I think the
+     given one is right, as long as we add a min_word. *)
+  addwP : forall w1 w2,
+            (* (word_to_Z min_word          <=
+                word_to_Z w1 + word_to_Z w2 <=
+                word_to_Z max_word)%Z -> *)
+            (* ASZ: Commented out for now so as not to break all of
+               WordArith. *)
+            word_to_Z (w1 + w2)%w = (word_to_Z w1 + word_to_Z w2)%Z;
 
-  oppwP : forall w, word_to_Z (- w)%w = (- word_to_Z w)%Z;
-
-  (* ASZ: We need to know that w1 < w2 for some w2 to protect against overflow
-     -- for instance, this is not true if w1 = INT_MAX. *)
-  word_to_Z_succ : forall w1 w2,
-    w1 < w2 -> word_to_Z (add_word w1 (Z_to_word 1)) = (word_to_Z w1 + 1)%Z;
+  (* ASZ: This is false without a no-overflow condition.  The given one is true
+     for 2's-complement arithmetic, but are we ok with specifying it that
+     strongly?  *)
+  oppwP : forall w,
+            (* w <> min_word -> *)
+            (* ASZ: Commented out for now so as not to break all of
+               WordArith. *)
+            word_to_Z (- w)%w = (- word_to_Z w)%Z;
 
   (* ASZ: This is always true, but the other direction isn't necessarily. *)
+  (* ASZ: Maxime, should this be renamed to match the others?  I can't figure
+     out the conventions. *)
   word_to_Z_compare : forall x y,
-    x <=> y = (word_to_Z x ?= word_to_Z y)%Z
+    x <=> y = (word_to_Z x ?= word_to_Z y)%Z;
+  
+  (* ASZ: We need to know that w1 < w2 for some w2 to protect against overflow
+     -- for instance, this is not true if w1 = INT_MAX. *)
+  (* ASZ: This can be a lemma once we fix addwP *)
+  word_to_Z_succ : forall w1 w2,
+    w1 < w2 -> word_to_Z (w1 + Z_to_word 1)%w = (word_to_Z w1 + 1)%Z
 }.
 
 Section WordArith.
@@ -334,7 +366,7 @@ Record atom V T := Atom { val : V; tag : T }.
 
 Notation "x @ t" := (Atom x t) (at level 5, format "x '@' t").
 
-Section Properties.
+Section WordCompare.
 
 Context {t : machine_types}
         {op : machine_ops t}
@@ -404,4 +436,4 @@ Theorem word_succ_ltb_bounded : forall x y,
   x <? y = true -> x <? x + W1 = true.
 Proof. reflect word_succ_lt_bounded. Qed.
 
-End Properties.
+End WordCompare.
