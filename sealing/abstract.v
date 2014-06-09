@@ -19,6 +19,8 @@ Class abstract_types := {
   
   key : Type;
   extra_state : Type
+(* APT: It seems weird to abstract over extra_state at this machine level.
+        Why not just be explicit about whatever concrete state is needed? *)
 }.
 
 Context {abt : abstract_types}.
@@ -68,12 +70,15 @@ Record state := State {
    externally).  We need to decide what is the cleanest way to set
    this up.  (Looking at it right now, I don't see much reason for the
    extra generality.) *)
+(* APT: +1 for being less general *)
 
 Class key_generator := 
   { mkkey_f : extra_state -> option (extra_state * key) }.
 
 Context `{key_generator}.
 
+(* APT: mkkey_f seems badly under-specified, e.g., it might generate the same key twice.  *)
+   
 Definition syscall_addrs := [mkkey_addr; seal_addr; unseal_addr].
 
 Notation "x '=?' y" := (x = Some y) (at level 99).
