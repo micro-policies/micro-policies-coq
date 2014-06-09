@@ -135,6 +135,34 @@ Proof.
   (* TODO Prove our packing function correct. *)
 Admitted.
 
+(* This belongs in CompCert's integers, but alas. *)
+Lemma add_repr : forall x y, (add (repr x) (repr y)) = repr (x + y)%Z.
+Proof.
+  intros. rewrite add_signed. unfold repr,signed; simpl.
+  apply mkint_eq. repeat rewrite Z_mod_modulus_eq.
+  destruct (zlt (x mod modulus) half_modulus),
+           (zlt (y mod modulus) half_modulus).
+  - rewrite <- Zplus_mod; reflexivity.
+  - replace (x mod modulus + (y mod modulus - modulus))%Z
+       with (x mod modulus + y mod modulus - modulus)%Z
+         by omega.
+    rewrite Zminus_mod, <- Zplus_mod.
+    rewrite Z_mod_same_full, Zminus_0_r.
+    rewrite Zmod_mod; reflexivity.
+  - replace (x mod modulus - modulus + y mod modulus)%Z
+       with (x mod modulus + y mod modulus - modulus)%Z
+         by omega.
+    rewrite Zminus_mod, <- Zplus_mod.
+    rewrite Z_mod_same_full, Zminus_0_r.
+    rewrite Zmod_mod; reflexivity.
+  - replace (x mod modulus - modulus + (y mod modulus - modulus))%Z
+       with (x mod modulus + y mod modulus - (2*modulus))%Z
+         by omega.
+    rewrite Zminus_mod, <- Zplus_mod.
+    rewrite Zmult_mod, Z_mod_same_full, Zmult_0_r, Zminus_0_r.
+    rewrite Zmod_mod; reflexivity.
+Qed.
+
 Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
   constructor.
@@ -145,37 +173,8 @@ Proof.
   - simpl. apply repr_signed.
   - simpl; intros. apply signed_repr. compute -[Zle] in *; omega.
   - reflexivity.
-  - intros.
-    assert (bounded : (word_to_Z min_word          <=
-                       word_to_Z w1 + word_to_Z w2 <=
-                       word_to_Z max_word)%Z) by admit.
-    (* ASZ: The above, or something much like it, will be a parameter to this
-       function once we fix its type. *)
-    simpl in *.
-    assert (min_signed <= max_signed)%Z by
-      (generalize (signed_range zero); omega).
-    repeat rewrite signed_repr in bounded by auto with zarith.
-    rewrite add_signed; apply signed_repr; assumption.
-  - (* This isn't true.  An example: *)
-    intros.
-    assert (ok : w <> min_word) by admit.
-    (* ASZ: The above, or something much like it, will be a parameter to this
-       function once we fix its type. *)
-    simpl.
-    rewrite <- sub_zero_r, sub_signed; apply signed_repr.
-    generalize (signed_range w); intros [low high].
-    split; apply Z.opp_le_mono; rewrite Z.opp_involutive.
-    + eapply Zle_trans; [eassumption|]. vm_compute; inversion 1.
-    + replace (- max_signed)%Z  with (min_signed + 1)%Z by reflexivity.
-      assert (signed w <> min_signed). {
-        intros EQ; destruct w as [w pw]; unfold signed in *; simpl in *. 
-        destruct (zlt w half_modulus) as [LT | GE].
-        - subst; vm_compute in pw; destruct pw; discriminate.
-        - apply ok, mkint_eq.
-          replace w with (min_signed + modulus)%Z by omega.
-          reflexivity.
-      }
-      omega.
+  - exact add_repr.
+  - exact neg_repr.
   - simpl; intros.
     unfold Int32Ordered.int_compare,lt.
     destruct (x == y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
