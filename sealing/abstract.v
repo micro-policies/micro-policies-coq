@@ -71,6 +71,13 @@ Record state := State {
    this up.  (Looking at it right now, I don't see much reason for the
    extra generality.) *)
 (* APT: +1 for being less general *)
+(* CH:
+   (1) What's wrong with being general?
+   (2) How about having all past generated keys as the extra state at
+       this level, so that we can state as an axiom on mkkey_f that
+       keys are not repeated. (This would solve APTs comment below,
+       and would make it maybe more obvious that we're not repeating
+       keys than checking for integer overflows. *)
 
 Class key_generator := 
   { mkkey_f : extra_state -> option (extra_state * key) }.
