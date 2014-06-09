@@ -761,8 +761,12 @@ Hypothesis handler_correct_disallowed_case :
       st'.
 
 Hypothesis syscalls_correct_allowed_case :
-  forall amem areg apc tpc amem' areg' apc' tpc' cmem creg cache old_pc epc addr sc
-         tpc'' tpc''' ic int int', (* XXX: Maybe quantifying over tpcs and ic is asking too much? *)
+  forall amem areg apc tpc int
+         amem' areg' apc' tpc' int'
+         cmem creg cache epc addr sc
+         t1 ti told rvec ic,
+    (* Could be strengthened to ensure that t1 and told do occur in the machine state *)
+    let mvec := mkMVec JAL tpc ti [t1; told] in
     ki cmem creg cache int ->
     refine_memory amem cmem ->
     refine_registers areg creg ->
@@ -770,13 +774,14 @@ Hypothesis syscalls_correct_allowed_case :
     mvec_in_kernel cmem ->
     wf_entry_points cmem ->
     Symbolic.get_syscall table addr = Some sc ->
+    Symbolic.handler mvec = Some rvec ->
     Symbolic.sem sc (Symbolic.State amem areg apc@tpc int) = Some (Symbolic.State amem' areg' apc'@tpc' int') ->
     exists cmem' creg' cache' epc',
       kernel_user_exec (Concrete.mkState cmem
                                          (Concrete.upd_reg creg ra
-                                                           (old_pc + Z_to_word 1)%w@(encode (USER tpc'' ic)))
+                                                           (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
                                          cache
-                                         addr@(encode (USER tpc''' true)) epc)
+                                         addr@(encode (USER (trpc rvec) true)) epc)
                        (Concrete.mkState cmem' creg' cache'
                                          apc'@(encode (USER tpc' false))
                                          epc') /\
@@ -789,13 +794,27 @@ Hypothesis syscalls_correct_allowed_case :
       ki cmem' creg' cache' int'.
 
 Hypothesis syscalls_correct_disallowed_case :
-  forall ast cst cst' cst'' addr sc,
-    refine_state ast cst ->
+  forall amem areg apc tpc int
+         cmem creg cache epc addr sc
+         cst'
+         t1 ti told rvec ic,
+    (* Could be strengthened to ensure that t1 and told do occur in the machine state *)
+    let mvec := mkMVec JAL tpc ti [t1; told] in
+    ki cmem creg cache int ->
+    refine_memory amem cmem ->
+    refine_registers areg creg ->
+    cache_correct cache ->
+    mvec_in_kernel cmem ->
+    wf_entry_points cmem ->
     Symbolic.get_syscall table addr = Some sc ->
-    Symbolic.sem sc ast = None ->
-    Concrete.step _ masks cst cst' ->
-    common.val (Concrete.pc cst') = addr ->
-    ~ kernel_user_exec cst' cst''.
+    Symbolic.handler mvec = Some rvec ->
+    Symbolic.sem sc (Symbolic.State amem areg apc@tpc int) = None ->
+    ~ kernel_user_exec (Concrete.mkState cmem
+                                         (Concrete.upd_reg creg ra
+                                                           (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
+                                         cache
+                                         addr@(encode (USER (trpc rvec) true)) epc)
+                       cst'.
 
 Lemma user_regs_unchanged_ra_in_user creg creg' :
   ra_in_user creg ->
@@ -950,31 +969,33 @@ Proof.
     { unfold wf_entry_points in WFENTRYPOINTS. rewrite WFENTRYPOINTS.
       rewrite GET. apply eqb_refl. }
     destruct SYSCALL as [sc GETSC].
+    assert (HANDLER := fun H => CACHE _ _ H LOOKUP').
+    unfold word_lift in HANDLER. simpl in HANDLER. rewrite decodeK in HANDLER.
+    specialize (HANDLER eq_refl).
+    destruct HANDLER as (mvec & rvec & E1 & E2 & HANDLER).
+    apply encode_mvec_inj in E1; eauto. apply encode_rvec_inj in E2. subst.
+    unfold handler, rules.handler in HANDLER. simpl in HANDLER.
+    destruct (Symbolic.handler (mkMVec JAL tpc ti [t1; told])) as [[trpc' tr']|] eqn:HANDLER';
+      try discriminate.
+    unfold rvec_of_urvec in HANDLER. simpl in HANDLER. inv HANDLER.
+    destruct kst as [kmem kregs kcache [kpc kpct] kepc]. subst. simpl in *.
+    rewrite decodeK in TAG. simpl in TAG. inv TAG.
     destruct (Symbolic.sem sc (Symbolic.State amem areg apc@tapc int)) as [ast'|] eqn:SCEXEC.
     + destruct ast' as [amem' areg' [apc' tapc'] int'].
-      destruct kst as [kmem kregs kcache [kpc kpct] kepc]. subst. simpl in *.
-      rewrite decodeK in TAG. simpl in TAG. inv TAG.
       exploit syscalls_correct_allowed_case; eauto.
       intros (cmem' & creg' & cache' & pct' & EXEC' &
               REFM' & REFR' & CACHE' & MVEC' & RA'' & WFENTRYPOINTS' & KINV').
       generalize (kernel_user_exec_determ KEXEC EXEC'). intros ?. subst.
-      exploit CACHE; try eassumption.
-      { simpl.
-        unfold word_lift.
-        now rewrite decodeK. }
-      intros (mvec & rvec & E1 & E2 & HANDLER).
-      apply encode_mvec_inj in E1; eauto. subst.
-      unfold handler in HANDLER. simpl in HANDLER.
-      match_inv.
-      exists (Symbolic.State amem' areg' apc'@tapc' int'). split; eauto.
-      eapply Symbolic.step_syscall; eauto.
-      * apply REFM in INST; eauto.
-      * apply REFR. apply PC'.
-      * apply REFR. eauto.
-      * unfold refine_state, in_user, word_lift. simpl.
-        rewrite decodeK. simpl.
-        repeat (split; eauto).
-    + destruct (syscalls_correct_disallowed_case REF GETSC SCEXEC STEP eq_refl KEXEC).
+      { exists (Symbolic.State amem' areg' apc'@tapc' int'). split.
+        - eapply Symbolic.step_syscall; eauto.
+          + apply REFM in INST; eauto.
+          + apply REFR. apply PC'.
+          + apply REFR. eauto.
+        - unfold refine_state, in_user, word_lift. simpl.
+          rewrite decodeK. simpl.
+          repeat (split; eauto). }
+    + destruct (syscalls_correct_disallowed_case _ _ _ _ _ _ _ KINV REFM REFR CACHE MVEC
+                                                 WFENTRYPOINTS GETSC HANDLER' SCEXEC KEXEC).
 Qed.
 
 Lemma user_step_simulation ast cst cst' :

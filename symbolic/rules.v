@@ -326,6 +326,16 @@ Definition encode_rvec (rvec : RVec tag) : Concrete.RVec (word t) :=
     Concrete.ctr := encode (tr rvec)
   |}.
 
+Lemma encode_rvec_inj rvec1 rvec2 :
+  encode_rvec rvec1 = encode_rvec rvec2 ->
+  rvec1 = rvec2.
+Proof.
+  destruct rvec1, rvec2.
+  unfold encode_rvec. simpl.
+  intros H. inv H.
+  f_equal; apply encode_inj; trivial.
+Qed.
+
 Definition ground_rules : Concrete.rules (word t) :=
   let mk op := Concrete.mkMVec (op_to_word op) (encode KERNEL) (encode KERNEL)
                                (encode TNONE) (encode TNONE) (encode TNONE) in
