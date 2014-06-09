@@ -135,12 +135,12 @@ Class machine_ops (t : machine_types) := {
 
 }.
 
+Notation "+%w" := add_word.
+Notation "-%w" := opp_word.
 Notation "x + y" := (add_word x y) : word_scope.
 Notation "- x" := (opp_word x) : word_scope.
 Notation "x - y" := (add_word x (opp_word y)) : word_scope.
 Notation "0" := zero_word : word_scope.
-Notation "+%w" := add_word.
-Notation "-%w" := opp_word.
 
 Delimit Scope word_scope with w.
 
