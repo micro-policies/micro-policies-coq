@@ -1380,7 +1380,10 @@ Lemma in2_strengthen' :
   forall zs ys,
     In2 zs ->
     In2 (zs ++ ys).
-Proof. Admitted.
+Proof.
+  induction zs as [|z1 [|z2 zs]]; try solve [inversion 1].
+  intros ys [[-> ->] | IN2]; [left | right]; auto.
+Qed.
 
 Lemma in2_trivial : forall xs ys,
   In2 (xs ++ x :: y :: ys).
@@ -1690,7 +1693,7 @@ Qed.
 Lemma list_app_eq : forall {X:Type} xs ys (x y:X),
   xs ++ [x] = ys ++ [y] ->
   xs = ys /\ x = y.
-Admitted.
+Proof app_inj_tail.
 
 Lemma intermrev_forward : forall xs s s' s'',
   interm_reverse xs s' s'' ->
