@@ -45,10 +45,11 @@ Class abstract_params := {
 }.
 
 Class params_spec (ap : abstract_params) :=
-  { mem_axioms : PartMaps.axioms get_mem upd_mem
-  ; reg_axioms : PartMaps.axioms get_reg upd_reg }.
+  { mem_axioms :> PartMaps.axioms get_mem upd_mem
+  ; reg_axioms :> PartMaps.axioms get_reg upd_reg }.
 
-Context {ap : abstract_params}.
+Context {ap      : abstract_params}
+        {ap_spec : params_spec ap}.
 
 Implicit Type M : memory.
 Implicit Type R : registers.
@@ -151,7 +152,7 @@ Notation "'do' 'guard' cond ; rest" :=
 
 Definition isolate_create_set (M : memory)
                               (base size : value) : option (list value) :=
-  let pre_set := map (fun p : value => get_mem M (p + 1 + base))
+  let pre_set := map (fun p => get_mem M (p + (base + 1)))
                      (range 0 (size - 1)) in
   do guard forallb is_some pre_set;
   Some (to_set (cat_somes pre_set)).
@@ -1054,14 +1055,15 @@ Hint Resolve good_state_decomposed__good_compartments.
 
 (*** Proofs about the machine. ***)
 
-Lemma in_compartment_preserved : forall MM MM',
+Generalizable Variables MM.
+
+Lemma in_compartment_preserved : forall `(STEP : step MM MM'),
   good_compartments (compartments MM) = true ->
-  step MM MM' ->
   is_some (in_compartment_opt (compartments MM)  (pc MM))  = true ->
   is_some (in_compartment_opt (compartments MM') (pc MM')) = true.
 Proof.
   clear S.
-  intros MM MM' GOOD_COMPARTMENTS STEP; induction STEP; simpl; intros GOOD;
+  intros MM MM' STEP GOOD_COMPARTMENTS; destruct STEP; simpl; intros GOOD;
     try (destruct STEP; subst; simpl in *; eauto 2).
   - (* Jump *)
     subst; simpl in *.
@@ -1100,13 +1102,12 @@ Proof.
 Qed.    
 Hint Resolve in_compartment_preserved.
 
-Lemma good_compartments_preserved : forall MM MM',
-  step MM MM' ->
+Lemma good_compartments_preserved : forall `(STEP : step MM MM'),
   good_compartments (compartments MM)  = true ->
   good_compartments (compartments MM') = true.
 Proof.
   clear S.
-  intros MM MM' STEP; induction STEP; intros GOOD;
+  intros MM MM' STEP; destruct STEP; intros GOOD;
     try (subst; simpl in *; exact GOOD).
   (* Syscalls *)
   assert (GOOD_STATE : good_state MM = true) by (
@@ -1119,8 +1120,7 @@ Proof.
 Qed.
 Hint Resolve good_compartments_preserved.
 
-Theorem good_state_preserved : forall MM MM',
-  step MM MM'           ->
+Theorem good_state_preserved : forall `(STEP : step MM MM'),
   good_state MM  = true ->
   good_state MM' = true.
 Proof.
@@ -1128,30 +1128,50 @@ Proof.
 Qed.
 Hint Resolve good_state_preserved.
 
-Lemma permitted_execution_steps : forall MM MM' (STEP : step MM MM') c,
-  (* Need to define `good_state' *)
+Theorem permitted_pcs : forall `(STEP : step MM MM') c,
   good_state MM = true ->
-  compartments MM  ⊢ pc MM  ∈ c ->
-  compartments MM' ⊢ pc MM' ∈ c \/ In (pc MM') (jump_targets c).
+  compartments MM ⊢ pc MM ∈ c ->
+  In (pc MM) (address_space c) \/ In (pc MM') (jump_targets c).
 Proof.
-  intros until 1; induction STEP; intros c0 NOL IN_c0; simpl in *;
+  intros until 1; destruct STEP; intros c0 GOOD_STATE IC_c0; simpl in *;
     try solve
       [ (* Intra-compartment *)
         destruct STEP; left;
-        apply in_unique_compartment with (c1 := c) in IN_c0;
+        apply in_unique_compartment with (c1 := c) in IC_c0;
         subst; simpl in *; eauto 2
       | (* Jump/Jal *)
-        apply in_unique_compartment with (c1 := c) in IN_c0; subst;
-        try assumption; eauto 2;
-        apply in_app_iff in VALID; destruct VALID as [IN_A | IN_J];
-        [ left; eapply in_same_compartment; [exact IN_C | exact IN_A]
-        | right; exact IN_J ] ].
+        apply in_unique_compartment with (c1 := c) in IC_c0; subst; simpl in *;
+        eauto 2;
+        apply in_app_iff in VALID; destruct VALID as [IN_A | IN_J]; eauto 3 ].
   (* Syscalls *)
   admit.
   (* I'm not sure what the right behavior here is -- it'll depend on the other
      theorems I end up trying to prove. *)
 Qed.
-                                       
+
+Theorem permitted_modifications : forall `(STEP : step MM MM') c,
+  good_state MM = true        ->
+  compartments MM ⊢ pc MM ∈ c ->
+  forall a,
+    get_mem (mem MM) a <> get_mem (mem MM') a ->
+    In a (address_space c) \/ In a (shared_memory c).
+Proof.
+  intros MM MM' STEP c GOOD_STATE IC a DIFF; destruct STEP;
+    try (subst; simpl in *; congruence).
+  - (* Store *)
+    subst; simpl in *.
+    destruct (a == p) as [EQ | NE].
+    + ssubst. apply in_app_iff. destruct STEP.
+      match goal with IC1 : ?C ⊢ ?pc ∈ ?c1, IC2 : ?C ⊢ ?pc ∈ ?c2 |- _ =>
+        replace c1 with c2 in * by eauto
+      end; assumption.
+    + rewrite (PartMaps.get_upd_neq NE UPDR) in DIFF; congruence.
+  - (* Syscall *)
+    admit.
+    (* I don't even know if this will be true... what invariants should I
+       enforce on syscalls, anyway? *)
+Qed.
+
 End WithClasses.
 
 End Abstract.
