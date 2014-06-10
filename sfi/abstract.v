@@ -1057,6 +1057,22 @@ Hint Resolve good_state_decomposed__good_compartments.
 
 Generalizable Variables MM.
 
+Theorem step_deterministic : forall MM0 MM1 MM2
+                                    (STEP1 : step MM0 MM1)
+                                    (STEP2 : step MM0 MM2),
+  MM1 = MM2.
+Proof.
+  intros; destruct STEP1, STEP2; subst; try congruence.
+  repeat match goal with pc' := _ |- _ => subst pc' end.
+  match goal with ST : State _ _ _ _ = State _ ?R' ?M' ?C' |- _ =>
+    inversion ST; subst
+  end; repeat f_equal.
+  match goal with |- (if equiv_dec ?b1 0 then 1 else imm_to_word ?x1) =
+                     (if equiv_dec ?b2 0 then 1 else imm_to_word ?x2) =>
+    replace b2 with b1 by congruence; replace x2 with x1 by congruence
+  end; reflexivity.
+Qed.
+
 Lemma in_compartment_preserved : forall `(STEP : step MM MM'),
   good_compartments (compartments MM) = true ->
   is_some (in_compartment_opt (compartments MM)  (pc MM))  = true ->
