@@ -56,10 +56,10 @@ Implicit Type r rsrc rdest rpsrc rpdest rtgt : reg t.
 
 (* BCP: Can we change `shared_memory' to `writable_memory', and disallow writes
    to `address_space'?  [TODO] *)
-Record compartment := mk_compartment { address_space : list value
-                                     ; jump_targets  : list value
-                                     ; shared_memory : list value }.
-Notation "<< A , J , S >>" := (mk_compartment A J S) (format "<< A , J , S >>").
+Record compartment := Compartment { address_space : list value
+                                  ; jump_targets  : list value
+                                  ; shared_memory : list value }.
+Notation "<< A , J , S >>" := (Compartment A J S) (format "<< A , J , S >>").
 Implicit Type c     : compartment.
 Implicit Type A J S : list value.
 Implicit Type C     : list compartment.
@@ -116,10 +116,10 @@ Fixpoint in_compartment_opt (C : list compartment)
                 else in_compartment_opt C p
   end.
 
-Record state := mk_state { pc           : value
-                         ; regs         : registers
-                         ; mem          : memory
-                         ; compartments : list compartment  }.
+Record state := State { pc           : value
+                      ; regs         : registers
+                      ; mem          : memory
+                      ; compartments : list compartment  }.
 
 Definition good_state (MM : state) : bool :=
   is_some (in_compartment_opt (compartments MM) (pc MM)) &&
@@ -159,8 +159,11 @@ Definition isolate_create_set (M : memory)
 (* From Greg: An objection to SFI could be "but we have page table tricks for
    doing the same things".  So let's make the new address space similarly
    disjoint.  (Except with sets of pairs.)  [TODO] *)
+(* ASZ: Except, hmm.  Compartments are created with continguous ranges, sure,
+   but they can isolate pieces of themselves arbitrarily and break themselves up
+   into fragments in this way. *)
 Definition isolate_fn (MM : state) : option state :=
-  let '(mk_state pc R M C) := MM in
+  let '(State pc R M C) := MM in
   do c      <- in_compartment_opt C pc;
   do al     <- get_reg R riso1;
   do ah     <- get_reg R riso2;
@@ -182,7 +185,7 @@ Definition isolate_fn (MM : state) : option state :=
   let c'    := <<A',J',S'>> in
   let C'    := c_upd :: c' :: delete c C in
   do guard existsb (equiv_decb (pc + 1)) (address_space c_upd);
-  Some (mk_state (pc + 1) R M C').
+  Some (State (pc + 1) R M C').
 
 Definition isolate :=
   {| address   := isolate_addr
@@ -196,95 +199,109 @@ Definition get_syscall (addr : value) : option syscall :=
 
 Notation simple_step C pc c := (C ⊢ pc, pc + 1 ∈ c).
 
-Implicit Type pc_val : value.
+Definition decode M pc :=
+  do pc_val <- get_mem M pc;
+  decode_instr pc_val.
 
-Inductive step : state -> state -> Prop :=
-| step_nop :     forall pc R M C c pc_val,
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Nop _)),
-                 forall (STEP  : simple_step C pc c),
-                 step (mk_state pc R M C) (mk_state (pc + 1) R M C)
+Notation "x ?= y" := (x = Some y) (at level 70, no associativity).
 
-| step_const :   forall pc R M C c pc_val x rdest R',
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Const _ x rdest)),
-                 forall (STEP  : simple_step C pc c),
-                 forall (UPD   : upd_reg R rdest (imm_to_word x) = Some R'),
-                 step (mk_state pc R M C) (mk_state (pc + 1) R' M C)
+Inductive step (MM MM' : state) : Prop :=
+| step_nop :     forall pc R M C c
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Nop _)
+                   (STEP  : simple_step C pc c)
+                   (NEXT  : MM' = State (pc + 1) R M C),
+                        step MM MM'
 
-| step_mov   :   forall pc R M C c pc_val rsrc rdest x R',
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Mov _ rsrc rdest)),
-                 forall (STEP  : simple_step C pc c),
-                 forall (GET   : get_reg R rsrc = Some x),
-                 forall (UPD   : upd_reg R rdest x = Some R'),
-                 step (mk_state pc R M C) (mk_state (pc + 1) R' M C)
+| step_const :   forall pc R M C c x rdest R'
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Const _ x rdest)
+                   (STEP  : simple_step C pc c)
+                   (UPD   : upd_reg R rdest (imm_to_word x) ?= R')
+                   (NEXT  : MM' = State (pc + 1) R' M C),
+                        step MM MM'
 
-| step_binop :   forall pc R M C c pc_val op rsrc1 rsrc2 rdest x1 x2 R',
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Binop _ op rsrc1 rsrc2 rdest)),
-                 forall (STEP  : simple_step C pc c),
-                 forall (GETR1 : get_reg R rsrc1 = Some x1),
-                 forall (GETR2 : get_reg R rsrc2 = Some x2),
-                 forall (UPDR  : upd_reg R rdest (binop_denote op x1 x2) = Some R'),
-                 step (mk_state pc R M C) (mk_state (pc + 1) R' M C)
+| step_mov   :   forall pc R M C c rsrc rdest x R'
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Mov _ rsrc rdest)
+                   (STEP  : simple_step C pc c)
+                   (GET   : get_reg R rsrc ?= x)
+                   (UPD   : upd_reg R rdest x ?= R')
+                   (NEXT  : MM' = State (pc + 1) R' M C),
+                        step MM MM'
 
-| step_load  :   forall pc R M C c pc_val rpsrc rdest p x R',
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Load _ rpsrc rdest)),
-                 forall (STEP  : simple_step C pc c),
-                 forall (GETR  : get_reg R rpsrc = Some p),
-                 forall (GETM  : get_mem M p     = Some x),
-                 forall (UPDR  : upd_reg R rdest x = Some R'),
-                 step (mk_state pc R M C) (mk_state (pc + 1) R' M C)
+| step_binop :   forall pc R M C c op rsrc1 rsrc2 rdest x1 x2 R'
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Binop _ op rsrc1 rsrc2 rdest)
+                   (STEP  : simple_step C pc c)
+                   (GETR1 : get_reg R rsrc1 ?= x1)
+                   (GETR2 : get_reg R rsrc2 ?= x2)
+                   (UPDR  : upd_reg R rdest (binop_denote op x1 x2) ?= R')
+                   (NEXT  : MM' = State (pc + 1) R' M C),
+                        step MM MM'
 
-| step_store :   forall pc R M C c pc_val rsrc rpdest x p M',
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Store _ rsrc rpdest)),
-                 forall (STEP  : simple_step C pc c),
-                 forall (GETRS : get_reg R rsrc   = Some x),
-                 forall (GETRD : get_reg R rpdest = Some p),
-                 forall (VALID : In p (address_space c ++ shared_memory c)),
-                 forall (UPDR  : upd_mem M p x = Some M'),
-                 step (mk_state pc R M C) (mk_state (pc + 1) R M' C)
+| step_load  :   forall pc R M C c rpsrc rdest p x R'
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Load _ rpsrc rdest)
+                   (STEP  : simple_step C pc c)
+                   (GETR  : get_reg R rpsrc ?= p)
+                   (GETM  : get_mem M p     ?= x)
+                   (UPDR  : upd_reg R rdest x ?= R')
+                   (NEXT  : MM' = State (pc + 1) R' M C),
+                        step MM MM'
 
-| step_jump  :   forall pc R M C c pc_val rtgt pc',
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Jump _ rtgt)),
-                 forall (IN_C  : C ⊢ pc ∈ c),
-                 forall (GETR  : get_reg R rtgt = Some pc'),
-                 forall (VALID : In pc' (address_space c ++ jump_targets c)),
-                 step (mk_state pc R M C) (mk_state pc' R M C)
+| step_store :   forall pc R M C c rsrc rpdest x p M'
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Store _ rsrc rpdest)
+                   (STEP  : simple_step C pc c)
+                   (GETRS : get_reg R rsrc   ?= x)
+                   (GETRD : get_reg R rpdest ?= p)
+                   (VALID : In p (address_space c ++ shared_memory c))
+                   (UPDR  : upd_mem M p x ?= M')
+                   (NEXT  : MM' = State (pc + 1) R M' C),
+                        step MM MM'
 
-| step_bnz   :   forall pc R M C c pc_val rsrc x b,
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Bnz _ rsrc x)),
-                 forall (GETR  : get_reg R rsrc = Some b),
-                 let pc' := pc + (if b == 0 then 1 else imm_to_word x) in
-                 forall (STEP  : C ⊢ pc,pc' ∈ c),
-                 step (mk_state pc R M C) (mk_state pc' R M C)
+| step_jump  :   forall pc R M C c rtgt pc'
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Jump _ rtgt)
+                   (IN_C  : C ⊢ pc ∈ c)
+                   (GETR  : get_reg R rtgt ?= pc')
+                   (VALID : In pc' (address_space c ++ jump_targets c))
+                   (NEXT  : MM' = State pc' R M C),
+                        step MM MM'
+
+| step_bnz   :   forall pc R M C c rsrc x b
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Bnz _ rsrc x)
+                   (GETR  : get_reg R rsrc ?= b),
+                   let pc' := pc + (if b == 0 then 1 else imm_to_word x)
+                   in forall
+                   (STEP  : C ⊢ pc,pc' ∈ c)
+                   (NEXT  : MM' = State pc' R M C),
+                        step MM MM'
 
 (* We make JAL inter-compartmental, like JUMP, but things must be set up so that
  * the return address is callable by the destination compartment.  However, see
  * [Note Fancy JAL] below. *)
-| step_jal   :   forall pc R M C c pc_val rtgt pc' R',
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Jal _ rtgt)),
-                 forall (IN_C  : C ⊢ pc ∈ c),
-                 forall (GETR  : get_reg R rtgt = Some pc'),
-                 forall (USER  : get_syscall pc' = None),
-                 forall (VALID : In pc' (address_space c ++ jump_targets c)),
-                 forall (UPDR  : upd_reg R ra (pc + 1) = Some R'),
-                 step (mk_state pc R M C) (mk_state pc' R' M C)
+| step_jal   :   forall pc R M C c rtgt pc' R'
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Jal _ rtgt)
+                   (IN_C  : C ⊢ pc ∈ c)
+                   (GETR  : get_reg R rtgt ?= pc')
+                   (USER  : get_syscall pc' = None)
+                   (VALID : In pc' (address_space c ++ jump_targets c))
+                   (UPDR  : upd_reg R ra (pc + 1) ?= R')
+                   (NEXT  : MM' = State pc' R' M C),
+                        step MM MM'
 
-| step_syscall : forall pc R M C c pc_val rtgt sc_addr sc MM',
-                 forall (PC    : get_mem      M pc   = Some pc_val),
-                 forall (INST  : decode_instr pc_val = Some (Jal _ rtgt)),
-                 forall (IN_C  : C ⊢ pc ∈ c),
-                 forall (GETR  : get_reg R rtgt = Some sc_addr),
-                 forall (GETSC : get_syscall sc_addr = Some sc),
-                 forall (CALL  : semantics sc (mk_state pc R M C) = Some MM'),
-                 step (mk_state pc R M C) MM'.
+| step_syscall : forall pc R M C c rtgt sc_addr sc
+                        (ST : MM = State pc R M C)
+                   (INST  : decode M pc ?= Jal _ rtgt)
+                   (IN_C  : C ⊢ pc ∈ c)
+                   (GETR  : get_reg R rtgt ?= sc_addr)
+                   (GETSC : get_syscall sc_addr ?= sc)
+                   (CALL  : semantics sc MM ?= MM'),
+                        step MM MM'.
 
 (* [Note Fancy JAL]
  * ~~~~~~~~~~~~~~~~
@@ -396,7 +413,7 @@ Tactic Notation (at level 0) "assert" "good_compartment" ident(c)
   assert as c good_compartment c by t.
 
 Theorem in_compartment_opt_correct : forall C p c,
-  in_compartment_opt C p = Some c -> C ⊢ p ∈ c.
+  in_compartment_opt C p ?= c -> C ⊢ p ∈ c.
 Proof.
   clear.
   induction C as [|ch C]; [inversion 1|].
@@ -418,7 +435,7 @@ Qed.
 Hint Resolve in_compartment_opt_missing_correct.
 
 Theorem in_compartment_opt_present : forall C p c,
-  C ⊢ p ∈ c -> exists c', in_compartment_opt C p = Some c'.
+  C ⊢ p ∈ c -> exists c', in_compartment_opt C p ?= c'.
 Proof.
   clear.
   induction 1 as [C A J S IN | C ch c IC].
@@ -709,7 +726,7 @@ Hint Resolve good_in2_no_common_addresses.
 Theorem in_compartment_opt_sound : forall C p c,
   forallb good_compartment C = true -> non_overlapping_list C = true ->
   C ⊢ p ∈ c ->
-  in_compartment_opt C p = Some c.
+  in_compartment_opt C p ?= c.
 Proof.
   clear.
   intros C p c GOOD NOL; induction 1 as [C A J S IN | C ch c IC]; simpl in *.
@@ -730,7 +747,7 @@ Hint Resolve in_compartment_opt_sound.
 Corollary in_compartment_opt_sound' : forall C p c,
   good_compartments C = true ->
   C ⊢ p ∈ c ->
-  in_compartment_opt C p = Some c.
+  in_compartment_opt C p ?= c.
 Proof. intros C p c GOOD; apply in_compartment_opt_sound; auto. Qed.
 Hint Resolve in_compartment_opt_sound'.
 
@@ -773,7 +790,7 @@ Hypothesis good_othercalls : forall MM,
   forallb (fun sc => good_syscall sc MM) othercalls = true.
 
 Lemma isolate_create_set_is_set : forall M x sz X,
-  isolate_create_set M x sz = Some X -> is_set X = true.
+  isolate_create_set M x sz ?= X -> is_set X = true.
 Proof.
   intros until 0; unfold isolate_create_set;
     destruct (forallb _ _); inversion 1; auto.
@@ -786,7 +803,7 @@ Proof.
   destruct (good_state MM) eqn:GOOD, MM as [pc R M C];
     [unfold good_state in *; simpl in * | reflexivity].
   rewrite andb_true_iff in GOOD; destruct GOOD as [EICO GOOD].
-  assert (ICO : exists c, in_compartment_opt C pc = Some c) by
+  assert (ICO : exists c, in_compartment_opt C pc ?= c) by
     (destruct (in_compartment_opt _ _) eqn:?; [eauto | simpl in *; congruence]);
     clear EICO; move ICO after GOOD; destruct ICO as [c ICO].
   assert (IC : C ⊢ pc ∈ c) by (eapply in_compartment_opt_correct; eassumption);
@@ -986,14 +1003,14 @@ Proof. intros MM; apply forallb_forall; auto. Qed.
 Hint Resolve good_syscalls.
 
 Lemma get_syscall_in : forall addr sc,
-  get_syscall addr = Some sc -> In sc table.
+  get_syscall addr ?= sc -> In sc table.
 Proof.
   unfold get_syscall; intros addr sc GS; apply find_in in GS; tauto.
 Qed.
 Hint Resolve get_syscall_in.
 
 Lemma get_syscall_good : forall addr sc,
-  get_syscall addr = Some sc -> forall MM, good_syscall sc MM = true.
+  get_syscall addr ?= sc -> forall MM, good_syscall sc MM = true.
 Proof.
   intros addr sc GS; apply get_syscall_in in GS; auto.
 Qed.
@@ -1012,10 +1029,10 @@ Hint Resolve good_state__in_compartment_opt.
 
 (* For `auto' *)
 Lemma good_state_decomposed__in_compartment_opt : forall pc R M C,
-  good_state (mk_state pc R M C) = true ->
+  good_state (State pc R M C) = true ->
   is_some (in_compartment_opt C pc) = true.
 Proof.
-  intros pc R M C; apply (good_state__in_compartment_opt (mk_state pc R M C)).
+  intros pc R M C; apply (good_state__in_compartment_opt (State pc R M C)).
 Qed.
 Hint Resolve good_state_decomposed__in_compartment_opt.
 
@@ -1029,9 +1046,9 @@ Hint Resolve good_state__good_compartments.
 
 (* For `auto' *)
 Lemma good_state_decomposed__good_compartments : forall pc R M C,
-  good_state (mk_state pc R M C) = true -> good_compartments C = true.
+  good_state (State pc R M C) = true -> good_compartments C = true.
 Proof.
-  intros pc R M C; apply (good_state__good_compartments (mk_state pc R M C)).
+  intros pc R M C; apply (good_state__good_compartments (State pc R M C)).
 Qed.
 Hint Resolve good_state_decomposed__good_compartments.
 
@@ -1045,8 +1062,9 @@ Lemma in_compartment_preserved : forall MM MM',
 Proof.
   clear S.
   intros MM MM' GOOD_COMPARTMENTS STEP; induction STEP; simpl; intros GOOD;
-    try (destruct STEP; eauto).
+    try (destruct STEP; subst; simpl in *; eauto 2).
   - (* Jump *)
+    subst; simpl in *.
     apply in_app_or in VALID; destruct VALID as [VALID | VALID]; [eauto|].
     assert (CC : contained_compartments C = true) by auto.
     unfold contained_compartments in CC;
@@ -1060,6 +1078,7 @@ Proof.
       apply in_map_iff; eauto.
   - (* Jal *)
     (* Exactly the same as above.  Not sure how to Ltac this. *)
+    subst; simpl in *.
     apply in_app_or in VALID; destruct VALID as [VALID | VALID]; [eauto|].
     assert (CC : contained_compartments C = true) by auto.
     unfold contained_compartments in CC;
@@ -1072,10 +1091,10 @@ Proof.
     + left. apply concat_in; exists (jump_targets c); split; auto.
       apply in_map_iff; eauto.
   - (* Syscall *)
-    assert (GOOD_STATE : good_state (mk_state pc0 R M C) = true) by
+    assert (GOOD_STATE : good_state MM = true) by
       (unfold good_state; simpl; andb_true_split; auto).
     apply good_state__in_compartment_opt.
-    apply get_syscall_good with (MM := mk_state pc0 R M C) in GETSC;
+    apply get_syscall_good with (MM := MM) in GETSC;
       unfold good_syscall in GETSC; rewrite GOOD_STATE in GETSC.
     destruct (semantics _ _); inversion CALL; subst; auto.
 Qed.    
@@ -1087,12 +1106,14 @@ Lemma good_compartments_preserved : forall MM MM',
   good_compartments (compartments MM') = true.
 Proof.
   clear S.
-  intros MM MM' STEP; induction STEP; simpl; intros GOOD; try (exact GOOD).
-  assert (GOOD_STATE : good_state (mk_state pc0 R M C) = true) by (
-    unfold good_state; simpl; andb_true_split; auto;
+  intros MM MM' STEP; induction STEP; intros GOOD;
+    try (subst; simpl in *; exact GOOD).
+  (* Syscalls *)
+  assert (GOOD_STATE : good_state MM = true) by (
+    subst; unfold good_state; simpl in *; andb_true_split; auto;
     apply in_compartment_opt_sound' in IN_C; [rewrite IN_C|]; auto
   ).
-  apply get_syscall_good with (MM := mk_state pc0 R M C) in GETSC;
+  apply get_syscall_good with (MM := MM) in GETSC;
     unfold good_syscall in GETSC; rewrite GOOD_STATE in GETSC.
   destruct (semantics _ _); inversion CALL; subst; auto.
 Qed.
@@ -1106,100 +1127,6 @@ Proof.
   unfold good_state; intros; rewrite andb_true_iff in *; invh and; eauto 4.
 Qed.
 Hint Resolve good_state_preserved.
-
-(******************************************************************************)
-
-Inductive valid_trace : list state -> Prop :=
-| vt_nil  : valid_trace []
-| vt_one  : forall MM, valid_trace [MM]
-| vt_step : forall {MM MM' MMs}, step MM MM' -> valid_trace (MM' :: MMs) ->
-            valid_trace (MM :: MM' :: MMs).  
-
-(* There has GOT to be a better way to do this *)
-Inductive direct_parent : forall {MMs : list state}, valid_trace MMs ->
-                          compartment -> compartment -> Prop :=
-(* step_isolate went away *)
-(* | dp_here  : forall pc R M C c pc_val rtgt al ah jt sm jtsz smsz
-                    PC INST STEP ISISO GETR1 GETR2 GETR3 GETR4 GETM3 GETM4
-                    RANGE SUBA SUBJ SUBS,
-             let A     := address_space c in
-             let J     := jump_targets  c in
-             let S     := shared_memory c in
-             let A'    := range al ah in
-             let J'    := isolate_create_set M jt jtsz in
-             let S'    := isolate_create_set M sm smsz in
-             let c_upd := <<set_difference A A', insert_unique al J, S>> in
-             let c'    := <<A',J',S'>> in
-             let C'    := c_upd :: c' :: delete c C in
-             forall {MMs} (VT : valid_trace (mk_state (pc + 1) R M C' :: MMs)),
-             direct_parent (vt_step (@step_isolate pc R M C c pc_val rtgt al ah jt sm jtsz smsz PC INST STEP ISISO GETR1 GETR2 GETR3 GETR4 GETM3 GETM4 RANGE SUBA SUBJ SUBS) VT) c c' *)
-| dp_there : forall MM MM' MMs
-                    (STEP : step MM MM') (VT : valid_trace (MM' :: MMs))
-                    c1 c2
-                    (DP : direct_parent VT c1 c2),
-             direct_parent (vt_step STEP VT) c1 c2.
-
-Inductive direct_descendant : forall {MMs : list state}, valid_trace MMs ->
-                              compartment -> compartment -> Prop :=
-(* step_isolate went away *)
-(* | dd_here  : forall pc R M C c pc_val rtgt al ah jt sm jtsz smsz
-                    PC INST STEP ISISO GETR1 GETR2 GETR3 GETR4 GETM3 GETM4
-                    RANGE SUBA SUBJ SUBS,
-             let A     := address_space c in
-             let J     := jump_targets  c in
-             let S     := shared_memory c in
-             let A'    := range al ah in
-             let J'    := isolate_create_set M jt jtsz in
-             let S'    := isolate_create_set M sm smsz in
-             let c_upd := <<set_difference A A', insert_unique al J, S>> in
-             let c'    := <<A',J',S'>> in
-             let C'    := c_upd :: c' :: delete c C in
-             forall {MMs} (VT : valid_trace (mk_state (pc + 1) R M C' :: MMs)),
-             direct_descendant (vt_step (@step_isolate pc R M C c pc_val rtgt al ah jt sm jtsz smsz PC INST STEP ISISO GETR1 GETR2 GETR3 GETR4 GETM3 GETM4 RANGE SUBA SUBJ SUBS) VT) c c_upd *)
-| dd_there : forall MM MM' MMs
-                    (STEP : step MM MM') (VT : valid_trace (MM' :: MMs))
-                    c1 c2
-                    (DP : direct_descendant VT c1 c2),
-             direct_descendant (vt_step STEP VT) c1 c2.
-
-Inductive parent {MMs : list state} (VT : valid_trace MMs) :
-                 compartment -> compartment -> Prop :=
-| parent_refl : forall c, parent VT c c
-| parent_step : forall c1 c2 c3
-                       (DIRECT : direct_parent VT c1 c2)
-                       (PARENT : parent        VT c2 c3),
-                parent VT c1 c3.
-
-Inductive descendant {MMs : list state} (VT : valid_trace MMs) :
-                     compartment -> compartment -> Prop :=
-| descendant_refl : forall c, descendant VT c c
-| descendant_step : forall c1 c2 c3
-                           (DIRECT     : direct_descendant VT c1 c2)
-                           (DESCENDANT : descendant        VT c2 c3),
-                    descendant VT c1 c3.
-
-Inductive in_cone {MMs : list state} (VT : valid_trace MMs) :
-                  compartment -> compartment -> Prop :=
-| in_cone_refl       : forall c,
-                       in_cone VT c c
-| in_cone_parent     : forall c1 c2 c3
-                              (PARENT : parent  VT c1 c2)
-                              (CONE   : in_cone VT c2 c3),
-                       in_cone VT c1 c3
-| in_cone_descendant : forall c1 c2 c3
-                              (DESCENDANT : descendant VT c1 c2)
-                              (CONE       : in_cone    VT c2 c3),
-                       in_cone VT c1 c3.
-
-Inductive step_in (MM MM' : state) :
-                  forall {MMs : list state}, valid_trace MMs -> Prop :=
-| step_in_here  : forall (STEP : step MM MM')
-                         {MMs : list state} (VT : valid_trace (MM' :: MMs)),
-                  step_in MM MM' (vt_step STEP VT)
-| step_in_there : forall MM'' MM''' (STEP : step MM'' MM''')
-                         {MMs : list state} (VT : valid_trace (MM''' :: MMs))
-                         (STEP_IN : step_in MM MM' VT),
-                  step_in MM MM' (vt_step STEP VT).
 
 Lemma permitted_execution_steps : forall MM MM' (STEP : step MM MM') c,
   (* Need to define `good_state' *)
