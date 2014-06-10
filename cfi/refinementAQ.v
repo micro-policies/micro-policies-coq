@@ -33,7 +33,6 @@ Variable stable : list (@Symbolic.syscall mt sym_params).
 (*this should be replaced, when step_a is defined*)
 Variable step_a : @Symbolic.state mt sym_params -> @Symbolic.state mt sym_params -> Prop.
 
-
 Definition amachine := Abstract.abstract_cfi_machine atable valid_jmp.
 Definition smachine := SymbolicCFI.symbolic_cfi_machine stable step_a.
 
@@ -56,7 +55,13 @@ Definition refine_registers (areg : Abstract.registers mt) (sreg : @Symbolic.reg
     (exists ut, Abstract.get_reg areg n = Some x ->
                 Symbolic.get_reg sreg n = Some x@ut).
 
-(*what about syscalls?*)
+Definition refine_syscalls (atbl : list (Abstract.syscall mt)) (stbl : list (@Symbolic.syscall mt sym_params)) :=
+  forall addr,
+    (forall sc, Symbolic.get_syscall stbl addr = Some sc ->
+                exists sc', Abstract.get_syscall atbl addr = Some sc') /\
+    (forall sc, Abstract.get_syscall atbl addr = Some sc ->
+                exists sc', Symbolic.get_syscall stbl addr = Some sc').
+
 Definition refine_normal_state (ast : Abstract.state mt) (sst : Symbolic.state mt) :=
   let '(Symbolic.State mem regs pc@tpc _) := sst in
   let '(imem, dmem, aregs, apc, b) := ast in
@@ -64,7 +69,8 @@ Definition refine_normal_state (ast : Abstract.state mt) (sst : Symbolic.state m
   pc = apc /\
   refine_imemory imem mem /\
   refine_dmemory dmem mem /\
-  refine_registers aregs regs. 
+  refine_registers aregs regs /\
+  refine_syscalls atable stable.
 
 Definition refine_violation_state (ast : Abstract.state mt) (sst : Symbolic.state mt) :=
   let '(imem, dmem, aregs, apc, b) := ast in
@@ -98,6 +104,13 @@ Hypothesis jal_tagged :
     decode_instr w = Some (Jal _ r) ->
     refine_imemory aimem smem ->
     Symbolic.get_mem smem pc = Some w@(INSTR (Some pc)).
+
+Hypothesis jump_targets_tagged :
+  forall pc i smem regs r w (ti ti' : @Symbolic.tag mt sym_params),
+    Symbolic.get_mem smem pc = Some i@ti ->
+    decode_instr i = Some (Jump _ r) ->
+    Symbolic.get_reg regs r = Some w@ti' ->
+    ti' = INSTR (Some w).
 
 
 Import Vector.VectorNotations.
@@ -336,10 +349,190 @@ Theorem backwards_simulation_violation ast sst sst' :
     Abstract.step atable valid_jmp ast ast' /\
     refine_state ast' sst'.
 Proof.
+   intros REF SSTEP.
+  destruct ast as [[[[imem dmem] aregs] apc] b].
+  destruct b; [inversion SSTEP; subst; destruct REF; discriminate | idtac].
+  destruct sst.
+  destruct REF as [? [ast0 [sst0 REF]]].
+  destruct ast0 as [[[[imem0 dmem0] aregs0] apc0] b0].
+  destruct REF as [B0 [ASTEP0 [SSTEP0 [REF0 INVALID]]]];
+  destruct sst0 as [mem0 regs0 [pc0 tpc0] ?]; 
+  destruct REF0 as [? [PC0EQ [REFI0 [REFD0 [REFR0 REFS0]]]]]; subst;
+  inversion ASTEP0;
+  inversion SSTEP0; inversion ST; subst; clear ST;
+  (*uninteresting cases*)
+    match goal with 
+        | [H: refine_imemory ?Imem ?Mem, H1: Abstract.get_imem ?Imem ?Pc = Some ?I,
+           H2: Symbolic.get_mem ?Mem ?Pc = Some ?I'@_ |- _] => 
+          destruct (imem_refined_instructions Pc H H1 H2); try congruence
+    end. Focus 3.
+  match goal with 
+      [H: decode_instr ?I = Some ?V, H': decode_instr ?I = Some ?V' |- _] => 
+      assert (EQINSTR: V = V') by (rewrite H in H'; inversion H'; auto); inversion EQINSTR;
+      subst; clear EQINSTR
+  end. 
+  
+
+  match goal with
+      | [H: Abstract.get_reg ?Aregs ?R = Some ?V, H': Symbolic.get_reg ?Sregs ?R' = Some ?V'@_,
+         H1: refine_registers ?Aregs ?Sregs |- _] =>
+        apply H1 in H'
+  end.
+  unfold refine_syscalls in REFS0. apply REFS0 in GETCALL0. destruct GETCALL0. rewrite GETCALL in H1.
+  
+  rewrite INST0 in INST. inversion INST. subst.
+  apply REFR0 in RW0. rewrite RW0 in RW. inversion RW. subst.
+  unfold refine_syscalls in REFS0.
+  destruct (REFS0 apc). 
+  apply H1 in GETCALL0. destruct GETCALL0. rewrite GETCALL in H3. inversion H3.
+  
+  unfold refine_registers in REFR0.
+  destruct ti; [idtac | simpl in ALLOWED; match_inv]. 
+   match goal with
+    | [H: Abstract.get_imem ?Imem ?Pc = Some ?I, H': Symbolic.get_mem ?Smem ?Pc = Some ?I'@(INSTR ?ID),
+       H1: refine_imemory ?Imem ?Smem |- _] => 
+      assert (I = I') by (apply H1 in H'; rewrite H' in H; inversion H; reflexivity); subst
+    | [H: Abstract.get_reg ?Aregs ?R = Some ?V, H': Symbolic.get_reg ?Sregs ?R' = Some ?V'@_,
+      H1: refine_registers ?Aregs ?Sregs |- _] =>
+      apply H1 in H'
+  end.
+   match goal with 
+         [H: decode_instr ?I = Some ?V, H': decode_instr ?I = Some ?V' |- _] => 
+         assert (EQINSTR: V = V') by (rewrite H in H'; inversion H'; auto); inversion EQINSTR;
+         subst; clear EQINSTR
+   end.
+
+
+
+
   intros REF SSTEP.
   destruct ast as [[[[imem dmem] aregs] apc] b].
   destruct b; [inversion SSTEP; subst; destruct REF; discriminate | idtac];
-  inversion SSTEP; subst.
+  inversion SSTEP; subst;
+  destruct REF as [? [ast0 [sst0 REF]]];
+  destruct ast0 as [[[[imem0 dmem0] aregs0] apc0] b0];
+  destruct REF as [B0 [ASTEP0 [SSTEP0 [REF0 INVALID]]]]; subst;
+  destruct sst0 as [mem0 regs0 [pc0 tpc0] ?]; 
+  destruct REF0 as [? [PC0EQ [REFI0 [REFD0 [REFR0 REFS0]]]]]; subst;
+  inversion ASTEP0;
+  inversion SSTEP0; inversion ST; subst;
+  (*uninteresting cases*)
+    match goal with 
+        | [H: refine_imemory ?Imem ?Mem, H1: Abstract.get_imem ?Imem ?Pc = Some ?I,
+           H2: Symbolic.get_mem ?Mem ?Pc = Some ?I'@_ |- _] => 
+          destruct (imem_refined_instructions Pc H H1 H2); try congruence
+    end;
+    (*unfoldings and case analysis on tags*)
+  repeat (
+      match goal with
+        | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => unfold Symbolic.next_state_pc in H
+        | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => unfold Symbolic.next_state_reg in H
+        | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+          unfold Symbolic.next_state_reg_and_pc in H
+        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          unfold Symbolic.next_state in H; simpl in H
+      end). Focus 4. rewrite CA
+
+  
+destruct ast0 as [[[[imem0 dmme0] aregs0] apc0] b0].
+  destruct REF as [B0 [ASTEP0 [SSTEP0 [REF0 INVALID]]]]; subst.
+  unfold Symbolic.next_state_pc in NEXT. unfold Symbolic.next_state in NEXT.
+  simpl in NEXT. 
+  destruct sst0 as [mem0 regs0 [pc0 tpc0] ?].
+  destruct REF0 as [? [PC0EQ [REFI0 [REFD0 REFR0]]]]; subst.
+  inversion ASTEP0; subst.
+
+  repeat (
+      match goal with
+        | [H: refine_violation_state _ _ => destruct H as [? [? [? ?]]]
+        | [H: 
+
+ (*unfoldings and case analysis on tags*)
+  repeat (
+      match goal with
+        | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => unfold Symbolic.next_state_pc in H
+        | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => unfold Symbolic.next_state_reg in H
+        | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+          unfold Symbolic.next_state_reg_and_pc in H
+        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          unfold Symbolic.next_state in H; simpl in H; match_inv
+      end);
+
+
+
+  * (*case amachine took a jump*)
+     inversion SSTEP0; inversion ST; subst;
+    (*uninteresting cases*)
+    match goal with 
+        | [H: refine_imemory ?Imem ?Mem, H1: Abstract.get_imem ?Imem ?Pc = Some ?I,
+           H2: Symbolic.get_mem ?Mem ?Pc = Some ?I'@_ |- _] => 
+          destruct (imem_refined_instructions Pc H H1 H2); try congruence
+    end. 
+     (*case smachine took a jump too*)
+     unfold Symbolic.next_state_pc in NEXT0.
+     unfold Symbolic.next_state in NEXT0. simpl in NEXT0.
+     assert (GET := jump_tagged pc0 FETCH INST0 REFI0).
+     assert (ti0 = INSTR (Some pc0)).
+     { rewrite GET in PC0; inversion PC0; auto. }
+     subst.
+     destruct tpc1.
+    { (*case sst0 has a pc tag set*)
+      destruct o; [idtac | inversion NEXT0].
+      destruct (valid_jmp w0 pc0); [idtac | inversion NEXT0].
+      simpl in NEXT0. inversion NEXT0; subst.
+      destruct ti. (*could avoid this*)
+      - (*case ti is tagged as an instr*)
+        destruct o.
+        + (*case ti has an id - only valid case since we are coming from a jump*)
+          assert (w = pc) by (eapply id_hypothesis; eauto). subst w.
+          assert (r = r0) by (rewrite INST0 in INST1; inversion INST1; auto); subst r0.
+          assert (EQ := reg_refined_values r REFR0 RW RW0). subst apc.
+          rewrite VALID in NEXT. match_inv.
+        + simpl in NEXT; inversion NEXT.
+      - simpl in NEXT; inversion NEXT.
+    }
+    { simpl in NEXT0. inversion NEXT0; subst.
+      destruct ti. (*could avoid this*)
+      - (*case ti is tagged as an instr*)
+        destruct o.
+        + (*case ti has an id - only valid case since we are coming from a jump*)
+          assert (w = pc) by (eapply id_hypothesis; eauto). subst w.
+          assert (r = r0) by (rewrite INST0 in INST1; inversion INST1; auto); subst r0.
+          assert (EQ := reg_refined_values r REFR0 RW RW0). subst apc.
+          rewrite VALID in NEXT. simpl in NEXT. inversion NEXT. match_inv.
+        + simpl in NEXT; inversion NEXT.
+      - simpl in NEXT; inversion NEXT.
+    }
+  * 
+
+
+
+     simpl in H5. inversion H5; subst.
+     rewrite INST0 in INST1. inversion INST1; subst.
+     
+
+     
+     destruct tpc1.
+    { (*case sst0 has a pc tag set*)
+      destruct o; [idtac | inversion NEXT0].
+      destruct (valid_jmp w0 pc0); [idtac | inversion NEXT0].
+      simpl in NEXT0. inversion NEXT0; subst.
+      destruct ti. (*could avoid this*)
+      - (*case ti is tagged as an instr*)
+        destruct o.
+        + (*case ti has an id - only valid case since we are coming from a jump*)
+          assert (w = pc) by (eapply id_hypothesis; eauto). subst w.
+          assert (r = r0) by (rewrite INST0 in INST1; inversion INST1; auto); subst r0.
+          assert (EQ := reg_refined_values r REFR0 RW RW0). subst apc.
+          rewrite VALID in NEXT. match_inv.
+        + simpl in NEXT; inversion NEXT.
+      - simpl in NEXT; inversion NEXT.
+    }
+     
+  
+
+
+
   (*nop*)
   unfold refine_violation_state in REF.
   destruct REF as [? [ast0 [sst0 REF]]].
@@ -402,6 +595,7 @@ Proof.
            H2: Symbolic.get_mem ?Mem ?Pc = Some ?I'@_ |- _] => 
           destruct (imem_refined_instructions Pc H H1 H2); try congruence
     end.
+   
     
       
 
