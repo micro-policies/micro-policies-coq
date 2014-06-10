@@ -653,16 +653,20 @@ Proof.
   intro. apply H0. apply Z2Nat.inj; eauto.
 Qed.
 
-Lemma update_list_Some (T: Type): forall (v: T) l n,
-  n < length l ->
-  exists l', update_list n v l = Some l'.
+Lemma update_list_Some (T: Type) (v: T) l n :
+  n < length l <-> exists l', update_list n v l = Some l'.
 Proof.
-  induction l; intros.
-  - inv H.
-  - destruct n.
-    + simpl.  eauto.
-    + simpl. edestruct IHl as [l' E]. simpl in H. instantiate (1:= n). omega.
-      eexists. rewrite E. eauto.
+revert n v; induction l; intros n v; constructor; simpl; try omega.
++ destruct n; simpl; intros [l]; discriminate.
++ destruct n; intros lt_n; simpl.
+    now exists (v :: l).
+  apply lt_S_n in lt_n.
+  destruct (IHl n v) as [IH _]; destruct (IH lt_n) as [l' upd_l'].
+  now exists (a :: l'); rewrite upd_l'.
++ destruct n; simpl; try omega.
+  intros [l' upd_l]; apply lt_n_S, (IHl n v).
+  destruct (update_list n v l) as [l''|]; try discriminate.
+now exists l''.
 Qed.
 
 Lemma valid_update T i (l : list T) x : index_list_Z i l = Some x ->
@@ -741,14 +745,23 @@ Proof.
 Qed.
 
 Lemma update_list_Z_Some (T:Type): forall (v:T) l (i:Z),
-  (0 <= i)%Z ->
-  Z.to_nat i < length l ->
+  (0 <= i < Z.of_nat (length l))%Z <->
   exists l', update_list_Z i v l = Some l'.
 Proof.
-  intros. unfold update_list_Z.
-  destruct (i <? 0)%Z eqn:?.
-  - rewrite Z.ltb_lt in Heqb. omega.
-  - eapply update_list_Some; eauto.
+intros. unfold update_list_Z.
+destruct (i <? 0)%Z eqn:?.
+- apply Z.ltb_lt in Heqb; constructor; try omega.
+  intros []; discriminate.
+- constructor.
+    intros [pos_i lt_i].
+    rewrite <-(Z2Nat.id _ pos_i) in lt_i.
+    apply Nat2Z.inj_lt in lt_i.
+    now eapply update_list_Some; eauto.
+    intros H; apply update_list_Some in H.
+  apply Z.ltb_ge in Heqb.
+  split; try easy.
+  rewrite <-(Z2Nat.id _ Heqb).
+  now apply Nat2Z.inj_lt.
 Qed.
 
 Lemma length_update_list : forall T a (vl:T) m m',
