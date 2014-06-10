@@ -46,7 +46,8 @@ Defined.
 
 Variable valid_jmp : word t -> word t -> bool.
 
-(* Uncertain how we handle syscalls*)
+(* Uncertain how we handle syscalls *)
+(* This allows loading of instructions as DATA *)
 Definition cfi_handler (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
   match umvec with
   | mkMVec   JUMP   (INSTR (Some n))  (INSTR (Some m))  _
@@ -56,8 +57,8 @@ Definition cfi_handler (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
   | mkMVec   JUMP   DATA  (INSTR (Some n))  _
   | mkMVec   JAL    DATA  (INSTR (Some n))  _  => 
     Some (mkRVec (INSTR (Some n)) DATA)
-  | mkMVec   JUMP   DATA  (INSTR NONE)  _
-  | mkMVec   JAL    DATA  (INSTR NONE)  _  =>
+  | mkMVec   JUMP   DATA  (INSTR None)  _
+  | mkMVec   JAL    DATA  (INSTR None)  _  =>
     None
   | mkMVec   STORE  (INSTR (Some n))  (INSTR (Some m))  [_ ; _ ; DATA]  =>
     if valid_jmp n m then Some (mkRVec DATA DATA) else None
@@ -71,6 +72,29 @@ Definition cfi_handler (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
   | mkMVec _ _ _ _ => None
   end.
 
+(* Here is a more readable variant *)
+Definition cfi_handler' (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
+  match umvec with
+  | mkMVec   JUMP   _  (INSTR (Some m))  _
+  | mkMVec   JAL    _  (INSTR (Some m))  _  =>
+    Some (mkRVec (INSTR (Some m)) DATA)
+  | mkMVec   STORE  _  (INSTR _)  [_ ; _ ; t]  =>
+    match t with
+    | DATA => Some (mkRVec DATA DATA)
+    | _    => None
+    end
+  | mkMVec    _     _  (INSTR _)  _  => 
+    Some (mkRVec DATA DATA)
+  | mkMVec    _     _  DATA       _ => None
+  end.
+
+Definition cfi_handler'' (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
+  match tpc umvec, ti umvec with
+  | (INSTR (Some n)), INSTR (Some m) =>
+    if valid_jmp n m then cfi_handler' umvec else None
+  | DATA,             INSTR _ =>
+    cfi_handler' umvec
+  | _, _ => None
+  end.
+
 End uhandler.
-
-
