@@ -200,7 +200,7 @@ destruct (b =? fst pt)%Z eqn:eq_b.
   simpl; rewrite (PartMaps.get_upd_eq upd_pt).
   destruct (eq_word off (snd pt)) as [->|neq_off].
     { exists x; exists w2; exists ty; repeat split; try assumption.
-      + now rewrite (update_list_Z_spec _ _ _ update_pt).
+      + now rewrite (update_list_Z_spec update_pt).
       + assert (eq_w1 : (base + snd pt)%w = w1).
           replace pt with (fst pt, snd pt) in rpt.
             now inversion rpt; congruence.
@@ -212,7 +212,7 @@ destruct (b =? fst pt)%Z eqn:eq_b.
             now inversion rpt; congruence.
           now destruct pt.
         congruence. }
-  rewrite <-(update_list_Z_spec2 _ _ update_pt).
+  rewrite <-(update_list_Z_spec2 update_pt).
     { destruct (rmem b base nonce off mi_b) as (v & w & ty' & get_b & ? & ?).
       exists v; exists w; exists ty'; repeat split; try assumption.
       + unfold Abstract.get_memv in get_b. 
@@ -447,7 +447,7 @@ repeat try match goal with
 | repeat (try split; try eassumption);
 now simpl; rewrite <-rpci, <-addwA; constructor]).
 
-destruct (valid_update _ _ H4 x) as (? & ?).
+destruct (valid_update H4 x) as (? & ?).
 eapply (refine_memory_upd rmem) in UPD; [|now eauto|now eauto|now eauto|now eauto]; destruct UPD as (? & ? & ?).
 eexists; eexists; split;
 [econstructor (now eauto)
