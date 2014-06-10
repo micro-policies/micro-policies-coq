@@ -107,32 +107,31 @@ Program Instance sym_sealing : (Symbolic.symbolic_params t) := {
 
 Import DoNotation.
 
-(* BCP: Added this, using Arthur's new internal_state field... *)
 Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
-  let 'Symbolic.State mem reg pc int := s in
-  (* CH: Shouldn't we be checking for overflows here
-         and failing if we detect one? *)
-  let int' := add_word int (Z_to_word 1) in
-  do reg' <- upd_reg reg syscall_ret (int@KEY);
-  Some (Symbolic.State mem reg' pc int').
+  let 'Symbolic.State mem reg pc key := s in
+  if key == max_word then None
+  else
+    let key' := add_word key (Z_to_word 1) in
+    do reg' <- upd_reg reg syscall_ret (key@KEY);
+    Some (Symbolic.State mem reg' pc key').
 
 Definition seal (s : Symbolic.state t) : option (Symbolic.state t) :=
-  let 'Symbolic.State mem reg pc int := s in
+  let 'Symbolic.State mem reg pc next_key := s in
   match get_reg reg syscall_arg1, get_reg reg syscall_arg2 with
   | Some (payload@WORD), Some (wkey@KEY) =>
     do key  <- word_to_key wkey;
     do reg' <- upd_reg reg syscall_ret (payload@(SEALED key));
-    Some (Symbolic.State mem reg' pc int)
+    Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
   end.
 
 Definition unseal (s : Symbolic.state t) : option (Symbolic.state t) :=
-  let 'Symbolic.State mem reg pc int := s in
+  let 'Symbolic.State mem reg pc next_key := s in
   match get_reg reg syscall_arg1, get_reg reg syscall_arg2 with
   | Some (payload@(SEALED key)), Some (wkey@KEY) =>
     do key  <- word_to_key wkey;
     do reg' <- upd_reg reg syscall_ret (payload@WORD);
-    Some (Symbolic.State mem reg' pc int)
+    Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
   end.
 
