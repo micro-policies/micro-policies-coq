@@ -114,7 +114,7 @@ Lemma store_mvec_mvec_in_kernel cmem cmem' mvec :
 Proof.
   unfold Concrete.store_mvec, mvec_in_kernel, in_mvec.
   intros H addr IN.
-  destruct (PartMaps.get_upd_list_in  _ _ _ H IN)
+  destruct (PartMaps.get_upd_list_in H IN)
     as (v' & IN' & GET).
   rewrite GET.
   simpl in IN'.
@@ -1092,7 +1092,7 @@ Proof.
         now eauto. }
       exploit user_into_kernel; eauto. intros KERNEL''.
       destruct IH as [_ IH].
-      specialize (IH KERNEL'' ast cst cst'' REF STEP (re_refl _ _ _ KERNEL'')).
+      specialize (IH KERNEL'' ast cst cst'' REF STEP (re_refl _ KERNEL'')).
       destruct IH as (ast' & AEXEC & REF').
       eauto.
     + intros KERNEL ast cst0 kst REF STEP0 KEXEC.
@@ -1105,7 +1105,7 @@ Proof.
         eexists ast'.
         split; eauto. }
       assert (USER0 : in_user cst0 = true) by (destruct REF; eauto).
-      assert (KUEXEC := eu_intro (fun s => in_kernel s = false) _ KEXEC KERNEL'' STEP).
+      assert (KUEXEC := eu_intro (Q := fun s => in_kernel s = false) KEXEC KERNEL'' STEP).
       assert (MSTEP := ks_intro USER0 STEP0 KUEXEC).
       eapply miss_simulation in MSTEP; eauto.
       destruct MSTEP as [MSTEP | MSTEP].

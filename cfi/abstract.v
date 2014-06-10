@@ -241,7 +241,7 @@ Proof.
         { simpl in IN2. destruct IN2. }
         { rewrite <- app_assoc in IN2.
           simpl in IN2. 
-          destruct (in2_reverse si sj xs x s'' IN2) as [IN2' | [EQ1 EQ2]].
+          destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]].
           - apply TSAFE; assumption.
           - subst. apply interm_last_step in INTERM; subst.
             left; split; [assumption | apply attacker_pc in STEPA; assumption].

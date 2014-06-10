@@ -132,7 +132,7 @@ Proof.
       destruct IN2'.
     * (*case machine1 does not take a step*)
       subst.
-      destruct (interm_in2_step csi csj INTERM2 IN2).
+      destruct (interm_in2_step INTERM2 IN2).
       - left; erewrite attacker_pc; eauto.
       - right; eapply cfg_kernel; eauto.
 Qed.

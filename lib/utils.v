@@ -6,6 +6,10 @@ Require Import Coqlib.
 
 Close Scope Z_scope.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 (** * Useful tactics *)
 Ltac gdep x := generalize dependent x.
 
@@ -145,16 +149,6 @@ Section Test.
 
 Open Scope nat.
 
-Lemma test_apply_f_equal:
-  forall (n1 n2: nat) (P: nat -> list (list nat) -> nat -> Prop),
-  (forall a, 0 = a -> a = 0 ->
-             P a (((n1+1)::nil)::nil) (n1+n2)) ->
-  forall b, P (b - b) (((1+n1)::nil)::nil) (n2+n1).
-Proof.
-  intros ? ? ? HP ?.
-  apply_f_equal HP; rec_f_equal auto.
-Qed.
-
 Lemma test_exact_f_equal: forall (n1 n2: nat) (P: nat -> nat -> Prop),
   P (n1+1) (n1+n2) -> P (1+n1) (n2+n1).
 Proof.
@@ -288,8 +282,6 @@ Infix "∘" := compose (at level 30).
 Arguments compose {A B C} f g / x.
 
 (* Useful functions on lists *)
-
-Set Implicit Arguments.
 
 (* What I wanted to write for group_by (taken from ghc stdlib)
 Fixpoint span A (p : A -> bool) (xs : list A) : list A * list A :=
@@ -584,6 +576,7 @@ Definition update_list_Z A i y (xs: list A) : option (list A) :=
   else
     update_list (Z.to_nat i) y xs.
 
+
 Lemma update_Z_some_not_nil : forall A (v:A) l i l',
   update_list_Z i v l = Some l' ->
   l' = nil ->
@@ -758,7 +751,7 @@ Proof.
   - eapply update_list_Some; eauto.
 Qed.
 
-Lemma update_preserves_length: forall T a (vl:T) m m',
+Lemma length_update_list : forall T a (vl:T) m m',
   update_list a vl m = Some m' ->
   length m' = length m.
 Proof.
@@ -773,6 +766,14 @@ Proof.
         inversion H; subst.
         intros eq; rewrite <- eq; reflexivity.
       * inv H.
+Qed.
+
+Lemma length_update_list_Z A i v (l l' : list A) : update_list_Z i v l = Some l' ->
+  length l' = length l.
+Proof.
+unfold update_list_Z.
+destruct (i <? 0)%Z; try discriminate.
+intros H; apply (length_update_list H).
 Qed.
 
 Lemma app_same_length_eq (T: Type): forall (l1 l2 l3 l4: list T),
@@ -1263,7 +1264,7 @@ Proof.
   - intros k' IN'. eapply DEF. eauto.
   - rewrite UPD.
     destruct (DEF k (or_introl eq_refl)) as [v' GET].
-    destruct (upd_list_defined_preserved _ GET UPD) as [v'' GET'].
+    destruct (upd_list_defined_preserved GET UPD) as [v'' GET'].
     eapply upd_defined; eauto.
 Qed.
 
@@ -1337,8 +1338,6 @@ End EqDec.
 
 Require Import Recdef.
 Require Import Omega.
-
-Set Implicit Arguments.
 
 Section In2.
 
