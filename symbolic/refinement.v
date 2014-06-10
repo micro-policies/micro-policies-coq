@@ -720,29 +720,48 @@ Definition user_regs_unchanged cregs cregs' :=
     Concrete.get_reg cregs r = w@(encode (USER t false)) <->
     Concrete.get_reg cregs' r = w@(encode (USER t false)).
 
-(* XXX: a bit of a lie now, given that the kernel can now return to a system call *)
+(* XXX: a bit of a lie now, given that the kernel can now return to a system call (BCP: ?) *)
+(* BCP: Added some comments -- please check! *)
 Hypothesis handler_correct_allowed_case :
   forall mem mem' cmvec rvec reg cache old_pc int,
+    (* If kernel invariant holds... *)
     ki mem reg cache int ->
+    (* and calling the handler on mvec succeeds and returns rvec... *)
     match decode_mvec cmvec with
     | Some mvec => handler mvec
     | None => None
     end = Some rvec ->
+    (* and storing the concrete representation of the m-vector yields new memory mem'... *)
     Concrete.store_mvec ops mem cmvec = Some mem' ->
+    (* and the rule cache is correct... *)
     cache_correct cache ->
+    (* THEN if we start the concrete machine in kernel mode (i.e.,
+       with the PC tagged TKernel) at the beginning of the fault
+       handler (and with the current memory, and with the current PC
+       in the return-addr register epc)) and let it run until it
+       reaches a user-mode state st'... *)
     exists st',
       kernel_user_exec
         (Concrete.mkState mem' reg cache
                           (Concrete.fault_handler_start (t := mt))@Concrete.TKernel
                           old_pc)
         st' /\
+      (* and the new cache is still correct... *)
       cache_correct (Concrete.cache st') /\
+      (* and the new cache now contains a rule mapping mvec to rvec... *)
       Concrete.cache_lookup _ (Concrete.cache st') masks cmvec = Some (encode_rvec rvec) /\
+      (* and the mvec has been tagged as kernel data (BCP: why is this important??) *)
       mvec_in_kernel (Concrete.mem st') /\
+      (* and we've arrived at the return address that was in epc with
+         unchanged user memory and registers... *)
       user_mem_unchanged mem (Concrete.mem st') /\
       user_regs_unchanged reg (Concrete.regs st') /\
       Concrete.pc st' = old_pc /\
+      (* and the system call entry points are all tagged ENTRY (BCP:
+         Why do we care, and if we do then why isn't this part of the
+         kernel invariant?  Could user code possibly change it?) *)
       wf_entry_points (Concrete.mem st') /\
+      (* and the kernel invariant still holds. *)
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int.
 
 Hypothesis handler_correct_disallowed_case :
