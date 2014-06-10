@@ -5,6 +5,55 @@ Require Import utils common symbolic. Import rules.
 
 Set Implicit Arguments.
 
+Section WithClasses.
+
+Context {t : machine_types}.
+
+(* These should be shared between as many machines as possible *)
+
+Class smemory tag := {
+  memory    : Type;
+
+  get_mem : memory -> word t -> option (atom (word t) tag);
+  upd_mem : memory -> word t -> atom (word t) tag -> option memory;
+
+  mem_axioms : PartMaps.axioms get_mem upd_mem
+}.
+
+(* This is basically the same as smemory,
+   can't we share one partial map class? *)
+Class sregisters tag := {
+  registers : Type;
+
+  get_reg : registers -> reg t -> option (atom (word t) tag);
+  upd_reg : registers -> reg t -> atom (word t) tag -> option registers;
+
+  reg_axioms : PartMaps.axioms get_reg upd_reg
+}.
+
+Class syscall_regs := {
+  syscall_ret  : reg t;
+  syscall_arg1 : reg t;
+  syscall_arg2 : reg t
+}.
+
+(* These should be shared with the sealing abstract machine *)
+
+Class sealing_key := {
+  key       : Type;
+
+  word_to_key : word t -> option key;
+  eq_key :> EqDec (eq_setoid key)
+}.
+
+Class sealing_syscall_addrs := {
+  mkkey_addr  : word t;
+  seal_addr   : word t;
+  unseal_addr : word t
+}.
+
+End WithClasses.
+
 Module SymbolicSealing.
 
 Section WithClasses.
@@ -12,45 +61,17 @@ Section WithClasses.
 Context {t : machine_types}.
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
-
-Class symbolic_sealing_types := {
-  memory    : Type;
-  registers : Type;
-  key       : Type
-}.
-
-Context {sst : symbolic_sealing_types}.
+Context {sk : @sealing_key t}.
 
 Inductive stag :=
 | WORD   :        stag
 | KEY    :        stag
 | SEALED : key -> stag.
 
-Class symbolic_sealing_params := {
-  get_mem : memory -> word t -> option (atom (word t) stag);
-  upd_mem : memory -> word t -> atom (word t) stag -> option memory;
-
-  get_reg : registers -> reg t -> option (atom (word t) stag);
-  upd_reg : registers -> reg t -> atom (word t) stag -> option registers;
-
-  word_to_key : word t -> option key;
-  eq_key :> EqDec (eq_setoid key);
-
-  mkkey_addr  : word t;
-  seal_addr   : word t;
-  unseal_addr : word t;
-
-  syscall_ret  : reg t;
-  syscall_arg1 : reg t;
-  syscall_arg2 : reg t
-}.
-
-Class params_spec (ap : symbolic_sealing_params) := {
-  mem_axioms : PartMaps.axioms get_mem upd_mem;
-  reg_axioms : PartMaps.axioms get_reg upd_reg
-}.
-
-Context {ssp : symbolic_sealing_params}.
+Context {sm : @smemory t stag}.
+Context {sr : @sregisters t stag}.
+Context {scr : @syscall_regs t}.
+Context {ssa : @sealing_syscall_addrs t}.
 
 Definition none := WORD.
 
@@ -105,7 +126,9 @@ Program Instance sym_sealing : (Symbolic.symbolic_params t) := {
   internal_state := word t  (* next key to generate *)
 }.
 
-Import DoNotation.
+Import DoNotation. Print Setoid. Locate "==".
+
+Set Printing All.
 
 Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc key := s in
