@@ -1,4 +1,5 @@
 (* Why is common in concrete? *)
+(* BCP: I wondered this too! *)
 Require Import ZArith.
 
 Require Import utils concrete.common memory_safety.abstract memory_safety.quasiabstract.
@@ -10,6 +11,8 @@ Set Implicit Arguments.
 Section refinement.
 
 Import QuasiAbstract.Notations.
+(* BCP: Why do we have something called QuasiAbstract in this
+   development? *)
 
 Context {mt : machine_types}
         {ops : machine_ops mt}
