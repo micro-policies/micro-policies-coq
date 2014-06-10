@@ -38,6 +38,8 @@ Class syscall_regs := {
 }.
 
 (* These should be shared with the sealing abstract machine *)
+(* BCP: Really??  Why, at the abstract level, would we want to know
+   anything about the mapping from words to keys? *)
 
 Class sealing_key := {
   key       : Type;
@@ -126,12 +128,15 @@ Program Instance sym_sealing : (Symbolic.symbolic_params t) := {
   internal_state := word t  (* next key to generate *)
 }.
 
-Import DoNotation. Print Setoid. Locate "==".
+Import DoNotation. 
 
 Set Printing All.
 
 Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc key := s in
+  (* BCP: Shouldn't this be max_word / 4 or some such??  
+     Otherwise we're going to have trouble writing the mapping from 
+     symbolic to concrete tags. *)
   if key == max_word then None
   else
     let key' := add_word key (Z_to_word 1) in
@@ -166,5 +171,7 @@ Definition sealing_syscalls : list (Symbolic.syscall t) :=
 Definition sealing_step := Symbolic.step sealing_syscalls.
 
 End WithClasses.
+
+(* BCP: Aren't there also some proof obligations that we need to satisfy? *)
 
 End SymbolicSealing.
