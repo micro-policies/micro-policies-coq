@@ -60,14 +60,16 @@ Program Instance sym_cfi : (Symbolic.symbolic_params t) := {
 }.
 
 Variable table : list (Symbolic.syscall t).
-                                 
-(* Attacker steps will be implemented later*)
+
+(* TODO: Attacker steps will be implemented later *)
 Variable step_a : Symbolic.state t -> Symbolic.state t -> Prop.
 
 Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
 
 Open Scope word_scope.
 
+(* The rest of the file is only used for CFI theorem ... so probably
+   move somewhere else? *)
 Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
   let pc_t' := common.tag (Symbolic.pc st') in
   let pc_t := common.tag (Symbolic.pc st) in
@@ -87,7 +89,6 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
   end.
 
 Definition initial (s : Symbolic.state t) := True.
-
 
 Program Instance symbolic_cfi_machine : cfi_machine t := {|
   state := Symbolic.state t;
