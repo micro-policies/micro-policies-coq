@@ -7,8 +7,13 @@ Require Import utils concrete.common memory_safety.abstract memory_safety.quasia
 Require Import EquivDec.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Section refinement.
+
+Open Scope Z_scope.
+Open Scope word_scope.
 
 Import QuasiAbstract.Notations.
 (* BCP: Why do we have something called QuasiAbstract in this
@@ -26,16 +31,30 @@ Context {mt : machine_types}
 
 Section memory_injections.
 
-Record meminj := Meminj {
-  (* if b is allocated, mi b returns Some (w1,w2) where
+Definition size amem pt :=
+  match Abstract.get_mem amem pt with
+  | None => 0%Z
+  | Some fr => Z.of_nat (length fr)
+  end.
+
+Record meminj amem := Meminj {
+  (* if b is allocated, mi b returns Some (w1,w2,sz) where
      - w1 is the address of b's first memory location
      - w2 is b's pointer nonce
   *)
     mi :> Abstract.block -> option (word mt * word mt);
-    mi_inj : forall x y, mi x = mi y -> x = y
+    mi_inj : forall x y, mi x = mi y -> x = y;
+    (* Blocks are non overlapping: *)
+    mi_disjoints : forall x x' base base' nonce nonce' off off',
+      mi x = Some (base,nonce) ->
+      mi x' = Some (base',nonce') ->
+      base + off = base' + off' ->
+      word_to_Z off < size amem x -> word_to_Z off' < size amem x' ->
+      x = x'
   }.
 
-Variable mi : meminj.
+Variable amem : Abstract.memory mt.
+Variable mi : meminj amem.
 
 Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
   match sa, sb with
@@ -54,6 +73,7 @@ Inductive refine_val : Abstract.value mt -> QuasiAbstract.atom mt -> Prop :=
 Inductive refine_val : Abstract.value mt -> word mt -> QuasiAbstract.type mt -> Prop :=
   | RefineInt : forall w, refine_val (Abstract.ValInt mt w) w INT
   | RefinePtr : forall b base nonce off, mi b = Some (base,nonce) ->
+                (* word_to_Z off < sz -> *)
                 refine_val (Abstract.ValPtr (b,off)) (add_word base off) (PTR nonce).
 
 Lemma refine_val_injl x x' w ty : refine_val x w ty -> refine_val x' w ty -> x = x'.
@@ -91,23 +111,25 @@ reflexivity.
 (* eapply RefinePtr. *)
 Admitted.
 
-Lemma refine_ptr_rev b base nonce w : mi b = Some (base,nonce) ->
-  refine_val (Abstract.ValPtr (b, w - base)%w) w (PTR nonce).
+Lemma refine_ptr_inv w n b off base nonce :
+  refine_val (Abstract.ValPtr (b,off)) w (PTR n) ->
+  mi b = Some (base, nonce) ->
+  w = (base + off)%w.
 Proof.
-intros ?.
-assert (addwK : add_word base (w - base)%w = w).
-  admit.
-rewrite <-addwK at 2.
-now constructor.
+intros rpt mi_b.
+inversion rpt.
+congruence.
 Qed.
 
 Definition refine_memory (amem : Abstract.memory mt) (qamem : QuasiAbstract.memory mt) :=
-  forall b base nonce off, mi b = Some (base,nonce) ->
-  exists v w ty, Abstract.get_memv amem (b,off) = Some v
-    /\ QuasiAbstract.get_mem qamem (base+off)%w = Some w@M(nonce,ty)
-    /\ refine_val v w ty.
+  forall b base nonce off, mi b = Some (base,nonce) -> (* word_to_Z off < size amem b -> *)
+  match Abstract.get_memv amem (b,off), QuasiAbstract.get_mem qamem (base+off)%w with
+  | None, None => True
+  | Some v, Some w@M(nonce,ty) => refine_val v w ty
+  | _, _ => False
+ end.
 
-Lemma refine_memory_get amem qamem (b : Abstract.block) (base nonce off : word mt) 
+Lemma refine_memory_get qamem (b : Abstract.block) (base nonce off : word mt)
            (x : Abstract.value mt) w ty :
          refine_memory amem qamem ->
          mi b = Some (base,nonce) ->
@@ -121,7 +143,7 @@ admit.
 (* now rewrite <-rmem; eassumption. *)
 Qed.
 
-Lemma refine_memory_get_int amem qamem (w1 w2 w3 : word mt) pt :
+Lemma refine_memory_get_int qamem (w1 w2 w3 : word mt) pt :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
          QuasiAbstract.get_mem qamem w1 = Some w3@M(w2,INT) ->
          Abstract.get_memv amem pt = Some (Abstract.ValInt _ w3).
@@ -129,21 +151,25 @@ Lemma refine_memory_get_int amem qamem (w1 w2 w3 : word mt) pt :
 Proof.
 intros rmem rpt get_w.
 unfold refine_memory in rmem.
-inversion rpt as [ | b base nonce off mi_b eq_pt eq_w1].
-rewrite <-H in *.
-(* Why does this fail? : "Too many names"
-inversion rpt as [|b w' i mi_b eq_pt eq_w eq_ty].
-*)
-destruct (rmem b base nonce off mi_b) as (v & w & ty & get_b & get_base & rvw).
+destruct pt as [b' off'].
+(* Hit the too many names bug here too. *)
+inversion rpt as [ | b base nonce off mi_b eq_b eq_w1 eq_nonce (* eq_off *)].
+rewrite <-eq_nonce,<-eq_b,<-H in *.
+specialize (rmem b base nonce off mi_b).
+rewrite eq_w1, get_w in rmem.
+destruct (Abstract.get_memv amem (b, off)) eqn:get_b; try contradiction.
+now inversion rmem.
+(*
+destruct (rmem b base nonce off mi_b in_bounds) as (v & w & ty & get_b & get_base & rvw).
 rewrite eq_w1, get_w in get_base.
 rewrite get_b.
 injection get_base.
 destruct rvw; try discriminate.
 now intros _ ->.
+*)
 Qed.
 
-(* Why is amem not made implicit automatically ? *)
-Lemma get_memv_mem amem base off v : Abstract.get_memv amem (base, off) = Some v ->
+Lemma get_memv_mem base off v : Abstract.get_memv amem (base, off) = Some v ->
   exists fr, Abstract.get_mem amem base = Some fr
   /\ index_list_Z (word_to_Z off) fr = Some v.
 Proof.
@@ -152,7 +178,7 @@ destruct (Abstract.get_mem amem base) as [fr|]; try discriminate.
 now intros index_fr; exists fr; split.
 Qed.
 
-Lemma get_mem_memv amem base off v fr : Abstract.get_mem amem base = Some fr ->
+Lemma get_mem_memv base off v fr : Abstract.get_mem amem base = Some fr ->
   index_list_Z (word_to_Z off) fr = Some v ->
   Abstract.get_memv amem (base,off) = Some v.
 Proof.
@@ -161,30 +187,79 @@ unfold Abstract.get_memv.
 now simpl; rewrite get_base.
 Qed.
 
-Lemma refine_memory_get' amem qamem (w1 w2 w3 w4 : word mt) pt ty :
+Lemma refine_memory_get' qamem (w1 w2 w3 w4 : word mt) pt ty :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
+         (* word_to_Z (snd pt) < size amem (fst pt) -> *)
          QuasiAbstract.get_mem qamem w1 = Some (w3@M(w4,ty)) ->
          exists fr x, Abstract.get_mem amem (fst pt) = Some fr
          /\ index_list_Z (word_to_Z (snd pt)) fr = Some x 
          /\ refine_val x w3 ty.
 Proof.
 intros rmem rpt get_w.
-unfold refine_memory in rmem.
-inversion rpt as [|b base nonce off mi_b eq_pt eq_w1].
-rewrite <-H in *.
-(* Why does this fail? : "Too many names"
-inversion rpt as [|b w' i mi_b eq_pt eq_w eq_ty].
+(* unfold refine_memory in rmem. *)
+destruct pt as [b' off'].
+simpl in *.
+(* Too many names bug... *)
+inversion rpt as [|b base nonce off mi_b eq_b eq_w1 eq_nonce (*eq_off*)].
+rewrite <-eq_nonce,<-eq_b,<-H in *.
+specialize (rmem b base nonce off mi_b).
+rewrite <-eq_w1 in get_w.
+rewrite get_w in rmem.
+destruct (Abstract.get_memv amem (b, off)) eqn:get_b; try contradiction.
+(*
+destruct (rmem b base nonce off mi_b in_bounds) as (v & w & ty' & get_b & get_base & rvw).
 *)
-destruct (rmem b base nonce off mi_b) as (v & w & ty' & get_b & get_base & rvw).
-destruct (get_memv_mem _ _ _ get_b) as (fr & ? & ?).
-rewrite eq_w1, get_w in get_base.
-injection get_base.
-intros -> _ ->.
+destruct (get_memv_mem get_b) as (fr & ? & ?).
 exists fr; exists v; repeat split; easy.
 Qed.
 
-Lemma refine_memory_upd amem qamem qamem' w1 w2 pt ty n fr fr' x :
+Lemma size_upd_eq amem' b fr fr' i x :
+  Abstract.get_mem amem b = Some fr ->
+  update_list_Z i x fr = Some fr' ->
+  Abstract.upd_mem amem b fr' = Some amem' ->
+  size amem' b = size amem b.
+Proof.
+intros get upd_list upd.
+unfold size.
+now rewrite (PartMaps.get_upd_eq upd), (length_update_list_Z upd_list), get.
+Qed.
+
+Lemma size_upd_neq amem' b b' fr : Abstract.upd_mem amem b fr = Some amem' ->
+  b' <> b ->
+  size amem' b' = size amem b'.
+Proof.
+intros upd neq_bb'.
+unfold size.
+now rewrite (PartMaps.get_upd_neq neq_bb' upd).
+Qed.
+
+Lemma size_get_memv b off v :
+  Abstract.get_memv amem (b,off) = Some v ->
+  word_to_Z off < size amem b.
+Proof.
+unfold Abstract.get_memv, size; simpl.
+destruct (Abstract.get_mem amem b); try discriminate.
+intros index_off.
+apply index_list_Z_Some in index_off.
+now destruct index_off.
+Qed.
+
+Lemma size_update b fr base nonce off fr' x :
+  Abstract.get_mem amem b = Some fr ->
+  mi b = Some (base, nonce) ->
+  update_list_Z off x fr = Some fr' ->
+  off < size amem b.
+Proof.
+unfold size; intros -> mi_b upd_x.
+assert (H : 0 <= off < Z.of_nat (length fr)).
+  eapply update_list_Z_Some.
+  now exists fr'; eassumption.
+now destruct H.
+Qed.
+
+Lemma refine_memory_upd qamem qamem' w1 w2 pt ty n fr fr' x :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR n) ->
+         (* word_to_Z (snd pt) < size amem (fst pt) -> *)
          QuasiAbstract.upd_mem qamem w1 w2@M(n, ty) = Some qamem' ->
          Abstract.get_mem amem (fst pt) = Some fr ->
          update_list_Z (word_to_Z (snd pt)) x fr = Some fr' ->
@@ -192,7 +267,7 @@ Lemma refine_memory_upd amem qamem qamem' w1 w2 pt ty n fr fr' x :
          exists amem', Abstract.upd_mem amem (fst pt) fr' = Some amem'
          /\ refine_memory amem' qamem'.
 Proof.
-intros rmem rpt upd_w1 get_pt update_pt rx.
+intros rmem rpt (* in_bounds_pt *) upd_w1 get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
 exists amem'; split; try assumption.
 intros b base nonce off mi_b.
@@ -201,43 +276,61 @@ destruct (b =? fst pt)%Z eqn:eq_b.
   rewrite eq_b.
   unfold Abstract.get_memv.
   simpl; rewrite (PartMaps.get_upd_eq upd_pt).
-  destruct (eq_word off (snd pt)) as [->|neq_off].
-    { exists x; exists w2; exists ty; repeat split; try assumption.
-      + now rewrite (update_list_Z_spec update_pt).
-      + assert (eq_w1 : (base + snd pt)%w = w1).
-          replace pt with (fst pt, snd pt) in rpt.
-            now inversion rpt; congruence.
-          now destruct pt.
-        rewrite eq_w1.
-        rewrite (PartMaps.get_upd_eq upd_w1).
-        assert (eq_n : n = nonce).
-          replace pt with (fst pt, snd pt) in rpt.
-            now inversion rpt; congruence.
-          now destruct pt.
-        congruence. }
-  rewrite <-(update_list_Z_spec2 update_pt).
-    { destruct (rmem b base nonce off mi_b) as (v & w & ty' & get_b & ? & ?).
-      exists v; exists w; exists ty'; repeat split; try assumption.
-      + unfold Abstract.get_memv in get_b. 
-        simpl in get_b.
-        now rewrite eq_b, get_pt in get_b.
-      + assert (neq_w1 : (base + off)%w <> w1).
-          admit.
-        now rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
-    }
-  (* TODO: generic lemmas on injectivity and cancellation *)
-  admit.
-destruct (rmem b base nonce off mi_b) as (v & w & ty' & get_b & ? & ?).
-exists v; exists w; exists ty'; repeat split; try assumption.
-  unfold Abstract.get_memv in *.
-  assert (neq_b : b <> fst pt).
-    admit.
-  rewrite (PartMaps.get_upd_neq neq_b upd_pt).
-  simpl in *.
-  destruct (Abstract.get_mem amem b); try discriminate.
-  now rewrite get_b.
-assert (neq_w1 : (base + off)%w <> w1).
-  admit.
+  destruct (eq_word off (snd pt)) as [eq_off|neq_off].
+    rewrite eq_off. (* Why doesn't a -> intro pattern work above *)
+    rewrite (update_list_Z_spec update_pt).
+    assert (eq_w1 : (base + snd pt)%w = w1).
+      replace pt with (fst pt, snd pt) in rpt.
+        now inversion rpt; congruence.
+      now destruct pt.
+    rewrite eq_w1.
+    rewrite (PartMaps.get_upd_eq upd_w1).
+    assert (eq_n : n = nonce).
+      replace pt with (fst pt, snd pt) in rpt.
+        now inversion rpt; congruence.
+      now destruct pt.
+    congruence.
+  assert (neqw_off : word_to_Z off <> word_to_Z (snd pt)).
+    now intros H; apply word_to_Z_inj in H.
+  rewrite <-(update_list_Z_spec2 update_pt neqw_off).
+  specialize (rmem b base nonce off mi_b).
+  unfold Abstract.get_memv in rmem.
+  simpl in rmem.
+  rewrite eq_b, get_pt in rmem.
+  assert (neq_w1 : (base + off)%w <> w1).
+    destruct pt as [b' off']; simpl in *.
+    rewrite eq_b in mi_b.
+    rewrite (refine_ptr_inv rpt mi_b).
+    now intros eq_w1; apply addwI in eq_w1; congruence.
+  now rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
+apply Z.eqb_neq in eq_b.
+specialize (rmem b base nonce off mi_b).
+unfold Abstract.get_memv in *.
+rewrite (PartMaps.get_upd_neq eq_b upd_pt).
+simpl in *.
+(* Why does fold fail?
+fold (Abstract.get_memv amem (b,off)) in *.
+*)
+change (match Abstract.get_mem amem b with
+           | Some fr0 => index_list_Z (word_to_Z off) fr0
+           | None => None
+           end)
+with (Abstract.get_memv amem (b,off)) in *.
+
+destruct (eq_word (base + off) w1) as [eq_w1|neq_w1].
+  rewrite <-eq_w1 in upd_w1.
+  rewrite (PartMaps.get_upd_eq upd_w1).
+  destruct (Abstract.get_memv amem (b, off)) eqn:get_b.
+    assert (lt_off := size_get_memv get_b).
+    destruct pt as [b' off']; simpl in *; revert eq_w1.
+    inversion rpt as [|? ? ? ? mi_pt].
+    assert (lt_off' : word_to_Z off' < size amem b').      
+      now apply (size_update get_pt mi_pt update_pt).
+    intros overlap.
+    assert (eq_b' := mi_disjoints mi_b mi_pt overlap lt_off lt_off').
+    congruence.
+  destruct (PartMaps.upd_inv upd_w1) as [? get_w1].
+  now rewrite get_w1 in rmem.
 now rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
 Qed.
 
@@ -290,7 +383,11 @@ Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
   QuasiAbstract.get_reg qaregs n = Some w@V(INT) ->
   Abstract.get_reg aregs n = Some (Abstract.ValInt _ w).
 Proof.
-admit.
+intros rregs get_n.
+specialize (rregs n).
+rewrite get_n in rregs.
+destruct (Abstract.get_reg aregs n); try contradiction.
+now inversion rregs.
 Qed.
 
 Lemma refine_registers_get_ptr aregs qaregs (n : common.reg mt) w b :
@@ -316,7 +413,21 @@ Lemma refine_registers_upd aregs qaregs qaregs' r v w ty :
   exists areg',
     Abstract.upd_reg aregs r v = Some areg' /\
     refine_registers areg' qaregs'.
-admit.
+Proof.
+intros rregs upd_r_qa rvw.
+assert (ref_r := rregs r).
+destruct (PartMaps.upd_inv upd_r_qa) as [v' get_r_qa].
+rewrite get_r_qa in ref_r.
+destruct (Abstract.get_reg aregs r) as [w'|] eqn:get_r_a; try contradiction.
+destruct (PartMaps.upd_defined v get_r_a) as [aregs' upd_r_a].
+exists aregs'; split; try easy.
+intros r'.
+destruct (eq_reg r' r) as [->|neq_rr'].
+  rewrite (PartMaps.get_upd_eq upd_r_a).
+  now rewrite (PartMaps.get_upd_eq upd_r_qa).
+rewrite (PartMaps.get_upd_neq neq_rr' upd_r_a).
+rewrite (PartMaps.get_upd_neq neq_rr' upd_r_qa).
+now apply rregs.
 Qed.
 
 Definition refine_state (ast : Abstract.state mt) (qast : QuasiAbstract.state mt) :=
@@ -347,7 +458,7 @@ destruct (Abstract.sem asc ast) as [ast'|]; try easy.
 now intros rst'; exists ast'; split.
 Qed.
 
-Axiom refine_syscalls : meminj -> list (Abstract.syscall mt) -> list (QuasiAbstract.syscall mt) -> Prop.
+Axiom refine_syscalls : forall amem, meminj amem -> list (Abstract.syscall mt) -> list (QuasiAbstract.syscall mt) -> Prop.
 
 Axiom refine_syscalls_get : forall asc qasc w sc, refine_syscalls mi asc qasc ->
   QuasiAbstract.get_syscall qasc w = Some sc ->
@@ -357,7 +468,6 @@ Axiom refine_syscalls_get : forall asc qasc w sc, refine_syscalls mi asc qasc ->
 End memory_injections.
 
 Hint Constructors refine_val refine_val.
-Hint Resolve refine_ptr_rev.
 Hint Resolve get_mem_memv.
 
 (*
@@ -368,7 +478,7 @@ Hint Resolve refine_memory_get_int.
 second case, the axiom below should be refined. using a bound on the memory
 size. *)
 
-Lemma refine_pc_inv mi nonce apcb apci pc :
+Lemma refine_pc_inv amem (mi : meminj amem) nonce apcb apci pc :
   refine_val mi (Abstract.ValPtr (apcb, apci)) pc (PTR nonce) ->
   exists base, mi apcb = Some (base, nonce) /\ (base + apci)%w = pc.
 Proof.
@@ -402,20 +512,20 @@ Hint Extern 1 (update_list_Z ?i ?v ?fr = Some _) =>
   end.
 *)
 
-Lemma backward_simulation mi ast qast qast' asc qasc :
+Lemma backward_simulation ast (mi : meminj (Abstract.mem ast)) qast qast' asc qasc :
   refine_state mi ast qast -> refine_syscalls mi asc qasc -> QuasiAbstract.step qasc qast qast' ->
-  exists mi' ast', Abstract.step asc ast ast' /\ refine_state mi' ast' qast'.
+  exists ast', Abstract.step asc ast ast' /\ refine_state mi ast' qast'.
 Proof.
 destruct ast as [amem aregs [apcb apci]].
 intros rst rsc step_qabs.
-destruct step_qabs; generalize rst; intros [rmem [rregs rpc]];
-assert (rpc_inv := refine_pc_inv rpc); destruct rpc_inv as [rpcb [mi_apcb rpci]];
+destruct step_qabs; generalize rst; intros (rmem & rregs & rpc);
+assert (rpc_inv := refine_pc_inv rpc); destruct rpc_inv as (rpcb & mi_apcb & rpci);
 repeat match goal with
   | R1W : QuasiAbstract.get_reg ?reg ?r = Some ?v |- _ =>
     match v with
-    | _@V(INT) => eapply (refine_registers_get_int _ rregs) in R1W
-    | _@V(PTR _) => eapply (refine_registers_get_ptr _ rregs) in R1W; destruct R1W as ((? & ?) & ? & ?)
-    | _ => eapply (refine_registers_get' _ rregs) in R1W; destruct R1W as (? & ? & ?)
+    | _@V(INT) => eapply (refine_registers_get_int rregs) in R1W
+    | _@V(PTR _) => eapply (refine_registers_get_ptr rregs) in R1W; destruct R1W as ((? & ?) & ? & ?)
+    | _ => eapply (refine_registers_get' rregs) in R1W; destruct R1W as (? & ? & ?)
     end
   end;
 repeat match goal with
@@ -431,7 +541,8 @@ try match goal with
   end;
 try match goal with
   | UPD : QuasiAbstract.upd_reg ?reg ?r ?v = Some _ |- _ =>
-    eapply (refine_registers_upd _ rregs) in UPD; [|now eauto]; destruct UPD as (? & ? & ?)
+    eapply (refine_registers_upd rregs) in UPD; [|now eauto]; destruct UPD as (? & ? & ?)
+  | |- _ => idtac
   end;
 try match goal with
   | UPD : QuasiAbstract.upd_mem ?mem ?w1 ?v = Some _ |- _ =>
@@ -440,33 +551,33 @@ try match goal with
 try match goal with
   | GETCALL : QuasiAbstract.get_syscall ?qasc ?w = Some _,
     CALL : QuasiAbstract.sem ?sc ?st = Some _ |- _ =>
-    eapply (refine_syscalls_get _ rsc) in GETCALL; destruct GETCALL as (? & ? & ?);
+    eapply (refine_syscalls_get rsc) in GETCALL; destruct GETCALL as (? & ? & ?);
     eapply refine_syscall_sem in CALL; [|now eauto|now eauto]; destruct CALL as (? & ? & ?)
   end;
 repeat try match goal with
   | def := _ |- _ => unfold def
-  end; try (eexists; eexists; split;
+  end; try (eexists; split;
 [econstructor (now eauto)
 | repeat (try split; try eassumption);
-now simpl; rewrite <-rpci, <-addwA; constructor]).
+now simpl; rewrite <-rpci, <-addwA; econstructor; eassumption]).
 
+(* STORE *)
 destruct (valid_update H4 x) as (? & ?).
 eapply (refine_memory_upd rmem) in UPD; [|now eauto|now eauto|now eauto|now eauto]; destruct UPD as (? & ? & ?).
-eexists; eexists; split;
+eexists; split;
 [econstructor (now eauto)
 | repeat (try split; try eassumption);
-now simpl; rewrite <-rpci, <-addwA; constructor].
+now simpl; rewrite <-rpci, <-addwA; econstructor; eassumption].
 
-(* The side failed to be discharged *)
-eapply (refine_registers_upd _ rregs) in UPD.
+(* The side condition failed to be discharged *)
+eapply (refine_registers_upd rregs) in UPD.
  destruct UPD as (? & ? & ?).
 
 Focus 2.
 rewrite <-rpci, <-addwA.
-constructor.
-now eauto.
+econstructor; eassumption.
 
-eexists; eexists; split;
+eexists; split;
 [econstructor (now eauto)
 | repeat (try split; try eassumption);
 now simpl; rewrite <-rpci, <-addwA; constructor].

@@ -527,23 +527,16 @@ Proof.
   destruct l1, l2 ; auto.
 Qed.
 
-Lemma nth_error_valid (T:Type): forall n (l:list T) v,
-   nth_error l n = Some v -> n < length l.
+Lemma nth_error_Some (T:Type): forall n (l:list T) v,
+   nth_error l n = Some v <-> n < length l.
 Proof.
-  induction n; intros; destruct l; simpl in H.
-     inv H.
-     inv H.  simpl.  omega.
-     inv H.
-     pose proof (IHn _ _ H). simpl. omega.
+admit.
 Qed.
 
-Lemma index_list_Z_valid (T:Type): forall i (l:list T) v,
-   index_list_Z i l = Some v -> (0 <= i)%Z  /\ (Z.to_nat i < length l)%nat.
+Lemma index_list_Z_Some (T:Type): forall i (l:list T) v,
+   index_list_Z i l = Some v <-> (0 <= i < Z.of_nat (length l))%Z.
 Proof.
-   intros.
-   unfold index_list_Z in H.  destruct ((i <? 0)%Z) eqn:?. inv H.
-   split. apply Z.ltb_ge; auto.
-   eapply nth_error_valid; eauto.
+admit.
 Qed.
 
 Fixpoint update_list A (n : nat) (y : A) (xs : list A) : option (list A) :=
