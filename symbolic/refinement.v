@@ -23,7 +23,8 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {ap : Symbolic.symbolic_params mt}
-        {aps : Symbolic.params_spec ap}
+        {mems : partial_map_spec (@Symbolic.sm mt ap)}
+        {regs : partial_map_spec (@Symbolic.sr mt ap)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}
         {e : @encodable (Symbolic.tag mt) mt}.
@@ -50,12 +51,12 @@ Ltac match_inv :=
 Definition refine_memory (amem : Symbolic.memory mt) (cmem : Concrete.memory mt) :=
   forall w x t,
     Concrete.get_mem cmem w = Some x@(encode (USER t false)) <->
-    Symbolic.get_mem amem w = Some x@t.
+    get amem w = Some x@t.
 
 Definition refine_registers (areg : Symbolic.registers mt) (creg : Concrete.registers mt) :=
   forall n x t,
     Concrete.get_reg creg n = x@(encode (USER t false)) <->
-    Symbolic.get_reg areg n = Some x@t.
+    get areg n = Some x@t.
 
 Let in_kernel st :=
   let pct := common.tag (Concrete.pc st) in
@@ -246,7 +247,7 @@ Lemma refine_memory_upd amem cmem cmem' addr v v' t t' :
   Concrete.get_mem cmem addr = Some v@(encode (USER t false)) ->
   Concrete.upd_mem cmem addr v'@(encode (USER t' false)) = Some cmem' ->
   exists amem',
-    Symbolic.upd_mem amem addr v'@t' = Some amem' /\
+    upd amem addr v'@t' = Some amem' /\
     refine_memory amem' cmem'.
 Proof.
   intros MEM GET UPD.

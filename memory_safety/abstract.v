@@ -131,7 +131,7 @@ Definition get_memv mem (ptr : pointer) :=
   | Some fr => index_list_Z (word_to_Z (snd ptr)) fr
   end.
 
-Check binop_denote. Check ValInt. SearchAbout [word Z].
+(* Check binop_denote. Check ValInt. SearchAbout [word Z]. *)
 Definition lift_binop (f : binop) (x y : value) :=
   match f with
   | ADD => match x, y with

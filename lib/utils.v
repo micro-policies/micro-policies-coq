@@ -1286,6 +1286,15 @@ End maps.
 
 End PartMaps.
 
+Class partial_map map key val := {
+  get : map -> key -> option val;
+  upd : map -> key -> val -> option map
+}.
+
+Class partial_map_spec {map key val} (pm : partial_map map key val) := {
+  mem_axioms : PartMaps.axioms get upd
+}.
+
 Module TotalMaps.
 
 Section total_maps.

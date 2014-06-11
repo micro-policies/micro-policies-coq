@@ -15,7 +15,7 @@ concrete/int_32.v
 symbolic/symbolic.v
 # symbolic/fault_handler.v
 # symbolic/initial.v
-symbolic/refinement.v
+# symbolic/refinement.v
 # symbolic/testing.v
 # symbolic/int_32.v
 symbolic/rules.v

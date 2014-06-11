@@ -67,19 +67,17 @@ Global Instance equ : EqDec (eq_setoid stag).
 Defined.
 
 Program Instance sym_sealing : (Symbolic.symbolic_params t) := {
-  memory := memory;
-  registers := registers;
   tag := stag;
-
-  get_mem := get;
-  upd_mem := upd;
-
-  get_reg := get;
-  upd_reg := upd;
 
   handler := sealing_handler;
 
-  internal_state := key  (* next key to generate *)
+  internal_state := key;  (* next key to generate *)
+
+  memory := memory;
+  sm := sm;
+
+  registers := registers;
+  sr := sr
 }.
 
 Import DoNotation. 

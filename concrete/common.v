@@ -396,3 +396,15 @@ End Coding.
 Record atom V T := Atom { val : V; tag : T }.
 
 Notation "x @ t" := (Atom x t) (at level 5, format "x '@' t").
+
+Section SyscallRegs.
+
+Context {t : machine_types}.
+
+Class syscall_regs := {
+  syscall_ret  : reg t;
+  syscall_arg1 : reg t;
+  syscall_arg2 : reg t
+}.
+
+End SyscallRegs.

@@ -25,21 +25,5 @@ Class sealing_syscall_addrs := {
 
 (* These should be shared between as many machines as possible *)
 
-Require Import utils.
-
-Class partial_map map key val := {
-  get : map -> key -> option val;
-  upd : map -> key -> val -> option map
-}.
-
-Class partial_map_spec map key val (pm : partial_map map key val) := {
-  mem_axioms : PartMaps.axioms get upd
-}.
-
-Class syscall_regs := {
-  syscall_ret  : reg t;
-  syscall_arg1 : reg t;
-  syscall_arg2 : reg t
-}.
 
 End WithClasses.

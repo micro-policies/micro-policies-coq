@@ -19,44 +19,26 @@ Context {t : machine_types}.
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
 
-Class sym_cfi_params := {
-  memory : Type;
-  registers : Type;
+Context {memory : Type}.
+Context {sm : @partial_map memory (word t) (atom (word t) (@cfi_tag t))}.
 
-  get_mem : memory -> word t -> option (atom (word t) (@cfi_tag t));
-  upd_mem : memory -> word t -> atom (word t) (@cfi_tag t) -> option memory;
-
-  get_reg : registers -> reg t -> option (atom (word t) (@cfi_tag t));
-  upd_reg : registers -> reg t -> atom (word t) (@cfi_tag t) -> option registers
-
-}.
-
-Context {scp : sym_cfi_params}.
-
-Class params_spec (sp : sym_cfi_params) := {
-
-  mem_axioms : PartMaps.axioms get_mem upd_mem;
-  
-  reg_axioms : PartMaps.axioms get_reg upd_reg
-
-}.
+Context {registers : Type}.
+Context {sr : @partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
 Program Instance sym_cfi : (Symbolic.symbolic_params t) := {
-  memory := memory;
-  registers := registers;
   tag := cfi_tag;
-
-  get_mem := get_mem;
-  upd_mem := upd_mem;
-
-  get_reg := get_reg;
-  upd_reg := upd_reg;
 
   handler := cfi_rules.cfi_handler valid_jmp;
 
-  internal_state := unit
+  internal_state := unit;
+
+  memory := memory;
+  sm := sm;
+
+  registers := registers;
+  sr := sr
 }.
 
 Variable table : list (Symbolic.syscall t).
@@ -75,7 +57,7 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
   let pc_t := common.tag (Symbolic.pc st) in
   let pc_s := common.val (Symbolic.pc st) in
   let pc_s' := common.val (Symbolic.pc st') in
-  match (get_mem (Symbolic.mem st) pc_s) with
+  match (get (Symbolic.mem st) pc_s) with
     | Some i =>
       match decode_instr (common.val i) with
         | Some (Jump r) => valid_jmp pc_s pc_s'
