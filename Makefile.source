@@ -40,5 +40,6 @@ sfi/ranges.v
 sfi/set_utils.v
 sfi/list_utils.v
 
+sealing/classes.v
 sealing/abstract.v
 sealing/symbolic_sealing.v

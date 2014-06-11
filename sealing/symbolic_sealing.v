@@ -2,59 +2,9 @@ Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
 
 Require Import utils common symbolic. Import rules.
+Require Import classes.
 
 Set Implicit Arguments.
-
-Section WithClasses.
-
-Context {t : machine_types}.
-
-(* These should be shared between as many machines as possible *)
-
-Class smemory tag := {
-  memory    : Type;
-
-  get_mem : memory -> word t -> option (atom (word t) tag);
-  upd_mem : memory -> word t -> atom (word t) tag -> option memory;
-
-  mem_axioms : PartMaps.axioms get_mem upd_mem
-}.
-
-(* This is basically the same as smemory,
-   can't we share one partial map class? *)
-Class sregisters tag := {
-  registers : Type;
-
-  get_reg : registers -> reg t -> option (atom (word t) tag);
-  upd_reg : registers -> reg t -> atom (word t) tag -> option registers;
-
-  reg_axioms : PartMaps.axioms get_reg upd_reg
-}.
-
-Class syscall_regs := {
-  syscall_ret  : reg t;
-  syscall_arg1 : reg t;
-  syscall_arg2 : reg t
-}.
-
-(* These should be shared with the sealing abstract machine *)
-(* BCP: Really??  Why, at the abstract level, would we want to know
-   anything about the mapping from words to keys? *)
-
-Class sealing_key := {
-  key       : Type;
-
-  word_to_key : word t -> option key;
-  eq_key :> EqDec (eq_setoid key)
-}.
-
-Class sealing_syscall_addrs := {
-  mkkey_addr  : word t;
-  seal_addr   : word t;
-  unseal_addr : word t
-}.
-
-End WithClasses.
 
 Module SymbolicSealing.
 
@@ -63,7 +13,8 @@ Section WithClasses.
 Context {t : machine_types}.
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
-Context {sk : @sealing_key t}.
+Context {sk : sealing_key}.
+
 
 Inductive stag :=
 | WORD   :        stag
