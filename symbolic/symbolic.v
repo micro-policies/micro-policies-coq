@@ -36,7 +36,14 @@ Class symbolic_params := {
      If we implement this extension the big comment explaining this
      at the beginning of rules.v would become instead a set of types.
      Would this extension be hard to add / complicate other things? *)
+  (* BCP: One worry that I have about this is that, in some policies,
+     it may be convenient to do things like writing a rule that copies
+     the tag from the current instruction to the next PC.  If we make
+     these type distinctions, such rules would have to be disallowed,
+     no? *)
   tag : Type;
+  (* BCP: Maxime was wondering why we are using setoids... do we need
+     that?  Apparently they tickle quite a few bugs in tactics... *)
   tag_eq :> EqDec (eq_setoid tag);
 
   handler : MVec tag -> option (RVec tag);
