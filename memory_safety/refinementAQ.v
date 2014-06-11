@@ -29,6 +29,21 @@ Context {mt : machine_types}
         {a_alloc : @Abstract.allocator _ ap}
         {qa_alloc : @QuasiAbstract.allocator _ qap}.
 
+Hypothesis binop_addDl : forall x y z,
+  binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
+
+Hypothesis binop_addDr : forall x y z,
+  binop_denote ADD x (y + z) = y + (binop_denote ADD x z).
+
+Hypothesis binop_subDl : forall x y z,
+  binop_denote SUB (x + y) z = x + (binop_denote SUB y z).
+
+Hypothesis binop_subDr : forall x y z,
+  binop_denote SUB x (y + z) = - y + (binop_denote SUB x z).
+
+Hypothesis binop_eq_add2l : forall x y z,
+  binop_denote EQ (x + y) (x + z) = binop_denote EQ y z.
+
 Section memory_injections.
 
 Definition size amem pt :=
@@ -43,7 +58,14 @@ Record meminj amem := Meminj {
      - w2 is b's pointer nonce
   *)
     mi :> Abstract.block -> option (word mt * word mt);
-    mi_inj : forall x y, mi x = mi y -> x = y;
+    miIl : forall b b' base base' nonce nonce',
+                mi b = Some (base, nonce) ->
+                mi b' = Some (base', nonce') ->
+                base = base' -> b = b';
+    miIr : forall b b' base base' nonce nonce',
+                mi b = Some (base, nonce) ->
+                mi b' = Some (base', nonce') ->
+                nonce = nonce' -> b = b';
     (* Blocks are non overlapping: *)
     mi_disjoints : forall x x' base base' nonce nonce' off off',
       mi x = Some (base,nonce) ->
@@ -63,53 +85,68 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
     | _,      _      => False
   end.
 
-(*
-Inductive refine_val : Abstract.value mt -> QuasiAbstract.atom mt -> Prop :=
-  | RefineInt : forall w, refine_val (Abstract.ValInt mt w) w@V(INT)
-  | RefinePtr : forall b w i, mi b = Some w ->
-                refine_val (Abstract.ValPtr (b,i)) (add_word w i)@V(PTR w).
-*)
-
 Inductive refine_val : Abstract.value mt -> word mt -> QuasiAbstract.type mt -> Prop :=
   | RefineInt : forall w, refine_val (Abstract.ValInt mt w) w INT
   | RefinePtr : forall b base nonce off, mi b = Some (base,nonce) ->
-                (* word_to_Z off < sz -> *)
                 refine_val (Abstract.ValPtr (b,off)) (add_word base off) (PTR nonce).
-
-Lemma refine_val_injl x x' w ty : refine_val x w ty -> refine_val x' w ty -> x = x'.
-Proof.
-admit.
-(*
-intros [w|b w i mi_b].
-  generalize (eq_refl w@V(INT)).
-  generalize w@V(INT) at 1 3.
-  intros a eq_a rx'a.
-  now destruct rx'a; congruence.
-generalize (eq_refl (w + i)%word@V(PTR w)).
-generalize (w + i)%word@V(PTR w) at 1 3.
-intros a eq_a rx'a.
-destruct rx'a; try congruence.
-injection eq_a as -> eq_sum.
-rewrite (@mi_inj mi b b0); try congruence.
-*)
-(* Need a bit of arithmetic on words *)
-Qed.
 
 Lemma refine_binop f v1 w1 ty1 v2 w2 ty2 w3 ty3 : refine_val v1 w1 ty1 ->
   refine_val v2 w2 ty2 ->
   QuasiAbstract.lift_binop f w1@V(ty1) w2@V(ty2) = Some (w3,ty3) ->
   exists v3, Abstract.lift_binop f v1 v2 = Some v3 /\ refine_val v3 w3 ty3.
 Proof.
-(*
-destruct f; intros [w1 | b1 w1 i1 mi_b1] [w2 | b2 w2 i2 mi_b2] H; try discriminate H.
-injection H; intros <-; now eexists; split; [reflexivity|constructor].
-injection H; intros <-.
-eexists; split.
-reflexivity.
-*)
-(* This depends on the actual binop_denote implem *)
-(* eapply RefinePtr. *)
-Admitted.
+destruct f; intros [x1 | b1 base1 nonce1 off1 mi_b1]
+
+  [x2 | b2 base2 nonce2 off2 mi_b2] H; try discriminate H;
+try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor.
++ now rewrite binop_addDr; constructor.
++ now rewrite binop_addDl; constructor.
++ now rewrite binop_subDl; constructor.
++ simpl in *.
+(* We hit here a bug in destruct (and probably pattern) *)
+(* ssreflect's case tactic works fine... *)
+(* I will refactor this part, by case analysis on equalities on blocks first *)
+  destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
+         (SetoidDec.eq_setoid (QuasiAbstract.block mt)) 
+         (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce; try discriminate.
+  injection H; intros <- <-.
+  eexists.
+  (* Why is * not rewriting in mi_b1? *)
+  rewrite (miIr mi_b1 mi_b2) in *.
+    rewrite (miIr mi_b1 mi_b2) in mi_b1.
+      rewrite Z.eqb_refl.
+      split; try reflexivity.
+      (* This has a silly behavior:
+         apply eqb_true_iff in eq_nonce.
+      *)
+      assert (eq_base : base1 = base2).
+        congruence.
+      rewrite eq_base.
+      rewrite binop_subDl, binop_subDr.
+      rewrite addwA,subww,add0w.
+      constructor.
+    now apply eqb_true_iff.
+  now apply eqb_true_iff.
++ simpl in *.
+  destruct (Z.eqb_spec b1 b2) as [eq_b|neq_b].
+    rewrite eq_b, mi_b2 in mi_b1.
+    injection mi_b1 as <- <-.
+    rewrite eqb_refl in H; injection H as <- <-.
+    eexists; split; try reflexivity.
+    now rewrite binop_eq_add2l; constructor.
+  destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
+       (SetoidDec.eq_setoid (QuasiAbstract.block mt)) 
+       (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce.
+  (* again, I would like to do
+     apply eqb_true_iff in eq_nonce.
+  *)
+    assert (eq_nonce' : nonce1 = nonce2).
+      now apply eqb_true_iff.
+    rewrite (miIr mi_b1 mi_b2 eq_nonce') in neq_b; congruence.
+  injection H as <- <-.
+  eexists; split; try reflexivity.
+now constructor.
+Qed.
 
 Lemma refine_ptr_inv w n b off base nonce :
   refine_val (Abstract.ValPtr (b,off)) w (PTR n) ->
@@ -122,32 +159,17 @@ congruence.
 Qed.
 
 Definition refine_memory (amem : Abstract.memory mt) (qamem : QuasiAbstract.memory mt) :=
-  forall b base nonce off, mi b = Some (base,nonce) -> (* word_to_Z off < size amem b -> *)
+  forall b base nonce off, mi b = Some (base,nonce) ->
   match Abstract.get_memv amem (b,off), QuasiAbstract.get_mem qamem (base+off)%w with
   | None, None => True
   | Some v, Some w@M(nonce,ty) => refine_val v w ty
   | _, _ => False
  end.
 
-Lemma refine_memory_get qamem (b : Abstract.block) (base nonce off : word mt)
-           (x : Abstract.value mt) w ty :
-         refine_memory amem qamem ->
-         mi b = Some (base,nonce) ->
-         QuasiAbstract.get_mem qamem (base + off)%w = Some w@M(nonce,ty) ->
-         refine_val x w ty ->
-         Abstract.get_memv amem (b, off) = Some x.
-Proof.
-intros rmem ? ? ?.
-unfold refine_memory in rmem.
-admit.
-(* now rewrite <-rmem; eassumption. *)
-Qed.
-
 Lemma refine_memory_get_int qamem (w1 w2 w3 : word mt) pt :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
          QuasiAbstract.get_mem qamem w1 = Some w3@M(w2,INT) ->
          Abstract.get_memv amem pt = Some (Abstract.ValInt _ w3).
-           (* /\ refine_val w2 (Abstract.ValInt _ w3) w3@M(w2,INT). *)
 Proof.
 intros rmem rpt get_w.
 unfold refine_memory in rmem.
@@ -159,14 +181,6 @@ specialize (rmem b base nonce off mi_b).
 rewrite eq_w1, get_w in rmem.
 destruct (Abstract.get_memv amem (b, off)) eqn:get_b; try contradiction.
 now inversion rmem.
-(*
-destruct (rmem b base nonce off mi_b in_bounds) as (v & w & ty & get_b & get_base & rvw).
-rewrite eq_w1, get_w in get_base.
-rewrite get_b.
-injection get_base.
-destruct rvw; try discriminate.
-now intros _ ->.
-*)
 Qed.
 
 Lemma get_memv_mem base off v : Abstract.get_memv amem (base, off) = Some v ->
@@ -187,28 +201,23 @@ unfold Abstract.get_memv.
 now simpl; rewrite get_base.
 Qed.
 
-Lemma refine_memory_get' qamem (w1 w2 w3 w4 : word mt) pt ty :
+Lemma refine_memory_get qamem (w1 w2 w3 w4 : word mt) pt ty :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
-         (* word_to_Z (snd pt) < size amem (fst pt) -> *)
          QuasiAbstract.get_mem qamem w1 = Some (w3@M(w4,ty)) ->
          exists fr x, Abstract.get_mem amem (fst pt) = Some fr
          /\ index_list_Z (word_to_Z (snd pt)) fr = Some x 
          /\ refine_val x w3 ty.
 Proof.
 intros rmem rpt get_w.
-(* unfold refine_memory in rmem. *)
 destruct pt as [b' off'].
 simpl in *.
 (* Too many names bug... *)
-inversion rpt as [|b base nonce off mi_b eq_b eq_w1 eq_nonce (*eq_off*)].
+inversion rpt as [|b base nonce off mi_b eq_b eq_w1 eq_nonce].
 rewrite <-eq_nonce,<-eq_b,<-H in *.
 specialize (rmem b base nonce off mi_b).
 rewrite <-eq_w1 in get_w.
 rewrite get_w in rmem.
 destruct (Abstract.get_memv amem (b, off)) eqn:get_b; try contradiction.
-(*
-destruct (rmem b base nonce off mi_b in_bounds) as (v & w & ty' & get_b & get_base & rvw).
-*)
 destruct (get_memv_mem get_b) as (fr & ? & ?).
 exists fr; exists v; repeat split; easy.
 Qed.
@@ -259,7 +268,6 @@ Qed.
 
 Lemma refine_memory_upd qamem qamem' w1 w2 pt ty n fr fr' x :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR n) ->
-         (* word_to_Z (snd pt) < size amem (fst pt) -> *)
          QuasiAbstract.upd_mem qamem w1 w2@M(n, ty) = Some qamem' ->
          Abstract.get_mem amem (fst pt) = Some fr ->
          update_list_Z (word_to_Z (snd pt)) x fr = Some fr' ->
@@ -351,21 +359,7 @@ rewrite get_r; destruct (Abstract.get_reg aregs r); try easy.
 now destruct v as [w [ty|]]; try easy; exists w; exists ty.
 Qed.
 
-Lemma refine_registers_get aregs qaregs (n : common.reg mt) (x : Abstract.value mt) w ty :
-  refine_registers aregs qaregs ->
-  QuasiAbstract.get_reg qaregs n = Some w@V(ty) ->
-  refine_val x w ty ->
-  Abstract.get_reg aregs n = Some x.
-Proof.
-intros rregs qa_get rxx'.
-generalize (rregs n).
-rewrite qa_get.
-destruct (Abstract.get_reg aregs n); try easy.
-simpl; intros rvx.
-now rewrite (refine_val_injl rxx' rvx).
-Qed.
-
-Lemma refine_registers_get' aregs qaregs (n : common.reg mt) w ty :
+Lemma refine_registers_get aregs qaregs (n : common.reg mt) w ty :
   refine_registers aregs qaregs ->
   QuasiAbstract.get_reg qaregs n = Some w@V(ty) ->
   exists x, refine_val x w ty /\ Abstract.get_reg aregs n = Some x.
@@ -470,14 +464,6 @@ End memory_injections.
 Hint Constructors refine_val refine_val.
 Hint Resolve get_mem_memv.
 
-(*
-Hint Resolve refine_memory_get_int.
-*)
-
-(* Should the blocks of the abstract machine be words or integers? *) (* In the
-second case, the axiom below should be refined. using a bound on the memory
-size. *)
-
 Lemma refine_pc_inv amem (mi : meminj amem) nonce apcb apci pc :
   refine_val mi (Abstract.ValPtr (apcb, apci)) pc (PTR nonce) ->
   exists base, mi apcb = Some (base, nonce) /\ (base + apci)%w = pc.
@@ -485,32 +471,6 @@ Proof.
 intros H; inversion H.
 now exists base; split.
 Qed.
-
-(*
-Lemma refine_registers_upd areg creg r val w :
-  refine_registers areg creg ->
-  Concrete.get_reg creg r = val@(tag_to_word USER) ->
-  exists areg',
-    Abstract.upd_reg areg r w = Some areg' /\
-    refine_registers areg' (Concrete.upd_reg creg r w@(tag_to_word USER)).
-*)
-
-(*
-Context `{!Abstract.allocator (t := mt)}.
-Context `{!QuasiAbstract.allocator (t := mt)}.
-*)
-
-(*
-generalize (valid_update _ _ H4).
-*)
-
-(*
-Hint Extern 1 (update_list_Z ?i ?v ?fr = Some _) =>
-  match goal with
-  | INDEX : index_list_Z i fr = Some _ |- _ =>
-    destruct (valid_update _ _ INDEX fr) as (? & ?)
-  end.
-*)
 
 Lemma backward_simulation ast (mi : meminj (Abstract.mem ast)) qast qast' asc qasc :
   refine_state mi ast qast -> refine_syscalls mi asc qasc -> QuasiAbstract.step qasc qast qast' ->
@@ -525,14 +485,14 @@ repeat match goal with
     match v with
     | _@V(INT) => eapply (refine_registers_get_int rregs) in R1W
     | _@V(PTR _) => eapply (refine_registers_get_ptr rregs) in R1W; destruct R1W as ((? & ?) & ? & ?)
-    | _ => eapply (refine_registers_get' rregs) in R1W; destruct R1W as (? & ? & ?)
+    | _ => eapply (refine_registers_get rregs) in R1W; destruct R1W as (? & ? & ?)
     end
   end;
 repeat match goal with
   MEM1 : QuasiAbstract.get_mem ?mem ?w1 = Some ?v |- _ =>
     match v with
     | _@M(_,INT) => eapply (refine_memory_get_int rmem) in MEM1; [|now eauto]
-    | _ => eapply (refine_memory_get' rmem) in MEM1; [|now eauto]; destruct MEM1 as (? & ? & ? & ? & ?)
+    | _ => eapply (refine_memory_get rmem) in MEM1; [|now eauto]; destruct MEM1 as (? & ? & ? & ? & ?)
     end
   end;
 try match goal with
@@ -582,9 +542,6 @@ eexists; split;
 | repeat (try split; try eassumption);
 now simpl; rewrite <-rpci, <-addwA; constructor].
 Qed.
-
-Print Assumptions backward_simulation.
-
 
 (*
 Lemma forward_simulation ast ast' qast asc qasc :
