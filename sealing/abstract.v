@@ -10,13 +10,13 @@ Require Import classes.
 
 Set Implicit Arguments.
 
-Module AbstractSealing.
+Module AbsSeal.
 
 Section WithClasses.
 
-Context (t : machine_types).
-Context {ops : machine_ops t}.
-Context {sk : sealing_key}.
+Context (t : machine_types)
+        {ops : machine_ops t}
+        {sk : sealing_key}.
 
 Class key_generator := {
   mkkey_f : list key -> option (list key * key);
@@ -27,21 +27,19 @@ Class key_generator := {
                   ~In k ks /\ In k ks' /\ incl ks ks'
 }.
 
-Context `{key_generator}.
-
-Context {scr : @syscall_regs t}.
-Context {ssa : @sealing_syscall_addrs t}.
+Context {kg : key_generator}
+        {scr : @syscall_regs t}
+        {ssa : @sealing_syscall_addrs t}.
 
 Inductive value := 
 | VWord   : word t        -> value
 | VKey    :           key -> value
 | VSealed : word t -> key -> value.
 
-Context {memory : Type}.
-Context {sm : @partial_map memory (word t) value}.
-
-Context {registers : Type}.
-Context {sr : @partial_map registers (reg t) value}.
+Context {memory : Type}
+        {am : @partial_map memory (word t) value}
+        {registers : Type}
+        {ar : @partial_map registers (reg t) value}.
 
 Open Scope word_scope.
 
@@ -169,4 +167,4 @@ Inductive step (st st' : state) : Prop :=
 
 End WithClasses.
 
-End AbstractSealing.
+End AbsSeal.

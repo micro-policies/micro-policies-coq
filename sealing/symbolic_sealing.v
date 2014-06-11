@@ -6,28 +6,27 @@ Require Import classes.
 
 Set Implicit Arguments.
 
-Module SymbolicSealing.
+Module SymSeal.
 
 Section WithClasses.
 
-Context {t : machine_types}.
-Context {ops : machine_ops t}.
-Context {opss : machine_ops_spec ops}.
-Context {sk : sealing_key}.
-Context {sko : sealing_key_ops}.
-Context {scr : @syscall_regs t}.
-Context {ssa : @sealing_syscall_addrs t}.
+Context {t : machine_types}
+        {ops : machine_ops t}
+        {opss : machine_ops_spec ops}
+        {sk : sealing_key}
+        {sko : sealing_key_ops}
+        {scr : @syscall_regs t}
+        {ssa : @sealing_syscall_addrs t}.
 
 Inductive stag :=
 | WORD   :        stag
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
-Context {memory : Type}.
-Context {sm : @partial_map memory (word t) (atom (word t) stag)}.
-
-Context {registers : Type}.
-Context {sr : @partial_map registers (reg t) (atom (word t) stag)}.
+Context {memory : Type}
+        {sm : @partial_map memory (word t) (atom (word t) stag)}
+        {registers : Type}
+        {sr : @partial_map registers (reg t) (atom (word t) stag)}.
 
 Definition none := WORD.
 
@@ -82,8 +81,6 @@ Program Instance sym_sealing : (Symbolic.symbolic_params t) := {
 
 Import DoNotation. 
 
-Set Printing All.
-
 Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc key := s in
   if key == max_key then None
@@ -117,7 +114,7 @@ Definition sealing_syscalls : list (Symbolic.syscall t) :=
    Symbolic.Syscall seal_addr seal;
    Symbolic.Syscall unseal_addr unseal].
 
-Definition sealing_step := Symbolic.step sealing_syscalls.
+Definition step := Symbolic.step sealing_syscalls.
 
 End WithClasses.
 
@@ -126,4 +123,4 @@ End WithClasses.
    I expect those to appear when talking about that refinement,
    which we don't yet *)
 
-End SymbolicSealing.
+End SymSeal.
