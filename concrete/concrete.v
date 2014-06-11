@@ -49,13 +49,9 @@ Let atom := atom (word t) (word t).
 
 Class concrete_params := {
   memory : Type;
+  mem_class :> PartMaps.partial_map memory (word t) atom;
   registers : Type;
-
-  get_mem : memory -> word t -> option atom;
-  upd_mem : memory -> word t -> atom -> option memory;
-
-  get_reg : registers -> reg t -> atom;
-  upd_reg : registers -> reg t -> atom -> registers;
+  reg_class :> TotalMaps.total_map registers (reg t) atom;
 
   fault_handler_start : word t;
 
@@ -68,9 +64,9 @@ Class concrete_params := {
 
 Class params_spec (cp : concrete_params) := {
 
-  mem_axioms :> PartMaps.axioms get_mem upd_mem;
+  mem_axioms :> PartMaps.axioms (@mem_class cp);
 
-  reg_axioms :> TotalMaps.axioms get_reg upd_reg
+  reg_axioms :> TotalMaps.axioms (@reg_class cp)
 
 }.
 
@@ -79,9 +75,9 @@ Context {cp : concrete_params}
         {sp : params_spec cp}.
 
 Lemma store_same_tag cmem cmem' addr addr' w tg :
-  (exists w, get_mem cmem addr = Some w@tg) ->
-  upd_mem cmem addr' w@tg = Some cmem' ->
-  exists w, get_mem cmem' addr = Some w@tg.
+  (exists w, PartMaps.get cmem addr = Some w@tg) ->
+  PartMaps.upd cmem addr' w@tg = Some cmem' ->
+  exists w, PartMaps.get cmem' addr = Some w@tg.
 Proof.
   intros [w' GET] UPD.
   destruct (addr' == addr) as [E|E]; simpl in E.
@@ -176,14 +172,14 @@ Record state := mkState {
 (* Need to do this masking both on lookup, and on rule add, right?
    This is optional; the software could do it *)
 Definition add_rule (cache : rules) (masks : Masks) (kmode : bool) (mem : memory) : option rules :=
-  do aop   <- get_mem mem Mop;
-  do atpc  <- get_mem mem Mtpc;
-  do ati   <- get_mem mem Mti;
-  do at1   <- get_mem mem Mt1;
-  do at2   <- get_mem mem Mt2;
-  do at3   <- get_mem mem Mt3;
-  do atrpc <- get_mem mem Mtrpc;
-  do atr   <- get_mem mem Mtr;
+  do aop   <- PartMaps.get mem Mop;
+  do atpc  <- PartMaps.get mem Mtpc;
+  do ati   <- PartMaps.get mem Mti;
+  do at1   <- PartMaps.get mem Mt1;
+  do at2   <- PartMaps.get mem Mt2;
+  do at3   <- PartMaps.get mem Mt3;
+  do atrpc <- PartMaps.get mem Mtrpc;
+  do atr   <- PartMaps.get mem Mtr;
   do op    <- word_to_op (val aop);
   let dcm := dc (masks kmode op) in
   Some ((mask_dc dcm (mkMVec (val aop) (val atpc)
@@ -191,7 +187,7 @@ Definition add_rule (cache : rules) (masks : Masks) (kmode : bool) (mem : memory
          mkRVec (val atrpc) (val atr)) :: cache).
 
 Definition store_mvec (mem : memory) (mv : MVec) : option memory :=
-  PartMaps.upd_list upd_mem mem
+  PartMaps.upd_list mem
                     [(Mop, (cop mv)@TKernel);
                      (Mtpc, (ctpc mv)@TKernel);
                      (Mti, (cti mv)@TKernel);
@@ -231,7 +227,7 @@ Definition next_state (st : state) (mvec : MVec)
 
 Definition next_state_reg_and_pc (st : state) (mvec : MVec) r x pc' : option state :=
   next_state st mvec (fun rvec =>
-    let reg' := upd_reg (regs st) r x@(ctr rvec) in
+    let reg' := TotalMaps.upd (regs st) r x@(ctr rvec) in
     Some (mkState (mem st) reg' (cache st) pc'@(ctrpc rvec) (epc st))).
 
 Definition next_state_reg (st : state) (mvec : MVec) r x : option state :=
@@ -245,7 +241,7 @@ Inductive step (st st' : state) : Prop :=
 | step_nop :
     forall mem reg cache pc epc tpc i ti,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Nop _)),
     let mvec := mkMVec (op_to_word NOP) tpc ti TNone TNone TNone in
     forall (NEXT : next_state_pc st mvec (pc.+1) = Some st'),
@@ -253,30 +249,30 @@ Inductive step (st st' : state) : Prop :=
 | step_const :
     forall mem reg cache pc epc n r tpc i ti old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Const _ n r)),
-    forall (OLD : get_reg reg r = old@told),
+    forall (OLD : TotalMaps.get reg r = old@told),
     let mvec := mkMVec (op_to_word CONST) tpc ti told TNone TNone in
     forall (NEXT : next_state_reg st mvec r (imm_to_word n) = Some st'),
       step st st'
 | step_mov :
     forall mem reg cache pc epc r1 w1 r2 tpc i ti t1 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Mov _ r1 r2)),
-    forall (REG1 : get_reg reg r1 = w1@t1),
-    forall (OLD : get_reg reg r2 = old@told),
+    forall (REG1 : TotalMaps.get reg r1 = w1@t1),
+    forall (OLD : TotalMaps.get reg r2 = old@told),
     let mvec := mkMVec (op_to_word MOV) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg st mvec r2 w1 = Some st'),
       step st st'
 | step_binop :
     forall mem reg cache pc epc op r1 r2 r3 w1 w2 tpc i ti t1 t2 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Binop _ op r1 r2 r3)),
-    forall (REG1 : get_reg reg r1 = w1@t1),
-    forall (REG2 : get_reg reg r2 = w2@t2),
-    forall (OLD : get_reg reg r3 = old@told),
+    forall (REG1 : TotalMaps.get reg r1 = w1@t1),
+    forall (REG2 : TotalMaps.get reg r2 = w2@t2),
+    forall (OLD : TotalMaps.get reg r3 = old@told),
     let mvec := mkMVec (op_to_word (BINOP op)) tpc ti t1 t2 told in
     forall (NEXT : next_state_reg st mvec r3 (binop_denote op w1 w2) =
                    Some st'),
@@ -284,43 +280,43 @@ Inductive step (st st' : state) : Prop :=
 | step_load :
     forall mem reg cache pc epc r1 r2 w1 w2 tpc i ti t1 t2 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Load _ r1 r2)),
-    forall (REG1 : get_reg reg r1 = w1@t1),
-    forall (M1 : get_mem mem w1 = Some w2@t2),
-    forall (OLD : get_reg reg r2 = old@told),
+    forall (REG1 : TotalMaps.get reg r1 = w1@t1),
+    forall (M1 : PartMaps.get mem w1 = Some w2@t2),
+    forall (OLD : TotalMaps.get reg r2 = old@told),
     let mvec := mkMVec (op_to_word LOAD) tpc ti t1 t2 told in
     forall (NEXT : next_state_reg st mvec r2 w2 = Some st'),
       step st st'
 | step_store :
     forall mem reg cache pc epc r1 r2 w1 w2 w3 tpc i ti t1 t2 t3,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Store _ r1 r2)),
-    forall (REG1 : get_reg reg r1 = w1@t1),
-    forall (REG2 : get_reg reg r2 = w2@t2),
-    forall (M1 : get_mem mem w1 = Some w3@t3),
+    forall (REG1 : TotalMaps.get reg r1 = w1@t1),
+    forall (REG2 : TotalMaps.get reg r2 = w2@t2),
+    forall (M1 : PartMaps.get mem w1 = Some w3@t3),
     let mvec := mkMVec (op_to_word STORE) tpc ti t1 t2 t3 in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        do mem' <- upd_mem mem w1 w2@(ctr rvec);
+        do mem' <- PartMaps.upd mem w1 w2@(ctr rvec);
         Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc)) = Some st'),
       step st st'
 | step_jump :
     forall mem reg cache pc epc r w tpc i ti t1,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Jump _ r)),
-    forall (REG : get_reg reg r = w@t1),
+    forall (REG : TotalMaps.get reg r = w@t1),
     let mvec := mkMVec (op_to_word JUMP) tpc ti t1 TNone TNone in
     forall (NEXT : next_state_pc st mvec w = Some st'),
       step st st'
 | step_bnz :
     forall mem reg cache pc epc r n w tpc i ti t1,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Bnz _ r n)),
-    forall (REG : get_reg reg r = w@t1),
+    forall (REG : TotalMaps.get reg r = w@t1),
     let mvec := mkMVec (op_to_word BNZ) tpc ti t1 TNone TNone in
     let pc' := pc + if w ==b Z_to_word 0 then Z_to_word 1 else imm_to_word n in
     forall (NEXT : next_state_pc st mvec pc' = Some st'),
@@ -328,17 +324,17 @@ Inductive step (st st' : state) : Prop :=
 | step_jal :
     forall mem reg cache pc epc r w tpc i ti t1 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Jal _ r)),
-    forall (REG : get_reg reg r = w@t1),
-    forall (OLD: get_reg reg ra = old@told),
+    forall (REG : TotalMaps.get reg r = w@t1),
+    forall (OLD: TotalMaps.get reg ra = old@told),
     let mvec := mkMVec (op_to_word JAL) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'),
       step st st'
 | step_jumpepc :
     forall mem reg cache pc tpc w tepc i ti,
     forall (ST : st = mkState mem reg cache pc@tpc w@tepc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (JumpEpc _)),
     let mvec := mkMVec (op_to_word JUMPEPC) tpc ti tepc TNone TNone in
     forall (NEXT : next_state_pc st mvec w = Some st'),
@@ -346,7 +342,7 @@ Inductive step (st st' : state) : Prop :=
 | step_addrule :
     forall mem reg cache pc epc tpc i ti,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (AddRule _)),
     let mvec :=
         mkMVec (op_to_word ADDRULE) tpc ti TNone TNone TNone in
@@ -358,25 +354,25 @@ Inductive step (st st' : state) : Prop :=
 | step_gettag :
     forall mem reg cache pc epc r1 r2 w tpc i ti t1 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (GetTag _ r1 r2)),
-    forall (REG : get_reg reg r1 = w@t1),
-    forall (OLD : get_reg reg r2 = old@told),
+    forall (REG : TotalMaps.get reg r1 = w@t1),
+    forall (OLD : TotalMaps.get reg r2 = old@told),
     let mvec := mkMVec (op_to_word GETTAG) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg st mvec r2 t1 = Some st'),
       step st st'
 | step_puttag :
     forall mem reg cache pc epc r1 r2 r3 w t tpc i ti t1 t2 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : get_mem mem pc = Some i@ti),
+    forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (PutTag _ r1 r2 r3)),
-    forall (REG1 : get_reg reg r1 = w@t1),
-    forall (REG2 : get_reg reg r2 = t@t2),
-    forall (OLD: get_reg reg r3 = old@told),
+    forall (REG1 : TotalMaps.get reg r1 = w@t1),
+    forall (REG2 : TotalMaps.get reg r2 = t@t2),
+    forall (OLD: TotalMaps.get reg r3 = old@told),
     let mvec := mkMVec (op_to_word PUTTAG) tpc ti t1 t2 told in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        let reg' := upd_reg reg r3 w@t in
+        let reg' := TotalMaps.upd reg r3 w@t in
         Some (mkState mem reg' cache (pc.+1@(ctrpc rvec)) epc)) = Some st'),
       step st st'.
 

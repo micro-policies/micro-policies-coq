@@ -38,26 +38,20 @@ Inductive value :=
 
 Definition frame := list value.
 
+Import PartMaps.
+
 Class abstract_params := {
   memory : Type;
+  mem_class :> partial_map memory block frame;
   registers : Type;
-
-  get_mem : memory -> block -> option frame;
-  upd_mem : memory -> block -> frame -> option memory;
-
-  (* Contrary to concrete machine, here register access and update
-     might fail, since they might correspond to kernel registers *)
-
-  get_reg : registers -> reg t -> option value;
-  upd_reg : registers -> reg t -> value -> option registers
-
+  reg_class :> partial_map registers (reg t) value
 }.
 
 Class params_spec (ap : abstract_params) := {
 
-  mem_axioms :> PartMaps.axioms get_mem upd_mem;
+  mem_axioms :> PartMaps.axioms (@mem_class ap);
 
-  reg_axioms :> PartMaps.axioms get_reg upd_reg
+  reg_axioms :> PartMaps.axioms (@reg_class ap)
 
 }.
 
@@ -98,10 +92,10 @@ Class allocator := {
 Class allocator_spec (alloc : allocator) := {
 
   alloc_get_fresh : forall s s' b,
-    alloc_fun s = Some (s',b) -> get_mem (mem s) b = None;
+    alloc_fun s = Some (s',b) -> get (mem s) b = None;
 
   alloc_get : forall s s' b,
-    alloc_fun s = Some (s',b) -> exists fr, get_mem (mem s') b = Some fr
+    alloc_fun s = Some (s',b) -> exists fr, get (mem s') b = Some fr
 
 (* Similar requirements on upd_mem are not necessary because they follow from
    the above and PartMaps.axioms. *)
@@ -114,7 +108,7 @@ Definition malloc : syscall :=
 {| address := alloc_addr;
    sem := fun s => do r <- alloc_fun s;
                    let '(s',b) := r in
-                   do regs' <- upd_reg (regs s') alloc_reg (ValPtr (b,Z_to_word 0));
+                   do regs' <- upd (regs s') alloc_reg (ValPtr (b,Z_to_word 0));
                    Some (mkState (mem s') regs' (pc s'))
 |}.
 
@@ -125,8 +119,8 @@ Let table := malloc :: othercalls.
 Definition get_syscall (addr : word) : option syscall :=
   find (fun sc => address sc ==b addr) table.
 
-Definition get_memv mem (ptr : pointer) :=
-  match get_mem mem (fst ptr) with
+Definition getv mem (ptr : pointer) :=
+  match get mem (fst ptr) with
   | None => None
   | Some fr => index_list_Z (word_to_Z (snd ptr)) fr
   end.
@@ -163,69 +157,69 @@ Definition lift_binop (f : binop) (x y : value) :=
 
 Inductive step : state -> state -> Prop :=
 | step_nop : forall mem reg pc i,
-             forall (PC :    get_memv mem pc = Some (ValInt i)),
+             forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Nop _)),
              step (mkState mem reg pc) (mkState mem reg pc.+1)
 | step_const : forall mem reg reg' pc i n r,
-             forall (PC :    get_memv mem pc = Some (ValInt i)),
+             forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Const _ n r)),
-             forall (UPD :   upd_reg reg r (ValInt (imm_to_word n)) = Some reg'),
+             forall (UPD :   upd reg r (ValInt (imm_to_word n)) = Some reg'),
              step (mkState mem reg pc) (mkState mem reg' pc.+1)
 | step_mov : forall mem reg reg' pc i r1 r2 w1,
-             forall (PC :    get_memv mem pc = Some (ValInt i)),
+             forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Mov _ r1 r2)),
-             forall (R1W :   get_reg reg r1 = Some w1),
-             forall (UPD :   upd_reg reg r2 w1 = Some reg'),
+             forall (R1W :   get reg r1 = Some w1),
+             forall (UPD :   upd reg r2 w1 = Some reg'),
              step (mkState mem reg pc) (mkState mem reg' pc.+1)
 | step_binop : forall mem reg reg' pc i f r1 r2 r3 v1 v2 v3,
-             forall (PC :    get_memv mem pc = Some (ValInt i)),
+             forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Binop _ f r1 r2 r3)),
-             forall (R1W :   get_reg reg r1 = Some v1),
-             forall (R2W :   get_reg reg r2 = Some v2),
+             forall (R1W :   get reg r1 = Some v1),
+             forall (R2W :   get reg r2 = Some v2),
              forall (BINOP : lift_binop f v1 v2 = Some v3),
-             forall (UPD :   upd_reg reg r3 v3 = Some reg'),
+             forall (UPD :   upd reg r3 v3 = Some reg'),
              step (mkState mem reg pc) (mkState mem reg' pc.+1)
 | step_load : forall mem reg reg' pc i r1 r2 pt v,
-             forall (PC :    get_memv mem pc = Some (ValInt i)),
+             forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Load _ r1 r2)),
-             forall (R1W :   get_reg reg r1 = Some (ValPtr pt)),
-             forall (MEM1 :  get_memv mem pt = Some v),
-             forall (UPD :   upd_reg reg r2 v = Some reg'),
+             forall (R1W :   get reg r1 = Some (ValPtr pt)),
+             forall (MEM1 :  getv mem pt = Some v),
+             forall (UPD :   upd reg r2 v = Some reg'),
              step (mkState mem reg pc) (mkState mem reg' pc.+1)
 | step_store : forall mem mem' reg pc b off i r1 r2 fr fr' v,
-             forall (PC :    get_memv mem pc = Some (ValInt i)),
+             forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Store _ r1 r2)),
-             forall (R1W :   get_reg reg r1 = Some (ValPtr (b,off))),
-             forall (R2W :   get_reg reg r2 = Some v),
-             forall (MEM1 :  get_mem mem b = Some fr),
+             forall (R1W :   get reg r1 = Some (ValPtr (b,off))),
+             forall (R2W :   get reg r2 = Some v),
+             forall (MEM1 :  get mem b = Some fr),
              forall (UPDFR : update_list_Z (word_to_Z off) v fr = Some fr'),
-             forall (UPD :   upd_mem mem b fr' = Some mem'),
+             forall (UPD :   upd mem b fr' = Some mem'),
              step (mkState mem reg pc) (mkState mem' reg pc.+1)
 | step_jump : forall mem reg pc i r pt,
-             forall (PC :    get_memv mem pc = Some (ValInt i)),
+             forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Jump _ r)),
-             forall (RW :    get_reg reg r = Some (ValPtr pt)),
+             forall (RW :    get reg r = Some (ValPtr pt)),
              step (mkState mem reg pc) (mkState mem reg pt)
 | step_bnz : forall mem reg pc i r n w,
-             forall (PC :    get_memv mem pc = Some (ValInt i)),
+             forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Bnz _ r n)),
-             forall (RW :    get_reg reg r = Some (ValInt w)),
+             forall (RW :    get reg r = Some (ValInt w)),
              let             off_pc' := add_word (snd pc) (if w ==b Z_to_word 0
                                                    then Z_to_word 1
                                                    else imm_to_word n) in
              step (mkState mem reg pc) (mkState mem reg (fst pc,off_pc'))
 | step_jal : forall mem reg reg' pc i r pt,
-             forall (PC :       get_memv mem pc = Some (ValInt i)),
+             forall (PC :       getv mem pc = Some (ValInt i)),
              forall (INST :     decode_instr i = Some (Jal _ r)),
-             forall (RW :       get_reg reg r = Some (ValPtr pt)),
-             forall (UPD :      upd_reg reg ra (ValPtr (pc.+1)) = Some reg'),
+             forall (RW :       get reg r = Some (ValPtr pt)),
+             forall (UPD :      upd reg ra (ValPtr (pc.+1)) = Some reg'),
              step (mkState mem reg pc) (mkState mem reg' pt)
 (* CH: How about having only rules specialized for alloc and free,
        and not further exposing the system call mechanism? *)
 | step_syscall : forall mem reg pc i r w st' sc,
-                 forall (PC :      get_memv mem pc = Some (ValInt i)),
+                 forall (PC :      getv mem pc = Some (ValInt i)),
                  forall (INST :    decode_instr i = Some (Jal _ r)),
-                 forall (RW :      get_reg reg r = Some (ValInt w)),
+                 forall (RW :      get reg r = Some (ValInt w)),
                  forall (GETCALL:  get_syscall w = Some sc),
                  forall (CALL :    sem sc (mkState mem reg pc) = Some st'),
                  step (mkState mem reg pc) st'.
@@ -237,7 +231,7 @@ Variable initial_block : block.
 Variable initial_pc : pointer.
 Variable initial_mem  : memory.
 Variable initial_registers : registers.
-Hypothesis initial_ra : get_reg initial_registers ra = Some (ValPtr initial_pc).
+Hypothesis initial_ra : get initial_registers ra = Some (ValPtr initial_pc).
 
 Definition initial_state : state :=
   mkState initial_mem initial_registers initial_pc.

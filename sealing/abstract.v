@@ -36,10 +36,12 @@ Inductive value :=
 | VKey    :           key -> value
 | VSealed : word t -> key -> value.
 
+Import PartMaps.
+
 Context {memory : Type}
-        {am : @partial_map memory (word t) value}
+        {am : partial_map memory (word t) value}
         {registers : Type}
-        {ar : @partial_map registers (reg t) value}.
+        {ar : partial_map registers (reg t) value}.
 
 Open Scope word_scope.
 

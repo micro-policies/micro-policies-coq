@@ -3,6 +3,8 @@ Require Import symbolic_sealing sealing.classes sealing.abstract.
 
 Section RefinementSA.
 
+Import PartMaps.
+
 Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
@@ -14,20 +16,20 @@ Context {t : machine_types}
         {ssa : @sealing_syscall_addrs t}
 
         {smemory : Type}
-        {sm : @partial_map smemory (word t) (atom (word t) SymSeal.stag)}
-        {smems : partial_map_spec sm}
+        {sm : partial_map smemory (word t) (atom (word t) SymSeal.stag)}
+        {smems : axioms sm}
 
         {sregisters : Type}
-        {sr : @partial_map sregisters (reg t) (atom (word t) SymSeal.stag)}
-        {sregs : partial_map_spec sr}
+        {sr : partial_map sregisters (reg t) (atom (word t) SymSeal.stag)}
+        {sregs : axioms sr}
 
         {amemory : Type}
-        {am : @partial_map amemory (word t) (AbsSeal.value t)}
-        {amems : partial_map_spec am}
+        {am : partial_map amemory (word t) (AbsSeal.value t)}
+        {amems : axioms am}
 
         {aregisters : Type}
-        {ar : @partial_map aregisters (reg t) (AbsSeal.value t)}
-        {aregs : partial_map_spec ar}.
+        {ar : partial_map aregisters (reg t) (AbsSeal.value t)}
+        {aregs : axioms ar}.
 
 Definition refine_val_atom (v : AbsSeal.value t)
                            (a : atom (word t) SymSeal.stag) : Prop :=

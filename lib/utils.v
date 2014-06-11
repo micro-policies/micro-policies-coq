@@ -1150,23 +1150,14 @@ Module PartMaps.
 
 Section maps.
 
-Variable M A B : Type.
-Variable get : M -> A -> option B.
-Variable upd : M -> A -> B -> option M.
+Variables M K V : Type.
 
-Fixpoint upd_list (m : M) (ps : list (A * B)) : option M :=
-  match ps with
-  | [] => Some m
-  | (k, v) :: ps' =>
-    match upd_list m ps' with
-    | Some m' => upd m' k v
-    | None => None
-    end
-  end.
+Class partial_map := {
+  get : M -> K -> option V;
+  upd : M -> K -> V -> option M
+}.
 
-Class axioms := mkAxioms {
-
-  eq_key :> EqDec (eq_setoid A);
+Class axioms (pm : partial_map) := mkAxioms {
 
   upd_defined : forall m key val val',
                   get m key = Some val ->
@@ -1189,9 +1180,21 @@ Class axioms := mkAxioms {
 
 }.
 
-Section facts.
+Section with_classes.
 
-Context {a : axioms}.
+Context {pm : partial_map}
+        {a : axioms pm}
+        {eqk : EqDec (eq_setoid K)}.
+
+Fixpoint upd_list (m : M) (ps : list (K * V)) : option M :=
+  match ps with
+  | [] => Some m
+  | (k, v) :: ps' =>
+    match upd_list m ps' with
+    | Some m' => upd m' k v
+    | None => None
+    end
+  end.
 
 Lemma upd_list_inv m m' ps k v :
   upd_list m ps = Some m' ->
@@ -1280,30 +1283,24 @@ Proof.
     eapply upd_defined; eauto.
 Qed.
 
-End facts.
+End with_classes.
 
 End maps.
 
 End PartMaps.
-
-Class partial_map map key val := {
-  get : map -> key -> option val;
-  upd : map -> key -> val -> option map
-}.
-
-Class partial_map_spec {map key val} (pm : partial_map map key val) := {
-  mem_axioms : PartMaps.axioms get upd
-}.
 
 Module TotalMaps.
 
 Section total_maps.
 
 Variable M A B : Type.
-Variable get : M -> A -> B.
-Variable upd : M -> A -> B -> M.
 
-Record axioms := mkAxioms {
+Class total_map := {
+  get : M -> A -> B;
+  upd : M -> A -> B -> M
+}.
+
+Record axioms (tm : total_map) := mkAxioms {
 
   get_upd_eq : forall m key val, get (upd m key val) key = val;
 

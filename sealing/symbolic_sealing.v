@@ -10,6 +10,8 @@ Module SymSeal.
 
 Section WithClasses.
 
+Import PartMaps.
+
 Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
@@ -24,9 +26,9 @@ Inductive stag :=
 | SEALED : key -> stag.
 
 Context {memory : Type}
-        {sm : @partial_map memory (word t) (atom (word t) stag)}
+        {sm : partial_map memory (word t) (atom (word t) stag)}
         {registers : Type}
-        {sr : @partial_map registers (reg t) (atom (word t) stag)}.
+        {sr : partial_map registers (reg t) (atom (word t) stag)}.
 
 Definition none := DATA.
 

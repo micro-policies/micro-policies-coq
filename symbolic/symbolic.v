@@ -21,6 +21,8 @@ Section WithClasses.
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 
+Import PartMaps.
+
 Class symbolic_params := {
   (* CH: One nice extension could be to distinguish different tag
      types. In many policies the tags on the pc, the tags on registers,
@@ -42,10 +44,10 @@ Class symbolic_params := {
   internal_state : Type;
 
   memory : Type;
-  sm :> @partial_map memory (word t) (atom (word t) tag);
+  sm :> partial_map memory (word t) (atom (word t) tag);
 
   registers : Type;
-  sr :> @partial_map registers (reg t) (atom (word t) tag)
+  sr :> partial_map registers (reg t) (atom (word t) tag)
 }.
 
 Context {sp : symbolic_params}.
@@ -197,7 +199,7 @@ End WithClasses.
 
 End Symbolic.
 
-Arguments Symbolic.state t {_}. 
+Arguments Symbolic.state t {_}.
 Arguments Symbolic.memory t {_}.
 Arguments Symbolic.registers t {_}.
 Arguments Symbolic.syscall t {_}.

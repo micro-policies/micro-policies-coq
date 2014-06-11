@@ -103,7 +103,7 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   Z_to_imm := repr;
 
   imm_to_word i := i;
-  
+
   min_word := repr min_signed;
   (* ASZ: If this is `max_unsigned`, then `word_to_Z` needs to be `unsigned`,
      but then `opp_word` breaks. *)
@@ -213,14 +213,18 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
   memory    := Int32PMap.t atom;
   registers := Int32TMap.t atom;
 
-  get_mem mem i   := Int32PMap.get i mem;
-  upd_mem mem i x := match Int32PMap.get i mem with
-                       | Some _ => Some (Int32PMap.set i x mem)
-                       | None   => None
-                     end;
+  mem_class := {|
+    PartMaps.get mem i := Int32PMap.get i mem;
+    PartMaps.upd mem i x := match Int32PMap.get i mem with
+                              | Some _ => Some (Int32PMap.set i x mem)
+                              | None   => None
+                            end
+  |};
 
-  get_reg regs r   := Int32TMap.get r   regs;
-  upd_reg regs r x := Int32TMap.set r x regs;
+  reg_class := {|
+    TotalMaps.get regs r := Int32TMap.get r regs;
+    TotalMaps.upd regs r x := Int32TMap.set r x regs
+  |};
 
   fault_handler_start := repr 2000;
 
@@ -233,27 +237,27 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
 Program Instance concrete_int_32_params_spec :
   params_spec (concrete_int_32_params).
 Next Obligation.
-  refine ({| PartMaps.eq_key := fun (x y : word concrete_int_32_t) => x == y |}).
+  constructor.
   - (* upd_defined *)
-    intros mem i x x' Hget.
+    intros mem i x x' Hget. simpl in *.
     rewrite Hget; eauto.
   - (* upd_inv *)
-    intros mem i x' mem' Hset.
+    intros mem i x' mem' Hset. simpl in *.
     destruct (Int32PMap.get i mem); [eauto | discriminate].
   - (* get_upd_eq *)
-    intros mem mem' i x Hset.
+    intros mem mem' i x Hset. simpl in *.
     destruct (Int32PMap.get i mem); [|discriminate].
     inversion_clear Hset. apply Int32PMap.gss.
   - (* get_upd_neq *)
-    intros mem mem' i i' x Hneq Hset.
+    intros mem mem' i i' x Hneq Hset. simpl in *.
     destruct (Int32PMap.get i mem); [|discriminate].
     inversion_clear Hset. apply Int32PMap.gso; assumption.
 Qed.
 Next Obligation.
   constructor.
   - (* get_upd_eq *)
-    intros mem i x.
+    intros mem i x. simpl in *.
     apply Int32TMap.gss.
-  - intros mem i i' x Hneq.
+  - intros mem i i' x Hneq. simpl in *.
     apply Int32TMap.gso; assumption.
 Qed.

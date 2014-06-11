@@ -20,7 +20,7 @@ Local Notation "x .+1" := (x + Z_to_word 1) (at level 60).
 
 Definition step (st : state mt) : option (state mt) :=
   let 'mkState mem reg cache pc@tpc epc := st in
-  do i <- get_mem mem pc;
+  do i <- PartMaps.get mem pc;
   do instr <- decode_instr (val i);
   let mvec := mkMVec (op_to_word (opcode_of instr)) tpc (tag i) in
   match instr with
@@ -28,46 +28,46 @@ Definition step (st : state mt) : option (state mt) :=
     let mvec := mvec TNone TNone TNone in
     next_state_pc _ masks st mvec (pc.+1)
   | Const n r =>
-    let old := get_reg reg r in
+    let old := TotalMaps.get reg r in
     let mvec := mvec (tag old) TNone TNone in
     next_state_reg _ masks st mvec r (imm_to_word n)
   | Mov r1 r2 =>
-    let v1 := get_reg reg r1 in
-    let old := get_reg reg r2 in
+    let v1 := TotalMaps.get reg r1 in
+    let old := TotalMaps.get reg r2 in
     let mvec := mvec (tag v1) (tag old) TNone in
     next_state_reg _ masks st mvec r2 (val v1)
   | Binop f r1 r2 r3 =>
-    let v1 := get_reg reg r1 in
-    let v2 := get_reg reg r2 in
-    let old := get_reg reg r3 in
+    let v1 := TotalMaps.get reg r1 in
+    let v2 := TotalMaps.get reg r2 in
+    let old := TotalMaps.get reg r3 in
     let mvec := mvec (tag v1) (tag v2) (tag old) in
     next_state_reg _ masks st mvec r3 (binop_denote f (val v1) (val v2))
   | Load r1 r2 =>
-    let v1 := get_reg reg r1 in
-    do v2 <- get_mem mem (val v1);
-    let old := get_reg reg r2 in
+    let v1 := TotalMaps.get reg r1 in
+    do v2 <- PartMaps.get mem (val v1);
+    let old := TotalMaps.get reg r2 in
     let mvec := mvec (tag v1) (tag v2) (tag old) in
     next_state_reg _ masks st mvec r2 (val v2)
   | Store r1 r2 =>
-    let v1 := get_reg reg r1 in
-    let v2 := get_reg reg r2 in
-    do v3 <- get_mem mem (val v1);
+    let v1 := TotalMaps.get reg r1 in
+    let v2 := TotalMaps.get reg r2 in
+    do v3 <- PartMaps.get mem (val v1);
     let mvec := mvec (tag v1) (tag v2) (tag v3) in
     next_state _ masks st mvec (fun rvec =>
-      do mem' <- upd_mem mem (val v1) (val v2)@(ctr rvec);
+      do mem' <- PartMaps.upd mem (val v1) (val v2)@(ctr rvec);
       Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc))
   | Jump r =>
-    let v := get_reg reg r in
+    let v := TotalMaps.get reg r in
     let mvec := mvec (tag v) TNone TNone in
     next_state_pc _ masks st mvec (val v)
   | Bnz r n =>
-    let v := get_reg reg r in
+    let v := TotalMaps.get reg r in
     let mvec := mvec (tag v) TNone TNone in
     let pc' := pc + if (val v) ==b Z_to_word 0 then Z_to_word 1 else imm_to_word n in
     next_state_pc _ masks st mvec pc'
   | Jal r =>
-    let v := get_reg reg r in
-    let old := get_reg reg ra in
+    let v := TotalMaps.get reg r in
+    let old := TotalMaps.get reg ra in
     let mvec := mvec (tag v) (tag old) TNone in
     next_state_reg_and_pc _ masks st mvec ra (pc.+1) (val v)
   | JumpEpc =>
@@ -79,17 +79,17 @@ Definition step (st : state mt) : option (state mt) :=
       do cache' <- add_rule ops cache masks (is_kernel_tag ops tpc) mem;
       Some (mkState mem reg cache' epc epc))
   | GetTag r1 r2 =>
-    let v1 := get_reg reg r1 in
-    let old := get_reg reg r2 in
+    let v1 := TotalMaps.get reg r1 in
+    let old := TotalMaps.get reg r2 in
     let mvec := mvec (tag v1) (tag old) TNone in
     next_state_reg _ masks st mvec r2 (tag v1)
   | PutTag r1 r2 r3 =>
-    let v1 := get_reg reg r1 in
-    let v2 := get_reg reg r2 in
-    let old := get_reg reg r3 in
+    let v1 := TotalMaps.get reg r1 in
+    let v2 := TotalMaps.get reg r2 in
+    let old := TotalMaps.get reg r3 in
     let mvec := mvec (tag v1) (tag v2) (tag old) in
     next_state _ masks st mvec (fun rvec =>
-      let reg' := upd_reg reg r3 (val v1)@(val v2) in
+      let reg' := TotalMaps.upd reg r3 (val v1)@(val v2) in
       Some (mkState mem reg' cache (pc.+1)@(ctrpc rvec) epc))
 end.
 

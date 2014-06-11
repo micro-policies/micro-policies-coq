@@ -60,26 +60,20 @@ Record atom := mkatom { val : word t; atom_label : label }.
 
 Notation "x @ t" := (mkatom x t) (at level 5, format "x '@' t").
 
+Import PartMaps.
+
 Class abstract_params := {
   memory : Type;
+  mem_class :> partial_map memory (word t) atom;
   registers : Type;
-
-  get_mem : memory -> word t -> option atom;
-  upd_mem : memory -> word t -> atom -> option memory;
-
-  (* Contrary to concrete machine, here register access and update
-     might fail, since they might correspond to kernel registers *)
-
-  get_reg : registers -> reg t -> option (atom);
-  upd_reg : registers -> reg t -> atom -> option registers
-
+  reg_class :> partial_map registers (reg t) atom
 }.
 
 Class params_spec (ap : abstract_params) := {
 
-  mem_axioms :> PartMaps.axioms get_mem upd_mem;
+  mem_axioms :> PartMaps.axioms (@mem_class ap);
 
-  reg_axioms :> PartMaps.axioms get_reg upd_reg
+  reg_axioms :> PartMaps.axioms (@reg_class ap)
 
 }.
 
@@ -120,12 +114,12 @@ Class allocator := {
 Class allocator_spec (alloc : allocator) := {
 
   alloc_get_fresh : forall s s' b,
-    alloc_fun s = Some (s',b) -> get_mem (mem s) b = None;
+    alloc_fun s = Some (s',b) -> get (mem s) b = None;
 
   alloc_get : forall s s' b,
-    alloc_fun s = Some (s',b) -> exists fr, get_mem (mem s') b = Some fr
+    alloc_fun s = Some (s',b) -> exists fr, get (mem s') b = Some fr
 
-(* Similar requirements on upd_mem are not necessary because they follow from
+(* Similar requirements on upd are not necessary because they follow from
    the above and PartMaps.axioms. *)
 
 }.
@@ -136,7 +130,7 @@ Definition malloc : syscall :=
 {| address := alloc_addr;
    sem := fun s => do r <- alloc_fun s;
                    let '(s',b) := r in
-                   do regs' <- upd_reg (regs s') alloc_reg (Z_to_word 0)@V(PTR b);
+                   do regs' <- upd (regs s') alloc_reg (Z_to_word 0)@V(PTR b);
                    Some (mkState (mem s') regs' (pc s'))
 |}.
 
@@ -178,68 +172,68 @@ Definition lift_binop (f : binop) (x y : atom) :=
 
 Inductive step : state -> state -> Prop :=
 | step_nop : forall mem reg pc b i,
-             forall (PC :    get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Nop _)),
              step (mkState mem reg pc@V(PTR b)) (mkState mem reg pc.+1@V(PTR b))
 | step_const : forall mem reg reg' pc b i n r,
-             forall (PC :    get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Const _ n r)),
-             forall (UPD :   upd_reg reg r (imm_to_word n)@V(INT) = Some reg'),
+             forall (UPD :   upd reg r (imm_to_word n)@V(INT) = Some reg'),
              step (mkState mem reg pc@V(PTR b)) (mkState mem reg' pc.+1@V(PTR b))
 | step_mov : forall mem reg reg' pc b i r1 r2 w ty,
-             forall (PC :    get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Mov _ r1 r2)),
-             forall (R1W :   get_reg reg r1 = Some w@V(ty)),
-             forall (UPD :   upd_reg reg r2 w@V(ty) = Some reg'),
+             forall (R1W :   get reg r1 = Some w@V(ty)),
+             forall (UPD :   upd reg r2 w@V(ty) = Some reg'),
              step (mkState mem reg pc@V(PTR b)) (mkState mem reg' pc.+1@V(PTR b))
 | step_binop : forall mem reg reg' pc b i f r1 r2 r3 w1 w2 ty1 ty2 w3 ty3,
-             forall (PC :    get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Binop _ f r1 r2 r3)),
-             forall (R1W :   get_reg reg r1 = Some w1@V(ty1)),
-             forall (R2W :   get_reg reg r2 = Some w2@V(ty2)),
+             forall (R1W :   get reg r1 = Some w1@V(ty1)),
+             forall (R2W :   get reg r2 = Some w2@V(ty2)),
              forall (BINOP : lift_binop f w1@V(ty1) w2@V(ty2) = Some (w3,ty3)),
-             forall (UPD :   upd_reg reg r3 w3@V(ty3) = Some reg'),
+             forall (UPD :   upd reg r3 w3@V(ty3) = Some reg'),
              step (mkState mem reg pc@V(PTR b)) (mkState mem reg' pc.+1@V(PTR b))
 | step_load : forall mem reg reg' pc b i r1 r2 w1 w2 n ty,
-             forall (PC :    get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Load _ r1 r2)),
-             forall (R1W :   get_reg reg r1 = Some w1@V(PTR n)),
-             forall (MEM1 :  get_mem mem w1 = Some w2@M(n,ty)),
-             forall (UPD :   upd_reg reg r2 w2@V(ty) = Some reg'),
+             forall (R1W :   get reg r1 = Some w1@V(PTR n)),
+             forall (MEM1 :  get mem w1 = Some w2@M(n,ty)),
+             forall (UPD :   upd reg r2 w2@V(ty) = Some reg'),
              step (mkState mem reg pc@V(PTR b)) (mkState mem reg' pc.+1@V(PTR b))
 | step_store : forall mem mem' reg pc b i r1 r2 w1 w2 w3 n ty ty',
-             forall (PC :    get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Store _ r1 r2)),
-             forall (R1W :   get_reg reg r1 = Some w1@V(PTR n)),
-             forall (R2W :   get_reg reg r2 = Some w2@V(ty)),
+             forall (R1W :   get reg r1 = Some w1@V(PTR n)),
+             forall (R2W :   get reg r2 = Some w2@V(ty)),
              (* The line below checks that the block was allocated *)
-             forall (MEM1 :  get_mem mem w1 = Some w3@M(n,ty')),
-             forall (UPD :   upd_mem mem w1 w2@M(n,ty) = Some mem'),
+             forall (MEM1 :  get mem w1 = Some w3@M(n,ty')),
+             forall (UPD :   upd mem w1 w2@M(n,ty) = Some mem'),
              step (mkState mem reg pc@V(PTR b)) (mkState mem' reg pc.+1@V(PTR b))
 | step_jump : forall mem reg pc b b' i r w,
-             forall (PC :    get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Jump _ r)),
-             forall (RW :    get_reg reg r = Some w@V(PTR b')),
+             forall (RW :    get reg r = Some w@V(PTR b')),
              step (mkState mem reg pc@V(PTR b)) (mkState mem reg w@V(PTR b'))
 | step_bnz : forall mem reg pc b i r n w,
-             forall (PC :    get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Bnz _ r n)),
-             forall (RW :    get_reg reg r = Some w@V(INT)),
+             forall (RW :    get reg r = Some w@V(INT)),
              let             pc' := add_word pc (if w ==b Z_to_word 0
                                                    then Z_to_word 1
                                                    else imm_to_word n) in
              step (mkState mem reg pc@V(PTR b)) (mkState mem reg pc'@V(PTR b))
 | step_jal : forall mem reg reg' pc b b' i r w,
-             forall (PC :       get_mem mem pc = Some i@M(b,INT)),
+             forall (PC :       get mem pc = Some i@M(b,INT)),
              forall (INST :     decode_instr i = Some (Jal _ r)),
-             forall (RW :       get_reg reg r = Some w@V(PTR b')),
+             forall (RW :       get reg r = Some w@V(PTR b')),
              forall (NOTCALL :  get_syscall w = None),
-             forall (UPD :      upd_reg reg ra (pc.+1)@V(PTR b) = Some reg'),
+             forall (UPD :      upd reg ra (pc.+1)@V(PTR b) = Some reg'),
              step (mkState mem reg pc@V(PTR b)) (mkState mem reg' w@V(PTR b'))
 | step_syscall : forall mem reg pc b i r w st' sc,
-                 forall (PC :      get_mem mem pc = Some i@M(b,INT)),
+                 forall (PC :      get mem pc = Some i@M(b,INT)),
                  forall (INST :    decode_instr i = Some (Jal _ r)),
-                 forall (RW :      get_reg reg r = Some w@V(INT)),
+                 forall (RW :      get reg r = Some w@V(INT)),
                  forall (GETCALL:  get_syscall w = Some sc),
                  forall (CALL :    sem sc (mkState mem reg pc@V(PTR b)) = Some st'),
                  step (mkState mem reg pc@V(PTR b)) st'.
@@ -251,7 +245,7 @@ Variable initial_block : block.
 Variable initial_pc : word.
 Variable initial_mem  : memory.
 Variable initial_registers : registers.
-Hypothesis initial_ra : get_reg initial_registers ra = Some initial_pc@V(PTR initial_block).
+Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial_block).
 
 Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_block)).
 

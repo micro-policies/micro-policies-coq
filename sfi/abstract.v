@@ -19,6 +19,8 @@ Open Scope Z_scope.
 
 Section WithClasses.
 
+Import PartMaps.
+
 Context (t    : machine_types)
         {ops  : machine_ops t}
         {spec : machine_ops_spec ops}.
@@ -35,18 +37,14 @@ Implicit Type pc : value.
 
 Class abstract_params := {
   memory    : Type;
+  mem_class :> partial_map memory value value;
   registers : Type;
-  
-  get_mem : memory -> value -> option value;
-  upd_mem : memory -> value -> value -> option memory;
-  
-  get_reg : registers -> reg t -> option value;
-  upd_reg : registers -> reg t -> value -> option registers
+  reg_class :> partial_map registers (reg t) value
 }.
 
 Class params_spec (ap : abstract_params) :=
-  { mem_axioms :> PartMaps.axioms get_mem upd_mem
-  ; reg_axioms :> PartMaps.axioms get_reg upd_reg }.
+  { mem_axioms :> PartMaps.axioms (@mem_class ap)
+  ; reg_axioms :> PartMaps.axioms (@reg_class ap) }.
 
 Context {ap      : abstract_params}
         {ap_spec : params_spec ap}.
@@ -152,7 +150,7 @@ Notation "'do' 'guard' cond ; rest" :=
 
 Definition isolate_create_set (M : memory)
                               (base size : value) : option (list value) :=
-  let pre_set := map (fun p => get_mem M (p + (base + 1)))
+  let pre_set := map (fun p => get M (p + (base + 1)))
                      (range 0 (size - 1)) in
   do guard forallb is_some pre_set;
   Some (to_set (cat_somes pre_set)).
@@ -166,12 +164,12 @@ Definition isolate_create_set (M : memory)
 Definition isolate_fn (MM : state) : option state :=
   let '(State pc R M C) := MM in
   do c      <- in_compartment_opt C pc;
-  do al     <- get_reg R riso1;
-  do ah     <- get_reg R riso2;
-  do jt     <- get_reg R riso3;
-  do sm     <- get_reg R riso4;
-  do jtsz   <- get_mem M jt;
-  do smsz   <- get_mem M sm;
+  do al     <- get R riso1;
+  do ah     <- get R riso2;
+  do jt     <- get R riso3;
+  do sm     <- get R riso4;
+  do jtsz   <- get M jt;
+  do smsz   <- get M sm;
   do guard al <=? ah;
   let '<<A,J,S>> := c in
   let A' := range al ah in
@@ -201,7 +199,7 @@ Definition get_syscall (addr : value) : option syscall :=
 Notation simple_step C pc c := (C ⊢ pc, pc + 1 ∈ c).
 
 Definition decode M pc :=
-  do pc_val <- get_mem M pc;
+  do pc_val <- get M pc;
   decode_instr pc_val.
 
 Notation "x ?= y" := (x = Some y) (at level 70, no associativity).
@@ -218,7 +216,7 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Const _ x rdest)
                    (STEP  : simple_step C pc c)
-                   (UPD   : upd_reg R rdest (imm_to_word x) ?= R')
+                   (UPD   : upd R rdest (imm_to_word x) ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C),
                         step MM MM'
 
@@ -226,8 +224,8 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Mov _ rsrc rdest)
                    (STEP  : simple_step C pc c)
-                   (GET   : get_reg R rsrc ?= x)
-                   (UPD   : upd_reg R rdest x ?= R')
+                   (GET   : get R rsrc ?= x)
+                   (UPD   : upd R rdest x ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C),
                         step MM MM'
 
@@ -235,9 +233,9 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Binop _ op rsrc1 rsrc2 rdest)
                    (STEP  : simple_step C pc c)
-                   (GETR1 : get_reg R rsrc1 ?= x1)
-                   (GETR2 : get_reg R rsrc2 ?= x2)
-                   (UPDR  : upd_reg R rdest (binop_denote op x1 x2) ?= R')
+                   (GETR1 : get R rsrc1 ?= x1)
+                   (GETR2 : get R rsrc2 ?= x2)
+                   (UPDR  : upd R rdest (binop_denote op x1 x2) ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C),
                         step MM MM'
 
@@ -245,9 +243,9 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Load _ rpsrc rdest)
                    (STEP  : simple_step C pc c)
-                   (GETR  : get_reg R rpsrc ?= p)
-                   (GETM  : get_mem M p     ?= x)
-                   (UPDR  : upd_reg R rdest x ?= R')
+                   (GETR  : get R rpsrc ?= p)
+                   (GETM  : get M p     ?= x)
+                   (UPDR  : upd R rdest x ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C),
                         step MM MM'
 
@@ -255,10 +253,10 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Store _ rsrc rpdest)
                    (STEP  : simple_step C pc c)
-                   (GETRS : get_reg R rsrc   ?= x)
-                   (GETRD : get_reg R rpdest ?= p)
+                   (GETRS : get R rsrc   ?= x)
+                   (GETRD : get R rpdest ?= p)
                    (VALID : In p (address_space c ++ shared_memory c))
-                   (UPDR  : upd_mem M p x ?= M')
+                   (UPDR  : upd M p x ?= M')
                    (NEXT  : MM' = State (pc + 1) R M' C),
                         step MM MM'
 
@@ -266,7 +264,7 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Jump _ rtgt)
                    (IN_C  : C ⊢ pc ∈ c)
-                   (GETR  : get_reg R rtgt ?= pc')
+                   (GETR  : get R rtgt ?= pc')
                    (VALID : In pc' (address_space c ++ jump_targets c))
                    (NEXT  : MM' = State pc' R M C),
                         step MM MM'
@@ -274,7 +272,7 @@ Inductive step (MM MM' : state) : Prop :=
 | step_bnz   :   forall pc R M C c rsrc x b
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Bnz _ rsrc x)
-                   (GETR  : get_reg R rsrc ?= b),
+                   (GETR  : get R rsrc ?= b),
                    let pc' := pc + (if b == 0 then 1 else imm_to_word x)
                    in forall
                    (STEP  : C ⊢ pc,pc' ∈ c)
@@ -288,10 +286,10 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Jal _ rtgt)
                    (IN_C  : C ⊢ pc ∈ c)
-                   (GETR  : get_reg R rtgt ?= pc')
+                   (GETR  : get R rtgt ?= pc')
                    (USER  : get_syscall pc' = None)
                    (VALID : In pc' (address_space c ++ jump_targets c))
-                   (UPDR  : upd_reg R ra (pc + 1) ?= R')
+                   (UPDR  : upd R ra (pc + 1) ?= R')
                    (NEXT  : MM' = State pc' R' M C),
                         step MM MM'
 
@@ -299,7 +297,7 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C)
                    (INST  : decode M pc ?= Jal _ rtgt)
                    (IN_C  : C ⊢ pc ∈ c)
-                   (GETR  : get_reg R rtgt ?= sc_addr)
+                   (GETR  : get R rtgt ?= sc_addr)
                    (GETSC : get_syscall sc_addr ?= sc)
                    (CALL  : semantics sc MM ?= MM'),
                         step MM MM'.
@@ -1169,7 +1167,7 @@ Theorem permitted_modifications : forall `(STEP : step MM MM') c,
   good_state MM = true        ->
   compartments MM ⊢ pc MM ∈ c ->
   forall a,
-    get_mem (mem MM) a <> get_mem (mem MM') a ->
+    get (mem MM) a <> get (mem MM') a ->
     In a (address_space c) \/ In a (shared_memory c).
 Proof.
   intros MM MM' STEP c GOOD_STATE IC a DIFF; destruct STEP;

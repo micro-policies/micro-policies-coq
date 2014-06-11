@@ -14,36 +14,28 @@ Open Scope Z_scope.
 
 Section WithClasses.
 
+Import PartMaps.
+
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
 
 Class abstract_params := {
   imemory : Type;
+  imem_class :> partial_map imemory (word t) (word t);
   dmemory : Type;
+  dmem_class :> partial_map dmemory (word t) (word t);
   registers : Type;
-
-  get_imem : imemory -> word t -> option (word t);
-  upd_imem : imemory -> word t -> word t -> option imemory;
-
-  get_dmem : dmemory -> word t -> option (word t);
-  upd_dmem : dmemory -> word t -> word t -> option dmemory;
-
-  (* Contrary to concrete machine, here register access and update
-     might fail, since they might correspond to kernel registers *)
-
-  get_reg : registers -> reg t -> option (word t);
-  upd_reg : registers -> reg t -> word t -> option registers
-
+  reg_class :> partial_map registers (reg t) (word t)
 }.
 
 Class params_spec (ap : abstract_params) := {
 
-  imem_axioms :> PartMaps.axioms get_imem upd_imem;
+  imem_axioms :> PartMaps.axioms (@imem_class ap);
 
-  dmem_axioms :> PartMaps.axioms get_dmem upd_dmem;
+  dmem_axioms :> PartMaps.axioms (@dmem_class ap);
 
-  reg_axioms :> PartMaps.axioms get_reg upd_reg
+  reg_axioms :> PartMaps.axioms (@reg_class ap)
 
 }.
 
@@ -72,72 +64,72 @@ Variable valid_jmp : word -> word -> bool.
 
 Inductive step : state -> state -> Prop :=
 | step_nop : forall imem dmem reg pc i,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Nop _)),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg,pc.+1,true)
 | step_const : forall imem dmem reg reg' pc i n r,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Const _ n r)),
-             forall (UPD : upd_reg reg r (imm_to_word n) = Some reg'),
+             forall (UPD : upd reg r (imm_to_word n) = Some reg'),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
 | step_mov : forall imem dmem reg reg' pc i r1 r2 w1,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Mov _ r1 r2)),
-             forall (R1W : get_reg reg r1 = Some w1),
-             forall (UPD : upd_reg reg r2 w1 = Some reg'),
+             forall (R1W : get reg r1 = Some w1),
+             forall (UPD : upd reg r2 w1 = Some reg'),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
 | step_binop : forall imem dmem reg reg' pc i f r1 r2 r3 w1 w2,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Binop _ f r1 r2 r3)),
-             forall (R1W : get_reg reg r1 = Some w1),
-             forall (R2W : get_reg reg r2 = Some w2),
-             forall (UPD : upd_reg reg r3 (binop_denote f w1 w2) = Some reg'),
+             forall (R1W : get reg r1 = Some w1),
+             forall (R2W : get reg r2 = Some w2),
+             forall (UPD : upd reg r3 (binop_denote f w1 w2) = Some reg'),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
 | step_load : forall imem dmem reg reg' pc i r1 r2 w1 w2,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Load _ r1 r2)),
-             forall (R1W : get_reg reg r1 = Some w1),
-             forall (MEM1 : (*(get_imem imem w1 = None /\ 
-                             get_dmem dmem w1 = Some w2) \/ 
-                            (get_dmem dmem w1 = None /\ 
-                             get_imem imem w1 = Some w2)*)
+             forall (R1W : get reg r1 = Some w1),
+             forall (MEM1 : (*(get imem w1 = None /\ 
+                             get dmem w1 = Some w2) \/ 
+                            (get dmem w1 = None /\ 
+                             get imem w1 = Some w2)*)
              (* disjointness of memories for abstract machine is guaranteed by the refinement
                 since it's there by default for the concrete machine
                 -> this will imply the determinism of this step *)
-                    get_imem imem w1 = Some w2 \/ get_dmem dmem w1 = Some w2), 
-             forall (UPD : upd_reg reg r2 w2 = Some reg'),
+                    get imem w1 = Some w2 \/ get dmem w1 = Some w2), 
+             forall (UPD : upd reg r2 w2 = Some reg'),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
 | step_store : forall imem dmem dmem' reg pc i r1 r2 w1 w2,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Store _ r1 r2)),
-             forall (R1W : get_reg reg r1 = Some w1),
-             forall (R2W : get_reg reg r2 = Some w2),
-             forall (UPD : upd_dmem dmem w1 w2 = Some dmem'),
+             forall (R1W : get reg r1 = Some w1),
+             forall (R2W : get reg r2 = Some w2),
+             forall (UPD : upd dmem w1 w2 = Some dmem'),
              step (imem,dmem,reg,pc,true) (imem,dmem',reg,pc.+1,true)
 | step_jump : forall imem dmem reg pc i r w b,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Jump _ r)),
-             forall (RW : get_reg reg r = Some w), 
+             forall (RW : get reg r = Some w), 
              forall (VALID : valid_jmp pc w = b), 
              step (imem,dmem,reg,pc,true) (imem,dmem,reg,w,b)
 | step_bnz : forall imem dmem reg pc i r n w,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Bnz _ r n)),
-             forall (RW : get_reg reg r = Some w),
+             forall (RW : get reg r = Some w),
              let pc' := add_word pc (if w ==b Z_to_word 0 then Z_to_word 1 else imm_to_word n) in
              step (imem,dmem,reg,pc,true) (imem,dmem,reg,pc',true)
 | step_jal : forall imem dmem reg reg' pc i r w b,
-             forall (FETCH : get_imem imem pc = Some i),
+             forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Jal _ r)),
-             forall (RW : get_reg reg r = Some w),
+             forall (RW : get reg r = Some w),
              forall (GETCALL : get_syscall w = None),
-             forall (UPD : upd_reg reg ra (pc.+1) = Some reg'),
+             forall (UPD : upd reg ra (pc.+1) = Some reg'),
              forall (VALID : valid_jmp pc w = b),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',w,b)
 | step_syscall : forall imem dmem dmem' reg reg' pc i r w sc b,
-                 forall (FETCH : get_imem imem pc = Some i),
+                 forall (FETCH : get imem pc = Some i),
                  forall (INST : decode_instr i = Some (Jal _ r)),
-                 forall (RW : get_reg reg r = Some w),
+                 forall (RW : get reg r = Some w),
                  forall (GETCALL : get_syscall w = Some sc),
                  forall (CALL : sem sc (imem,dmem,reg,pc,true) = Some (imem,dmem',reg',pc .+1,true)),
                  forall (VALID : valid_jmp pc w = b), 
@@ -152,12 +144,12 @@ Inductive step_a : state -> state -> Prop :=
 Definition succ (st : state) (st' : state) : bool :=
   let '(imem,_,reg,pc,_) := st in
   let '(_,_,_,pc',_) := st' in
-  match (get_imem imem pc) with
+  match (get imem pc) with
     | Some i => 
       (*XXX: Review this *)
       match decode_instr i with
         | Some (Jump r) => valid_jmp pc pc'
-        | Some (Jal r) => match get_reg reg r with
+        | Some (Jal r) => match get reg r with
                             | Some w => match get_syscall w with
                                           | Some sc => valid_jmp pc w
                                           | None => valid_jmp pc pc'
@@ -224,10 +216,10 @@ Proof.
           | [ |- S _ ] => unfold S; eexists; split; [eauto | idtac]
           | [ |- ~ _] => intro FALSE; inversion FALSE as [s''' FALSE2];
             inversion FALSE2 as [FSTEP | FSTEP]; inversion FSTEP
-          | [H : get_reg _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
+          | [H : get _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
           | [ |- (_ ==b _) = true ] =>  apply eqb_refl
-          | [H : get_reg _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
+          | [H : get _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
                                      
               end).     
@@ -273,7 +265,7 @@ Proof.
           | [ |- S _ ] => unfold S; eexists; split; [eauto | idtac]
           | [ |- ~ _] => intro FALSE; inversion FALSE as [s''' FALSE2]; 
             inversion FALSE2 as [FSTEP | FSTEP]; inversion FSTEP
-          | [H : get_reg _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
+          | [H : get _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
                   end).
         destruct (w ==b Z_to_word 0);

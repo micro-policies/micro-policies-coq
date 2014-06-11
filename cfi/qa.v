@@ -19,11 +19,13 @@ Context {t : machine_types}.
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
 
+Import PartMaps.
+
 Context {memory : Type}.
-Context {sm : @partial_map memory (word t) (atom (word t) (@cfi_tag t))}.
+Context {sm : partial_map memory (word t) (atom (word t) (@cfi_tag t))}.
 
 Context {registers : Type}.
-Context {sr : @partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
+Context {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
