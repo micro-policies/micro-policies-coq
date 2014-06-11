@@ -23,7 +23,4 @@ Class sealing_syscall_addrs := {
   unseal_addr : word t
 }.
 
-(* These should be shared between as many machines as possible *)
-
-
 End WithClasses.
