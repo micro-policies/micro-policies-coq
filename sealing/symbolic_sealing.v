@@ -19,7 +19,7 @@ Context {t : machine_types}
         {ssa : @sealing_syscall_addrs t}.
 
 Inductive stag :=
-| WORD   :        stag
+| DATA   :        stag
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
@@ -28,7 +28,7 @@ Context {memory : Type}
         {registers : Type}
         {sr : @partial_map registers (reg t) (atom (word t) stag)}.
 
-Definition none := WORD.
+Definition none := DATA.
 
 Section WithVectors.
 Import Coq.Vectors.Vector.VectorNotations.
@@ -36,14 +36,14 @@ Import Coq.Vectors.Vector.VectorNotations.
 Definition sealing_handler (mv : MVec stag) : option (RVec stag) :=
   match mv with
   | mkMVec NOP       _ _ []           => Some (mkRVec none none)
-  | mkMVec CONST     _ _ []           => Some (mkRVec none WORD)
+  | mkMVec CONST     _ _ []           => Some (mkRVec none DATA)
   | mkMVec MOV       _ _ [tsrc]       => Some (mkRVec none tsrc)
-  | mkMVec (BINOP _) _ _ [WORD; WORD] => Some (mkRVec none WORD)
-  | mkMVec LOAD      _ _ [WORD; tmem] => Some (mkRVec none tmem)
-  | mkMVec STORE     _ _ [WORD; tsrc] => Some (mkRVec none tsrc)
-  | mkMVec JUMP      _ _ [WORD]       => Some (mkRVec none none)
-  | mkMVec BNZ       _ _ [WORD]       => Some (mkRVec none none)
-  | mkMVec JAL       _ _ [WORD]       => Some (mkRVec none WORD)
+  | mkMVec (BINOP _) _ _ [DATA; DATA] => Some (mkRVec none DATA)
+  | mkMVec LOAD      _ _ [DATA; tmem] => Some (mkRVec none tmem)
+  | mkMVec STORE     _ _ [DATA; tsrc] => Some (mkRVec none tsrc)
+  | mkMVec JUMP      _ _ [DATA]       => Some (mkRVec none none)
+  | mkMVec BNZ       _ _ [DATA]       => Some (mkRVec none none)
+  | mkMVec JAL       _ _ [DATA]       => Some (mkRVec none DATA)
   | mkMVec _         _ _ _            => None
   end.
 
@@ -53,7 +53,7 @@ Global Instance equ : EqDec (eq_setoid stag).
   intros t1 t2.
   refine (
       match t1, t2 with
-      | WORD, WORD => left eq_refl
+      | DATA, DATA => left eq_refl
       | KEY k1, KEY k2
       |  SEALED k1, SEALED k2 =>
         match k1 == k2 with
@@ -92,7 +92,7 @@ Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
 Definition seal (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc next_key := s in
   match get reg syscall_arg1, get reg syscall_arg2 with
-  | Some (payload@WORD), Some (_@(KEY key)) =>
+  | Some (payload@DATA), Some (_@(KEY key)) =>
     do reg' <- upd reg syscall_ret (payload@(SEALED key));
     Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
@@ -104,7 +104,7 @@ Definition unseal (s : Symbolic.state t) : option (Symbolic.state t) :=
   | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
     if key == key' then None
     else
-      do reg' <- upd reg syscall_ret (payload@WORD);
+      do reg' <- upd reg syscall_ret (payload@DATA);
       Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
   end.
@@ -126,8 +126,8 @@ End WithClasses.
 (* BCP: Yes, that's what I meant.  I know we're not there yet, but I
    am wondering where we want to write them.  Still confused about the
    modularization strategy for the whole codebase... *)
+(* CH: We will probably make a refinementCS.v file at some point,
+   and I expect that to use any of Arthur's results we'll need
+   to give this kind of details *)
 
 End SymSeal.
-
-End SymbolicSealing.
-

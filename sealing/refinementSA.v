@@ -32,7 +32,7 @@ Context {t : machine_types}
 Definition refine_val_atom (v : AbsSeal.value t)
                            (a : atom (word t) SymSeal.stag) : Prop :=
   match v,a with
-  | AbsSeal.VWord w    , w'@WORD                => w = w'
+  | AbsSeal.VData w    , w'@(SymSeal.DATA)      => w = w'
   | AbsSeal.VKey k     ,  _@(SymSeal.KEY k')    => k = k'
   | AbsSeal.VSealed w k, w'@(SymSeal.SEALED k') => w = w' /\ k = k'
   | _                  , _                      => False
@@ -54,12 +54,18 @@ Definition refine_reg (areg : aregisters) (sreg : sregisters) : Prop :=
 
 Definition refine_pc (w : word t) (a : atom (word t) SymSeal.stag) : Prop :=
   match a with
-  | w'@SymSeal.WORD => w = w'
+  | w'@SymSeal.DATA => w = w'
   | _               => False
   end.
 
 Definition refine_ins (keys : list key) (next_key : key) : Prop :=
 True.
+(*
+  next_key = key_incr (key_max keys).
+keys = 0,1,2,3
+next_key = 4
+Probably need to talk about the initial key (min_key?)
+*)
 
 Definition astate := @AbsSeal.state t sk amemory aregisters.
 Definition sstate := @Symbolic.state t SymSeal.sym_sealing.
