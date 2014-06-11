@@ -27,26 +27,13 @@ Class sealing_syscall_addrs := {
 
 Require Import utils.
 
-Class smemory dom := {
-  memory    : Type;
-
-  get_mem : memory -> word t -> option dom;
-  upd_mem : memory -> word t -> dom -> option memory;
-
-  (* could factor this out? *)
-  mem_axioms : PartMaps.axioms get_mem upd_mem
+Class partial_map map key val := {
+  get : map -> key -> option val;
+  upd : map -> key -> val -> option map
 }.
 
-(* This is basically the same as smemory,
-   can't we share one partial map class? *)
-Class sregisters dom := {
-  registers : Type;
-
-  get_reg : registers -> reg t -> option dom;
-  upd_reg : registers -> reg t -> dom -> option registers;
-
-  (* could factor this out? *)
-  reg_axioms : PartMaps.axioms get_reg upd_reg
+Class partial_map_spec map key val (pm : partial_map map key val) := {
+  mem_axioms : PartMaps.axioms get upd
 }.
 
 Class syscall_regs := {

@@ -23,8 +23,11 @@ Inductive stag :=
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
-Context {sm : @smemory t (atom (word t) stag)}.
-Context {sr : @sregisters t (atom (word t) stag)}.
+Context {memory : Type}.
+Context {sm : @partial_map memory (word t) (atom (word t) stag)}.
+
+Context {registers : Type}.
+Context {sr : @partial_map registers (reg t) (atom (word t) stag)}.
 
 Definition none := WORD.
 
@@ -68,11 +71,11 @@ Program Instance sym_sealing : (Symbolic.symbolic_params t) := {
   registers := registers;
   tag := stag;
 
-  get_mem := get_mem;
-  upd_mem := upd_mem;
+  get_mem := get;
+  upd_mem := upd;
 
-  get_reg := get_reg;
-  upd_reg := upd_reg;
+  get_reg := get;
+  upd_reg := upd;
 
   handler := sealing_handler;
 
@@ -88,25 +91,25 @@ Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
   if key == max_key then None
   else
     let key' := inc_key key in
-    do reg' <- upd_reg reg syscall_ret (max_word@(KEY key));
+    do reg' <- upd reg syscall_ret (max_word@(KEY key));
     Some (Symbolic.State mem reg' pc key').
 
 Definition seal (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc next_key := s in
-  match get_reg reg syscall_arg1, get_reg reg syscall_arg2 with
+  match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@WORD), Some (_@(KEY key)) =>
-    do reg' <- upd_reg reg syscall_ret (payload@(SEALED key));
+    do reg' <- upd reg syscall_ret (payload@(SEALED key));
     Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
   end.
 
 Definition unseal (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc next_key := s in
-  match get_reg reg syscall_arg1, get_reg reg syscall_arg2 with
+  match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
     if key == key' then None
     else
-      do reg' <- upd_reg reg syscall_ret (payload@WORD);
+      do reg' <- upd reg syscall_ret (payload@WORD);
       Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
   end.
