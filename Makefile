@@ -98,7 +98,7 @@ VFILES:=sealing/refinementSA.v\
   cfi/cfi_preservation.v\
   cfi/abstract.v\
   symbolic/rules.v\
-  symbolic/refinement.v\
+  symbolic/refinement_common.v\
   symbolic/symbolic.v\
   concrete/int_32.v\
   concrete/exec.v\
