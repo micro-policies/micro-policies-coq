@@ -828,6 +828,8 @@ Hypothesis syscalls_correct_allowed_case :
        beginning of the corresponding system call code and let it run
        until it reaches a user-mode state with primes on everything... *)
     exists cmem' creg' cache' epc',
+      (* CH: this doesn't quite agree with what's happening in symbolic.v;
+             should bring the step_syscall rule back in sync *)
       kernel_user_exec (Concrete.mkState cmem
                                          (Concrete.upd_reg creg ra
                                                            (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
@@ -863,6 +865,7 @@ Hypothesis syscalls_correct_disallowed_case :
     Symbolic.get_syscall table addr = Some sc ->
     Symbolic.handler mvec = Some rvec ->
     Symbolic.sem sc (Symbolic.State amem areg apc@tpc int) = None ->
+    (* CH: could write handler_correct_disallowed_case in the same way *)
     ~ kernel_user_exec (Concrete.mkState cmem
                                          (Concrete.upd_reg creg ra
                                                            (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
