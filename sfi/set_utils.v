@@ -42,11 +42,21 @@ Fixpoint to_set (xs : list A) : list A :=
 
 Fixpoint set_elem (e : A) (xs : list A) : bool :=
   match xs with
-    | [] => false
+    | []       => false
     | x :: xs' => match e <=> x with
                    | Lt => false
                    | Eq => true
                    | Gt => set_elem e xs'
+                  end
+  end.
+
+Fixpoint set_delete (e : A) (xs : list A) : list A :=
+  match xs with
+    | []       => []
+    | x :: xs' => match e <=> x with
+                   | Lt => x :: xs'
+                   | Eq => xs'
+                   | Gt => x :: set_delete e xs'
                   end
   end.
 
@@ -352,6 +362,28 @@ Proof.
   intros e xs SET; apply set_elem_cases with (e := e) in SET.
   destruct (set_elem e xs), (elem e xs); solve [reflexivity | contradiction].
 Qed.
+
+Theorem set_delete_is_delete : forall e xs,
+  is_set xs = true -> set_delete e xs = delete e xs.
+Proof.
+  induction xs as [|x xs]; intros SET; [reflexivity|].
+  simpl; destruct (e <=> x) eqn:CMP.
+  - apply compare_eq in CMP; subst.
+    destruct (equiv_dec x x); [|congruence].
+    symmetry; apply delete_not_in.
+    apply is_set_no_dups in SET; inversion SET; assumption.
+  - destruct (equiv_dec e x); [ssubst; elim (lt_irrefl x); exact CMP|].
+    f_equal; symmetry; apply delete_not_in.
+    apply is_set_iff_strongly_sorted in SET; inversion SET; subst;
+      rewrite Forall_forall in *.
+    intros IN; elim (lt_irrefl x); eauto 3 with ordered.
+  - destruct (equiv_dec e x); [ssubst; elim (gt_irrefl x); exact CMP|].
+    f_equal; apply IHxs; eauto.
+Qed.
+
+(* I could add corollaries that repeat the theorems about `delete`, but we don't
+   use `set_delete` enough to be worth it; we can just rewrite with
+   `set_delete_is_delete` when we want to use them. *)
 
 Theorem set_union_spec : forall a xs ys,
   In a (set_union xs ys) <-> In a xs \/ In a ys.
