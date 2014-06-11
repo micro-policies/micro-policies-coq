@@ -23,8 +23,8 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {ap : Symbolic.symbolic_params mt}
-        {mems : partial_map_spec (@Symbolic.sm mt ap)}
-        {regs : partial_map_spec (@Symbolic.sr mt ap)}
+        {memax : PartMaps.axioms (@Symbolic.sm mt ap)}
+        {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}
         {e : @encodable (Symbolic.tag mt) mt}.
@@ -50,17 +50,17 @@ Ltac match_inv :=
 
 Definition refine_memory (amem : Symbolic.memory mt) (cmem : Concrete.memory mt) :=
   forall w x t,
-    Concrete.get_mem cmem w = Some x@(encode (USER t false)) <->
-    get amem w = Some x@t.
+    PartMaps.get cmem w = Some x@(encode (USER t false)) <->
+    PartMaps.get amem w = Some x@t.
 
 Definition refine_registers (areg : Symbolic.registers mt) (creg : Concrete.registers mt) :=
   forall n x t,
-    Concrete.get_reg creg n = x@(encode (USER t false)) <->
-    get areg n = Some x@t.
+    TotalMaps.get creg n = x@(encode (USER t false)) <->
+    PartMaps.get areg n = Some x@t.
 
 Let in_kernel st :=
   let pct := common.tag (Concrete.pc st) in
-  let i := Concrete.get_mem (Concrete.mem st) (common.val (Concrete.pc st)) in
+  let i := PartMaps.get (Concrete.mem st) (common.val (Concrete.pc st)) in
   Concrete.is_kernel_tag _ pct
   || word_lift (fun x => is_call x) pct
   && match i with
@@ -76,7 +76,7 @@ Let user_pc_and_instr pct it :=
 
 Let in_user st :=
   let pct := common.tag (Concrete.pc st) in
-  let i := Concrete.get_mem (Concrete.mem st) (common.val (Concrete.pc st)) in
+  let i := PartMaps.get (Concrete.mem st) (common.val (Concrete.pc st)) in
   word_lift (fun t =>
                is_user t
                && (negb (is_call t)
@@ -104,7 +104,7 @@ Definition in_mvec addr := In addr (Concrete.mvec_fields _).
 Definition mvec_in_kernel cmem :=
   forall addr,
     in_mvec addr ->
-    exists w, Concrete.get_mem cmem addr = Some w@Concrete.TKernel.
+    exists w, PartMaps.get cmem addr = Some w@Concrete.TKernel.
 
 Hypothesis kernel_tag_correct :
   Concrete.TKernel = encode KERNEL.
@@ -132,7 +132,7 @@ Lemma mvec_in_kernel_store_mvec cmem mvec :
 Proof.
   unfold mvec_in_kernel, in_mvec, Concrete.mvec_fields, Concrete.store_mvec.
   intros DEF.
-  eapply PartMaps.upd_list_defined; eauto using Concrete.mem_axioms.
+  eapply PartMaps.upd_list_defined; eauto using Concrete.mem_axioms, eq_word.
   simpl map. intros addr IN.
   apply DEF in IN.
   destruct IN.
@@ -141,7 +141,7 @@ Qed.
 
 Definition ra_in_user creg :=
   word_lift (fun x => is_user_data x)
-            (common.tag (Concrete.get_reg creg ra)) = true.
+            (common.tag (TotalMaps.get creg ra)) = true.
 Hint Unfold ra_in_user.
 
 (* CH: kernel_invariant only holds when kernel starts executing, can
@@ -162,15 +162,15 @@ Record kernel_invariant : Type := {
   kernel_invariant_upd_mem :
     forall regs mem1 mem2 cache addr w1 ut b w2 int
            (KINV : kernel_invariant_statement mem1 regs cache int)
-           (GET : Concrete.get_mem mem1 addr = Some w1@(encode (USER ut b)))
-           (UPD : Concrete.upd_mem mem1 addr w2 = Some mem2),
+           (GET : PartMaps.get mem1 addr = Some w1@(encode (USER ut b)))
+           (UPD : PartMaps.upd mem1 addr w2 = Some mem2),
       kernel_invariant_statement mem2 regs cache int;
 
   kernel_invariant_upd_reg :
     forall mem regs cache r w1 ut1 b1 w2 ut2 b2 int
            (KINV : kernel_invariant_statement mem regs cache int)
-           (GET : Concrete.get_reg regs r = w1@(encode (USER ut1 b1))),
-      kernel_invariant_statement mem (Concrete.upd_reg regs r w2@(encode (USER ut2 b2))) cache int;
+           (GET : TotalMaps.get regs r = w1@(encode (USER ut1 b1))),
+      kernel_invariant_statement mem (TotalMaps.upd regs r w2@(encode (USER ut2 b2))) cache int;
 
   kernel_invariant_store_mvec :
     forall mem mem' mvec regs cache int
@@ -220,7 +220,7 @@ Variable table : list (Symbolic.syscall mt).
 Definition wf_entry_points cmem :=
   forall addr,
     (exists sc, Symbolic.get_syscall table addr = Some sc) <->
-    match Concrete.get_mem cmem addr with
+    match PartMaps.get cmem addr with
     | Some _@it => it ==b encode ENTRY
     | None => false
     end = true.
@@ -244,10 +244,10 @@ Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
 
 Lemma refine_memory_upd amem cmem cmem' addr v v' t t' :
   refine_memory amem cmem ->
-  Concrete.get_mem cmem addr = Some v@(encode (USER t false)) ->
-  Concrete.upd_mem cmem addr v'@(encode (USER t' false)) = Some cmem' ->
+  PartMaps.get cmem addr = Some v@(encode (USER t false)) ->
+  PartMaps.upd cmem addr v'@(encode (USER t' false)) = Some cmem' ->
   exists amem',
-    upd amem addr v'@t' = Some amem' /\
+    PartMaps.upd amem addr v'@t' = Some amem' /\
     refine_memory amem' cmem'.
 Proof.
   intros MEM GET UPD.
@@ -271,15 +271,15 @@ Qed.
 
 Lemma wf_entry_points_user_upd cmem cmem' addr v v' t t' :
   wf_entry_points cmem ->
-  Concrete.get_mem cmem addr = Some v@(encode (USER t false)) ->
-  Concrete.upd_mem cmem addr v'@(encode (USER t' false)) = Some cmem' ->
+  PartMaps.get cmem addr = Some v@(encode (USER t false)) ->
+  PartMaps.upd cmem addr v'@(encode (USER t' false)) = Some cmem' ->
   wf_entry_points cmem'.
 Proof.
   unfold wf_entry_points.
   intros WF GET UPD addr'.
   split; intros H.
   - rewrite WF in H.
-    destruct (Concrete.get_mem cmem addr') as [[v'' t'']|] eqn:MEM; try discriminate.
+    destruct (PartMaps.get cmem addr') as [[v'' t'']|] eqn:MEM; try discriminate.
     erewrite PartMaps.get_upd_neq; eauto using Concrete.mem_axioms.
     { now rewrite MEM. }
     intros ?. subst addr'.
@@ -287,7 +287,7 @@ Proof.
     rewrite eqb_true_iff in H.
     now apply encode_inj in H.
   - apply WF. clear WF.
-    destruct (Concrete.get_mem cmem' addr') as [[v'' t'']|] eqn:GET'; try discriminate.
+    destruct (PartMaps.get cmem' addr') as [[v'' t'']|] eqn:GET'; try discriminate.
     erewrite PartMaps.get_upd_neq in GET'; eauto using Concrete.mem_axioms.
     { now rewrite GET'. }
     intros ?. subst addr'.
@@ -300,8 +300,8 @@ Qed.
 
 Lemma mvec_in_kernel_user_upd cmem cmem' addr v v' t t' :
   mvec_in_kernel cmem ->
-  Concrete.get_mem cmem addr = Some v@(encode (USER t false)) ->
-  Concrete.upd_mem cmem addr v'@(encode (USER t' false)) = Some cmem' ->
+  PartMaps.get cmem addr = Some v@(encode (USER t false)) ->
+  PartMaps.upd cmem addr v'@(encode (USER t' false)) = Some cmem' ->
   mvec_in_kernel cmem'.
 Proof.
   intros MVEC GET UPD.
@@ -319,7 +319,7 @@ Qed.
 
 Lemma mvec_in_kernel_kernel_upd cmem cmem' addr w :
   mvec_in_kernel cmem ->
-  Concrete.upd_mem cmem addr w@Concrete.TKernel = Some cmem' ->
+  PartMaps.upd cmem addr w@Concrete.TKernel = Some cmem' ->
   mvec_in_kernel cmem'.
 Proof.
   intros MVEC UPD addr' IN.
@@ -331,9 +331,9 @@ Qed.
 
 Lemma refine_memory_upd' amem amem' cmem addr v t :
   refine_memory amem cmem ->
-  Symbolic.upd_mem amem addr v@t = Some amem' ->
+  PartMaps.upd amem addr v@t = Some amem' ->
   exists cmem',
-    Concrete.upd_mem cmem addr v@(encode (USER t false)) = Some cmem' /\
+    PartMaps.upd cmem addr v@(encode (USER t false)) = Some cmem' /\
     refine_memory amem' cmem'.
 Proof.
   intros MEM UPD.
@@ -357,10 +357,10 @@ Qed.
 
 Lemma refine_registers_upd areg creg r v v' t t' :
   refine_registers areg creg ->
-  Concrete.get_reg creg r = v@(encode (USER t false)) ->
+  TotalMaps.get creg r = v@(encode (USER t false)) ->
   exists areg',
-    Symbolic.upd_reg areg r v'@t' = Some areg' /\
-    refine_registers areg' (Concrete.upd_reg creg r v'@(encode (USER t' false))).
+    PartMaps.upd areg r v'@t' = Some areg' /\
+    refine_registers areg' (TotalMaps.upd creg r v'@(encode (USER t' false))).
 Proof.
   intros REG GET.
   assert (GET' := proj1 (REG _ _ _) GET).
@@ -382,8 +382,8 @@ Qed.
 
 Lemma refine_registers_upd' areg areg' creg r v t :
   refine_registers areg creg ->
-  Symbolic.upd_reg areg r v@t = Some areg' ->
-  refine_registers areg' (Concrete.upd_reg creg r v@(encode (USER t false))).
+  PartMaps.upd areg r v@t = Some areg' ->
+  refine_registers areg' (TotalMaps.upd creg r v@(encode (USER t false))).
 Proof.
   intros REF UPD r' v' t'.
   destruct (r' == r) as [|NEQ]; simpl in *.
@@ -401,7 +401,7 @@ Qed.
 
 Lemma ra_in_user_upd creg r v t :
   ra_in_user creg ->
-  ra_in_user (Concrete.upd_reg creg r v@(encode (USER t false))).
+  ra_in_user (TotalMaps.upd creg r v@(encode (USER t false))).
 Proof.
   unfold ra_in_user.
   destruct (r == ra) as [|NEQ]; simpl in *; autounfold.
@@ -528,7 +528,7 @@ Qed.
 Ltac analyze_cache :=
   match goal with
   | LOOKUP : Concrete.cache_lookup _ ?cache _ ?mvec = Some ?rvec,
-    PC     : Concrete.get_mem _ ?pc = Some ?i@_,
+    PC     : PartMaps.get _ ?pc = Some ?i@_,
     INST   : decode_instr ?i = Some _,
     INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
     CACHE  : cache_correct ?cache |- _ =>
@@ -596,7 +596,7 @@ Proof.
   destruct (Symbolic.get_syscall table (common.val (Concrete.pc st)))
     as [sc|] eqn:EQ; trivial.
   assert (H := proj1 (WF (common.val (Concrete.pc st))) (ex_intro _ _ EQ)).
-  destruct (Concrete.get_mem (Concrete.mem st) (val (Concrete.pc st)))
+  destruct (PartMaps.get (Concrete.mem st) (val (Concrete.pc st)))
     as [[v t']|] eqn:EQ'; try discriminate.
   rewrite eqb_true_iff in H. subst.
   rewrite eqb_refl in INUSER.
@@ -639,25 +639,28 @@ Proof.
   analyze_cache;
 
   repeat match goal with
-  | MEM : Concrete.get_mem ?cmem ?addr = Some _ |- _ =>
+  | MEM : PartMaps.get ?cmem ?addr = Some _ |- _ =>
     match goal with
-    | _ : Symbolic.get_mem _ addr = Some _ |- _ => fail 1
+    | _ : PartMaps.get ?amem addr = Some _ |- _ =>
+      match type of amem with
+      | Symbolic.memory mt => fail 2
+      end
     | |- _ => idtac
     end;
     pose proof (proj1 (REFM _ _ _) MEM)
   end;
 
   try match goal with
-  | OLD : Concrete.get_reg ?reg ?r = _
-    |- context[Concrete.upd_reg ?reg ?r ?v@(encode (USER ?t false))] =>
+  | OLD : TotalMaps.get ?reg ?r = _
+    |- context[TotalMaps.upd ?reg ?r ?v@(encode (USER ?t false))] =>
     (destruct (refine_registers_upd _ v _ t REFR OLD) as (? & ? & ?);
      pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ _ v t false _ KINV OLD))
     || let op := current_instr_opcode in fail 3 op
   end;
 
   try match goal with
-  | GET : Concrete.get_mem _ ?addr = Some _,
-    UPD : Concrete.upd_mem _ ?addr _ = Some _ |- _ =>
+  | GET : PartMaps.get ?cmem ?addr = Some _,
+    UPD : PartMaps.upd ?cmem ?addr _ = Some _ |- _ =>
     (destruct (refine_memory_upd _ _ _ _ REFM GET UPD) as (? & ? & ?);
      pose proof (wf_entry_points_user_upd _ _ _ _ WFENTRYPOINTS GET UPD);
      pose proof (mvec_in_kernel_user_upd _ _ _ _ MVEC GET UPD))
@@ -666,7 +669,7 @@ Proof.
 
   repeat match goal with
   | creg : Concrete.registers mt,
-    H : Concrete.get_reg ?creg ?r = _ |- _ =>
+    H : TotalMaps.get ?creg ?r = _ |- _ =>
     apply REFR in H
   end;
 
@@ -713,13 +716,13 @@ Qed.
 
 Definition user_mem_unchanged cmem cmem' :=
   forall addr w t,
-    Concrete.get_mem cmem addr = Some w@(encode (USER t false)) <->
-    Concrete.get_mem cmem' addr = Some w@(encode (USER t false)).
+    PartMaps.get cmem addr = Some w@(encode (USER t false)) <->
+    PartMaps.get cmem' addr = Some w@(encode (USER t false)).
 
 Definition user_regs_unchanged cregs cregs' :=
   forall r w t,
-    Concrete.get_reg cregs r = w@(encode (USER t false)) <->
-    Concrete.get_reg cregs' r = w@(encode (USER t false)).
+    TotalMaps.get cregs r = w@(encode (USER t false)) <->
+    TotalMaps.get cregs' r = w@(encode (USER t false)).
 
 (* XXX: a bit of a lie now, given that the kernel can now return to a system call (BCP: ?) *)
 (* BCP: Added some comments -- please check! *)
@@ -819,7 +822,7 @@ Hypothesis syscalls_correct_allowed_case :
        sc... (BCP: This would make more sense after the next
        hypothesis) *)
     Symbolic.get_syscall table addr = Some sc ->
-    (* and calling the handler on the current m-vector succeeds and returns rvec... 
+    (* and calling the handler on the current m-vector succeeds and returns rvec...
        (BCP: Why is it Symbolic.handler here and just handler above?) *)
     Symbolic.handler mvec = Some rvec ->
     (* and running sc on the current abstract machine state reaches a
@@ -832,7 +835,7 @@ Hypothesis syscalls_correct_allowed_case :
       (* CH: this doesn't quite agree with what's happening in symbolic.v;
              should bring the step_syscall rule back in sync *)
       kernel_user_exec (Concrete.mkState cmem
-                                         (Concrete.upd_reg creg ra
+                                         (TotalMaps.upd creg ra
                                                            (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
                                          cache
                                          addr@(encode (USER (trpc rvec) true)) epc)
@@ -868,7 +871,7 @@ Hypothesis syscalls_correct_disallowed_case :
     Symbolic.sem sc (Symbolic.State amem areg apc@tpc int) = None ->
     (* CH: could write handler_correct_disallowed_case in the same way *)
     ~ kernel_user_exec (Concrete.mkState cmem
-                                         (Concrete.upd_reg creg ra
+                                         (TotalMaps.upd creg ra
                                                            (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
                                          cache
                                          addr@(encode (USER (trpc rvec) true)) epc)
@@ -881,7 +884,7 @@ Lemma user_regs_unchanged_ra_in_user creg creg' :
 Proof.
   unfold ra_in_user, word_lift.
   intros RA H.
-  destruct (Concrete.get_reg creg ra) as [v t] eqn:E.
+  destruct (TotalMaps.get creg ra) as [v t] eqn:E.
   simpl in RA.
   destruct (decode t) as [t'|] eqn:E'; try discriminate.
   unfold is_user in RA. destruct t'; try discriminate.
@@ -915,15 +918,15 @@ Lemma state_on_syscalls st st' :
     Concrete.cache st' = Concrete.cache st /\
     exists r i tpc ic ti t1 old told trpc tr,
       Concrete.regs st' =
-      Concrete.upd_reg (Concrete.regs st) ra
+      TotalMaps.upd (Concrete.regs st) ra
                        (common.val (Concrete.pc st) + Z_to_word 1)%w@(encode (USER tr false)) /\
       common.tag (Concrete.pc st') = encode (USER trpc true) /\
       common.tag (Concrete.pc st) = encode (USER tpc ic) /\
-      Concrete.get_mem (Concrete.mem st) (common.val (Concrete.pc st)) =
+      PartMaps.get (Concrete.mem st) (common.val (Concrete.pc st)) =
       Some i@(encode (USER ti false)) /\
       decode_instr i = Some (Jal _ r) /\
-      Concrete.get_reg (Concrete.regs st) r = (common.val (Concrete.pc st'))@(encode (USER t1 false)) /\
-      Concrete.get_reg (Concrete.regs st) ra = old@(encode (USER told false)) /\
+      TotalMaps.get (Concrete.regs st) r = (common.val (Concrete.pc st'))@(encode (USER t1 false)) /\
+      TotalMaps.get (Concrete.regs st) ra = old@(encode (USER told false)) /\
       Concrete.cache_lookup _ (Concrete.cache st) masks
                             (encode_mvec (mvec_of_umvec ic (mkMVec JAL tpc ti [t1; told]))) =
       Some (encode_rvec (rvec_of_urvec JAL (mkRVec trpc tr))).
@@ -988,7 +991,7 @@ Proof.
         rewrite orb_true_iff in ISUSER.
         destruct ISUSER as [ISUSER | ISUSER].
         { simpl in ISUSER. now rewrite ISUSER. }
-        destruct (Concrete.get_mem cmem'' apc) as [[i it]|] eqn:GET;
+        destruct (PartMaps.get cmem'' apc) as [[i it]|] eqn:GET;
           [|apply orb_true_r].
         unfold equiv_decb.
         destruct (equiv_dec it (encode ENTRY)); [|apply orb_true_r]; simpl in *; subst.
@@ -1016,7 +1019,7 @@ Proof.
       apply EXEC in KEXEC.
       destruct (handler_correct_disallowed_case cmem mvec int KINV HANDLER STORE ISUSER' KEXEC).
   - right. rewrite andb_true_iff in SYSCALL. destruct SYSCALL as [S1 S2].
-    destruct (Concrete.get_mem (Concrete.mem kst) (common.val (Concrete.pc kst)))
+    destruct (PartMaps.get (Concrete.mem kst) (common.val (Concrete.pc kst)))
       as [[i it]|] eqn:GET; try discriminate.
     rewrite eqb_true_iff in S2. subst.
     exploit state_on_syscalls; eauto. simpl.
@@ -1230,27 +1233,27 @@ Qed.
 
 Ltac match_data :=
   repeat match goal with
-  | H : Symbolic.get_mem ?amem ?addr = Some ?w,
+  | H : PartMaps.get ?amem ?addr = Some ?w,
     REFM : refine_memory ?amem ?cmem |- _ =>
     match goal with
-    | _ : Concrete.get_mem cmem addr = _ |- _ => fail 1
+    | _ : PartMaps.get cmem addr = _ |- _ => fail 1
     | |- _ => idtac
     end;
     apply REFM in H
 
-  | GET : Concrete.get_mem ?mem1 ?addr = Some ?x@(encode (USER ?t false)),
+  | GET : PartMaps.get ?mem1 ?addr = Some ?x@(encode (USER ?t false)),
     USERMEM : user_mem_unchanged ?mem1 ?mem2 |- _ =>
     match goal with
-    | _ : Concrete.get_mem mem2 addr = _ |- _ => fail 1
+    | _ : PartMaps.get mem2 addr = _ |- _ => fail 1
     | |- _ => idtac
     end;
-    assert (Concrete.get_mem mem2 addr = Some x@(encode (USER t false)));
+    assert (PartMaps.get mem2 addr = Some x@(encode (USER t false)));
     try solve [eapply USERMEM; assumption]
 
-  | H : Symbolic.upd_mem ?amem ?addr _ = _,
+  | H : PartMaps.upd ?amem ?addr _ = _,
     REFM : refine_memory ?amem ?cmem |- _ =>
     match goal with
-      | _ : Concrete.upd_mem cmem addr _ = _ |- _ => fail 1
+      | _ : PartMaps.upd cmem addr _ = _ |- _ => fail 1
       | |- _ => idtac
     end;
     let old := fresh "old" in
@@ -1260,20 +1263,20 @@ Ltac match_data :=
     let REFM' := fresh "REFM'" in
     destruct (refine_memory_upd' _ _ _ REFM H) as (cmem' & UPD' & REFM')
 
-  | H : Symbolic.get_reg ?aregs ?r = Some _,
+  | H : PartMaps.get ?aregs ?r = Some _,
     REFR : refine_registers ?aregs ?cregs |- _ =>
     apply REFR in H
 
-  | UPD : Symbolic.upd_reg ?aregs ?r _ = Some _,
+  | UPD : PartMaps.upd ?aregs ?r _ = Some _,
     REFR : refine_registers ?aregs ?cregs |- _ =>
     match goal with
-    | _ : Concrete.get_reg cregs r = _ |- _ => fail 1
+    | _ : TotalMaps.get cregs r = _ |- _ => fail 1
     | |- _ => idtac
     end;
     let old := fresh "old" in
     let Hold := fresh "Hold" in
     let UPD' := fresh "UPD'" in
-    destruct (PartMaps.upd_inv (Symbolic.reg_axioms (t := mt)) _ _ _ UPD) as [old Hold];
+    destruct (PartMaps.upd_inv (*Symbolic.reg_axioms (t := mt)*) _ _ _ UPD) as [old Hold];
     apply REFR in Hold;
     assert (UPD' := refine_registers_upd' _ _ REFR UPD)
 
@@ -1297,15 +1300,15 @@ Ltac match_data :=
 
 Ltac user_data_unchanged :=
   match goal with
-  | GET : Concrete.get_mem _ ?addr = Some _,
+  | GET : PartMaps.get _ ?addr = Some _,
     USERMEM : user_mem_unchanged _ _
-    |- Concrete.get_mem _ ?addr = Some _ =>
+    |- PartMaps.get _ ?addr = Some _ =>
     simpl in GET, USERMEM;
     rewrite <- (USERMEM addr); eassumption
 
-  | GET : Concrete.get_reg _ ?r = _,
+  | GET : TotalMaps.get _ ?r = _,
     USERREGS : user_regs_unchanged _ _
-    |- Concrete.get_reg _ ?r = _ =>
+    |- TotalMaps.get _ ?r = _ =>
     simpl in GET, USERREGS;
     rewrite <- (USERREGS r); eauto
   end.
@@ -1313,13 +1316,13 @@ Ltac user_data_unchanged :=
 Lemma no_syscall_no_entry_point mem addr :
   wf_entry_points mem ->
   Symbolic.get_syscall table addr = None ->
-  negb match Concrete.get_mem mem addr with
+  negb match PartMaps.get mem addr with
        | Some _@it => it ==b encode ENTRY
        | None => false
        end = true.
 Proof.
   intros WF GETSC.
-  destruct (match Concrete.get_mem mem addr with
+  destruct (match PartMaps.get mem addr with
             | Some _@it => it ==b encode ENTRY
             | None => false
             end) eqn:E; trivial.
@@ -1331,11 +1334,11 @@ Qed.
 Let kernel_invariant_ra_upd mem regs cache int w t:
   ki mem regs cache int ->
   ra_in_user regs ->
-  ki mem (Concrete.upd_reg regs ra w@(encode (USER t false))) cache int.
+  ki mem (TotalMaps.upd regs ra w@(encode (USER t false))) cache int.
 Proof.
   intros KINV RA.
   unfold ra_in_user, word_lift in RA.
-  destruct (Concrete.get_reg regs ra) as [v t'] eqn:E.
+  destruct (TotalMaps.get regs ra) as [v t'] eqn:E.
   simpl in *.
   destruct (decode t') as [[t'' [|]| |]|] eqn:DEC; try discriminate.
   apply encodeK in DEC. subst.
@@ -1408,7 +1411,7 @@ Ltac solve_refine_state :=
   repeat rewrite decodeK; simpl in *;
   try match goal with
   | USERREGS : user_regs_unchanged ?cregs _,
-    H : Concrete.get_reg ?cregs ?r = _ |- _ =>
+    H : TotalMaps.get ?cregs ?r = _ |- _ =>
     simpl in USERREGS; rewrite (USERREGS r) in H
   end;
   repeat match goal with
