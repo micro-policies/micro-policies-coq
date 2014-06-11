@@ -46,21 +46,21 @@ Definition refine_val_atom (v : AbsSeal.value t)
   | _                  , _                      => False
   end.
 
-(* Use Maxime's trick *)
 Definition refine_mem (amem : amemory) (smem : smemory) : Prop :=
-  forall w, is_some (get amem w) = is_some (get smem w) /\
-  forall w v a,
-    get amem w = Some v ->
-    get smem w = Some a ->
-    refine_val_atom v a.
+  forall w,
+    match get amem w, get smem w with
+    | None  , None   => True
+    | Some v, Some a => refine_val_atom v a
+    | _     , _      => False
+    end.
 
-(* Use Maxime's trick *)
 Definition refine_reg (areg : aregisters) (sreg : sregisters) : Prop :=
-  forall w, is_some (get areg w) = is_some (get sreg w) /\
-  forall w v a,
-    get areg w = Some v ->
-    get sreg w = Some a ->
-    refine_val_atom v a.
+  forall w,
+    match get areg w, get sreg w with
+    | None  , None   => True
+    | Some v, Some a => refine_val_atom v a
+    | _     , _      => False
+    end.
 
 Definition refine_pc (w : word t) (a : atom (word t) SymSeal.stag) : Prop :=
   match a with
@@ -68,13 +68,12 @@ Definition refine_pc (w : word t) (a : atom (word t) SymSeal.stag) : Prop :=
   | _               => False
   end.
 
-Variable min_key : key. (* the initial key for the symbolic machine *)
-
 (* Instantiating mkkey_f at abstract level to something
    corresponding to what's happening at the symbolic level. *)
 
-(* Alternative 1 *)
+Variable min_key : key. (* the initial key for the symbolic machine *)
 Variable key_lt : key -> key -> bool.
+
 Definition kmax (ks : list key) : key :=
    List.fold_left (fun kmax k => if key_lt kmax k then k else kmax) ks min_key.
 
@@ -84,41 +83,31 @@ Definition inc_key_opt k :=
 
 Import DoNotation.
 
-Definition mkkey_f1 (ks : list key) : option (list key * key) :=
+Definition mkkey_f (ks : list key) : option (list key * key) :=
   do k <- inc_key_opt (kmax ks);
   Some (k::ks,k).
 
-(* Alternative 2: assuming we start with empty list and key_min;
-   doesn't seem to help so much -- ordering still needed in the
-   key_generator instance proof *)
+Hypothesis inc_max_not_in : forall ks,
+  kmax ks =/= max_key ->
+   ~ In (inc_key (kmax ks)) ks.
 
-Definition mkkey_f2 (ks : list key) : option (list key * key) :=
-  do k' <- (match ks with
-            | []     => Some min_key
-            | k :: _ => inc_key_opt k
-            end);
-  Some (k'::ks, k').
-
-Variable inc_different : forall k, ~(k = inc_key k).
-
-Program Instance gk_instance2 : AbsSeal.key_generator := {
-  mkkey_f := mkkey_f2
+Program Instance gen_key_inst : AbsSeal.key_generator := {
+  mkkey_f := mkkey_f
 }.
 Next Obligation.
-  unfold mkkey_f2 in *. destruct ks as [| k' ks].
-  - simpl in *. inversion H; subst. unfold incl. simpl. tauto.
-  - unfold inc_key_opt in *.
-    destruct (equiv_dec k' max_key); simpl in *. discriminate H.
-    inversion H; subst. unfold incl; simpl.
-    split. intros [Hc | Hc]. eapply inc_different; eassumption.
-    admit. (* this seems to rely on keys being _ordered_;
-              we would probably need to make it part of the list key
-              type (refinement) ... not much better than computing max *)
-    split; tauto.
-Admitted.
+  unfold mkkey_f in *. unfold bind in H.
+  remember (inc_key_opt (kmax ks)) as o. destruct o as [k'|].
+  - inversion H. subst. split; [|split].
+    + unfold inc_key_opt in *.
+      destruct (equiv_dec (kmax ks) max_key). congruence.
+      inversion Heqo. eauto using inc_max_not_in.
+    + left; reflexivity.
+    + right; assumption.
+  - inversion H.
+Qed.
 
 Definition refine_ins (keys : list key) (next_key : key) : Prop :=
-  match mkkey_f2 keys with
+  match mkkey_f keys with
   | Some (_, k) => k = next_key
   | _           => True (* ??? *)
   end.
