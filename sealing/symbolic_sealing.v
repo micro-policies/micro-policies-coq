@@ -14,13 +14,9 @@ Context {t : machine_types}.
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
 Context {sk : sealing_key}.
-
-Class sealing_key_ops := {
-  max_key : key;
-  inc_key : key -> key;
-  eq_key :> EqDec (eq_setoid key)
-}.
 Context {sko : sealing_key_ops}.
+Context {scr : @syscall_regs t}.
+Context {ssa : @sealing_syscall_addrs t}.
 
 Inductive stag :=
 | WORD   :        stag
@@ -29,8 +25,6 @@ Inductive stag :=
 
 Context {sm : @smemory t (atom (word t) stag)}.
 Context {sr : @sregisters t (atom (word t) stag)}.
-Context {scr : @syscall_regs t}.
-Context {ssa : @sealing_syscall_addrs t}.
 
 Definition none := WORD.
 
@@ -127,7 +121,7 @@ Definition sealing_step := Symbolic.step sealing_syscalls.
 End WithClasses.
 
 (* BCP: Aren't there also some proof obligations that we need to satisfy? *)
-(* CH: You mean for the concrete-abstract refinement?
+(* CH: You mean for the concrete-symbolic refinement?
    I expect those to appear when talking about that refinement,
    which we don't yet *)
 

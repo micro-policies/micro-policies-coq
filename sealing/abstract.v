@@ -17,6 +17,18 @@ Section WithClasses.
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 Context {sk : sealing_key}.
+
+Class key_generator := {
+  mkkey_f : list key -> option (list key * key);
+ 
+  (* This ensures freshness without fixing a generation strategy *)
+  mkkey_fresh : forall ks ks' k,
+                  mkkey_f ks = Some (ks', k) ->
+                  ~In k ks /\ In k ks' /\ incl ks ks'
+}.
+
+Context `{key_generator}.
+
 Context {scr : @syscall_regs t}.
 Context {ssa : @sealing_syscall_addrs t}.
 
@@ -38,17 +50,6 @@ Record state := State {
   pc : word t;
   keys : list key
 }.
-
-Class key_generator := {
-  mkkey_f : list key -> option (list key * key);
- 
-  (* This ensures freshness without fixing a generation strategy *)
-  mkkey_fresh : forall ks ks' k,
-                  mkkey_f ks = Some (ks', k) ->
-                  ~In k ks /\ In k ks' /\ incl ks ks'
-}.
-
-Context `{key_generator}.
 
 Definition syscall_addrs := [mkkey_addr; seal_addr; unseal_addr].
 
