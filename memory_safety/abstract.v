@@ -5,6 +5,8 @@ Require Import lib.utils concrete.common.
 Import DoNotation.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 (* This abstract machine corresponds to the one described under the name
 "High-level abstract machine" in Catalin's notes on memory safety:

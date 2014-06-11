@@ -53,26 +53,22 @@ Definition size amem pt :=
   end.
 
 Record meminj amem := Meminj {
-  (* if b is allocated, mi b returns Some (w1,w2,sz) where
+  (* if b is allocated, mi b returns Some (w1,w2) where
      - w1 is the address of b's first memory location
      - w2 is b's pointer nonce
   *)
     mi :> Abstract.block -> option (word mt * word mt);
-    miIl : forall b b' base base' nonce nonce',
-                mi b = Some (base, nonce) ->
-                mi b' = Some (base', nonce') ->
-                base = base' -> b = b';
     miIr : forall b b' base base' nonce nonce',
                 mi b = Some (base, nonce) ->
                 mi b' = Some (base', nonce') ->
                 nonce = nonce' -> b = b';
     (* Blocks are non overlapping: *)
-    mi_disjoints : forall x x' base base' nonce nonce' off off',
-      mi x = Some (base,nonce) ->
-      mi x' = Some (base',nonce') ->
+    mi_disjoints : forall b b' base base' nonce nonce' off off',
+      mi b = Some (base,nonce) ->
+      mi b' = Some (base',nonce') ->
       base + off = base' + off' ->
-      word_to_Z off < size amem x -> word_to_Z off' < size amem x' ->
-      x = x'
+      word_to_Z off < size amem b -> word_to_Z off' < size amem b' ->
+      b = b'
   }.
 
 Variable amem : Abstract.memory mt.
@@ -86,9 +82,9 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
   end.
 
 Inductive refine_val : Abstract.value mt -> word mt -> QuasiAbstract.type mt -> Prop :=
-  | RefineInt : forall w, refine_val (Abstract.ValInt mt w) w INT
+  | RefineInt : forall w, refine_val (Abstract.ValInt w) w INT
   | RefinePtr : forall b base nonce off, mi b = Some (base,nonce) ->
-                refine_val (Abstract.ValPtr (b,off)) (add_word base off) (PTR nonce).
+                refine_val (Abstract.ValPtr (b,off)) (base + off) (PTR nonce).
 
 Lemma refine_binop f v1 w1 ty1 v2 w2 ty2 w3 ty3 : refine_val v1 w1 ty1 ->
   refine_val v2 w2 ty2 ->
@@ -96,7 +92,6 @@ Lemma refine_binop f v1 w1 ty1 v2 w2 ty2 w3 ty3 : refine_val v1 w1 ty1 ->
   exists v3, Abstract.lift_binop f v1 v2 = Some v3 /\ refine_val v3 w3 ty3.
 Proof.
 destruct f; intros [x1 | b1 base1 nonce1 off1 mi_b1]
-
   [x2 | b2 base2 nonce2 off2 mi_b2] H; try discriminate H;
 try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor.
 + now rewrite binop_addDr; constructor.
@@ -169,7 +164,7 @@ Definition refine_memory (amem : Abstract.memory mt) (qamem : QuasiAbstract.memo
 Lemma refine_memory_get_int qamem (w1 w2 w3 : word mt) pt :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
          PartMaps.get qamem w1 = Some w3@M(w2,INT) ->
-         Abstract.getv amem pt = Some (Abstract.ValInt _ w3).
+         Abstract.getv amem pt = Some (Abstract.ValInt w3).
 Proof.
 intros rmem rpt get_w.
 unfold refine_memory in rmem.
@@ -381,7 +376,7 @@ Qed.
 Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
   refine_registers aregs qaregs ->
   PartMaps.get qaregs n = Some w@V(INT) ->
-  PartMaps.get aregs n = Some (Abstract.ValInt _ w).
+  PartMaps.get aregs n = Some (Abstract.ValInt w).
 Proof.
 intros rregs get_n.
 specialize (rregs n).
