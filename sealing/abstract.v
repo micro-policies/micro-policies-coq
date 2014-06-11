@@ -6,6 +6,7 @@ Require Import lib.utils.
 Import DoNotation.
 
 Require Import utils common.
+Require Import classes.
 
 Set Implicit Arguments.
 
@@ -15,43 +16,17 @@ Section WithClasses.
 
 Context (t : machine_types).
 Context {ops : machine_ops t}.
-
-Class abstract_types := {
-  memory : Type;
-  registers : Type;
-  
-  key : Type
-}.
-
-Context {abt : abstract_types}.
+Context {sk : sealing_key}.
+Context {scr : @syscall_regs t}.
+Context {ssa : @sealing_syscall_addrs t}.
 
 Inductive value := 
 | VWord   : word t        -> value
 | VKey    :           key -> value
 | VSealed : word t -> key -> value.
 
-Class abstract_params := {
-  get_mem : memory -> word t -> option value;
-  upd_mem : memory -> word t -> value -> option memory;
-
-  get_reg : registers -> reg t -> option value;
-  upd_reg : registers -> reg t -> value -> option registers;
-
-  mkkey_addr : word t;
-  seal_addr : word t;
-  unseal_addr : word t;
-
-  syscall_ret : reg t;
-  syscall_arg1 : reg t;
-  syscall_arg2 : reg t
-}.
-
-Class params_spec (ap : abstract_params) := {
-  mem_axioms :> PartMaps.axioms get_mem upd_mem;
-  reg_axioms :> PartMaps.axioms get_reg upd_reg
-}.
-
-Context {ap : abstract_params}.
+Context {sm : @smemory t value}.
+Context {sr : @sregisters t value}.
 
 Open Scope word_scope.
 

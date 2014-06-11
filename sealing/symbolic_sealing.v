@@ -27,8 +27,8 @@ Inductive stag :=
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
-Context {sm : @smemory t stag}.
-Context {sr : @sregisters t stag}.
+Context {sm : @smemory t (atom (word t) stag)}.
+Context {sr : @sregisters t (atom (word t) stag)}.
 Context {scr : @syscall_regs t}.
 Context {ssa : @sealing_syscall_addrs t}.
 
