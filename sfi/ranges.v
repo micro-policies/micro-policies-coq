@@ -13,9 +13,6 @@ Import ListNotations.
 Local Notation word := (word t).
 Open Scope word_scope.
 
-(* TODO abstract and reify *)
-Require Import ZArith.
-
 Fixpoint range' (meas : nat) (l h : word) : list word :=
   match meas , l <=> h with
     | O       , _  => []

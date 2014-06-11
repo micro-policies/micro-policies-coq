@@ -40,6 +40,19 @@ Fixpoint to_set (xs : list A) : list A :=
     | x :: xs' => insert_unique x (to_set xs')
   end.
 
+Fixpoint set_union (xs ys : list A) : list A :=
+  (* Bleh, lexicographic termination. *)
+  (fix aux ys :=
+     match xs , ys with
+       | []      , ys      => ys
+       | xs      , []      => xs
+       | x :: xs , y :: ys => match x <=> y with
+                                | Lt => x :: set_union xs (y :: ys)
+                                | Eq => x :: set_union xs ys
+                                | Gt => y :: aux ys
+                              end
+     end) ys.
+
 Definition set_intersection (xs ys : list A) : list A :=
   filter (fun x => proj_sumbool (elem x ys)) xs.
 
@@ -49,16 +62,13 @@ Fixpoint set_difference (xs ys : list A) : list A :=
     | y :: ys' => set_difference (delete y xs) ys'
   end.
 
-(* Definition range (l h : A) : list A :=
-  up_from l (A.to_nat (h - l + 1)). *)
-
 End functions.
 
 (*** Theorems ***)
 
 Section theorems.
 
-Context `{ORD : Ordered A}.
+Context `{ord : Ordered A}.
 
 Theorem is_set_tail : forall x xs,
   is_set (x :: xs) = true -> is_set xs = true.
@@ -68,6 +78,10 @@ Proof.
   - rewrite andb_true_iff; destruct 1; assumption.
 Qed.
 (*Global*) Hint Resolve @is_set_tail.
+
+Theorem is_set_tail_iff : forall x1 x2 xs,
+  is_set (x1 :: x2 :: xs) = true <-> (x1 <? x2) && is_set (x2 :: xs) = true.
+Proof. simpl; reflexivity. Qed.
 
 Theorem is_set_iff_locally_sorted : forall xs,
   is_set xs = true <-> LocallySorted lt xs.
@@ -272,6 +286,106 @@ Proof.
 Qed.
 (*Global*) Hint Resolve @set_extensionality.
 
+(* Comes before preservation because preservation uses this. *)
+Theorem set_union_spec : forall a xs ys,
+  In a (set_union xs ys) <-> In a xs \/ In a ys.
+Proof.
+  induction xs as [|x xs].
+  - intros []; simpl; tauto.
+  - induction ys as [|y ys]; simpl; [tauto|].
+    destruct (x <=> y) eqn:CMP; simpl;
+    (split; [ intros [EQ | IN]; [|try apply IHxs in IN]; tauto
+            | try apply compare_eq in CMP; subst;
+              intros [[EQ | IN_xs] | [EQ | IN_ys]]; subst; simpl in *;
+              try solve [tauto | right; apply IHxs; auto 4] ]).
+Qed.
+
+Theorem set_union_preserves_set : forall xs ys,
+  is_set xs = true -> is_set ys = true ->
+  is_set (set_union xs ys) = true.
+Proof.
+  induction xs as [|x xs]; intros ys SET_xs SET_ys; induction ys as [|y ys];
+    try assumption.
+  simpl; destruct (x <=> y) eqn:CMP; simpl.
+  - apply compare_eq in CMP; subst.
+    rewrite IHxs by eauto.
+    destruct (set_union xs ys) as [|e U] eqn:UNION; [reflexivity|].
+    assert (IN : In e xs \/ In e ys) by
+      (rewrite <- set_union_spec, UNION; left; reflexivity).
+    rewrite is_set_iff_strongly_sorted in SET_xs,SET_ys;
+      inversion SET_xs; inversion SET_ys; subst;
+      rewrite Forall_forall in *.
+    rewrite andb_true_r, ltb_lt; destruct IN; auto.
+  - fold (x < y) in CMP.
+    rewrite IHxs by eauto.
+    destruct (set_union xs (y :: ys)) as [|e U] eqn:UNION; [reflexivity|].
+    assert (IN : In e xs \/ In e (y :: ys)) by
+      (rewrite <- set_union_spec, UNION; left; reflexivity).
+    rewrite is_set_iff_strongly_sorted in SET_xs,SET_ys;
+      inversion SET_xs; inversion SET_ys; subst;
+      rewrite Forall_forall in *.
+    rewrite andb_true_r, ltb_lt; destruct IN as [|[|]]; eauto 3 with ordered.
+  - fold (x > y) in CMP; apply lt_iff_gt in CMP; destruct ys as [|y' ys].
+    + rewrite SET_xs, andb_true_r, ltb_lt; exact CMP.
+    + simpl in *; apply andb_true_iff in SET_ys;
+        destruct SET_ys as [LT_ys SET_ys].
+      rewrite IHys by exact SET_ys.
+      destruct (x <=> y') eqn:CMP'; rewrite andb_true_r;
+        try solve [exact LT_ys | apply ltb_lt; exact CMP].
+Qed.
+(*Global*) Hint Resolve @set_union_preserves_set.
+
+Theorem set_union_subset_id : forall xs ys,
+  is_set xs = true -> is_set ys = true ->
+  (forall a, In a xs -> In a ys) ->
+  set_union xs ys = ys.
+Proof.
+  intros xs ys SET_xs SET_ys SUBSET; apply set_extensionality; eauto 2.
+  intros a; specialize SUBSET with a; rewrite set_union_spec.
+  tauto.
+Qed.
+(*Global*) Hint Resolve @set_union_subset_id.
+
+Theorem set_union_self_id : forall xs,
+  set_union xs xs = xs.
+Proof.
+  induction xs; simpl.
+  - reflexivity.
+  - rewrite compare_refl. rewrite <- IHxs at 3. reflexivity.
+Qed.
+(*Global*) Hint Resolve @set_union_self_id.
+  
+Theorem set_union_nil_l : forall xs,
+  set_union [] xs = xs.
+Proof. destruct xs; reflexivity. Qed.
+(*Global*) Hint Resolve @set_union_nil_l.
+
+Theorem set_union_nil_r : forall xs,
+  set_union xs [] = xs.
+Proof. destruct xs; reflexivity. Qed.
+(*Global*) Hint Resolve @set_union_nil_r.
+
+Theorem set_union_comm : forall xs ys,
+  is_set xs = true -> is_set ys = true ->
+  set_union xs ys = set_union ys xs.
+Proof.
+  intros; apply set_extensionality; auto; intros;
+    repeat rewrite set_union_spec; tauto.
+Qed.
+(*Global*) Hint Resolve @set_union_comm.
+
+Theorem set_union_assoc : forall xs ys zs,
+  is_set xs = true -> is_set ys = true -> is_set zs = true ->
+  set_union xs (set_union ys zs) =
+  set_union (set_union xs ys) zs.
+Proof.
+  intros; apply set_extensionality; auto; intros;
+    repeat rewrite set_union_spec; tauto.
+Qed.
+(*Global*) Hint Resolve @set_union_assoc.
+
+(*****)
+
 Theorem set_intersection_preserves_set : forall xs ys,
   is_set xs = true ->
   is_set (set_intersection xs ys) = true.
@@ -416,25 +530,65 @@ Proof.
 Qed.
 (*Global*) Hint Resolve @set_difference_delete_comm.
 
-Theorem set_difference_intersection_distrib : forall xs ys zs,
+Ltac by_set_extensionality :=
+  intros; apply set_extensionality; auto; intros;
+  repeat (rewrite set_union_spec        ||
+          rewrite set_intersection_spec ||
+          rewrite set_difference_spec);
+  try tauto.
+
+Theorem set_union_intersection_distrib : forall xs ys zs,
   is_set xs = true -> is_set ys = true -> is_set zs = true ->
-  set_difference (set_intersection xs ys) zs =
-  set_intersection (set_difference xs zs) (set_difference ys zs).
+  set_union (set_intersection xs ys) zs =
+  set_intersection (set_union xs zs) (set_union ys zs).
+Proof. by_set_extensionality. Qed.
+(*Global*) Hint Resolve @set_union_intersection_distrib.
+
+Theorem set_intersection_union_distrib : forall xs ys zs,
+  is_set xs = true -> is_set ys = true -> is_set zs = true ->
+  set_intersection (set_union xs ys) zs =
+  set_union (set_intersection xs zs) (set_intersection ys zs).
+Proof. by_set_extensionality. Qed.
+(*Global*) Hint Resolve @set_intersection_union_distrib.
+
+Theorem set_union_difference_distrib : forall xs ys zs,
+  is_set xs = true -> is_set ys = true -> is_set zs = true ->
+  set_union (set_difference xs ys) zs =
+  set_difference (set_union xs zs) (set_difference ys zs).
 Proof.
-  intros; apply set_extensionality; auto; intros.
-  repeat (rewrite set_difference_spec || rewrite set_intersection_spec); tauto.
+  by_set_extensionality.
+  match goal with e : A |- _ => generalize (elem e zs) end;
+    tauto.
 Qed.
-(*Global*) Hint Resolve @set_difference_intersection_distrib.
+(*Global*) Hint Resolve @set_union_difference_distrib.
+
+Theorem set_difference_union_distrib : forall xs ys zs,
+  is_set xs = true -> is_set ys = true -> is_set zs = true ->
+  set_difference (set_union xs ys) zs =
+  set_union (set_difference xs zs) (set_difference ys zs).
+Proof. by_set_extensionality. Qed.
+(*Global*) Hint Resolve @set_difference_union_distrib.
+
+Theorem set_difference_union_collapse : forall xs ys zs,
+  is_set xs = true -> is_set ys = true -> is_set zs = true ->
+  set_difference (set_union xs zs) (set_union ys zs) =
+  set_difference (set_difference xs ys) zs.
+Proof. by_set_extensionality. Qed.
+(*Global*) Hint Resolve @set_difference_union_collapse.
 
 Theorem set_intersection_difference_distrib : forall xs ys zs,
   is_set xs = true -> is_set ys = true -> is_set zs = true ->
   set_intersection (set_difference xs ys) zs =
   set_difference (set_intersection xs zs) (set_intersection ys zs).
-Proof.
-  intros; apply set_extensionality; auto; intros.
-  repeat (rewrite set_difference_spec || rewrite set_intersection_spec); tauto.
-Qed.
+Proof. by_set_extensionality. Qed.
 (*Global*) Hint Resolve @set_intersection_difference_distrib.
+
+Theorem set_difference_intersection_distrib : forall xs ys zs,
+  is_set xs = true -> is_set ys = true -> is_set zs = true ->
+  set_difference (set_intersection xs ys) zs =
+  set_intersection (set_difference xs zs) (set_difference ys zs).
+Proof. by_set_extensionality. Qed.
+(*Global*) Hint Resolve @set_difference_intersection_distrib.
 
 Theorem iterate_set : forall f x n,
   (forall y, y < f y) ->
@@ -467,6 +621,13 @@ Hint Resolve @to_set_unchanged_sets.
 Hint Resolve @to_set_involutive.
 Hint Resolve @to_set_head.
 Hint Resolve @set_extensionality.
+Hint Resolve @set_union_preserves_set.
+Hint Resolve @set_union_subset_id.
+Hint Resolve @set_union_self_id.
+Hint Resolve @set_union_nil_l.
+Hint Resolve @set_union_nil_r.
+Hint Resolve @set_union_comm.
+Hint Resolve @set_union_assoc.
 Hint Resolve @set_intersection_preserves_set.
 Hint Resolve @set_intersection_spec.
 Hint Resolve @set_intersection_subset_id.
@@ -483,7 +644,12 @@ Hint Resolve @set_difference_self_annihilating.
 Hint Resolve @set_difference_nil_l.
 Hint Resolve @set_intersection_nil_r.
 Hint Resolve @set_difference_delete_comm.
-Hint Resolve @set_difference_intersection_distrib.
+Hint Resolve @set_union_intersection_distrib.
+Hint Resolve @set_intersection_union_distrib.
+Hint Resolve @set_union_difference_distrib.
+Hint Resolve @set_difference_union_distrib.
+Hint Resolve @set_difference_union_collapse.
 Hint Resolve @set_intersection_difference_distrib.
+Hint Resolve @set_difference_intersection_distrib.
 Hint Resolve @iterate_set.
 (* End globalized hint section *)
