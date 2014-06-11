@@ -67,7 +67,7 @@ Global Instance equ : EqDec (eq_setoid stag).
     ); simpl in *; subst; auto; right; congruence. 
 Defined.
 
-Program Instance sym_sealing : (Symbolic.symbolic_params t) := {
+Program Instance sym_sealing : (Symbolic.symbolic_params) := {
   tag := stag;
 
   handler := sealing_handler;

@@ -29,7 +29,7 @@ Context {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
-Program Instance sym_cfi : (Symbolic.symbolic_params t) := {
+Program Instance sym_cfi : (Symbolic.symbolic_params) := {
   tag := cfi_tag;
 
   handler := cfi_rules.cfi_handler valid_jmp;
