@@ -86,10 +86,16 @@ Fixpoint set_intersection (xs ys : list A) : list A :=
      end) ys.
 
 Fixpoint set_difference (xs ys : list A) : list A :=
-  match ys with
-    | [] => xs
-    | y :: ys' => set_difference (delete y xs) ys'
-  end.
+  (fix aux ys :=
+     match xs , ys with
+       | []       , _        => []
+       | xs'      , []       => xs'
+       | x :: xs' , y :: ys' => match x <=> y with
+                                  | Lt => x :: set_difference xs' (y :: ys')
+                                  | Eq => set_difference xs' ys'
+                                  | Gt => aux ys'
+                                end
+     end) ys.
 
 End functions.
 
@@ -276,7 +282,7 @@ Theorem to_set_involutive : forall xs, to_set (to_set xs) = to_set xs.
 Proof. induction xs; simpl; auto. Qed.
 (*Global*) Hint Resolve @to_set_involutive.
 
-Lemma to_set_head : forall x0 xs y0 ys,
+Lemma is_set_head : forall x0 xs y0 ys,
   (forall a, In a (x0 :: xs) <-> In a (y0 :: ys)) ->
   is_set (x0 :: xs) = true -> is_set (y0 :: ys) = true ->
   x0 = y0.
@@ -298,7 +304,7 @@ Proof.
     [lapply SUBSET_xs_ys | lapply SUBSET_ys_xs];
     auto; (destruct 1; [scongruence|]); auto.
 Qed.
-(*Global*) Hint Resolve @to_set_head.
+(*Global*) Hint Resolve @is_set_head.
 
 Ltac extensional_nil_cons_contradict :=
   match goal with
@@ -380,6 +386,29 @@ Proof.
   - destruct (equiv_dec e x); [ssubst; elim (gt_irrefl x); exact CMP|].
     f_equal; apply IHxs; eauto.
 Qed.
+
+Corollary set_delete_spec : forall a e xs,
+  is_set xs = true ->
+  (In a (set_delete e xs) <-> a <> e /\ In a xs).
+Proof. intros; rewrite set_delete_is_delete by auto; apply delete_in_iff. Qed.
+Hint Rewrite @set_delete_spec : set_specs.
+
+Theorem set_delete_preserves_set : forall e xs,
+  is_set xs = true -> is_set (set_delete e xs) = true.
+Proof.
+  induction xs as [|x xs]; intros SET; [reflexivity | simpl].
+  destruct (e <=> x) eqn:CMP; eauto 2.
+  simpl; rewrite IHxs by eauto 2.
+  destruct (set_delete e xs) as [|d ds] eqn:DEL;
+    [reflexivity | rewrite andb_true_r].
+  assert (In d xs). {
+    assert (IN : In d (set_delete e xs)) by (rewrite DEL; auto).
+    rewrite set_delete_spec in IN by eauto 2; tauto.
+  }
+  apply is_set_iff_strongly_sorted in SET; inversion SET; subst;
+    rewrite Forall_forall in *; apply ltb_lt; auto.
+Qed.
+(*Global*) Hint Resolve @set_delete_preserves_set.
 
 (* I could add corollaries that repeat the theorems about `delete`, but we don't
    use `set_delete` enough to be worth it; we can just rewrite with
@@ -592,90 +621,123 @@ Theorem set_intersection_assoc : forall xs ys zs,
 Proof. by_set_extensionality. Qed.
 (*Global*) Hint Resolve @set_intersection_assoc.
 
-Theorem set_difference_origin : forall e xs ys,
-  In e (set_difference xs ys) -> In e xs.
-Proof.
-  intros until 0; gdep xs; induction ys as [|y ys];
-    intros until 0; intros HIn; simpl; auto.
-  apply IHys in HIn.
-  induction xs as [|x xs]; auto; simpl in *.
-  destruct (y == x); try destruct HIn; auto.
-Qed.
-(*Global*) Hint Resolve @set_difference_origin.
-
-Theorem set_difference_removes : forall e xs ys,
-  In e (set_difference xs ys) -> ~ In e ys.
-Proof.
-  intros until 0; gdep xs; induction ys as [|y ys]; intros until 0; auto.
-  simpl; intros HIn_diff [Heq | HIn].
-  - subst. apply set_difference_origin in HIn_diff.
-    eapply delete_in; apply HIn_diff.
-  - eapply IHys; eassumption.
-Qed.
-(*Global*) Hint Resolve @set_difference_removes.
-
-Theorem set_difference_spec : forall e xs ys,
-  In e (set_difference xs ys) <-> In e xs /\ ~ In e ys.
-Proof.
-  split; [eauto|].
-  gdep xs; induction ys as [|y ys]; intros xs [HIn HNIn]; simpl; auto.
-  apply IHys; split.
-  - induction xs as [|x xs]; simpl; auto.
-    destruct (y == x).
-    + subst; apply IHxs; destruct HIn.
-      * subst; simpl in HNIn.
-        apply Decidable.not_or in HNIn; destruct HNIn.
-        congruence.
-      * assumption.
-    + destruct HIn; [left | right]; auto.
-  - simpl in HNIn; apply Decidable.not_or in HNIn; destruct HNIn; assumption.
-Qed.
-(*Global*) Hint Rewrite set_difference_spec : set_specs.
-
+(* This comes first because it doesn't need the full force of the spec. *)
 Theorem set_difference_preserves_set : forall xs ys,
   is_set xs = true ->
   is_set (set_difference xs ys) = true.
 Proof.
-  intros xs ys SET; gdep xs; induction ys as [|y xs]; intros; simpl; auto.
+  induction xs as [|x xs]; [intros []; auto | intros ys SET_xs; simpl].
+  induction ys as [|y ys]; [auto | simpl].
+  destruct (x <=> y).
+  - apply IHxs; eauto.
+  - simpl. rewrite IHxs; eauto 2.
+    destruct (set_difference xs (y :: ys)) as [|e D] eqn:DIFFERENCE;
+      [reflexivity | rewrite andb_true_r].
+    assert (LEMMA : forall x0 xs,  is_set (x0 :: xs) = true ->
+                    forall ys e D, set_difference xs ys = e :: D ->
+                      x0 <? e = true). {
+      clear.
+      induction xs as [|x xs]; intros SET_xs;
+        [destruct ys; discriminate | simpl].
+      induction ys as [|y ys]; intros e D DIFFERENCE.
+      - inversion DIFFERENCE; subst.
+        rewrite is_set_tail_iff, andb_true_iff in SET_xs;
+          destruct SET_xs; assumption.
+      - destruct (x <=> y) eqn:CMP.
+        + apply IHxs with ys D; eauto 2.
+          simpl in SET_xs; rewrite andb_true_iff in SET_xs.
+          simpl; destruct xs; [reflexivity|].
+          rewrite andb_true_iff in *; repeat invh and; split;
+            [eauto 2 with ordered|assumption].
+        + inversion DIFFERENCE; subst; clear DIFFERENCE.
+          rewrite is_set_tail_iff, andb_true_iff in SET_xs;
+            destruct SET_xs; assumption.
+        + apply IHys in DIFFERENCE; eauto 2.
+    }
+    eapply LEMMA; eassumption.
+  - apply IHys.
 Qed.
 (*Global*) Hint Resolve @set_difference_preserves_set.
 
+Theorem set_difference_spec : forall e xs ys,
+  is_set xs = true -> is_set ys = true ->
+  (In e (set_difference xs ys) <-> In e xs /\ ~ In e ys).
+Proof.
+  induction xs as [|x xs]; [intros []; tauto|].
+  induction ys as [|y ys]; [tauto | intros SET_xs SET_ys; simpl].
+  destruct (x <=> y) eqn:CMP.
+  - apply compare_eq in CMP; subst.
+    split; [intros IN | intros SPEC].
+    + apply IHxs in IN; eauto 2. split; [tauto|].
+      intros [-> | IN']; [|tauto].
+      apply is_set_no_dups in SET_xs; inversion SET_xs; tauto.
+    + apply IHxs; eauto 2; tauto.
+  - split; [intros [-> | IN] | intros [[-> | IN] NOT_EQ_IN]].
+    + split; auto.
+      intros [-> | IN]; [elim (lt_irrefl e); exact CMP|].
+      apply is_set_iff_strongly_sorted in SET_ys; inversion SET_ys; subst;
+        rewrite Forall_forall in *.
+      elim (lt_irrefl e); eauto 3 with ordered.
+    + apply IHxs in IN; solve [eauto 2 | simpl in IN; tauto].
+    + auto.
+    + right. apply IHxs; solve [eauto 2 | simpl; tauto].
+  - rewrite IHys by eauto 2. simpl; split; [|tauto].
+    intros [[-> | IN] NOT_IN].
+    + assert (y <> e) by (intros ->; eelim gt_irrefl; exact CMP); tauto.
+    + split; [tauto | intros [-> | IN']; [|contradiction]].
+      apply lt_iff_gt in CMP.
+      apply is_set_iff_strongly_sorted in SET_xs; inversion SET_xs; subst;
+        rewrite Forall_forall in *.
+      elim (lt_irrefl e); eauto 3 with ordered.
+Qed.
+(*Global*) Hint Rewrite @set_difference_spec : set_specs.
+
+Theorem set_difference_origin : forall e xs ys,
+  In e (set_difference xs ys) -> In e xs.
+Proof.
+  induction xs as [|x xs]; simpl; auto; induction ys as [|y ys]; simpl; auto.
+  destruct (x <=> y) eqn:CMP; intros IN.
+  - apply compare_eq in CMP; subst.
+    right; eapply IHxs; exact IN.
+  - simpl in IN; destruct IN as [EQ | IN]; [left; exact EQ | right].
+    eapply IHxs; exact IN.
+  - apply IHys; exact IN.
+Qed.
+(*Global*) Hint Resolve @set_difference_origin.
+
+Theorem set_difference_removes : forall e xs ys,
+  is_set xs = true -> is_set ys = true ->
+  In e (set_difference xs ys) -> ~ In e ys.
+Proof. intros. apply set_difference_spec with xs; assumption. Qed.
+(*Global*) Hint Resolve @set_difference_removes.
+
 Theorem set_difference_subset_annihilating : forall xs ys,
+  is_set xs = true -> is_set ys = true ->
   (forall a, In a xs -> In a ys) ->
   set_difference xs ys = [].
 Proof.
-  intros xs ys SUBSET; gdep xs; induction ys as [|y ys]; intros; simpl; auto.
-  - destruct xs; [auto | not_subset_cons_nil].
-  - apply IHys; intros a NOT_IN.
-    assert (NEQ : y <> a) by (intros EQ; subst; eapply delete_in; eassumption).
-    specialize SUBSET with a; simpl in *.
-    apply delete_in_iff in NOT_IN; tauto.
+  by_set_extensionality.
+  simpl; match goal with a : A, H : A -> _ |- _ => specialize (H a) end; tauto.
 Qed.
 (*Global*) Hint Resolve @set_difference_subset_annihilating.
 
-Corollary set_difference_self_annihilating : forall xs,
+Theorem set_difference_self_annihilating : forall xs,
   set_difference xs xs = [].
-Proof. auto. Qed.
+Proof.
+  induction xs as [|x xs]; simpl; [reflexivity|].
+  rewrite compare_refl; assumption.
+Qed.
 (*Global*) Hint Resolve @set_difference_self_annihilating.
   
 Theorem set_difference_nil_l : forall xs,
   set_difference [] xs = [].
-Proof. intros; apply set_difference_subset_annihilating; inversion 1. Qed.
+Proof. destruct xs; reflexivity. Qed.
 (*Global*) Hint Resolve @set_difference_nil_l.
 
 Theorem set_difference_nil_r : forall xs,
   set_difference xs [] = xs.
-Proof. reflexivity. Qed.
+Proof. destruct xs; reflexivity. Qed.
 (*Global*) Hint Resolve @set_intersection_nil_r.
-
-Lemma set_difference_delete_comm : forall a xs ys,
-  set_difference (delete a xs) ys =
-  delete a (set_difference xs ys).
-Proof.
-  intros; gdep xs; gdep a; induction ys as [|y ys]; intros; auto.
-  simpl; rewrite <- IHys, delete_comm; reflexivity.
-Qed.
-(*Global*) Hint Resolve @set_difference_delete_comm.
 
 Theorem set_union_intersection_distrib : forall xs ys zs,
   is_set xs = true -> is_set ys = true -> is_set zs = true ->
@@ -768,8 +830,9 @@ Hint Resolve @insert_unique_preserves_set_true.
 Hint Resolve @to_set_set.
 Hint Resolve @to_set_unchanged_sets.
 Hint Resolve @to_set_involutive.
-Hint Resolve @to_set_head.
+Hint Resolve @is_set_head.
 Hint Resolve @set_extensionality.
+Hint Resolve @set_delete_preserves_set.
 Hint Rewrite @set_union_spec : set_specs.
 Hint Resolve @set_union_preserves_set.
 Hint Resolve @set_union_subset_id.
@@ -786,15 +849,14 @@ Hint Resolve @set_intersection_nil_l.
 Hint Resolve @set_intersection_nil_r.
 Hint Resolve @set_intersection_comm.
 Hint Resolve @set_intersection_assoc.
+Hint Resolve @set_difference_preserves_set.
+Hint Rewrite @set_difference_spec : set_specs.
 Hint Resolve @set_difference_origin.
 Hint Resolve @set_difference_removes.
-Hint Rewrite set_difference_spec : set_specs.
-Hint Resolve @set_difference_preserves_set.
 Hint Resolve @set_difference_subset_annihilating.
 Hint Resolve @set_difference_self_annihilating.
 Hint Resolve @set_difference_nil_l.
 Hint Resolve @set_intersection_nil_r.
-Hint Resolve @set_difference_delete_comm.
 Hint Resolve @set_union_intersection_distrib.
 Hint Resolve @set_intersection_union_distrib.
 Hint Resolve @set_union_difference_distrib.

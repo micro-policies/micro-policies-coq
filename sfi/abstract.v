@@ -944,15 +944,11 @@ Proof.
       apply range_elts; auto with ordered.
     + subst c; eapply subset_spec; eassumption.
   - unfold contained_compartments; subst c_upd c'; simpl.
-    assert (In_dec : forall a A, In a A \/ ~ In a A). {
-      clear -ops; intros; destruct (existsb (equiv_decb a) A) eqn:EX.
-      - apply in_existsb_equiv_decb in EX; auto.
-      - right. intro IN_a; apply existsb_equiv_decb_in in IN_a; congruence.
-    }
     assert (A_separated : forall a, In a A <->
                                     In a (set_difference A A') \/ In a A'). {
-      intros; specialize In_dec with a A';
-        rewrite set_difference_spec; rewrite ->subset_spec in SUBSET_A'.
+      intros; specialize (elem a A'); intros;
+        rewrite ->set_difference_spec by (subst c; eauto 2);
+        rewrite ->subset_spec in SUBSET_A'.
       split; [|destruct 1]; solve [auto | tauto].
     }
     assert (As_same : forall a,
@@ -969,7 +965,7 @@ Proof.
           apply in_map_iff in IN_A''; destruct IN_A'' as [c'' [EQ_A'' IN_c'']].
           apply in_map_iff; exists c''; apply delete_in_iff in IN_c''; tauto.
       - destruct 1 as [A'' [IN_A'' IN_a_A'']].
-        specialize In_dec with a A; destruct In_dec as [IN_a_A | NOT_IN_a_A];
+        destruct (elem a A) as [IN_a_A | NOT_IN_a_A];
           [tauto|right].
         exists A''; split; auto.
         apply in_map_iff in IN_A''; destruct IN_A'' as [c'' [EQ_A'' IN_c'']].
