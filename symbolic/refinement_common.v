@@ -724,9 +724,11 @@ Definition user_regs_unchanged cregs cregs' :=
     TotalMaps.get cregs r = w@(encode (USER t false)) <->
     TotalMaps.get cregs' r = w@(encode (USER t false)).
 
+Class kernel_code_correctness : Prop := {
+
 (* XXX: a bit of a lie now, given that the kernel can now return to a system call (BCP: ?) *)
 (* BCP: Added some comments -- please check! *)
-Hypothesis handler_correct_allowed_case :
+  handler_correct_allowed_case :
   forall mem mem' cmvec rvec reg cache old_pc int,
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
@@ -769,9 +771,9 @@ Hypothesis handler_correct_allowed_case :
          kernel invariant?  Could user code possibly change it?) *)
       wf_entry_points (Concrete.mem st') /\
       (* and the kernel invariant still holds. *)
-      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int.
+      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
-Hypothesis handler_correct_disallowed_case :
+  handler_correct_disallowed_case :
   forall mem mem' cmvec reg cache old_pc int st',
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
@@ -789,13 +791,13 @@ Hypothesis handler_correct_disallowed_case :
       (Concrete.mkState mem' reg cache
                         (Concrete.fault_handler_start (t := mt))@Concrete.TKernel
                         old_pc)
-      st'.
+      st';
 
 (* BCP: I think if we choose variant (2) of system calls that we've
    been discussing, then these properties (at least, the mvec part)
    will need to change... *)
 
-Hypothesis syscalls_correct_allowed_case :
+  syscalls_correct_allowed_case :
   forall amem areg apc tpc int
          amem' areg' apc' tpc' int'
          cmem creg cache epc addr sc
@@ -851,9 +853,9 @@ Hypothesis syscalls_correct_allowed_case :
       mvec_in_kernel cmem' /\
       ra_in_user creg' /\
       wf_entry_points cmem' /\
-      ki cmem' creg' cache' int'.
+      ki cmem' creg' cache' int';
 
-Hypothesis syscalls_correct_disallowed_case :
+  syscalls_correct_disallowed_case :
   forall amem areg apc tpc int
          cmem creg cache epc addr sc
          cst'
@@ -875,7 +877,11 @@ Hypothesis syscalls_correct_disallowed_case :
                                                            (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
                                          cache
                                          addr@(encode (USER (trpc rvec) true)) epc)
-                       cst'.
+                       cst'
+
+}.
+
+Context {kcc : kernel_code_correctness}.
 
 Lemma user_regs_unchanged_ra_in_user creg creg' :
   ra_in_user creg ->
