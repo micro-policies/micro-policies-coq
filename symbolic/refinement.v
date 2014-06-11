@@ -726,14 +726,17 @@ Hypothesis handler_correct_allowed_case :
   forall mem mem' cmvec rvec reg cache old_pc int,
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
-    (* and calling the handler on mvec succeeds and returns rvec... *)
+    (* and calling the handler on the current m-vector succeeds and returns rvec... *)
     match decode_mvec cmvec with
     | Some mvec => handler mvec
     | None => None
     end = Some rvec ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
     Concrete.store_mvec ops mem cmvec = Some mem' ->
-    (* and the rule cache is correct... *)
+    (* and the concrete rule cache is correct (in the sense that every
+       rule it holds is exactly the concrete representations of
+       some (mvec,rvec) pair in the relation defined by the [handler]
+       function) ... *)
     cache_correct cache ->
     (* THEN if we start the concrete machine in kernel mode (i.e.,
        with the PC tagged TKernel) at the beginning of the fault
@@ -746,7 +749,7 @@ Hypothesis handler_correct_allowed_case :
                           (Concrete.fault_handler_start (t := mt))@Concrete.TKernel
                           old_pc)
         st' /\
-      (* and the new cache is still correct... *)
+      (* then the new cache is still correct... *)
       cache_correct (Concrete.cache st') /\
       (* and the new cache now contains a rule mapping mvec to rvec... *)
       Concrete.cache_lookup _ (Concrete.cache st') masks cmvec = Some (encode_rvec rvec) /\
@@ -766,12 +769,17 @@ Hypothesis handler_correct_allowed_case :
 
 Hypothesis handler_correct_disallowed_case :
   forall mem mem' cmvec reg cache old_pc int st',
+    (* If kernel invariant holds... *)
     ki mem reg cache int ->
+    (* and calling the handler on mvec FAILS... *)
     match decode_mvec cmvec with
     | Some mvec => handler mvec
     | None => None
     end = None ->
+    (* and storing the concrete representation of the m-vector yields new memory mem'... *)
     Concrete.store_mvec ops mem cmvec = Some mem' ->
+    (* then if we start the concrete machine in kernel mode and let it
+       run, it will never reach a user-mode state. *)
     in_kernel st' = false ->
     ~ exec (Concrete.step _ masks)
       (Concrete.mkState mem' reg cache
@@ -779,22 +787,46 @@ Hypothesis handler_correct_disallowed_case :
                         old_pc)
       st'.
 
+(* BCP: I think if we choose variant (2) of system calls that we've
+   been discussing, then these properties (at least, the mvec part)
+   will need to change... *)
+
 Hypothesis syscalls_correct_allowed_case :
   forall amem areg apc tpc int
          amem' areg' apc' tpc' int'
          cmem creg cache epc addr sc
          t1 ti told rvec ic,
-    (* Could be strengthened to ensure that t1 and told do occur in the machine state *)
+    (* If [mvec] is an m-vector describing a JAL to address tpc with
+       instruction tag ti and argument tags t1 and told...  *)
+    (* (Could be strengthened to ensure that t1 and told do occur in the machine state.) *)
     let mvec := mkMVec JAL tpc ti [t1; told] in
+    (* and the kernel invariant holds... *)
     ki cmem creg cache int ->
+    (* and the USER-tagged portion of the concrete memory cmem
+       corresponds to the abstract (symbolic??) memory amem... *)
     refine_memory amem cmem ->
+    (* and the USER-tagged concrete registers in creg correspond to
+       the abstract register set areg... *)
     refine_registers areg creg ->
+    (* and the rule cache is correct... *)
     cache_correct cache ->
+    (* and the mvec has been tagged as kernel data (BCP: again, why is this
+       important... and why is it now part of the premises whereas
+       upstairs it was part of the conclusion??) *)
     mvec_in_kernel cmem ->
-    wf_entry_points cmem ->
+    (* and the symbolic system call at addr is the function
+       sc... (BCP: This would make more sense after the next
+       hypothesis) *)
     Symbolic.get_syscall table addr = Some sc ->
+    (* and calling the handler on the current m-vector succeeds and returns rvec... 
+       (BCP: Why is it Symbolic.handler here and just handler above?) *)
     Symbolic.handler mvec = Some rvec ->
+    (* and running sc on the current abstract machine state reaches a
+       new state with primes on everything... *)
     Symbolic.sem sc (Symbolic.State amem areg apc@tpc int) = Some (Symbolic.State amem' areg' apc'@tpc' int') ->
+    (* THEN if we start the concrete machine in kernel mode at the
+       beginning of the corresponding system call code and let it run
+       until it reaches a user-mode state with primes on everything... *)
     exists cmem' creg' cache' epc',
       kernel_user_exec (Concrete.mkState cmem
                                          (Concrete.upd_reg creg ra
@@ -804,6 +836,9 @@ Hypothesis syscalls_correct_allowed_case :
                        (Concrete.mkState cmem' creg' cache'
                                          apc'@(encode (USER tpc' false))
                                          epc') /\
+      (* then the new concrete state is in the same relation as before
+         with the new abstract state and the same invariants
+         hold (BCP: Plus one more about ra!). *)
       refine_memory amem' cmem' /\
       refine_registers areg' creg' /\
       cache_correct cache' /\
