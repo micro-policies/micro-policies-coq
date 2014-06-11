@@ -40,29 +40,39 @@ Fixpoint to_set (xs : list A) : list A :=
     | x :: xs' => insert_unique x (to_set xs')
   end.
 
+Fixpoint set_elem (e : A) (xs : list A) : bool :=
+  match xs with
+    | [] => false
+    | x :: xs' => match e <=> x with
+                   | Lt => false
+                   | Eq => true
+                   | Gt => set_elem e xs'
+                  end
+  end.
+
 Fixpoint set_union (xs ys : list A) : list A :=
   (* Bleh, lexicographic termination. *)
   (fix aux ys :=
      match xs , ys with
-       | []      , ys      => ys
-       | xs      , []      => xs
-       | x :: xs , y :: ys => match x <=> y with
-                                | Lt => x :: set_union xs (y :: ys)
-                                | Eq => x :: set_union xs ys
-                                | Gt => y :: aux ys
-                              end
+       | []       , ys'      => ys'
+       | xs'      , []       => xs'
+       | x :: xs' , y :: ys' => match x <=> y with
+                                  | Lt => x :: set_union xs' (y :: ys')
+                                  | Eq => x :: set_union xs' ys'
+                                  | Gt => y :: aux ys'
+                                end
      end) ys.
 
 Fixpoint set_intersection (xs ys : list A) : list A :=
   (fix aux ys :=
      match xs , ys with
-       | []      , _       => []
-       | _       , []      => []
-       | x :: xs , y :: ys => match x <=> y with
-                                | Lt => set_intersection xs (y :: ys)
-                                | Eq => x :: set_intersection xs ys
-                                | Gt => aux ys
-                              end
+       | []       , _        => []
+       | _        , []       => []
+       | x :: xs' , y :: ys' => match x <=> y with
+                                  | Lt => set_intersection xs' (y :: ys')
+                                  | Eq => x :: set_intersection xs' ys'
+                                  | Gt => aux ys'
+                                end
      end) ys.
 
 Fixpoint set_difference (xs ys : list A) : list A :=
@@ -305,6 +315,43 @@ Proof.
 Qed.
 (*Global*) Hint Resolve @set_extensionality.
 Ltac by_set_extensionality := impl__by_set_extensionality set_extensionality.
+
+Theorem set_elem_cases : forall e xs,
+  is_set xs = true -> if set_elem e xs then In e xs else ~ In e xs.
+Proof.
+  induction xs as [|x1 xs]; intros SET; simpl; auto.
+  destruct (e <=> x1) eqn:CMP.
+  - apply compare_eq in CMP; subst; auto.
+  - intros [-> | IN].
+    + eelim lt_irrefl; exact CMP.
+    + apply is_set_iff_strongly_sorted in SET;
+        inversion SET as [|x1' xs' SS ALL]; subst; rewrite Forall_forall in ALL.
+      specialize (ALL _ IN); elim (lt_irrefl e); eauto 2 with ordered.
+  - assert (x1 <> e) by (intros ->; eelim gt_irrefl; exact CMP).
+    destruct (set_elem e xs), xs; try tauto;
+      simpl in SET; rewrite andb_true_iff in SET; destruct SET; tauto.
+Qed.
+
+Corollary set_elem_true : forall e xs,
+  is_set xs = true -> (set_elem e xs = true <-> In e xs).
+Proof.
+  intros e xs SET; apply set_elem_cases with (e := e) in SET.
+  destruct (set_elem e); intuition.
+Qed.
+
+Corollary set_elem_false : forall e xs,
+  is_set xs = true -> (set_elem e xs = false <-> ~ In e xs).
+Proof.
+  intros e xs SET; apply set_elem_cases with (e := e) in SET.
+  destruct (set_elem e); intuition.
+Qed.
+
+Corollary set_elem_is_elem : forall e xs,
+  is_set xs = true -> (set_elem e xs = proj_sumbool (elem e xs)).
+Proof.
+  intros e xs SET; apply set_elem_cases with (e := e) in SET.
+  destruct (set_elem e xs), (elem e xs); solve [reflexivity | contradiction].
+Qed.
 
 Theorem set_union_spec : forall a xs ys,
   In a (set_union xs ys) <-> In a xs \/ In a ys.
@@ -618,8 +665,14 @@ Theorem set_union_difference_distrib : forall xs ys zs,
   set_difference (set_union xs zs) (set_difference ys zs).
 Proof.
   by_set_extensionality.
-  match goal with e : A |- _ => generalize (elem e zs) end;
-    tauto.
+  match goal with e : A |- _ =>
+  generalize (bool_dec (set_elem e zs) true); intros ELEM;
+  assert ({In e zs} + {~ In e zs}) by
+    (destruct ELEM;
+       [ left; apply set_elem_true; assumption
+       | right; apply set_elem_false; [|apply not_true_iff_false]; assumption ])
+  end;
+  tauto.
 Qed.
 (*Global*) Hint Resolve @set_union_difference_distrib.
 
