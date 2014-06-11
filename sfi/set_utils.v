@@ -53,8 +53,17 @@ Fixpoint set_union (xs ys : list A) : list A :=
                               end
      end) ys.
 
-Definition set_intersection (xs ys : list A) : list A :=
-  filter (fun x => proj_sumbool (elem x ys)) xs.
+Fixpoint set_intersection (xs ys : list A) : list A :=
+  (fix aux ys :=
+     match xs , ys with
+       | []      , _       => []
+       | _       , []      => []
+       | x :: xs , y :: ys => match x <=> y with
+                                | Lt => set_intersection xs (y :: ys)
+                                | Eq => x :: set_intersection xs ys
+                                | Gt => aux ys
+                              end
+     end) ys.
 
 Fixpoint set_difference (xs ys : list A) : list A :=
   match ys with
@@ -65,6 +74,16 @@ Fixpoint set_difference (xs ys : list A) : list A :=
 End functions.
 
 (*** Theorems ***)
+
+(* The `by_set_extensionality` tactic uses the `set_specs` rewriting base.  We
+   have to abstract it over `set_extensionality` to define it here; we twice,
+   later, define the specialized version in terms of `set_extensionality`.  We
+   have to do this twice so we can get it both inside and outside the
+   section. *)
+Ltac impl__by_set_extensionality set_extensionality_thm :=
+  intros; apply set_extensionality_thm; auto; intros;
+  autorewrite with set_specs; auto;
+  try tauto.
 
 Section theorems.
 
@@ -285,8 +304,8 @@ Proof.
     split; [specialize NEQ with xs | specialize NEQ with ys]; tauto.
 Qed.
 (*Global*) Hint Resolve @set_extensionality.
+Ltac by_set_extensionality := impl__by_set_extensionality set_extensionality.
 
-(* Comes before preservation because preservation uses this. *)
 Theorem set_union_spec : forall a xs ys,
   In a (set_union xs ys) <-> In a xs \/ In a ys.
 Proof.
@@ -297,8 +316,9 @@ Proof.
     (split; [ intros [EQ | IN]; [|try apply IHxs in IN]; tauto
             | try apply compare_eq in CMP; subst;
               intros [[EQ | IN_xs] | [EQ | IN_ys]]; subst; simpl in *;
-              try solve [tauto | right; apply IHxs; auto 4] ]).
+              solve [tauto | right; apply IHxs; auto 4] ]).
 Qed.
+(*Global*) Hint Rewrite @set_union_spec : set_specs.
 
 Theorem set_union_preserves_set : forall xs ys,
   is_set xs = true -> is_set ys = true ->
@@ -331,7 +351,7 @@ Proof.
         destruct SET_ys as [LT_ys SET_ys].
       rewrite IHys by exact SET_ys.
       destruct (x <=> y') eqn:CMP'; rewrite andb_true_r;
-        try solve [exact LT_ys | apply ltb_lt; exact CMP].
+        solve [exact LT_ys | apply ltb_lt; exact CMP].
 Qed.
 (*Global*) Hint Resolve @set_union_preserves_set.
 
@@ -368,82 +388,129 @@ Proof. destruct xs; reflexivity. Qed.
 Theorem set_union_comm : forall xs ys,
   is_set xs = true -> is_set ys = true ->
   set_union xs ys = set_union ys xs.
-Proof.
-  intros; apply set_extensionality; auto; intros;
-    repeat rewrite set_union_spec; tauto.
-Qed.
+Proof. by_set_extensionality. Qed.
 (*Global*) Hint Resolve @set_union_comm.
 
 Theorem set_union_assoc : forall xs ys zs,
   is_set xs = true -> is_set ys = true -> is_set zs = true ->
   set_union xs (set_union ys zs) =
   set_union (set_union xs ys) zs.
-Proof.
-  intros; apply set_extensionality; auto; intros;
-    repeat rewrite set_union_spec; tauto.
-Qed.
+Proof. by_set_extensionality. Qed.
 (*Global*) Hint Resolve @set_union_assoc.
 
-(*****)
+Theorem set_intersection_spec : forall a xs ys,
+  is_set xs = true -> is_set ys = true ->
+  (In a (set_intersection xs ys) <-> In a xs /\ In a ys).
+Proof.
+  induction xs as [|x xs].
+  - intros []; simpl; tauto.
+  - induction ys as [|y ys]; [simpl; tauto | intros SET_xs SET_ys; simpl].
+    destruct (x <=> y) eqn:CMP; simpl;
+      [ apply compare_eq in CMP; subst
+      | fold (x < y) in CMP
+      | fold (x > y) in CMP ];
+      first [rewrite IHxs by eauto | rewrite IHys by eauto]; simpl;
+      (split; [tauto|]);
+      intros [[EQ_x | IN_xs] [EQ_y | IN_ys]]; subst;
+      first [ eelim lt_irrefl; exact CMP
+            | eelim gt_irrefl; exact CMP
+            | auto].
+    + apply is_set_iff_strongly_sorted in SET_ys.
+      inversion SET_ys; subst; rewrite Forall_forall in *.
+      elim (lt_irrefl a); eauto with ordered.
+    + apply is_set_iff_strongly_sorted in SET_xs.
+      inversion SET_xs; subst; rewrite Forall_forall in *.
+      elim (lt_irrefl a); eauto with ordered.
+Qed.
+(*Global*) Hint Rewrite @set_intersection_spec : set_specs.
 
 Theorem set_intersection_preserves_set : forall xs ys,
-  is_set xs = true ->
+  is_set xs = true -> is_set ys = true ->
   is_set (set_intersection xs ys) = true.
-Proof. unfold set_intersection; auto. Qed.
+Proof.
+  induction xs as [|x xs]; intros ys SET_xs SET_ys; induction ys as [|y ys];
+    try assumption.
+  simpl; destruct (x <=> y) eqn:CMP; simpl.
+  - apply compare_eq in CMP; subst.
+    rewrite IHxs by eauto.
+    destruct (set_intersection xs ys) as [|e I] eqn:INTERSECTION;
+      [reflexivity|].
+    assert (IN : In e xs /\ In e ys) by
+      (rewrite <- set_intersection_spec, INTERSECTION; eauto 3).
+    rewrite is_set_iff_strongly_sorted in SET_xs;
+      inversion SET_xs; subst;
+      rewrite Forall_forall in *.
+    rewrite andb_true_r, ltb_lt; destruct IN; auto.
+  - apply IHxs; eauto.
+  - apply IHys; eauto.
+Qed.
 (*Global*) Hint Resolve @set_intersection_preserves_set.
 
-Theorem set_intersection_spec : forall a xs ys,
-  In a (set_intersection xs ys) <-> In a xs /\ In a ys.
-Proof.
-  unfold set_intersection; intros; rewrite filter_In in *.
-  destruct (elem a ys); simpl; split; try tauto.
-  intros [_ NO]; inversion NO.
-Qed.
-(*Global*) Hint Resolve @set_intersection_spec.
-
 Theorem set_intersection_subset_id : forall xs ys,
+  is_set xs = true -> is_set ys = true ->
   (forall a, In a xs -> In a ys) ->
   set_intersection xs ys = xs.
 Proof.
-  induction xs as [|x xs]; simpl; auto; intros ys SUBSET.
-  destruct (elem x ys) as [IN | OUT]; simpl.
-  - f_equal; auto.
-  - elim OUT; auto.
+  induction xs as [|x xs]; [destruct ys; reflexivity|];
+    intros ys SET_xs SET_ys SUBSET; simpl.
+  induction ys as [|y ys]; [specialize SUBSET with x; elim SUBSET; auto|].
+  destruct (x <=> y) eqn:CMP.
+  - apply compare_eq in CMP; subst.
+    f_equal; apply IHxs; eauto 2.
+    simpl in SUBSET.
+    intros a IN_xs; specialize SUBSET with a.
+    assert (y <> a) by
+      (intros <-; apply is_set_no_dups in SET_xs;
+       inversion SET_xs; contradiction).
+    tauto.
+  - fold (x < y) in CMP.
+    assert (y <> x) by (intros ->; eelim lt_irrefl; exact CMP).
+    apply is_set_iff_strongly_sorted in SET_ys;
+      inversion SET_ys; subst; rewrite Forall_forall in *.
+    assert (In x ys) by (specialize SUBSET with x; simpl in SUBSET; tauto).
+    elim (lt_irrefl x); eauto 3 with ordered.
+  - fold (x > y) in CMP; apply lt_iff_gt in CMP.
+    apply IHys; eauto 2.
+    intros a [EQ | IN]; subst;
+      (assert (y <> a); [|specialize SUBSET with a; simpl in SUBSET; tauto]).
+    + intros ->; eelim lt_irrefl; exact CMP.
+    + intros ->.
+      apply is_set_iff_strongly_sorted in SET_xs;
+        inversion SET_xs; subst; rewrite Forall_forall in *.
+      elim (lt_irrefl x); eauto 3 with ordered.
 Qed.
 (*Global*) Hint Resolve @set_intersection_subset_id.
 
-Corollary set_intersection_self_id : forall xs,
+Theorem set_intersection_self_id : forall xs,
   set_intersection xs xs = xs.
-Proof. auto. Qed.
+Proof.
+  induction xs; simpl.
+  - reflexivity.
+  - rewrite compare_refl, IHxs; reflexivity.
+Qed.
 (*Global*) Hint Resolve @set_intersection_self_id.
   
 Theorem set_intersection_nil_l : forall xs,
   set_intersection [] xs = [].
-Proof. reflexivity. Qed.
+Proof. destruct xs; reflexivity. Qed.
 (*Global*) Hint Resolve @set_intersection_nil_l.
 
 Theorem set_intersection_nil_r : forall xs,
   set_intersection xs [] = [].
-Proof. induction xs; auto. Qed.
+Proof. destruct xs; reflexivity. Qed.
 (*Global*) Hint Resolve @set_intersection_nil_r.
 
 Theorem set_intersection_comm : forall xs ys,
   is_set xs = true -> is_set ys = true ->
   set_intersection xs ys = set_intersection ys xs.
-Proof.
-  intros; apply set_extensionality; auto; intros;
-  repeat rewrite set_intersection_spec; tauto.
-Qed.
+Proof. by_set_extensionality. Qed.
 (*Global*) Hint Resolve @set_intersection_comm.
 
 Theorem set_intersection_assoc : forall xs ys zs,
   is_set xs = true -> is_set ys = true -> is_set zs = true ->
   set_intersection xs (set_intersection ys zs) =
   set_intersection (set_intersection xs ys) zs.
-Proof.
-  intros; apply set_extensionality; auto; intros;
-  repeat rewrite set_intersection_spec; tauto.
-Qed.
+Proof. by_set_extensionality. Qed.
 (*Global*) Hint Resolve @set_intersection_assoc.
 
 Theorem set_difference_origin : forall e xs ys,
@@ -484,6 +551,7 @@ Proof.
     + destruct HIn; [left | right]; auto.
   - simpl in HNIn; apply Decidable.not_or in HNIn; destruct HNIn; assumption.
 Qed.
+(*Global*) Hint Rewrite set_difference_spec : set_specs.
 
 Theorem set_difference_preserves_set : forall xs ys,
   is_set xs = true ->
@@ -529,13 +597,6 @@ Proof.
   simpl; rewrite <- IHys, delete_comm; reflexivity.
 Qed.
 (*Global*) Hint Resolve @set_difference_delete_comm.
-
-Ltac by_set_extensionality :=
-  intros; apply set_extensionality; auto; intros;
-  repeat (rewrite set_union_spec        ||
-          rewrite set_intersection_spec ||
-          rewrite set_difference_spec);
-  try tauto.
 
 Theorem set_union_intersection_distrib : forall xs ys zs,
   is_set xs = true -> is_set ys = true -> is_set zs = true ->
@@ -605,6 +666,9 @@ Qed.
 
 End theorems.
 
+(* And we repeat this tactic outside the section. *)
+Ltac by_set_extensionality := impl__by_set_extensionality set_extensionality.
+
 (* Can be updated automatically by an Emacs script; see `global-hint.el' *)
 (* Start globalized hint section *)
 Hint Resolve @is_set_tail.
@@ -621,6 +685,7 @@ Hint Resolve @to_set_unchanged_sets.
 Hint Resolve @to_set_involutive.
 Hint Resolve @to_set_head.
 Hint Resolve @set_extensionality.
+Hint Rewrite @set_union_spec : set_specs.
 Hint Resolve @set_union_preserves_set.
 Hint Resolve @set_union_subset_id.
 Hint Resolve @set_union_self_id.
@@ -628,8 +693,8 @@ Hint Resolve @set_union_nil_l.
 Hint Resolve @set_union_nil_r.
 Hint Resolve @set_union_comm.
 Hint Resolve @set_union_assoc.
+Hint Rewrite @set_intersection_spec : set_specs.
 Hint Resolve @set_intersection_preserves_set.
-Hint Resolve @set_intersection_spec.
 Hint Resolve @set_intersection_subset_id.
 Hint Resolve @set_intersection_self_id.
 Hint Resolve @set_intersection_nil_l.
@@ -638,6 +703,7 @@ Hint Resolve @set_intersection_comm.
 Hint Resolve @set_intersection_assoc.
 Hint Resolve @set_difference_origin.
 Hint Resolve @set_difference_removes.
+Hint Rewrite set_difference_spec : set_specs.
 Hint Resolve @set_difference_preserves_set.
 Hint Resolve @set_difference_subset_annihilating.
 Hint Resolve @set_difference_self_annihilating.
