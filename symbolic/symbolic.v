@@ -41,6 +41,9 @@ Class symbolic_params := {
      the tag from the current instruction to the next PC.  If we make
      these type distinctions, such rules would have to be disallowed,
      no? *)
+  (* CH: The symbolic handler has to be well-typed, so unless some
+     tag types are equal, the error you describe would be caught
+     by the (Coq) type checker *)
   tag : Type;
   (* BCP: Maxime was wondering why we are using setoids... do we need
      that?  Apparently they tickle quite a few bugs in tactics... *)
@@ -88,7 +91,8 @@ Definition next_state (st : state) (mvec : MVec tag)
   do rvec <- handler mvec;
     k rvec.
 
-Definition next_state_reg_and_pc (st : state) (mvec : MVec tag) r x pc' : option state :=
+Definition next_state_reg_and_pc (st : state) (mvec : MVec tag) r x pc'
+    : option state :=
   next_state st mvec (fun rvec =>
     do regs' <- upd (regs st) r x@(tr rvec);
     Some (State (mem st) regs' pc'@(trpc rvec) (internal st))).
@@ -103,104 +107,94 @@ Definition next_state_pc (st : state) (mvec : MVec tag) x : option state :=
 Import Vector.VectorNotations.
 
 Inductive step (st st' : state) : Prop :=
-| step_nop : forall mem reg pc tpc i ti int,
-             forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Nop _)),
-             let mvec := mkMVec NOP tpc ti [] in
-             forall (NEXT : next_state_pc st mvec (pc.+1) = Some st'),
-             step st st'
-| step_const : forall mem reg pc tpc i ti n r old told int,
-             forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Const _ n r)),
-             forall (OLD : get reg r = Some old@told),
-             let mvec := mkMVec CONST tpc ti [told] in
-             forall (NEXT : next_state_reg st mvec r (imm_to_word n) = Some st'),
-             step st st'
-| step_mov : forall mem reg pc tpc i ti r1 w1 t1 r2 old told int,
-             forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Mov _ r1 r2)),
-             forall (R1W : get reg r1 = Some w1@t1),
-             forall (OLD : get reg r2 = Some old@told),
-             let mvec := mkMVec MOV tpc ti [t1; told] in
-             forall (NEXT : next_state_reg st mvec r2 w1 = Some st'),
-             step st st'
-| step_binop : forall mem reg pc tpc i ti op r1 r2 r3 w1 w2 t1 t2 old told int,
-             forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Binop _ op r1 r2 r3)),
-             forall (R1W : get reg r1 = Some w1@t1),
-             forall (R2W : get reg r2 = Some w2@t2),
-             forall (OLD : get reg r3 = Some old@told),
-             let mvec := mkMVec (BINOP op) tpc ti [t1; t2; told] in
-             forall (NEXT : next_state_reg st mvec r3 (binop_denote op w1 w2) =
-                            Some st'),
-             step st st'
-| step_load : forall mem reg pc tpc i ti r1 r2 w1 w2 t1 t2 old told int,
-              forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Load _ r1 r2)),
-             forall (R1W : get reg r1 = Some w1@t1),
-             forall (MEM1 : get mem w1 = Some w2@t2),
-             forall (OLD : get reg r2 = Some old@told),
-             let mvec := mkMVec LOAD tpc ti [t1; t2; told] in
-             forall (NEXT : next_state_reg st mvec r2 w2 = Some st'),
-             step st st'
-| step_store : forall mem reg pc i r1 r2 w1 w2 w3 tpc ti t1 t2 t3 int,
-               forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Store _ r1 r2)),
-             forall (R1W : get reg r1 = Some w1@t1),
-             forall (R2W : get reg r2 = Some w2@t2),
-             forall (OLD : get mem w1 = Some w3@t3),
-             let mvec := mkMVec STORE tpc ti [t1; t2; t3] in
-             forall (NEXT :
-               next_state st mvec (fun rvec =>
+| step_nop : forall mem reg pc tpc i ti int
+    (ST   : st = State mem reg pc@tpc int)
+    (PC   : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Nop _)),
+    let mvec := mkMVec NOP tpc ti [] in forall
+    (NEXT : next_state_pc st mvec (pc.+1) = Some st'),    step st st'
+| step_const : forall mem reg pc tpc i ti n r old told int
+    (ST   : st = State mem reg pc@tpc int)
+    (PC   : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Const _ n r))
+    (OLD  : get reg r = Some old@told),
+    let mvec := mkMVec CONST tpc ti [told] in forall
+    (NEXT : next_state_reg st mvec r (imm_to_word n) = Some st'),   step st st'
+| step_mov : forall mem reg pc tpc i ti r1 w1 t1 r2 old told int
+    (ST   : st = State mem reg pc@tpc int)
+    (PC   : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Mov _ r1 r2))
+    (R1W  : get reg r1 = Some w1@t1)
+    (OLD  : get reg r2 = Some old@told),
+    let mvec := mkMVec MOV tpc ti [t1; told] in forall
+    (NEXT : next_state_reg st mvec r2 w1 = Some st'),   step st st'
+| step_binop : forall mem reg pc tpc i ti op r1 r2 r3 w1 w2 t1 t2 old told int
+    (ST   : st = State mem reg pc@tpc int)
+    (PC   : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Binop _ op r1 r2 r3))
+    (R1W  : get reg r1 = Some w1@t1)
+    (R2W  : get reg r2 = Some w2@t2)
+    (OLD  : get reg r3 = Some old@told),
+    let mvec := mkMVec (BINOP op) tpc ti [t1; t2; told] in forall
+    (NEXT : next_state_reg st mvec r3 (binop_denote op w1 w2) = Some st'),
+      step st st'
+| step_load : forall mem reg pc tpc i ti r1 r2 w1 w2 t1 t2 old told int
+    (ST   : st = State mem reg pc@tpc int)
+    (PC   : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Load _ r1 r2))
+    (R1W  : get reg r1 = Some w1@t1)
+    (MEM1 : get mem w1 = Some w2@t2)
+    (OLD  : get reg r2 = Some old@told),
+    let mvec := mkMVec LOAD tpc ti [t1; t2; told] in forall
+    (NEXT : next_state_reg st mvec r2 w2 = Some st'),    step st st'
+| step_store : forall mem reg pc i r1 r2 w1 w2 w3 tpc ti t1 t2 t3 int
+    (ST   : st = State mem reg pc@tpc int)
+    (PC   : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Store _ r1 r2))
+    (R1W  : get reg r1 = Some w1@t1)
+    (R2W  : get reg r2 = Some w2@t2)
+    (OLD  : get mem w1 = Some w3@t3),
+    let mvec := mkMVec STORE tpc ti [t1; t2; t3] in forall
+    (NEXT : next_state st mvec (fun rvec =>
                  do mem' <- upd mem w1 w2@(tr rvec);
                  Some (State mem' reg (pc.+1)@(trpc rvec) int)) = Some st'),
-             step st st'
-| step_jump : forall mem reg pc i r w tpc ti t1 int,
-             forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Jump _ r)),
-             forall (RW : get reg r = Some w@t1),
-             let mvec := mkMVec JUMP tpc ti [t1] in
-             forall (NEXT : next_state_pc st mvec w = Some st'),
-             step st st'
-| step_bnz : forall mem reg pc i r n w tpc ti t1 int,
-             forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Bnz _ r n)),
-             forall (RW : get reg r = Some w@t1),
-             let mvec := mkMVec BNZ tpc ti [t1] in
-             let pc' := add_word pc (if w ==b Z_to_word 0
-                                     then Z_to_word 1 else imm_to_word n) in
-             forall (NEXT : next_state_pc st mvec pc' = Some st'),
-             step st st'
-| step_jal : forall mem reg pc i r w tpc ti t1 old told int,
-             forall (ST : st = State mem reg pc@tpc int),
-             forall (PC : get mem pc = Some i@ti),
-             forall (INST : decode_instr i = Some (Jal _ r)),
-             forall (RW : get reg r = Some w@t1),
-             forall (NOTCALL : get_syscall w = None),
-             forall (OLD : get reg ra = Some old@told),
-             let mvec := mkMVec JAL tpc ti [t1; told] in
-             forall (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'),
-             step st st'
-| step_syscall : forall mem reg pc i r w sc tpc ti t1 old told rvec int,
-                 forall (ST : st = State mem reg pc@tpc int),
-                 forall (PC : get mem pc = Some i@ti),
-                 forall (INST : decode_instr i = Some (Jal _ r)),
-                 forall (RW : get reg r = Some w@t1),
-                 forall (GETCALL : get_syscall w = Some sc),
-                 forall (OLD : get reg ra = Some old@told),
-                 let mvec := mkMVec JAL tpc ti [t1; told] in
-                 forall (ALLOWED : handler mvec = Some rvec),
-                 forall (CALL : sem sc st = Some st'),
-                        (* could use the tpc from rvec instead of st? *)
-                 step st st'.
+              step st st'
+| step_jump : forall mem reg pc i r w tpc ti t1 int
+    (ST   : st = State mem reg pc@tpc int)
+    (PC   : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Jump _ r))
+    (RW   : get reg r = Some w@t1),
+    let mvec := mkMVec JUMP tpc ti [t1] in forall
+    (NEXT : next_state_pc st mvec w = Some st'),    step st st'
+| step_bnz : forall mem reg pc i r n w tpc ti t1 int
+    (ST   : st = State mem reg pc@tpc int)
+    (PC   : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Bnz _ r n))
+    (RW   : get reg r = Some w@t1),
+     let mvec := mkMVec BNZ tpc ti [t1] in
+     let pc' := add_word pc (if w ==b Z_to_word 0
+                             then Z_to_word 1 else imm_to_word n) in forall
+    (NEXT : next_state_pc st mvec pc' = Some st'),     step st st'
+| step_jal : forall mem reg pc i r w tpc ti t1 old told int
+    (ST : st = State mem reg pc@tpc int)
+    (PC : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Jal _ r))
+    (RW : get reg r = Some w@t1)
+    (NOTCALL : get_syscall w = None)
+    (OLD : get reg ra = Some old@told),
+     let mvec := mkMVec JAL tpc ti [t1; told] in forall
+    (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'), step st st'
+| step_syscall : forall mem reg pc i r w sc tpc ti t1 old told rvec int
+    (ST : st = State mem reg pc@tpc int)
+    (PC : get mem pc = Some i@ti)
+    (INST : decode_instr i = Some (Jal _ r))
+    (RW : get reg r = Some w@t1)
+    (GETCALL : get_syscall w = Some sc)
+    (OLD : get reg ra = Some old@told),
+     let mvec := mkMVec JAL tpc ti [t1; told] in forall
+    (ALLOWED : handler mvec = Some rvec)
+    (CALL : sem sc st = Some st'), step st st'.
+    (* TODO: should use the tpc and tres from rvec instead of plain st! *)
 
 End WithClasses.
 
