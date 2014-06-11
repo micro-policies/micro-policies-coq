@@ -15,10 +15,16 @@ Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
 Context {sk : sealing_key}.
 
+Class sealing_key_ops := {
+  max_key : key;
+  inc_key : key -> key;
+  eq_key :> EqDec (eq_setoid key)
+}.
+Context {sko : sealing_key_ops}.
 
 Inductive stag :=
 | WORD   :        stag
-| KEY    :        stag
+| KEY    : key -> stag
 | SEALED : key -> stag.
 
 Context {sm : @smemory t stag}.
@@ -51,13 +57,13 @@ Global Instance equ : EqDec (eq_setoid stag).
   intros t1 t2.
   refine (
       match t1, t2 with
-      | SEALED k1, SEALED k2 =>
+      | WORD, WORD => left eq_refl
+      | KEY k1, KEY k2
+      |  SEALED k1, SEALED k2 =>
         match k1 == k2 with
         | left H1 => _
         | _ => _
         end
-      | WORD, WORD => left eq_refl
-      | KEY, KEY => left eq_refl
       | _, _ => _
       end
     ); simpl in *; subst; auto; right; congruence. 
@@ -76,7 +82,7 @@ Program Instance sym_sealing : (Symbolic.symbolic_params t) := {
 
   handler := sealing_handler;
 
-  internal_state := word t  (* next key to generate *)
+  internal_state := key  (* next key to generate *)
 }.
 
 Import DoNotation. 
@@ -85,20 +91,16 @@ Set Printing All.
 
 Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc key := s in
-  (* BCP: Shouldn't this be max_word / 4 or some such??  
-     Otherwise we're going to have trouble writing the mapping from 
-     symbolic to concrete tags. *)
-  if key == max_word then None
+  if key == max_key then None
   else
-    let key' := add_word key (Z_to_word 1) in
-    do reg' <- upd_reg reg syscall_ret (key@KEY);
+    let key' := inc_key key in
+    do reg' <- upd_reg reg syscall_ret (max_word@(KEY key));
     Some (Symbolic.State mem reg' pc key').
 
 Definition seal (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc next_key := s in
   match get_reg reg syscall_arg1, get_reg reg syscall_arg2 with
-  | Some (payload@WORD), Some (wkey@KEY) =>
-    do key  <- word_to_key wkey;
+  | Some (payload@WORD), Some (_@(KEY key)) =>
     do reg' <- upd_reg reg syscall_ret (payload@(SEALED key));
     Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
@@ -107,10 +109,11 @@ Definition seal (s : Symbolic.state t) : option (Symbolic.state t) :=
 Definition unseal (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc next_key := s in
   match get_reg reg syscall_arg1, get_reg reg syscall_arg2 with
-  | Some (payload@(SEALED key)), Some (wkey@KEY) =>
-    do key  <- word_to_key wkey;
-    do reg' <- upd_reg reg syscall_ret (payload@WORD);
-    Some (Symbolic.State mem reg' pc next_key)
+  | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
+    if key == key' then None
+    else
+      do reg' <- upd_reg reg syscall_ret (payload@WORD);
+      Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
   end.
 
@@ -124,5 +127,8 @@ Definition sealing_step := Symbolic.step sealing_syscalls.
 End WithClasses.
 
 (* BCP: Aren't there also some proof obligations that we need to satisfy? *)
+(* CH: You mean for the concrete-abstract refinement?
+   I expect those to appear when talking about that refinement,
+   which we don't yet *)
 
 End SymbolicSealing.
