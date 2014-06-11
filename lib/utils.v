@@ -528,15 +528,21 @@ Proof.
 Qed.
 
 Lemma nth_error_Some (T:Type): forall n (l:list T) v,
-   nth_error l n = Some v <-> n < length l.
+   nth_error l n = Some v -> n < length l. (* APT: converse isn't true, due to quantification of v! *)
 Proof.
-admit.
+  induction n. 
+  - intros. destruct l; inv H.  simpl; omega. 
+  - intros. destruct l; inv H.  simpl. pose proof (IHn _ _ H1).  omega. 
 Qed.
 
-Lemma index_list_Z_Some (T:Type): forall i (l:list T) v,
-   index_list_Z i l = Some v <-> (0 <= i < Z.of_nat (length l))%Z.
+Lemma index_list_Z_Some (T:Type): forall i (l:list T) v,  (* APT: ditto *)
+   index_list_Z i l = Some v -> (0 <= i < Z.of_nat (length l))%Z.
 Proof.
-admit.
+  unfold index_list_Z. intros. 
+  destruct (i <? 0)%Z eqn:?. inv H. 
+  pose proof (nth_error_Some H). clear H.
+  rewrite Z.ltb_nlt in Heqb.
+  zify. rewrite Z2Nat.id in H0; omega. 
 Qed.
 
 Fixpoint update_list A (n : nat) (y : A) (xs : list A) : option (list A) :=
