@@ -62,6 +62,8 @@ Definition decode (mem : memory) (pc : word t) :=
     | _              => None
   end.
 
+(* BCP: OK, I like the way this looks now... *)
+
 Inductive step (st st' : state) : Prop :=
 | step_nop : forall mem reg pc es
       (ST : st = State mem reg pc es)
@@ -141,29 +143,6 @@ Inductive step (st st' : state) : Prop :=
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VWord payload) =? reg')
     (NEXT : st' = State mem reg' pc es),   step st st'.
-
-(* ASZ, BCP:
-   
-   (1) Why equalities (ST, NEXT) and "step st st'" instead of
-       `step (State mem reg pc es) (State mem' reg' pc' es')'?  Is it to make
-       the datatype have parameters instead of indices?  If so, why -- does this
-       make induction easier?
-
-       ANSWER: Yes, it makes reasoning easier.
-
-   (2) What about using one of `decode_def' or `decode_rel' as above?  (Suitably
-       renamed to just `decode'.)  This would clean up the step relation, but
-       would it make proofs worse?
-
-       ANSWER: We should do this.
-
-   (3) Should system call steps be specified inductively in the relation (like
-       here), or as functions (like in memory safety)?  What are the
-       benefits/downsides (e.g., working with other system calls)?
-
-   (4) Why type classes instead of functors?  What does this buy us, and what
-       exactly will the final usage pattern look like?
-*)
 
 End WithClasses.
 

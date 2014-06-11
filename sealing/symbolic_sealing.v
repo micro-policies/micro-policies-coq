@@ -123,4 +123,11 @@ End WithClasses.
    I expect those to appear when talking about that refinement,
    which we don't yet *)
 
+(* BCP: Yes, that's what I meant.  I know we're not there yet, but I
+   am wondering where we want to write them.  Still confused about the
+   modularization strategy for the whole codebase... *)
+
 End SymSeal.
+
+End SymbolicSealing.
+
