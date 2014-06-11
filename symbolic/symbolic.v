@@ -18,8 +18,8 @@ Open Scope Z_scope.
 
 Section WithClasses.
 
-Context (t : machine_types).
-Context {ops : machine_ops t}.
+Context {t : machine_types}
+        {ops : machine_ops t}.
 
 Import PartMaps.
 

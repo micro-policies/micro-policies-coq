@@ -33,6 +33,10 @@ Context {t : machine_types}
         {ar : partial_map aregisters (reg t) (AbsSeal.value t)}
         {aregs : axioms ar}.
 
+(* At the moment we're considering identity mapping on keys;
+   we could consider relaxing this in the future, and go in
+   the direction of Maxime's "memory injections" *)
+(* Could consider doing this in relational style (inductive relation) *)
 Definition refine_val_atom (v : AbsSeal.value t)
                            (a : atom (word t) SymSeal.stag) : Prop :=
   match v,a with
@@ -42,6 +46,7 @@ Definition refine_val_atom (v : AbsSeal.value t)
   | _                  , _                      => False
   end.
 
+(* Use Maxime's trick *)
 Definition refine_mem (amem : amemory) (smem : smemory) : Prop :=
   forall w, is_some (get amem w) = is_some (get smem w) /\
   forall w v a,
@@ -49,6 +54,7 @@ Definition refine_mem (amem : amemory) (smem : smemory) : Prop :=
     get smem w = Some a ->
     refine_val_atom v a.
 
+(* Use Maxime's trick *)
 Definition refine_reg (areg : aregisters) (sreg : sregisters) : Prop :=
   forall w, is_some (get areg w) = is_some (get sreg w) /\
   forall w v a,
