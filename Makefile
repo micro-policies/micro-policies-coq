@@ -98,6 +98,7 @@ VFILES:=sealing/refinementSA.v\
   cfi/cfi_preservation.v\
   cfi/abstract.v\
   symbolic/rules.v\
+  symbolic/forward.v\
   symbolic/backward.v\
   symbolic/refinement_common.v\
   symbolic/symbolic.v\
