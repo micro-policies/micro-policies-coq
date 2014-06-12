@@ -214,6 +214,12 @@ Proof.
   intros v w ref. destruct v; simpl in ref; try tauto; subst; reflexivity.
 Qed.
 
+Tactic Notation "unfold_next_state_in" ident(H) :=
+  try unfold Symbolic.next_state_reg in H;
+  try unfold Symbolic.next_state_pc in H;
+  try unfold Symbolic.next_state_reg_and_pc in H;
+  try unfold Symbolic.next_state in H.
+
 Lemma backward_simulation : forall ast sst sst',
   refine_state ast sst ->
   SymSeal.step sst sst' ->
@@ -230,9 +236,7 @@ Proof.
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     apply (refine_mem_look_inv _ _ _ _ rmem) in PC.
       destruct PC as [iv [PC riv]].
-    destruct ti; unfold Symbolic.next_state_pc,
-                         Symbolic.next_state in NEXT;
-                 try discriminate NEXT.
+    destruct ti; unfold_next_state_in NEXT; try discriminate NEXT.
     injection NEXT; intro H; subst; clear NEXT.
     apply refine_val_data in riv. subst.
     eexists. split.
@@ -240,6 +244,11 @@ Proof.
       unfold AbsSeal.decode. rewrite PC. now apply INST.
       reflexivity.
     + split4; now trivial.
+  - (* CONST case *)
+    apply refine_pc_inv in rpc; symmetry in rpc; subst.
+    apply (refine_mem_look_inv _ _ _ _ rmem) in PC.
+      destruct PC as [iv [PC riv]].
+    destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
 Admitted.
 
 (* also refinement for our 3 system calls ... the abstract ones only
