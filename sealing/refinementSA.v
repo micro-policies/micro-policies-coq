@@ -195,7 +195,7 @@ Proof.
   destruct tpc; try contradiction ref; assumption.
 Qed.
 
-Lemma refine_mem_look_inv : forall amem smem pc a,
+Lemma refine_get_mem_inv : forall amem smem pc a,
   refine_mem amem smem ->
   get smem pc = Some a ->
   exists v, get amem pc = Some v /\ refine_val_atom v a.
@@ -206,6 +206,12 @@ Proof.
   + eexists; split; now trivial.
   + contradiction ref.
 Qed.
+
+Lemma refine_get_reg_inv : forall areg sreg pc a,
+  refine_reg areg sreg ->
+  get sreg pc = Some a ->
+  exists v, get areg pc = Some v /\ refine_val_atom v a.
+Admitted. (* same as above *)
 
 Lemma refine_val_data : forall v w,
   refine_val_atom v w@SymSeal.DATA ->
@@ -219,6 +225,20 @@ Tactic Notation "unfold_next_state_in" ident(H) :=
   try unfold Symbolic.next_state_pc in H;
   try unfold Symbolic.next_state_reg_and_pc in H;
   try unfold Symbolic.next_state in H.
+
+Lemma refine_upd_reg : forall aregs sregs sregs' r a v,
+  refine_reg aregs sregs ->
+  refine_val_atom v a ->
+  upd sregs r a = Some sregs' -> 
+  exists aregs', upd aregs r v = Some aregs' /\
+                 refine_reg aregs' sregs'.
+Proof.
+  intros aregs sregs sregs' r a v rr rv up.
+  apply (@upd_inv _ _ _ _ sregspec) in up. destruct up as [[w tg] ge].
+  eapply (refine_get_reg_inv _ _ _ _ rr) in ge. destruct ge as [v' [ge rva]].
+  apply upd_defined with (val':=v) in ge. destruct ge as [aregs' up].
+  exists aregs'. split. assumption.
+Admitted. (* TODO finish *)
 
 Lemma backward_simulation : forall ast sst sst',
   refine_state ast sst ->
@@ -234,9 +254,9 @@ Proof.
     intros [rmem [rreg [rpc ris]]].
   - (* NOP case *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_mem_look_inv _ _ _ _ rmem) in PC.
+    apply (refine_get_mem_inv _ _ _ _ rmem) in PC.
       destruct PC as [iv [PC riv]].
-    destruct ti; unfold_next_state_in NEXT; try discriminate NEXT.
+    destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
     injection NEXT; intro H; subst; clear NEXT.
     apply refine_val_data in riv. subst.
     eexists. split.
@@ -245,11 +265,24 @@ Proof.
       reflexivity.
     + split4; now trivial.
   - (* CONST case *)
+    (* copy paste *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_mem_look_inv _ _ _ _ rmem) in PC.
+    apply (refine_get_mem_inv _ _ _ _ rmem) in PC.
       destruct PC as [iv [PC riv]].
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
+    (* new *)
+    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
+    (* copy paste *)
+    injection NEXT; intro H; subst; clear NEXT.
+    apply refine_val_data in riv. subst.
+    eexists. split.
+    + eapply AbsSeal.step_const. reflexivity.
+      unfold AbsSeal.decode. rewrite PC. now apply INST.
 Admitted.
+(*
+    (* should use refine_upd_reg here *)
+    + split4; now trivial.
+*)
 
 (* also refinement for our 3 system calls ... the abstract ones only
    have a description as step rules *)
