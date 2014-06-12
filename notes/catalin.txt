@@ -1,5 +1,67 @@
 TODO: can all these type classes be refactored to exploit sharing?
 
+[2014-06-12] Some rather silly notes about allocation
+
+(* At the moment we're considering (morally) the same key generation
+   at both levels and the identity mapping on keys. We could consider
+   relaxing this in the future, and go in the direction of Maxime's
+   "memory injections", just that extended to dynamic allocation. The
+   main problem with this extension is that key generation (and
+   allocation) is allowed to fail, and if the key generators at
+   different levels fail at different times both directions of the
+   refinement proof will break. Some possible solutions:
+
+   0. What I started doing here: use (morally) the same generator at
+      both levels; this is simple, but weak (it requires abstract
+      allocation to be fully concrete). It also seems hard to adapt to
+      Maxime's setting in which _different_ things need to be
+      generated at the different levels, especially if the abstract
+      block type is to be kept abstract. This also requires that a lot
+      of information from the lower levels of abstraction is exposed
+      to the higher levels in order to implement the same
+      generator. This is quite natural for key generation (where
+      remembering all past keys also helps make correctness more
+      obvious), but a lot more of a pain for allocation.
+
+   1. Assume that the generators at the two levels have the same
+      failure behavior. This assumption should be enough to show
+      refinement. Is this the _minimal_ assumption needed to make the
+      proof go through? How easy/hard would be to justify it? It would
+      be a huge leap of faith to do so without proof: this is
+      basically refinement preservation for the allocation system call
+      and for one the high-level allocator might not even have enough
+      information to do the same as the lower one. It seems anyway a
+      weaker condition than 0. It would still require exposing /
+      duplicating low-level details at the higher levels of
+      abstraction in order to satisfy such a condition.
+
+   2. Require that the generators are complete wrt the space of keys
+      they draw from, i.e. they are only allowed to return None if all
+      possible keys were already generated. This seems to imply 1,
+      without implying 0. Unclear how well this would work for
+      allocation. For one, this would expose the size of the heap, the
+      maximal size of the allocator's data structures, the size of the
+      color space, etc. at the abstract level. Alternatives 1 and 2
+      seem actually quite similar; 2 is just a specific way of
+      achieving 1. Is it the only reasonable way of achieving 1?
+
+   3. For alternatives 0-2 I assumed determinism at all levels and
+      targetted two-way refinement. Another alternative would be to
+      allow the generation / allocation on the abstract machine to
+      fail non-deterministically, at any point. This would sacrifice
+      forward simulation in order to prove backwards simulation wrt a
+      very abstract machine. In the sealing abstract machine this
+      would correspond to wrapping the mkkey_f function in a relation
+      with an additional failure rule. It would allow us to
+      take the next step and make the actual chosen key also
+      non-deterministic (completely dropping mkkey_f). This solution
+      might not be so bad, especially if we keep 2-way refinement for
+      the concrete-symbolic level, which would put a bound on the
+      "amount of forward refinement" we actually lose. We could say
+      yes the final statement allows it, but testing at the concrete
+      level showed that it we don't have a trivial implementation that
+      always fails. *)
+
 [2014-06-05] All DONE
 
 symbolic:

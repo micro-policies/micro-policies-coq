@@ -21,6 +21,7 @@ Context (t : machine_types)
         {sk : sealing_key}.
 
 Class key_generator := {
+  (* CH: TODO: we eventually want to make this total *)
   mkkey_f : list key -> option (list key * key);
  
   (* This ensures freshness without fixing a generation strategy *)
