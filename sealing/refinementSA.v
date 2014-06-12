@@ -82,8 +82,8 @@ Context {t : machine_types}
       fail non-deterministically, at any point. This would sacrifice
       forward simulation in order to prove backwards simulation wrt a
       very abstract machine. In the sealing abstract machine this
-      would correspond to wrapping mkkey_f in a relation (instead of a
-      function) with an additional failure rule. It would allow us to
+      would correspond to wrapping the mkkey_f function in a relation
+      with an additional failure rule. It would allow us to
       take the next step and make the actual chosen key also
       non-deterministic (completely dropping mkkey_f). This solution
       might not be so bad, especially if we keep 2-way refinement for
