@@ -196,7 +196,8 @@ Class encodable := {
   encode : tag -> word t;
   decode : word t -> option tag;
   decodeK : forall t, decode (encode t) = Some t;
-  encodeK : forall t w, decode w = Some t -> encode t = w
+  encodeK : forall t w, decode w = Some t -> encode t = w;
+  encode_kernel_tag : Concrete.TKernel = encode KERNEL
 }.
 
 Context {e : encodable}.

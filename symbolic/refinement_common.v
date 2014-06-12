@@ -17,18 +17,6 @@ Hint Constructors restricted_exec.
 Hint Unfold exec.
 Hint Resolve restricted_exec_trans.
 
-Section Refinement.
-
-Context {mt : machine_types}
-        {ops : machine_ops mt}
-        {opss : machine_ops_spec ops}
-        {ap : Symbolic.symbolic_params}
-        {memax : PartMaps.axioms (@Symbolic.sm mt ap)}
-        {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
-        {cp : Concrete.concrete_params mt}
-        {cps : Concrete.params_spec cp}
-        {e : @encodable (Symbolic.tag mt) mt}.
-
 Ltac match_inv :=
   repeat match goal with
   | H : bind (fun x : _ => _) _ = Some _ |- _ =>
@@ -47,6 +35,18 @@ Ltac match_inv :=
   | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
   | H : True |- _ => clear H
   end.
+
+Section Refinement.
+
+Context {mt : machine_types}
+        {ops : machine_ops mt}
+        {opss : machine_ops_spec ops}
+        {ap : @Symbolic.symbolic_params mt}
+        {memax : PartMaps.axioms (@Symbolic.sm mt ap)}
+        {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
+        {cp : Concrete.concrete_params mt}
+        {cps : Concrete.params_spec cp}
+        {e : @encodable (Symbolic.tag mt) mt cp}.
 
 Definition refine_memory (amem : Symbolic.memory mt) (cmem : Concrete.memory mt) :=
   forall w x t,
@@ -106,9 +106,6 @@ Definition mvec_in_kernel cmem :=
   forall addr,
     in_mvec addr ->
     exists w, PartMaps.get cmem addr = Some w@Concrete.TKernel.
-
-Hypothesis kernel_tag_correct :
-  Concrete.TKernel = encode KERNEL.
 
 Lemma store_mvec_mvec_in_kernel cmem cmem' mvec :
   Concrete.store_mvec ops cmem mvec = Some cmem' ->
@@ -195,7 +192,7 @@ Proof.
   apply encodeK in E.
   unfold equiv_decb.
   destruct (tg == Concrete.TKernel) as [E' | NEQ']; simpl in *; subst; eauto.
-  rewrite kernel_tag_correct in E'.
+  erewrite encode_kernel_tag in E'.
   now apply encode_inj in E'.
 Qed.
 
@@ -208,11 +205,11 @@ Proof.
     as [[t [|]| |]|] eqn:DEC; simpl in *; try discriminate;
   apply encodeK in DEC.
   - rewrite <- DEC.
-    rewrite kernel_tag_correct.
+    erewrite encode_kernel_tag.
     erewrite eq_tag_eq_word. simpl.
     now rewrite negb_true_iff in H.
   - rewrite <- DEC.
-    rewrite kernel_tag_correct.
+    erewrite encode_kernel_tag.
     now erewrite eq_tag_eq_word.
 Qed.
 
@@ -312,7 +309,7 @@ Proof.
   { intros E. subst addr'.
     assert (CONTRA : Concrete.TKernel = encode (USER t false))
       by congruence.
-    rewrite kernel_tag_correct in CONTRA.
+    erewrite encode_kernel_tag in CONTRA.
     now apply encode_inj in CONTRA. }
   rewrite (PartMaps.get_upd_neq NEQ UPD).
   eauto.
@@ -572,7 +569,7 @@ Proof.
 
   try analyze_cache;
 
-  simpl in *; try rewrite kernel_tag_correct; now rewrite decodeK.
+  simpl in *; try erewrite encode_kernel_tag; now rewrite decodeK.
 
 Qed.
 

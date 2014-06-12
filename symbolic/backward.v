@@ -28,13 +28,10 @@ Context {mt : machine_types}
         {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}
-        {e : @encodable (Symbolic.tag mt) mt}
+        {e : @encodable (Symbolic.tag mt) mt cp}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
-
-Hypothesis kernel_tag_correct :
-  Concrete.TKernel = encode KERNEL.
 
 Hint Unfold Symbolic.next_state.
 Hint Unfold Symbolic.next_state_reg_and_pc.
@@ -157,7 +154,7 @@ Proof.
     UPD : PartMaps.upd ?cmem ?addr _ = Some _ |- _ =>
     (destruct (refine_memory_upd _ _ _ _ REFM GET UPD) as (? & ? & ?);
      pose proof (wf_entry_points_user_upd _ _ _ _ WFENTRYPOINTS GET UPD);
-     pose proof (mvec_in_kernel_user_upd kernel_tag_correct _ _ _ _ MVEC GET UPD))
+     pose proof (mvec_in_kernel_user_upd _ _ _ _ MVEC GET UPD))
     || let op := current_instr_opcode in fail 3 op
   end;
 
@@ -262,7 +259,7 @@ Proof.
   match_inv;
   try analyze_cache;
   simpl in *;
-  try rewrite kernel_tag_correct in *;
+  try erewrite encode_kernel_tag in *;
   try solve [repeat simpl_word_lift; simpl in *; discriminate].
   repeat (split; eauto).
   unfold encode_mvec, encode_rvec, mvec_of_umvec, rvec_of_urvec. simpl.
@@ -425,9 +422,9 @@ Proof.
   destruct (in_kernel cst') eqn:NKERNEL; trivial.
   unfold in_user in NUSER.
   unfold in_kernel, Concrete.is_kernel_tag in NKERNEL.
-  rewrite kernel_tag_correct in NKERNEL.
+  erewrite encode_kernel_tag in NKERNEL.
   destruct REF as (INUSER & ? & ? & ? & ? & CACHE & ?).
-  assert (PCS := valid_pcs kernel_tag_correct STEP CACHE INUSER).
+  assert (PCS := valid_pcs STEP CACHE INUSER).
   unfold word_lift in *.
   destruct (decode (common.tag (Concrete.pc cst'))) as [[t [|]| |]|] eqn:DEC;
   try discriminate; simpl in *;

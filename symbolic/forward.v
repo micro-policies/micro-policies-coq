@@ -28,13 +28,10 @@ Context {mt : machine_types}
         {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}
-        {e : @encodable (Symbolic.tag mt) mt}
+        {e : @encodable (Symbolic.tag mt) mt cp}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
-
-Hypothesis kernel_tag_correct :
-  Concrete.TKernel = encode KERNEL.
 
 Hint Unfold Symbolic.next_state.
 Hint Unfold Symbolic.next_state_reg_and_pc.
@@ -73,7 +70,7 @@ Hint Unfold Concrete.miss_state.
 Let in_kernel_user t ic : Concrete.is_kernel_tag ops (encode (USER t ic)) = false.
 Proof.
   unfold Concrete.is_kernel_tag.
-  rewrite kernel_tag_correct.
+  erewrite encode_kernel_tag.
   now erewrite eq_tag_eq_word.
 Qed.
 
