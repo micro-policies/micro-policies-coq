@@ -30,7 +30,8 @@ cfi/cfi.v
 #cfi/concrete_kernel.v
 #cfi/fault_handler_spec.v
 cfi/cfi_rules.v
-cfi/qa.v
+cfi/symbolic.v
+cfi/refinementAQ.v
 
 memory_safety/quasiabstract.v
 memory_safety/abstract.v

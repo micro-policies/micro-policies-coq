@@ -91,7 +91,7 @@ VFILES:=sealing/refinementSA.v\
   memory_safety/refinementAQ.v\
   memory_safety/abstract.v\
   memory_safety/quasiabstract.v\
-  cfi/qa.v\
+  cfi/symbolic.v\
   cfi/cfi_rules.v\
   cfi/cfi.v\
   cfi/cfi_refinement.v\

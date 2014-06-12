@@ -23,8 +23,10 @@ Context {opss : machine_ops_spec ops}.
 Class abstract_params := {
   imemory : Type;
   imem_class :> partial_map imemory (word t) (word t);
+
   dmemory : Type;
   dmem_class :> partial_map dmemory (word t) (word t);
+
   registers : Type;
   reg_class :> partial_map registers (reg t) (word t)
 }.
@@ -89,14 +91,7 @@ Inductive step : state -> state -> Prop :=
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Load _ r1 r2)),
              forall (R1W : get reg r1 = Some w1),
-             forall (MEM1 : (*(get imem w1 = None /\ 
-                             get dmem w1 = Some w2) \/ 
-                            (get dmem w1 = None /\ 
-                             get imem w1 = Some w2)*)
-             (* disjointness of memories for abstract machine is guaranteed by the refinement
-                since it's there by default for the concrete machine
-                -> this will imply the determinism of this step *)
-                    get imem w1 = Some w2 \/ get dmem w1 = Some w2), 
+             forall (MEM1 : get imem w1 = Some w2 \/ get dmem w1 = Some w2), 
              forall (UPD : upd reg r2 w2 = Some reg'),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
 | step_store : forall imem dmem dmem' reg pc i r1 r2 w1 w2,
@@ -116,7 +111,8 @@ Inductive step : state -> state -> Prop :=
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Bnz _ r n)),
              forall (RW : get reg r = Some w),
-             let pc' := add_word pc (if w ==b Z_to_word 0 then Z_to_word 1 else imm_to_word n) in
+             let pc' := add_word pc (if w ==b Z_to_word 0 then Z_to_word 1 
+                                     else imm_to_word n) in
              step (imem,dmem,reg,pc,true) (imem,dmem,reg,pc',true)
 | step_jal : forall imem dmem reg reg' pc i r w b,
              forall (FETCH : get imem pc = Some i),
@@ -131,10 +127,12 @@ Inductive step : state -> state -> Prop :=
                  forall (INST : decode_instr i = Some (Jal _ r)),
                  forall (RW : get reg r = Some w),
                  forall (GETCALL : get_syscall w = Some sc),
-                 forall (CALL : sem sc (imem,dmem,reg,pc,true) = Some (imem,dmem',reg',pc .+1,true)),
+                 forall (CALL : sem sc (imem,dmem,reg,pc,true) = 
+                                Some (imem,dmem',reg',pc .+1,true)),
                  forall (VALID : valid_jmp pc w = b), 
                  step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc .+1,b).
 
+(*unused so far*)
 Hypothesis step_determ : forall s s' s'', step s s' -> step s s'' -> s' = s''.
 
 Inductive step_a : state -> state -> Prop :=
@@ -200,31 +198,39 @@ Proof.
       { destruct CONTRA. }
     - inversion STEP; subst; simpl;      
       repeat (  match goal with 
-          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,true) |- trace_has_cfi _ _ \/ _] =>
+          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,true) 
+             |- trace_has_cfi _ _ \/ _] =>
             left; intros si sj IN2; destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst
           | [ |- _ \/ cfi.succ (_,_,_,_,true) (_,_,_,_,true) = true ] =>
               right; simpl; rewrite FETCH, INST
           | [H: In2 _ _ [_] |- _ ] => destruct H
-          | [H: true = valid_jmp _ _ |- valid_jmp _ _ = true] => symmetry; assumption 
-          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,valid_jmp ?pc ?w) |- trace_has_cfi _ _ \/ _] =>
+          | [H: true = valid_jmp _ _ |- valid_jmp _ _ = true] => 
+            symmetry; assumption 
+          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,valid_jmp ?pc ?w) 
+             |- trace_has_cfi _ _ \/ _] =>
             remember (valid_jmp pc w) as validjmp; destruct validjmp
           | [H: false = valid_jmp _ _ |- trace_has_cfi _ _ \/ _] => 
             right; eexists; eexists; exists []; exists [];
             split; [simpl; auto | idtac]
-          | [ |- V _ _ /\ _ ] => split; [unfold V; simpl; rewrite FETCH, INST; auto | idtac]
-          | [ |- trace_has_cfi _ _ /\ _] => split; [intros csi csj IN2; destruct IN2 | idtac]
+          | [ |- V _ _ /\ _ ] => split;
+            [unfold V; simpl; rewrite FETCH, INST; auto | idtac]
+          | [ |- trace_has_cfi _ _ /\ _] => split; 
+            [intros csi csj IN2; destruct IN2 | idtac]
           | [ |- S _ ] => unfold S; eexists; split; [eauto | idtac]
           | [ |- ~ _] => intro FALSE; inversion FALSE as [s''' FALSE2];
             inversion FALSE2 as [FSTEP | FSTEP]; inversion FSTEP
-          | [H : get _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
+          | [H : get _ _ = _, H1 : get_syscall _ = _ 
+             |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
           | [ |- (_ ==b _) = true ] =>  apply eqb_refl
-          | [H : get _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
+          | [H : get _ _ = _, H1 : get_syscall _ = _ 
+             |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
                                      
               end).     
     destruct (w ==b Z_to_word 0);
-    unfold pc'; apply Bool.orb_true_iff; constructor (apply eqb_refl; apply eq_wordP). 
+    unfold pc'; apply Bool.orb_true_iff; 
+    constructor (apply eqb_refl; apply eq_wordP). 
   + apply interm_equiv_intermrev in INTERM.
     destruct (IHINTERM INIT) as [TSAFE | [sv1 [sv2 [hs [tl VIOLATION]]]]].
     - destruct STEP as [STEPA | STEP].
@@ -242,34 +248,43 @@ Proof.
         inversion INTERM. 
         inversion STEP; subst; simpl; apply interm_last_step in INTERM; subst;
         repeat (  match goal with 
-          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,true) |- trace_has_cfi _ _ \/ _] =>
-            left; intros si sj IN2; rewrite <- app_assoc in IN2; simpl in IN2; apply in2_reverse in IN2
+          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,true) 
+             |- trace_has_cfi _ _ \/ _] =>
+            left; intros si sj IN2; rewrite <- app_assoc in IN2; 
+          simpl in IN2; apply in2_reverse in IN2
           | [H: In2 _ _ _ |- _ ] => 
             rewrite <- app_assoc in H; simpl in H; apply in2_reverse in H
-          | [H: In2 _ _ _ \/ _ |- _] => destruct H as [? | [? ?]]; [apply TSAFE; assumption | subst; right]
+          | [H: In2 _ _ _ \/ _ |- _] => destruct H as [? | [? ?]]; 
+          [apply TSAFE; assumption | subst; right]
           | [ |- cfi.succ (_,_,_,_,true) (_,_,_,_,true) = _ ] =>
                simpl; rewrite FETCH, INST
           | [ |- (_ ==b _) = true] => apply eqb_refl; apply eq_wordP
-          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,valid_jmp ?pc ?w) |- trace_has_cfi _ _ \/ _] =>
+          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,valid_jmp ?pc ?w) 
+             |- trace_has_cfi _ _ \/ _] =>
             remember (valid_jmp pc w) as validjmp; destruct validjmp
-          | [H: true = valid_jmp _ _ |- valid_jmp _ _ = true] => symmetry; assumption
+          | [H: true = valid_jmp _ _ |- valid_jmp _ _ = true] => 
+            symmetry; assumption
           | [H: false = valid_jmp _ _, 
             H1: cfi.step (?Imem, ?Dmem, ?Reg, ?Pc, true) (?Imem', ?Dmem', ?Reg', ?Pc', false)
               |- trace_has_cfi _ _ \/ _] => 
-            right; exists (Imem,Dmem,Reg,Pc,true); exists (Imem',Dmem',Reg',Pc',false); exists xs; exists [];
-            split; [rewrite <- app_assoc; reflexivity | idtac]                                                              
-          | [ |- V _ _ /\ _ ] => split; [unfold V; simpl; rewrite FETCH, INST; auto | idtac]
+            right; exists (Imem,Dmem,Reg,Pc,true); 
+            exists (Imem',Dmem',Reg',Pc',false); exists xs; exists [];
+            split; [rewrite <- app_assoc; reflexivity | idtac] 
+          | [ |- V _ _ /\ _ ] => split; 
+            [unfold V; simpl; rewrite FETCH, INST; auto | idtac]
           | [ |- trace_has_cfi _ _ /\ _] => split
           | [H: trace_has_cfi _ ?Xs |- trace_has_cfi _ ?Xs] => assumption
           | [ |- trace_has_cfi _ [?S] ] => intros ? ? IN2; destruct IN2
           | [ |- S _ ] => unfold S; eexists; split; [eauto | idtac]
           | [ |- ~ _] => intro FALSE; inversion FALSE as [s''' FALSE2]; 
             inversion FALSE2 as [FSTEP | FSTEP]; inversion FSTEP
-          | [H : get _ _ = _, H1 : get_syscall _ = _ |- match _ with _ => _ end = _] =>
+          | [H : get _ _ = _, H1 : get_syscall _ = _ 
+             |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
                   end).
         destruct (w ==b Z_to_word 0);
-        unfold pc'; apply Bool.orb_true_iff; constructor (apply eqb_refl; apply eq_wordP).
+        unfold pc'; apply Bool.orb_true_iff; 
+        constructor (apply eqb_refl; apply eq_wordP).
    - (*Case a violation occurs in the trace*)
      induction xs using rev_ind. inversion INTERM. subst. clear IHxs.
      destruct VIOLATION as [LST [VIO [T1 [T2 STOPS]]]].
@@ -281,13 +296,10 @@ Proof.
      rewrite app_assoc in INTERM.
      rewrite <- Heqhs' in INTERM.
      apply interm_last_step in INTERM; subst.
-     assert (CONTRA: exists s'', cfi_step abstract_cfi_machine s' s'') by (eexists; eauto).
+     assert (CONTRA: exists s'', cfi_step abstract_cfi_machine s' s'') 
+       by (eexists; eauto).
      destruct (IRRED CONTRA).
 Qed.
-
-  
-    
-  
 
 End WithClasses.
 
