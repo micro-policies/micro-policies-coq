@@ -33,10 +33,37 @@ Context {t : machine_types}
         {ar : partial_map aregisters (reg t) (AbsSeal.value t)}
         {aregs : axioms ar}.
 
-(* At the moment we're considering identity mapping on keys;
-   we could consider relaxing this in the future, and go in
-   the direction of Maxime's "memory injections" *)
-(* Could consider doing this in relational style (inductive relation) *)
+(* At the moment we're considering (morally) the same key generation
+   at both levels and the identity mapping on keys. We could consider
+   relaxing this in the future, and go in the direction of Maxime's
+   "memory injections", just that extended to dynamic allocation. The
+   main problem with this extension is that key generation (and
+   allocation) is allowed to fail, and if the key generators at
+   different levels fail at different times both directions of the
+   refinement proof will break. Some possible solutions:
+
+   0. What I started doing here: use (morally) the same generator at
+      both levels; this is simple, but weak (it requires abstract
+      allocation to be fully concrete). It also seems hard to adapt to
+      Maxime's setting in which _different_ things need to be
+      generated at the different levels, especially if the abstract
+      block type is to be kept abstract.
+
+   1. Assume that the generators at the two levels have the same
+      failure behavior. This assumption should be enough to show
+      refinement. Is this the _minimal_ assumption needed to make the
+      proof go through? How easy/hard would be to justify it? It seems
+      anyway a weaker condition than 0.
+
+   2. Require that the generators are complete wrt the space of keys
+      they draw from, i.e. they are only allowed to return None if all
+      possible keys were already generated. This seems to imply 1,
+      without implying 0. Unclear whether this would work for
+      allocation. For one, this would expose the size of the heap, the
+      maximal size of the allocator's data structures, the size of the
+      color space, etc. at the abstract level. *)
+
+(* Could consider writing this in relational style (inductive relation) *)
 Definition refine_val_atom (v : AbsSeal.value t)
                            (a : atom (word t) SymSeal.stag) : Prop :=
   match v,a with
