@@ -236,8 +236,10 @@ Proof.
   intros aregs sregs sregs' r a v rr rv up.
   apply (@upd_inv _ _ _ _ sregspec) in up. destruct up as [[w tg] ge].
   eapply (refine_get_reg_inv _ _ _ _ rr) in ge. destruct ge as [v' [ge rva]].
-  apply upd_defined with (val':=v) in ge. destruct ge as [aregs' up].
+(*
+  apply (@upd_defined _ _ _ _ sregspec) with (val':=v) in ge. destruct ge as [aregs' up].
   exists aregs'. split. assumption.
+*)
 Admitted. (* TODO finish *)
 
 Lemma backward_simulation : forall ast sst sst',
