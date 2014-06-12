@@ -1,6 +1,6 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
-Require Import utils common symbolic.
+Require Import utils common symbolic.symbolic.
 Require Import symbolic_sealing sealing.classes sealing.abstract.
 
 Section RefinementSA.

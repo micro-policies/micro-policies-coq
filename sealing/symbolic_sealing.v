@@ -1,7 +1,7 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
 
-Require Import utils common symbolic. Import rules.
+Require Import utils common symbolic.symbolic. Import rules.
 Require Import classes.
 
 Set Implicit Arguments.
