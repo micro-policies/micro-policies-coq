@@ -19,19 +19,19 @@ Context {t : machine_types}
 
         {smemory : Type}
         {sm : partial_map smemory (word t) (atom (word t) SymSeal.stag)}
-        {smems : axioms sm}
+        {smemspec : axioms sm}
 
         {sregisters : Type}
         {sr : partial_map sregisters (reg t) (atom (word t) SymSeal.stag)}
-        {sregs : axioms sr}
+        {sregspec : axioms sr}
 
         {amemory : Type}
         {am : partial_map amemory (word t) (AbsSeal.value t)}
-        {amems : axioms am}
+        {amemspec : axioms am}
 
         {aregisters : Type}
         {ar : partial_map aregisters (reg t) (AbsSeal.value t)}
-        {aregs : axioms ar}.
+        {aregspec : axioms ar}.
 
 (* At the moment we're considering (morally) the same key generation
    at both levels and the identity mapping on keys. We could consider
@@ -138,11 +138,14 @@ Definition inc_key_opt k :=
   if k == max_key then None
                   else Some (inc_key k).
 
+Section WithDoNotation.
 Import DoNotation.
 
 Definition mkkey_f (ks : list key) : option (list key * key) :=
   do k <- inc_key_opt (kmax ks);
   Some (k::ks,k).
+
+End WithDoNotation.
 
 Hypothesis inc_max_not_in : forall ks,
   kmax ks =/= max_key ->
@@ -179,6 +182,65 @@ Definition refine_state (ast : astate) (sst : sstate) : Prop :=
   refine_reg areg sreg /\
   refine_pc apc spc /\
   refine_ins akeys skey.
+
+Ltac gdep x := generalize dependent x.
+Ltac split3 := split; [| split].
+Ltac split4 := split; [| split3].
+
+Lemma refine_pc_inv : forall apc spc tpc,
+  refine_pc apc spc@tpc ->
+  apc = spc.
+Proof.
+  intros apc spc tpc ref. unfold refine_pc in ref.
+  destruct tpc; try contradiction ref; assumption.
+Qed.
+
+Lemma refine_mem_look_inv : forall amem smem pc a,
+  refine_mem amem smem ->
+  get smem pc = Some a ->
+  exists v, get amem pc = Some v /\ refine_val_atom v a.
+Proof.
+  intros amem smem pc a ref sget.
+  unfold refine_mem in ref. specialize (ref pc).
+  rewrite sget in ref. destruct (get amem pc).
+  + eexists; split; now trivial.
+  + contradiction ref.
+Qed.
+
+Lemma refine_val_data : forall v w,
+  refine_val_atom v w@SymSeal.DATA ->
+  v = AbsSeal.VData _ w.
+Proof.
+  intros v w ref. destruct v; simpl in ref; try tauto; subst; reflexivity.
+Qed.
+
+Lemma backward_simulation : forall ast sst sst',
+  refine_state ast sst ->
+  SymSeal.step sst sst' ->
+  exists ast',
+    AbsSeal.step ast ast' /\
+    refine_state ast' sst'.
+Proof.
+  intros [amem aregs apc akeys]
+         sst sst' ref sstep. gdep ref.
+  destruct sstep; destruct sst as [smem sregs spc skey];
+    injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
+    intros [rmem [rreg [rpc ris]]].
+  - (* NOP case *)
+    apply refine_pc_inv in rpc; symmetry in rpc; subst.
+    apply (refine_mem_look_inv _ _ _ _ rmem) in PC.
+      destruct PC as [iv [PC riv]].
+    destruct ti; unfold Symbolic.next_state_pc,
+                         Symbolic.next_state in NEXT;
+                 try discriminate NEXT.
+    injection NEXT; intro H; subst; clear NEXT.
+    apply refine_val_data in riv. subst.
+    eexists. split.
+    + eapply AbsSeal.step_nop. reflexivity.
+      unfold AbsSeal.decode. rewrite PC. now apply INST.
+      reflexivity.
+    + split4; now trivial.
+Admitted.
 
 (* also refinement for our 3 system calls ... the abstract ones only
    have a description as step rules *)

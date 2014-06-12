@@ -37,15 +37,15 @@ Import Coq.Vectors.Vector.VectorNotations.
 
 Definition sealing_handler (mv : MVec stag) : option (RVec stag) :=
   match mv with
-  | mkMVec NOP       _ _ []           => Some (mkRVec none none)
-  | mkMVec CONST     _ _ []           => Some (mkRVec none DATA)
-  | mkMVec MOV       _ _ [tsrc]       => Some (mkRVec none tsrc)
-  | mkMVec (BINOP _) _ _ [DATA; DATA] => Some (mkRVec none DATA)
-  | mkMVec LOAD      _ _ [DATA; tmem] => Some (mkRVec none tmem)
-  | mkMVec STORE     _ _ [DATA; tsrc] => Some (mkRVec none tsrc)
-  | mkMVec JUMP      _ _ [DATA]       => Some (mkRVec none none)
-  | mkMVec BNZ       _ _ [DATA]       => Some (mkRVec none none)
-  | mkMVec JAL       _ _ [DATA]       => Some (mkRVec none DATA)
+  | mkMVec NOP       _ DATA []           => Some (mkRVec none none)
+  | mkMVec CONST     _ DATA []           => Some (mkRVec none DATA)
+  | mkMVec MOV       _ DATA [tsrc]       => Some (mkRVec none tsrc)
+  | mkMVec (BINOP _) _ DATA [DATA; DATA] => Some (mkRVec none DATA)
+  | mkMVec LOAD      _ DATA [DATA; tmem] => Some (mkRVec none tmem)
+  | mkMVec STORE     _ DATA [DATA; tsrc] => Some (mkRVec none tsrc)
+  | mkMVec JUMP      _ DATA [DATA]       => Some (mkRVec none none)
+  | mkMVec BNZ       _ DATA [DATA]       => Some (mkRVec none none)
+  | mkMVec JAL       _ DATA [DATA]       => Some (mkRVec none DATA)
   | mkMVec _         _ _ _            => None
   end.
 
