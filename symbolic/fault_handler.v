@@ -8,8 +8,8 @@ Import ListNotations.
 Require Import lib.utils lib.Coqlib.
 Require Import concrete.common.
 Require Import concrete.concrete.
-Require Import kernel.rules.
-Require Import kernel.refinement.
+Require Import symbolic.rules.
+Require Import symbolic.refinement_common.
 
 Section fault_handler.
 
@@ -35,18 +35,27 @@ Class fault_handler_params := {
   raddr : reg mt; (* Addressing register *)
 
   eq_code : reg mt -> reg mt -> reg mt -> code;
-  load_const : word mt -> reg mt -> code
+  load_const : word mt -> reg mt -> code;
+
+  (* Try to find whether tag in first register has the form [USER t
+     ic]. If so, puts 1 in second register, [t] in third register, and
+     [ic] in fourth register. Otherwise, puts 0 in second register. *)
+  extract_user_tag : reg mt -> reg mt -> reg mt -> reg mt -> code;
+
+  (* The inverse operation. Take a tag [t] in first register and a
+     boolean [ic] in the second register, and return the encoding of
+     [USER t ic] in the third register. *)
+  wrap_user_tag : reg mt -> reg mt -> reg mt -> code;
+
+  (* Take as input an M-vector of user tags in the corresponding
+     registers given above and runs the user-level fault-handler. If
+     the operation is allowed, put a 1 in [rb], and the user-level
+     result tags in [rtrpc] and [rtr]. *)
+  user_handler : code
+
 }.
 
 Context (fhp : fault_handler_params).
-
-Definition is_user s d :=
-  [Const mt (tag_to_imm USER) rb] ++
-  eq_code rb s d.
-
-Definition is_call s d :=
-  [Const mt (tag_to_imm CALL) rb] ++
-  eq_code rb s d.
 
 Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 
@@ -54,15 +63,6 @@ Definition kernel_regs := mvec_regs ++ [rb; ri; rtrpc; rtr; raddr].
 
 Definition bool_to_imm (b : bool) : imm mt :=
   if b then Z_to_imm 1 else Z_to_imm 0.
-
-Definition stag_compile (st : stag) : reg mt :=
-  match st with
-  | TPC => rtpc
-  | TINSTR => rti
-  | T1 => rt1
-  | T2 => rt2
-  | T3 => rt3
-  end.
 
 (* Test for value in [r]. If true (i.e., not zero), execute [t]. Otherwise, execute [f]. *)
 Definition if_ (r : reg mt) (t f : code) : code :=
@@ -75,26 +75,9 @@ Definition if_ (r : reg mt) (t f : code) : code :=
   eend ++
   t.
 
-Fixpoint ptag_compile (pt : ptag) : code :=
-  match pt with
-  | ISUSER st => is_user (stag_compile st) rb
-  | ISCALL st => is_call (stag_compile st) rb
-  | TRUE => [Const mt (bool_to_imm true) rb]
-  | FALSE => [Const mt (bool_to_imm false) rb]
-  | AND pt1 pt2 => ptag_compile pt1 ++ if_ rb (ptag_compile pt2) []
-  | OR pt1 pt2 => ptag_compile pt1 ++ if_ rb [] (ptag_compile pt2)
-  end.
-
 Definition inf_loop : code :=
   [Const mt (Z_to_imm 0) rb] ++
   [Bnz mt rb (Z_to_imm 0)].
-
-Definition srule_compile (sr : srule) : code :=
-  ptag_compile (allow sr) ++
-  if_ rb
-      ([Const mt (tag_to_imm USER) rtrpc] ++
-       [Const mt (tag_to_imm (result sr)) rtr])
-      [].
 
 Definition load_mvec : code :=
   fst (fold_left (fun acc r =>
@@ -102,7 +85,7 @@ Definition load_mvec : code :=
                     (c ++
                      load_const addr raddr ++
                      [Load mt raddr r],
-                     addr + Z_to_word 1))%word
+                     addr + Z_to_word 1))%w
                  mvec_regs
                  ([],Concrete.cache_line_addr (t := mt))).
 
@@ -132,11 +115,6 @@ Section invariant.
 Context {s : machine_ops_spec ops}.
 
 Variable fhstart : word mt.
-
-(* TODO: refactor this? *)
-
-Hypothesis kernel_tag_correct :
-  Concrete.TKernel = tag_to_word KERNEL.
 
 Let invariant (mem : Concrete.memory _)
               (regs : Concrete.registers _)
