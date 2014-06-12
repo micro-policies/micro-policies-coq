@@ -9,6 +9,8 @@ Require Import utils common.
 Require Import classes.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module AbsSeal.
 
