@@ -339,6 +339,8 @@ Admitted.
       eassumption.
     + split4; trivial. simpl.
       admit. (* still need to show that pc is still tagged DATA *)
+        (* TODO: at the end should try to change default away from DATA
+           and see if that breaks anything *)
       admit. (* need to reprove refinement on keys *)
     }
     + admit. (* seal *)
