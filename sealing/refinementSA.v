@@ -111,7 +111,7 @@ Qed.
 Definition refine_ins (keys : list key) (next_key : key) : Prop :=
   match mkkey_f keys with
   | Some (_, k) => k = next_key
-  | _           => True (* ??? *)
+  | _           => False (* ??? *)
   end.
 
 Definition astate := @AbsSeal.state t sk amemory aregisters.
@@ -268,29 +268,81 @@ Proof.
     (* copy paste, twice (CONST) *)
     apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
     apply bind_inv in NEXT. destruct NEXT as [sregs' [upd' NEXT]].
-    (* new *)
-    destruct t1; try discriminate stag. injection stag; intro; subst; clear stag.
     (* copy paste (all cases) *)
     injection NEXT; intro H; subst; clear NEXT.
     apply refine_val_data in riv. subst.
+    (* new *)
+    destruct t1; try discriminate stag. injection stag; intro; subst; clear stag.
     (* new - reading a register *)
     destruct (refine_get_reg_inv _ rreg RW) as [v [g rva]].
-    destruct v; try contradiction rva.
+    destruct v; try contradiction rva. simpl in rva. subst.
     (* the rest similar to CONST *)
-    simpl in upd'.
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= AbsSeal.VData (apc + 1)%w). reflexivity.
     eexists. split.
     + eapply AbsSeal.step_jal; [reflexivity | | | | | reflexivity].
       unfold AbsSeal.decode. rewrite PC. now apply INST.
       eassumption.
-      simpl in *. admit. (* follows from NOTCALL *)
+      simpl in *.
+        (* not the right way of doing it *)
+        destruct (mkkey_addr ==b w). discriminate NOTCALL.
+        destruct (seal_addr ==b w). discriminate NOTCALL.
+        destruct (unseal_addr ==b w). discriminate NOTCALL.
+        admit. (* follows from NOTCALL, damn it! *)
       eassumption.
     + split4; now trivial.
-  - admit. (* JAL - system call *)
+  - (* JAL - system call *)
+    (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
+    apply refine_pc_inv in rpc; symmetry in rpc; subst.
+    apply (refine_get_mem_inv _ rmem) in PC.
+      destruct PC as [iv [PC riv]].
+    destruct ti; simpl in ALLOWED; try discriminate ALLOWED.
+    (* copy paste (all cases) *)
+    apply refine_val_data in riv. subst.
+    (* new -- useful only for t1, rvec ignored by semantic bug *)
+    destruct t1; try discriminate ALLOWED.
+    injection ALLOWED; intro H; subst; clear ALLOWED.
+    (* same as for normal JAL - reading a register *)
+    destruct (refine_get_reg_inv _ rreg RW) as [v [g rva]].
+    destruct v; try contradiction rva. simpl in rva. subst.
+    (* figuring out which system call it was *)
+    simpl in GETCALL.
+    destruct (mkkey_addr ==b w);
+      [| destruct (seal_addr ==b w);
+      [| destruct (unseal_addr ==b w); [| discriminate GETCALL]]];
+      injection GETCALL; intro; subst; clear GETCALL.
+    + {(* mkkey *)
+    assert (mkkey_addr = w) by admit. subst.
+    simpl in CALL.
+    (* this should be easy, but it's not
+Lemma if_none_eq_some : forall A B C (a : {A} + {B}) b (c : option C),
+  ((if a then None else b) = Some c) -> (b = Some c).
 Admitted.
-
-(* also refinement for our 3 system calls ... the abstract ones only
-   have a description as step rules *)
+    Set Printing All.
+    apply if_none_eq_some in CALL.  WTF? *)
+    destruct (@equiv_dec (@key sk) (eq_setoid (@key sk))
+                 (@eq_key sk sko) skey (@max_key sk sko)). discriminate CALL.
+    apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
+    injection CALL; intro H; subst; clear CALL.
+    assert (exists new_keys, mkkey_f akeys = Some (new_keys, skey)) as H.
+      simpl. unfold refine_ins in ris.
+      destruct (mkkey_f akeys) as [[x1 x2] | ]. subst. eauto. contradiction.
+    destruct H as [new_key ?].
+    (* dealing with the result -- similar to CONST *)
+    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    instantiate (1:= (AbsSeal.VKey _ skey)). reflexivity.
+    eexists. split.
+    + eapply AbsSeal.step_mkkey; [reflexivity | | | | | reflexivity].
+      unfold AbsSeal.decode. rewrite PC. now apply INST.
+      assumption.
+      simpl; eassumption.
+      eassumption.
+    + split4; trivial. simpl.
+      admit. (* still need to show that pc is still tagged DATA *)
+      admit. (* need to reprove refinement on keys *)
+    }
+    + admit. (* seal *)
+    + admit. (* unseal *)
+Admitted.
 
 End RefinementSA.
