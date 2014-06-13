@@ -137,10 +137,10 @@ Proof.
   destruct tpc; try contradiction ref; assumption.
 Qed.
 
-Lemma refine_get_mem_inv : forall amem smem pc a,
+Lemma refine_get_mem_inv : forall amem smem w a,
   refine_mem amem smem ->
-  get smem pc = Some a ->
-  exists v, get amem pc = Some v /\ refine_val_atom v a.
+  get smem w = Some a ->
+  exists v, get amem w = Some v /\ refine_val_atom v a.
 Proof.
   intros amem smem pc a ref sget.
   unfold refine_mem in ref. specialize (ref pc).
@@ -149,10 +149,10 @@ Proof.
   + contradiction ref.
 Qed.
 
-Lemma refine_get_reg_inv : forall areg sreg pc a,
+Lemma refine_get_reg_inv : forall areg sreg r a,
   refine_reg areg sreg ->
-  get sreg pc = Some a ->
-  exists v, get areg pc = Some v /\ refine_val_atom v a.
+  get sreg r = Some a ->
+  exists v, get areg r = Some v /\ refine_val_atom v a.
 Admitted. (* same as above *)
 
 Lemma refine_val_data : forall v w,
@@ -223,7 +223,7 @@ Proof.
   destruct sstep; destruct sst as [smem sregs spc skey];
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
     intros [rmem [rreg [rpc ris]]].
-  - (* NOP case *)
+  - (* NOP *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     apply (refine_get_mem_inv _ rmem) in PC.
       destruct PC as [iv [PC riv]].
@@ -234,7 +234,7 @@ Proof.
     + eapply AbsSeal.step_nop; [reflexivity | | reflexivity].
       unfold AbsSeal.decode. rewrite PC. now apply INST.
     + split4; now trivial.
-  - (* CONST case *)
+  - (* CONST *)
     (* copy paste *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     apply (refine_get_mem_inv _ rmem) in PC.
@@ -259,7 +259,34 @@ Proof.
   - admit. (* STORE *)
   - admit. (* JUMP *)
   - admit. (* BNZ *)
-  - admit. (* JAL - not system call *)
+  - (* JAL - not system call *)
+    (* copy paste (all cases) *)
+    apply refine_pc_inv in rpc; symmetry in rpc; subst.
+    apply (refine_get_mem_inv _ rmem) in PC.
+      destruct PC as [iv [PC riv]].
+    destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
+    (* copy paste, twice (CONST) *)
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd' NEXT]].
+    (* new *)
+    destruct t1; try discriminate stag. injection stag; intro; subst; clear stag.
+    (* copy paste (all cases) *)
+    injection NEXT; intro H; subst; clear NEXT.
+    apply refine_val_data in riv. subst.
+    (* new - reading a register *)
+    destruct (refine_get_reg_inv _ rreg RW) as [v [g rva]].
+    destruct v; try contradiction rva.
+    (* the rest similar to CONST *)
+    simpl in upd'.
+    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    instantiate (1:= AbsSeal.VData (apc + 1)%w). reflexivity.
+    eexists. split.
+    + eapply AbsSeal.step_jal; [reflexivity | | | | | reflexivity].
+      unfold AbsSeal.decode. rewrite PC. now apply INST.
+      eassumption.
+      simpl in *. admit. (* follows from NOTCALL *)
+      eassumption.
+    + split4; now trivial.
   - admit. (* JAL - system call *)
 Admitted.
 
