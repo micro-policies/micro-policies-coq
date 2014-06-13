@@ -129,13 +129,18 @@ Ltac gdep x := generalize dependent x.
 Ltac split3 := split; [| split].
 Ltac split4 := split; [| split3].
 
+Lemma refine_pc_inv_with_tag : forall apc spc tpc,
+  refine_pc apc spc@tpc ->
+  apc = spc /\ tpc = SymSeal.DATA.
+Proof.
+  intros apc spc tpc ref. unfold refine_pc in ref.
+  destruct tpc; try contradiction ref; now eauto.
+Qed.
+
 Lemma refine_pc_inv : forall apc spc tpc,
   refine_pc apc spc@tpc ->
   apc = spc.
-Proof.
-  intros apc spc tpc ref. unfold refine_pc in ref.
-  destruct tpc; try contradiction ref; assumption.
-Qed.
+Proof. intros ? ? ? H. apply refine_pc_inv_with_tag in H. tauto. Qed.
 
 Lemma refine_get_mem_inv : forall amem smem w a,
   refine_mem amem smem ->
@@ -293,10 +298,12 @@ Proof.
     + split4; now trivial.
   - (* JAL - system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
-    apply refine_pc_inv in rpc; symmetry in rpc; subst.
     apply (refine_get_mem_inv _ rmem) in PC.
       destruct PC as [iv [PC riv]].
     destruct ti; simpl in ALLOWED; try discriminate ALLOWED.
+    (* slightly more general than usual *)
+    destruct (refine_pc_inv_with_tag _ _ _ rpc) as [rpc' ?].
+      symmetry in rpc'. clear rpc. subst.
     (* copy paste (all cases) *)
     apply refine_val_data in riv. subst.
     (* new -- useful only for t1, rvec ignored by semantic bug *)
@@ -337,14 +344,17 @@ Admitted.
       assumption.
       simpl; eassumption.
       eassumption.
-    + split4; trivial. simpl.
-      admit. (* still need to show that pc is still tagged DATA *)
-        (* TODO: at the end should try to change default away from DATA
-           and see if that breaks anything *)
-      admit. (* need to reprove refinement on keys *)
+    + split4; trivial. reflexivity.
+      (* TODO: need to reprove refinement on keys, this doesn't seem easy
+         at all with the current definition *)
+      unfold refine_ins.
+      admit.
     }
     + admit. (* seal *)
     + admit. (* unseal *)
 Admitted.
+
+(* TODO: at should try to change default away from DATA and see if
+    that breaks anything *)
 
 End RefinementSA.
