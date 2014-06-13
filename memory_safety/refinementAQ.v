@@ -1,7 +1,7 @@
 (* Why is common in concrete? *)
 (* BCP: I wondered this too! *)
 Require Import ZArith.
-
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import utils concrete.common memory_safety.abstract memory_safety.quasiabstract.
 
 Require Import EquivDec.
@@ -9,6 +9,14 @@ Require Import EquivDec.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
+
+(* Extending the default ssr done tactic with eassumption *)
+Ltac done :=
+  trivial; hnf; intros; solve
+   [ do ![solve [trivial | apply: sym_equal; trivial]
+         | discriminate | contradiction | split | eassumption]
+   | case not_locked_false_eq_true; assumption
+   | match goal with H : ~ _ |- _ => solve [case H; trivial] end ].
 
 Section refinement.
 
@@ -94,9 +102,9 @@ Proof.
 destruct f; intros [x1 | b1 base1 nonce1 off1 mi_b1]
   [x2 | b2 base2 nonce2 off2 mi_b2] H; try discriminate H;
 try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor.
-+ now rewrite binop_addDr; constructor.
-+ now rewrite binop_addDl; constructor.
-+ now rewrite binop_subDl; constructor.
++ by rewrite binop_addDr; constructor.
++ by rewrite binop_addDl; constructor.
++ by rewrite binop_subDl; constructor.
 + simpl in *.
 (* We hit here a bug in destruct (and probably pattern) *)
 (* ssreflect's case tactic works fine... *)
@@ -106,10 +114,9 @@ try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor
          (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce; try discriminate.
   injection H; intros <- <-.
   eexists.
-  (* Why is * not rewriting in mi_b1? *)
-  rewrite (miIr mi_b1 mi_b2) in *.
-    rewrite (miIr mi_b1 mi_b2) in mi_b1.
-      rewrite Z.eqb_refl.
+  move: (mi_b1) => mi_b1'.
+  rewrite {mi_b1'}(miIr mi_b1' mi_b2) // in mi_b1 *.
+  rewrite Z.eqb_refl.
       split; try reflexivity.
       (* This has a silly behavior:
          apply eqb_true_iff in eq_nonce.
@@ -117,18 +124,17 @@ try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor
       assert (eq_base : base1 = base2).
         congruence.
       rewrite eq_base.
-      rewrite binop_subDl, binop_subDr.
-      rewrite addwA,subww,add0w.
+      rewrite binop_subDl binop_subDr.
+      rewrite addwA subww add0w.
       constructor.
-    now apply eqb_true_iff.
-  now apply eqb_true_iff.
+    by apply eqb_true_iff.
 + simpl in *.
   destruct (Z.eqb_spec b1 b2) as [eq_b|neq_b].
-    rewrite eq_b, mi_b2 in mi_b1.
+    rewrite eq_b mi_b2 in mi_b1.
     injection mi_b1 as <- <-.
     rewrite eqb_refl in H; injection H as <- <-.
     eexists; split; try reflexivity.
-    now rewrite binop_eq_add2l; constructor.
+    by rewrite binop_eq_add2l; constructor.
   destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
        (SetoidDec.eq_setoid (QuasiAbstract.block mt))
        (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce.
@@ -136,11 +142,11 @@ try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor
      apply eqb_true_iff in eq_nonce.
   *)
     assert (eq_nonce' : nonce1 = nonce2).
-      now apply eqb_true_iff.
+      by apply eqb_true_iff.
     rewrite (miIr mi_b1 mi_b2 eq_nonce') in neq_b; congruence.
   injection H as <- <-.
   eexists; split; try reflexivity.
-now constructor.
+by constructor.
 Qed.
 
 Lemma refine_ptr_inv w n b off base nonce :
@@ -173,9 +179,9 @@ destruct pt as [b' off'].
 inversion rpt as [ | b base nonce off mi_b eq_b eq_w1 eq_nonce (* eq_off *)].
 rewrite <-eq_nonce,<-eq_b,<-H in *.
 specialize (rmem b base nonce off mi_b).
-rewrite eq_w1, get_w in rmem.
+rewrite eq_w1 get_w in rmem.
 destruct (Abstract.getv amem (b, off)) eqn:get_b; try contradiction.
-now inversion rmem.
+by inversion rmem.
 Qed.
 
 Lemma getv_mem base off v : Abstract.getv amem (base, off) = Some v ->
@@ -184,7 +190,7 @@ Lemma getv_mem base off v : Abstract.getv amem (base, off) = Some v ->
 Proof.
 unfold Abstract.getv; simpl.
 destruct (PartMaps.get amem base) as [fr|]; try discriminate.
-now intros index_fr; exists fr; split.
+by intros index_fr; exists fr; split.
 Qed.
 
 Lemma get_mem_memv base off v fr : PartMaps.get amem base = Some fr ->
@@ -193,7 +199,7 @@ Lemma get_mem_memv base off v fr : PartMaps.get amem base = Some fr ->
 Proof.
 intros get_base index_off.
 unfold Abstract.getv.
-now simpl; rewrite get_base.
+by simpl; rewrite get_base.
 Qed.
 
 Lemma refine_memory_get qamem (w1 w2 w3 w4 : word mt) pt ty :
@@ -225,7 +231,7 @@ Lemma size_upd_eq amem' b fr fr' i x :
 Proof.
 intros get upd_list upd.
 unfold size.
-now rewrite (PartMaps.get_upd_eq upd), (length_update_list_Z upd_list), get.
+by rewrite (PartMaps.get_upd_eq upd) (length_update_list_Z upd_list) get.
 Qed.
 
 Lemma size_upd_neq amem' b b' fr : PartMaps.upd amem b fr = Some amem' ->
@@ -237,7 +243,7 @@ unfold size.
 simpl.
 generalize (PartMaps.get_upd_neq neq_bb' upd). simpl.
 unfold Abstract.frame. simpl.
-intros H. now rewrite H.
+intros H. by rewrite H.
 Qed.
 
 Lemma size_getv b off v :
@@ -248,7 +254,7 @@ unfold Abstract.getv, size; simpl.
 destruct (PartMaps.get amem b); try discriminate.
 intros index_off.
 apply index_list_Z_Some in index_off.
-now destruct index_off.
+by destruct index_off.
 Qed.
 
 Lemma size_update b fr base nonce off fr' x :
@@ -260,8 +266,8 @@ Proof.
 unfold size; intros -> mi_b upd_x.
 assert (H : 0 <= off < Z.of_nat (length fr)).
   eapply update_list_Z_Some.
-  now exists fr'; eassumption.
-now destruct H.
+  by exists fr'; eassumption.
+by destruct H.
 Qed.
 
 Lemma refine_memory_upd qamem qamem' w1 w2 pt ty n fr fr' x :
@@ -287,28 +293,28 @@ destruct (b =? fst pt)%Z eqn:eq_b.
     rewrite (update_list_Z_spec update_pt).
     assert (eq_w1 : (base + snd pt)%w = w1).
       replace pt with (fst pt, snd pt) in rpt.
-        now inversion rpt; congruence.
-      now destruct pt.
+        by inversion rpt; congruence.
+      by destruct pt.
     rewrite eq_w1.
     rewrite (PartMaps.get_upd_eq upd_w1).
     assert (eq_n : n = nonce).
       replace pt with (fst pt, snd pt) in rpt.
-        now inversion rpt; congruence.
-      now destruct pt.
+        by inversion rpt; congruence.
+      by destruct pt.
     congruence.
   assert (neqw_off : word_to_Z off <> word_to_Z (snd pt)).
-    now intros H; apply word_to_Z_inj in H.
+    by intros H; apply word_to_Z_inj in H.
   rewrite <-(update_list_Z_spec2 update_pt neqw_off).
   specialize (rmem b base nonce off mi_b).
   unfold Abstract.getv in rmem.
   simpl in rmem.
-  rewrite eq_b, get_pt in rmem.
+  rewrite eq_b get_pt in rmem.
   assert (neq_w1 : (base + off)%w <> w1).
     destruct pt as [b' off']; simpl in *.
     rewrite eq_b in mi_b.
     rewrite (refine_ptr_inv rpt mi_b).
-    now intros eq_w1; apply addwI in eq_w1; congruence.
-  now rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
+    by intros eq_w1; apply addwI in eq_w1; congruence.
+  by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
 apply Z.eqb_neq in eq_b.
 specialize (rmem b base nonce off mi_b).
 unfold Abstract.getv in *.
@@ -334,13 +340,13 @@ destruct (eq_word (base + off) w1) as [eq_w1|neq_w1].
     destruct pt as [b' off']; simpl in *; revert eq_w1.
     inversion rpt as [|? ? ? ? mi_pt].
     assert (lt_off' : word_to_Z off' < size amem b').
-      now apply (size_update get_pt mi_pt update_pt).
+      by apply (size_update get_pt mi_pt update_pt).
     intros overlap.
     assert (eq_b' := mi_disjoints mi_b mi_pt overlap lt_off lt_off').
     congruence.
   destruct (PartMaps.upd_inv upd_w1) as [? get_w1].
-  now rewrite get_w1 in rmem.
-now rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
+  by rewrite get_w1 in rmem.
+by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
 Qed.
 
 Definition refine_registers (aregs : Abstract.registers mt)
@@ -357,7 +363,7 @@ Lemma refine_registers_val aregs qaregs r v : refine_registers aregs qaregs ->
 Proof.
 intros rregs get_r; specialize (rregs r); revert rregs.
 rewrite get_r; destruct (PartMaps.get aregs r); try easy.
-now destruct v as [w [ty|]]; try easy; exists w; exists ty.
+by destruct v as [w [ty|]]; try easy; exists w; exists ty.
 Qed.
 
 Lemma refine_registers_get aregs qaregs (n : common.reg mt) w ty :
@@ -370,7 +376,7 @@ generalize (rregs n).
 rewrite qa_get.
 destruct (PartMaps.get aregs n); try easy.
 simpl; intros rvx.
-now exists v; split.
+by exists v; split.
 Qed.
 
 Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
@@ -382,7 +388,7 @@ intros rregs get_n.
 specialize (rregs n).
 rewrite get_n in rregs.
 destruct (PartMaps.get aregs n); try contradiction.
-now inversion rregs.
+by inversion rregs.
 Qed.
 
 Lemma refine_registers_get_ptr aregs qaregs (n : common.reg mt) w b :
@@ -397,8 +403,8 @@ rewrite qa_get.
 destruct (PartMaps.get aregs n); try easy.
 simpl; intros rvx.
 destruct v as [|pt].
-  now inversion rvx.
-now exists pt; split.
+  by inversion rvx.
+by exists pt; split.
 Qed.
 
 Lemma refine_registers_upd aregs qaregs qaregs' r v w ty :
@@ -419,10 +425,10 @@ exists aregs'; split; try easy.
 intros r'.
 destruct (eq_reg r' r) as [->|neq_rr'].
   rewrite (PartMaps.get_upd_eq upd_r_a).
-  now rewrite (PartMaps.get_upd_eq upd_r_qa).
+  by rewrite (PartMaps.get_upd_eq upd_r_qa).
 rewrite (PartMaps.get_upd_neq neq_rr' upd_r_a).
 rewrite (PartMaps.get_upd_neq neq_rr' upd_r_qa).
-now apply rregs.
+by apply rregs.
 Qed.
 
 Definition refine_state (ast : Abstract.state mt) (qast : QuasiAbstract.state mt) :=
@@ -450,15 +456,17 @@ intros [_ rsc] sem_asc rst.
 specialize (rsc ast qast rst); revert rsc.
 rewrite sem_asc.
 destruct (Abstract.sem asc ast) as [ast'|]; try easy.
-now intros rst'; exists ast'; split.
+by intros rst'; exists ast'; split.
 Qed.
 
 Axiom refine_syscalls : forall amem, meminj amem -> list (Abstract.syscall mt) -> list (QuasiAbstract.syscall mt) -> Prop.
 
+(*
 Axiom refine_syscalls_get : forall asc qasc w sc, refine_syscalls mi asc qasc ->
   QuasiAbstract.get_syscall qasc w = Some sc ->
   exists sc', Abstract.get_syscall asc w = Some sc'
     /\ refine_syscall sc' sc.
+*)
 
 End memory_injections.
 
@@ -470,12 +478,12 @@ Lemma refine_pc_inv amem (mi : meminj amem) nonce apcb apci pc :
   exists base, mi apcb = Some (base, nonce) /\ (base + apci)%w = pc.
 Proof.
 intros H; inversion H.
-now exists base; split.
+by exists base; split.
 Qed.
 
 Lemma backward_simulation ast (mi : meminj (Abstract.mem ast)) qast qast' asc qasc :
   refine_state mi ast qast -> refine_syscalls mi asc qasc -> QuasiAbstract.step qasc qast qast' ->
-  exists ast', Abstract.step asc ast ast' /\ refine_state mi ast' qast'.
+  exists ast', Abstract.step ast ast' /\ refine_state mi ast' qast'.
 Proof.
 destruct ast as [amem aregs [apcb apci]].
 intros rst rsc step_qabs.
@@ -492,56 +500,52 @@ repeat match goal with
 repeat match goal with
   MEM1 : PartMaps.get ?mem ?w1 = Some ?v |- _ =>
     match v with
-    | _@M(_,INT) => eapply (refine_memory_get_int rmem) in MEM1; [|now eauto]
-    | _ => eapply (refine_memory_get rmem) in MEM1; [|now eauto]; destruct MEM1 as (? & ? & ? & ? & ?)
+    | _@M(_,INT) => eapply (refine_memory_get_int rmem) in MEM1; [|by eauto]
+    | _ => eapply (refine_memory_get rmem) in MEM1; [|by eauto]; destruct MEM1 as (? & ? & ? & ? & ?)
     end
   end;
 try match goal with
   | BINOP : QuasiAbstract.lift_binop ?f ?v1 ?v2 = Some _ |- _ =>
-    eapply refine_binop in BINOP; [|now eauto|now eauto]; destruct BINOP as (? & ? & ?)
+    eapply refine_binop in BINOP; [|by eauto|by eauto]; destruct BINOP as (? & ? & ?)
   end;
 try match goal with
   | UPD : PartMaps.upd ?reg ?r ?v = Some _ |- _ =>
-    eapply (refine_registers_upd rregs) in UPD; [|now eauto]; destruct UPD as (? & ? & ?)
+    eapply (refine_registers_upd rregs) in UPD; [|by eauto]; destruct UPD as (? & ? & ?)
   | |- _ => idtac
   end;
 try match goal with
   | UPD : PartMaps.upd ?mem ?w1 ?v = Some _ |- _ =>
-    eapply (refine_memory_upd rmem) in UPD; [|now eauto|now eauto|now eauto|now eauto]; destruct UPD as (? & ? & ?)
+    eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?)
   end;
 try match goal with
   | GETCALL : QuasiAbstract.get_syscall ?qasc ?w = Some _,
     CALL : QuasiAbstract.sem ?sc ?st = Some _ |- _ =>
     eapply (refine_syscalls_get rsc) in GETCALL; destruct GETCALL as (? & ? & ?);
-    eapply refine_syscall_sem in CALL; [|now eauto|now eauto]; destruct CALL as (? & ? & ?)
+    eapply refine_syscall_sem in CALL; [|by eauto|by eauto]; destruct CALL as (? & ? & ?)
   end;
 repeat try match goal with
   | def := _ |- _ => unfold def
   end; try (eexists; split;
-[econstructor (now eauto)
+[econstructor (by eauto)
 | repeat (try split; try eassumption);
-now simpl; rewrite <-rpci, <-addwA; econstructor; eassumption]).
+by simpl; rewrite <-rpci, <-addwA; econstructor; eassumption]).
 
 (* STORE *)
 destruct (valid_update H4 x) as (? & ?).
-eapply (refine_memory_upd rmem) in UPD; [|now eauto|now eauto|now eauto|now eauto]; destruct UPD as (? & ? & ?).
+eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?).
 eexists; split;
-[econstructor (now eauto)
+[econstructor (by eauto)
 | repeat (try split; try eassumption);
-now simpl; rewrite <-rpci, <-addwA; econstructor; eassumption].
+by simpl; rewrite <-rpci, <-addwA; econstructor; eassumption].
 
 (* The side condition failed to be discharged *)
 eapply (refine_registers_upd rregs) in UPD.
- destruct UPD as (? & ? & ?).
+destruct UPD as (? & ? & ?).
+by eexists; split; econstructor (by eauto).
+by rewrite -rpci -addwA; constructor.
 
-Focus 2.
-rewrite <-rpci, <-addwA.
-econstructor; eassumption.
-
-eexists; split;
-[econstructor (now eauto)
-| repeat (try split; try eassumption);
-now simpl; rewrite <-rpci, <-addwA; constructor].
+(* TODO: deal only with alloc and free syscalls *)
+admit.
 Qed.
 
 (*

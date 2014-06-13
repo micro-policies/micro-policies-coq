@@ -1,5 +1,6 @@
 Require Import List Arith ZArith.
 Require Import Coq.Classes.SetoidDec.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.utils concrete.common.
 
 Import DoNotation.
@@ -63,7 +64,7 @@ Local Coercion Z_to_word : Z >-> word.
 Open Scope word_scope.
 
 Local Notation word := (word t).
-Local Notation "x .+1" := (fst x, (add_word (snd x) (Z_to_word 1))) (at level 9).
+Local Notation "x .+1" := (fst x, (add_word (snd x) (Z_to_word 1))).
 
 Record state := mkState {
   mem : memory;
@@ -117,9 +118,6 @@ Definition malloc : syscall :=
 Variable othercalls : list syscall.
 
 Let table := malloc :: othercalls.
-
-Definition get_syscall (addr : word) : option syscall :=
-  find (fun sc => address sc ==b addr) table.
 
 Definition getv mem (ptr : pointer) :=
   match get mem (fst ptr) with
@@ -215,16 +213,7 @@ Inductive step : state -> state -> Prop :=
              forall (INST :     decode_instr i = Some (Jal _ r)),
              forall (RW :       get reg r = Some (ValPtr pt)),
              forall (UPD :      upd reg ra (ValPtr (pc.+1)) = Some reg'),
-             step (mkState mem reg pc) (mkState mem reg' pt)
-(* CH: How about having only rules specialized for alloc and free,
-       and not further exposing the system call mechanism? *)
-| step_syscall : forall mem reg pc i r w st' sc,
-                 forall (PC :      getv mem pc = Some (ValInt i)),
-                 forall (INST :    decode_instr i = Some (Jal _ r)),
-                 forall (RW :      get reg r = Some (ValInt w)),
-                 forall (GETCALL:  get_syscall w = Some sc),
-                 forall (CALL :    sem sc (mkState mem reg pc) = Some st'),
-                 step (mkState mem reg pc) st'.
+             step (mkState mem reg pc) (mkState mem reg' pt).
 
 Variable initial_block : block.
 
