@@ -81,7 +81,7 @@ endif
 ######################
 
 VFILES:=sealing/refinementSA.v\
-  sealing/symbolic_sealing.v\
+  sealing/symbolic.v\
   sealing/abstract.v\
   sealing/classes.v\
   sfi/list_utils.v\

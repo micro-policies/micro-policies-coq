@@ -46,5 +46,5 @@ sfi/list_utils.v
 
 sealing/classes.v
 sealing/abstract.v
-sealing/symbolic_sealing.v
+sealing/symbolic.v
 sealing/refinementSA.v

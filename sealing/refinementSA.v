@@ -2,8 +2,7 @@ Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
 Require Import utils common. Import PartMaps.
 Require Import symbolic.symbolic.
-Require Import symbolic_sealing (* TODO: rename this *)
-               sealing.classes sealing.abstract.
+Require Import sealing.classes sealing.symbolic sealing.abstract.
 
 (* At the moment we're considering (morally) the same key generation
    partial function at both levels and the identity mapping on keys.
