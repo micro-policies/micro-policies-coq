@@ -308,6 +308,8 @@ Proof.
     (* same as for normal JAL - reading a register *)
     destruct (refine_get_reg_inv _ rreg RW) as [v [g rva]].
     destruct v; try contradiction rva. simpl in rva. subst.
+    (* done with RW *)
+    clear RW.
     (* figuring out which system call it was *)
     simpl in GETCALL.
     destruct (mkkey_addr ==b w);
@@ -352,8 +354,63 @@ Proof.
                (@max_key sk sko)). contradiction.
       reflexivity.
     }
-    + admit. (* seal *)
-    + admit. (* unseal *)
+    + {(* seal *)
+    assert (seal_addr = w) by admit. subst.
+    (* break up the effects of the system call *)
+    simpl in CALL.
+    apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
+    destruct tp; try discriminate CALL.
+    apply bind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
+    destruct tk; try discriminate CALL.
+    apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
+    injection CALL; intro H; subst; clear CALL.
+    (* 2 register lookups *)
+    destruct (refine_get_reg_inv _ rreg gp) as [vp [ggp H]].
+    destruct vp; try contradiction H. simpl in H. subst.
+    destruct (refine_get_reg_inv _ rreg gk) as [vk [ggk H]].
+    destruct vk; try contradiction H. simpl in H. subst.
+    (* register update *)
+    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    instantiate (1:= AbsSeal.VSealed p k). split; reflexivity. (* extra split *)
+    eexists. split.
+    + eapply AbsSeal.step_seal; [reflexivity | | | | | | reflexivity].
+      unfold AbsSeal.decode. rewrite PC. now apply INST.
+      eassumption. eassumption. eassumption. eassumption.
+    + split4; now trivial.
+    }
+    + {(* unseal -- very similar to seal *)
+    assert (unseal_addr = w) by admit. subst.
+    (* break up the effects of the system call *)
+    simpl in CALL.
+    apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
+    destruct tp; try discriminate CALL.
+    apply bind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
+    destruct tk; try discriminate CALL.
+    (* additional: equality check between keys *)
+    destruct (@equiv_dec (@key sk) (eq_setoid (@key sk)) (@eq_key sk sko) k k0);
+      [| discriminate CALL].
+    apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
+    injection CALL; intro H; subst; clear CALL.
+    (* 2 register lookups *)
+    destruct (refine_get_reg_inv _ rreg gp) as [vp [ggp H]].
+    destruct vp; try contradiction H. simpl in H.
+      destruct H; subst. (* extra destruct *)
+    destruct (refine_get_reg_inv _ rreg gk) as [vk [ggk H]].
+    destruct vk; try contradiction H. simpl in H. subst.
+    (* register update *)
+    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    instantiate (1:= AbsSeal.VData p). reflexivity.
+    eexists. split.
+    + eapply AbsSeal.step_unseal; [reflexivity | | | | | | reflexivity].
+      unfold AbsSeal.decode. rewrite PC. now apply INST.
+      eassumption. eassumption.
+      rewrite e. eassumption. eassumption.
+    + split4; now trivial.
+    }
 Admitted.
+
+(* Q: Would we get an easier proof if we defined the refinement
+   relation as a function from symbolic to abstract, and use
+   computation in the direction of forward refinement? *)
 
 End RefinementSA.

@@ -105,10 +105,10 @@ Definition unseal (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc next_key := s in
   match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
-    if key == key' then None
-    else
+    if key == key' then
       do reg' <- upd reg syscall_ret (payload@DATA);
       Some (Symbolic.State mem reg' pc next_key)
+    else None
   | _, _ => None
   end.
 
