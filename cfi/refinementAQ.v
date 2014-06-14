@@ -11,6 +11,56 @@ Require Coq.Vectors.Vector.
 
 Set Implicit Arguments.
 
+Module Map.
+  Import PartMaps.
+
+Section Mappable.
+  Variable M1 M2 K V1 V2 : Type.
+
+  
+  Class mappable (pm1 : partial_map M1 K V1) (pm2 : partial_map M2 K V2) := {
+
+    map : (V1 -> V2) -> M1 -> M2;
+
+    map_exists : forall (f : V1 -> V2) (m1 : M1),
+                   exists (m2 : M2), map f m1 = m2;
+
+    map_correctness: forall (f : V1 -> V2) (m1 : M1) (k : K),
+                       get (map f m1) k = option_map f (get m1 k);
+
+    map_domains: forall (f : V1 -> V2) (m1 : M1) (k : K) (v : V2),
+                   get (map f m1) k = Some v ->
+                   exists (v' : V1), get m1 k = Some v'
+    }.
+End Mappable. 
+
+End Map.
+
+Module Filter.
+  Import PartMaps.
+
+Section Filter.
+  Variable M K V : Type.
+
+  
+  Class filterable (pm : partial_map M K V) := {
+
+    filter : (V -> bool) -> M -> M;
+    
+    filter_exists : forall (f : V -> bool) (m : M),
+                      exists (m' : M), filter f m = m';
+
+    filter_correctness: forall (f : V -> bool) (m : M) (k : K),
+                       get (filter f m) k = match get m k with 
+                                              | Some v => 
+                                                if f v then Some v else None
+                                              | None => None
+                                            end
+    }.
+End Filter. 
+
+End Filter.
+
 Section Refinement.
 Import PartMaps.
 
@@ -24,10 +74,13 @@ Context {t : machine_types}
         {smemory : Type}
         {sm : partial_map smemory (word t) (atom (word t) (@cfi_tag t))}
         {smems : axioms sm}
+        {smemory_map : Map.mappable sm (@Abstract.dmem_class t ap)}
+        {smemory_filter : Filter.filterable sm}
 
         {sregisters : Type}
         {sr : partial_map sregisters (reg t) (atom (word t) (@cfi_tag t))}
-        {sregs : axioms sr}.
+        {sregs : axioms sr}
+        {sregs_map : Map.mappable sr (@Abstract.reg_class t ap)}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
@@ -37,12 +90,9 @@ Definition sym_params := SymbolicCFI.sym_cfi valid_jmp.
 Variable atable : list (Abstract.syscall t).
 Variable stable : list (@Symbolic.syscall t sym_params).
 
-(*this should be replaced, when step_a is defined*)
-Variable step_a : @Symbolic.state t sym_params -> @Symbolic.state t sym_params -> Prop.
-
 (*Probably not needed here*)
 Definition amachine := Abstract.abstract_cfi_machine atable valid_jmp.
-Definition smachine := SymbolicCFI.symbolic_cfi_machine stable step_a.
+Definition smachine := SymbolicCFI.symbolic_cfi_machine stable.
 
 (*Refinement related definitions*)
 Definition refine_dmemory (admem : Abstract.dmemory t)
@@ -354,7 +404,7 @@ Ltac match_inv :=
   | H : True |- _ => clear H
   end.
 
-
+(*TODO: Syscalls and clean up of this mess*)
 Theorem backwards_simulation ast sst sst' :
   refine_state ast sst ->
   Symbolic.step stable sst sst' ->
@@ -596,5 +646,166 @@ Proof.
     (*syscall correctness*)
      (*not sure if provable right now*)
 Admitted.   
+    
+Definition untag_atom (a : atom (word t) (@cfi_tag t)) := common.val a.
 
+Lemma reg_refinement_preserved_by_equiv : 
+  forall areg reg reg',
+    refine_registers areg reg ->
+    SymbolicCFI.reg_equiv reg reg' ->
+    exists areg',
+      refine_registers areg' reg'.
+Proof.
+  intros areg reg reg' REF EQUIV.
+  unfold SymbolicCFI.reg_equiv in EQUIV.
+  unfold refine_registers in REF.
+  destruct (Map.map_exists untag_atom reg') as [areg' ?].
+  assert (MAP := Map.map_correctness untag_atom reg'). 
+  exists areg'. subst.
+  intros r v.
+  split.
+  - intro GET. destruct GET as [ut GET].
+    assert (MAP' := MAP r).
+    rewrite GET in MAP'.
+    simpl in MAP'. assumption.
+  - intro GET'. 
+    assert (MAP' := MAP r). 
+    rewrite GET' in MAP'.
+    remember (get reg' r) as a.
+    destruct a as [[v' tg]|]. 
+    + simpl in MAP'. inversion MAP'.
+      eexists; eauto.
+    + simpl in MAP'. discriminate.
+Qed.
+
+Lemma imem_refinement_preserved_by_equiv :
+  forall imem mem mem',
+    refine_imemory imem mem ->
+    SymbolicCFI.mem_equiv mem mem' ->
+    refine_imemory imem mem'.
+Proof.
+  intros imem mem mem' REF EQUIV.
+  unfold SymbolicCFI.mem_equiv in EQUIV.
+  intros addr v.
+  split.
+  - destruct (REF addr v) as [MEMSA MEMAS].
+    intro GET.
+    assert (EQUIV' := EQUIV addr). clear EQUIV.
+    destruct (get mem addr) eqn:GET'.
+    + assert (GET'' := GET).
+      destruct GET as [id GET].
+      rewrite GET in EQUIV'. inversion EQUIV'; subst. 
+      * simpl in H0. congruence.
+      * rewrite GET in GET''. apply MEMSA in GET''. assumption.
+    + destruct (get mem' addr).
+      * destruct EQUIV'.
+      * destruct GET as [? CONTRA]. discriminate.
+  - intro GET.
+    assert (EQUIV' := EQUIV addr); clear EQUIV.
+    destruct (get mem addr) eqn:GET'.
+    + destruct (get mem' addr) eqn:GET''.
+      * destruct EQUIV' as [? ? TG TG' | a' a'' id' id'' TG TG' EQ].
+        { unfold refine_imemory in REF. apply REF in GET.
+          destruct GET as [id GET].
+          rewrite GET' in GET. destruct a as [v' tg]; subst. 
+          simpl in TG. congruence. }
+        { subst. apply REF in GET.  destruct GET as [id''' GET]. 
+          rewrite GET' in GET. exists id'''. assumption.
+        }
+      * destruct EQUIV'.
+    + destruct (get mem' addr) eqn:GET''.
+      * destruct EQUIV'.
+      * apply REF in GET. destruct GET as [? CONTRA]. congruence.
+Qed.
+
+Definition is_data (a : atom (word t) (@cfi_tag t)) := 
+  match common.tag a with
+    | DATA => true
+    | INSTR _ => false
+  end.
+
+Lemma dmem_refinement_preserved_by_equiv :
+  forall dmem mem mem',
+    refine_dmemory dmem mem ->
+    SymbolicCFI.mem_equiv mem mem' ->
+    exists dmem',
+      refine_dmemory dmem' mem'.
+Proof.
+  intros  dmem mem mem' REF EQUIV.
+  destruct (Filter.filter_exists is_data mem') as [data_mem' ?].
+  destruct (Map.map_exists untag_atom data_mem') as [dmem' ?].
+  assert (FILTER := Filter.filter_correctness is_data mem').
+  assert (MAP := Map.map_correctness untag_atom data_mem'). 
+  exists dmem'. subst.
+  intros addr v.
+  split.
+  - intro GET.
+    assert (FILTER' := FILTER addr).
+    rewrite GET in FILTER'. simpl in FILTER'.
+    assert (MAP' := MAP addr).
+    rewrite FILTER' in MAP'. simpl in MAP'. assumption.
+  - intro GET. 
+    assert (FILTER' := FILTER addr); clear FILTER.
+    assert (MAP' := MAP addr); clear MAP. 
+    destruct (get mem' addr) eqn:GET'.
+    + destruct a as [v' tg].
+      destruct tg; simpl in FILTER'; 
+      rewrite FILTER' in MAP'; simpl in MAP'; 
+      congruence.
+    + rewrite FILTER' in MAP'. simpl in MAP'. congruence.
+Qed.
+
+Theorem backwards_simulation_attacker ast sst sst' :
+  refine_state ast sst ->
+  SymbolicCFI.step_a sst sst' ->
+  exists ast',
+    Abstract.step_a ast ast' /\
+    refine_state ast' sst'.
+Proof.
+  intros REF SSTEP.
+  destruct ast as [[[[imem dmem] aregs] apc] b].
+  destruct b; inversion SSTEP as [? ? ? ? ? ? NOV REQUIV MEQUIV]; subst;
+  unfold refine_state in REF; destruct pc;
+  destruct REF as [REFI [REFD [REFR [REFPC CORRECTNESS]]]].
+  - 
+    destruct (reg_refinement_preserved_by_equiv REFR REQUIV) as [aregs' REFR'].
+    assert (REFI' := imem_refinement_preserved_by_equiv REFI MEQUIV).
+    destruct (dmem_refinement_preserved_by_equiv REFD MEQUIV) as [dmem' REFD'].
+    exists (imem, dmem', aregs', apc, true); 
+      split; [constructor | repeat (split; auto)].
+    intros ? src TAG.
+    unfold SymbolicCFI.mem_equiv in MEQUIV.
+    assert (MEQUIV' := MEQUIV val); clear MEQUIV.
+    destruct (get mem val) eqn:GET; simpl in GET; rewrite GET in MEQUIV'.
+    { destruct (get mem' val) eqn:GET'.
+      + destruct MEQUIV' as [? ? TG1 TG2 | a a0 id id' TG TG' EQ].
+      - simpl in H. rewrite H in GET'.
+        destruct a as [av atg].
+        simpl in TG1. rewrite TG1 in GET. apply CORRECTNESS in GET.
+        assert (TRUE: true = true) by reflexivity.
+        destruct GET as [CORRECT ?].
+        destruct tag as [opt_id|].
+        * destruct opt_id.
+          { apply CORRECT with (src := w) in TRUE.
+            destruct TRUE as [? [CONTRA ?]].
+            discriminate.
+            reflexivity.
+          }
+          { inversion TAG. }
+        * inversion TAG.
+      - subst. simpl in GET. destruct a0 as [a0_v a0_t]. 
+        apply CORRECTNESS in GET. destruct GET as [CORRECT ?].
+        assert (TRUE: true = true) by reflexivity.
+        simpl in TG. apply CORRECT with (src0 := src) in TRUE.
+        simpl in H. rewrite GET' in H. inversion H. subst a0_t.
+        subst ti. assumption.
+        reflexivity.
+        + destruct MEQUIV'.
+    }
+    { destruct (get mem' val) eqn:GET'.
+      - destruct MEQUIV'.
+      - simpl in H. rewrite GET' in H. discriminate.
+    }
+  - unfold SymbolicCFI.no_violation in NOV. Admitted.
+    
 End Refinement.

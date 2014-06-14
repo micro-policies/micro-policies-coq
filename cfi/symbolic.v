@@ -43,17 +43,60 @@ Program Instance sym_cfi : (Symbolic.symbolic_params) := {
   sr := sr
 }.
 
+(* The rest of the file is only used for CFI theorem ... so probably
+   move somewhere else? *)
+
 Variable table : list (Symbolic.syscall t).
 
-(* TODO: Attacker steps will be implemented later *)
-Variable step_a : Symbolic.state t -> Symbolic.state t -> Prop.
+Definition no_violation (sst : @Symbolic.state t sym_cfi) :=
+  let '(Symbolic.State mem _ pc@tpc _) := sst in
+  forall i ti src,
+    get mem pc = Some i@ti ->
+    tpc = INSTR (Some src) ->
+    exists dst, 
+        ti = INSTR (Some dst) /\ valid_jmp src dst = true.
 
+Inductive atom_equiv : atom (word t) (@cfi_tag t) -> atom (word t) (@cfi_tag t) 
+                       -> Prop :=
+  | data_equiv : forall a a', 
+                   common.tag a = DATA ->
+                   common.tag a' = DATA ->
+                   atom_equiv a a'
+  | instr_equiv : forall a a' id id',
+                    common.tag a = INSTR id ->
+                    common.tag a' = INSTR id' ->
+                    a = a' ->
+                    atom_equiv a a'.
+
+Definition reg_equiv (reg : registers) (reg' : registers) : Prop :=
+  forall w,
+    match get reg w, get reg' w with
+    | None  , None   => True
+    | Some a, Some a' => atom_equiv a a'
+    | _     , _      => False
+    end.
+
+Definition mem_equiv (mem : memory) (mem' : memory) : Prop :=
+  forall w,
+    match get mem w, get mem' w with
+    | None  , None   => True
+    | Some a, Some a' => atom_equiv a a'
+    | _     , _      => False
+    end.
+
+Inductive step_a : (@Symbolic.state t sym_cfi) -> 
+                   (@Symbolic.state t sym_cfi) -> Prop :=
+| step_attack : forall mem reg pc int mem' reg',
+                  no_violation (Symbolic.State mem reg pc int) ->
+                  reg_equiv reg reg' ->
+                  mem_equiv mem mem' ->
+                  step_a (Symbolic.State mem reg pc int) 
+                         (Symbolic.State mem' reg' pc int).
+                  
 Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
 
 Open Scope word_scope.
 
-(* The rest of the file is only used for CFI theorem ... so probably
-   move somewhere else? *)
 Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
   let pc_t' := common.tag (Symbolic.pc st') in
   let pc_t := common.tag (Symbolic.pc st) in
@@ -88,10 +131,11 @@ Program Instance symbolic_cfi_machine : cfi_machine t := {|
 Next Obligation.
 Admitted.
 Next Obligation.
-Admitted.
+  inversion H. reflexivity.
+Qed.
 
 Definition V s s' := 
-  succ s s' = false.
+  ssucc s s' = false.
 
 Definition S xs :=
   exists s, xs = [s] /\ ~ exists s', cfi_step symbolic_cfi_machine s s'.
