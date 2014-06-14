@@ -1,7 +1,7 @@
 Require Import List Arith ZArith.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import lib.utils concrete.common.
+Require Import lib.utils concrete.common memory_safety.classes.
 
 Import DoNotation.
 
@@ -26,7 +26,7 @@ Section WithClasses.
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 
-Definition block := Z.
+Variable block : eqType.
 
 Definition pointer := (block * word t)%type.
 
@@ -72,26 +72,16 @@ Record state := mkState {
   pc : pointer
   }.
 
-Record syscall := Syscall {
-  address : word;
-  sem : state -> option state
-}.
-
 Class allocator := {
 
-(* "Address" of the malloc system call. *)
-  alloc_addr : word;
-
-(* The register used to read the size of the block to be allocated
-   and return the pointer to that block. May change if we have a
-   calling convention for system calls. *)
-  alloc_reg : reg t;
-
 (* The Coq function representing the allocator. *)
-  alloc_fun : state -> option (state * block)
+  malloc_fun : memory -> word -> memory * block;
+
+  free_fun : memory -> word -> memory
 
 }.
 
+(*
 Class allocator_spec (alloc : allocator) := {
 
   alloc_get_fresh : forall s s' b,
@@ -104,20 +94,12 @@ Class allocator_spec (alloc : allocator) := {
    the above and PartMaps.axioms. *)
 
 }.
+*)
 
-Context `{allocator}.
 
-Definition malloc : syscall :=
-{| address := alloc_addr;
-   sem := fun s => do r <- alloc_fun s;
-                   let '(s',b) := r in
-                   do regs' <- upd (regs s') alloc_reg (ValPtr (b,Z_to_word 0));
-                   Some (mkState (mem s') regs' (pc s'))
-|}.
+Context `{syscall_regs t} `{allocator} `{memory_syscall_addrs t}.
 
-Variable othercalls : list syscall.
-
-Let table := malloc :: othercalls.
+Definition syscall_addrs := [malloc_addr; free_addr].
 
 Definition getv mem (ptr : pointer) :=
   match get mem (fst ptr) with
@@ -138,14 +120,14 @@ Definition lift_binop (f : binop) (x y : value) :=
            | ValInt w1, ValInt w2 => Some (ValInt (binop_denote f w1 w2))
            | ValPtr(b,w1), ValInt w2 => Some (ValPtr (b, binop_denote f w1 w2))
            | ValPtr(b1,w1), ValPtr (b2,w2)=>
-             if (b1 =? b2)%Z then Some (ValInt (binop_denote f w1 w2))
+             if b1 == b2 then Some (ValInt (binop_denote f w1 w2))
              else None
            | _, _ => None
            end
   | EQ => match x, y with
          | ValInt w1, ValInt w2 => Some (ValInt (binop_denote f w1 w2))
          | ValPtr(b1,w1), ValPtr (b2,w2)=>
-           if (b1 =? b2)%Z then Some (ValInt (binop_denote f w1 w2))
+           if b1 == b2 then Some (ValInt (binop_denote f w1 w2))
            else Some (ValInt (Z_to_word (0%Z))) (* 0 for false *)
           | _, _ => None
          end
@@ -213,7 +195,22 @@ Inductive step : state -> state -> Prop :=
              forall (INST :     decode_instr i = Some (Jal _ r)),
              forall (RW :       get reg r = Some (ValPtr pt)),
              forall (UPD :      upd reg ra (ValPtr (pc.+1)) = Some reg'),
-             step (mkState mem reg pc) (mkState mem reg' pt).
+             step (mkState mem reg pc) (mkState mem reg' pt)
+| step_malloc : forall mem mem' reg reg' pc i r sz b,
+             forall (PC :       getv mem pc = Some (ValInt i)),
+             forall (INST :     decode_instr i = Some (Jal _ r)),
+             forall (RW :       get reg r = Some (ValInt malloc_addr)),
+             forall (SIZE :     get reg syscall_arg1 = Some (ValInt sz)),
+             forall (ALLOC :    malloc_fun mem sz = (mem', b)),
+             forall (UPD :      upd reg syscall_ret (ValPtr (b,Z_to_word 0%Z)) = Some reg'),
+             step (mkState mem reg pc) (mkState mem' reg' pc.+1)
+| step_free : forall mem mem' reg pc i r sz,
+             forall (PC :       getv mem pc = Some (ValInt i)),
+             forall (INST :     decode_instr i = Some (Jal _ r)),
+             forall (RW :       get reg r = Some (ValInt free_addr)),
+             forall (SIZE :     get reg syscall_arg1 = Some (ValInt sz)),
+             forall (ALLOC :    free_fun mem sz = mem'),
+             step (mkState mem reg pc) (mkState mem' reg pc.+1).
 
 Variable initial_block : block.
 
@@ -231,7 +228,6 @@ End WithClasses.
 
 End Abstract.
 
-Arguments Abstract.state t {_}.
-Arguments Abstract.memory t {_}.
-Arguments Abstract.registers t {_}.
-Arguments Abstract.syscall t {_}.
+Arguments Abstract.state t {_ _}.
+Arguments Abstract.memory t {_ _}.
+Arguments Abstract.registers t {_ _}.

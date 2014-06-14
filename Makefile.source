@@ -33,6 +33,7 @@ cfi/cfi_rules.v
 cfi/symbolic.v
 cfi/refinementAQ.v
 
+memory_safety/classes.v
 memory_safety/quasiabstract.v
 memory_safety/abstract.v
 memory_safety/refinementAQ.v

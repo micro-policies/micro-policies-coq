@@ -3,6 +3,7 @@
 Require Import ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import utils concrete.common memory_safety.abstract memory_safety.quasiabstract.
+Require Import memory_safety.classes.
 
 Require Import EquivDec.
 
@@ -27,15 +28,19 @@ Import QuasiAbstract.Notations.
 (* BCP: Why do we have something called QuasiAbstract in this
    development? *)
 
+Variable block : eqType.
+
 Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {ap : Abstract.abstract_params mt}
+        {ap : Abstract.abstract_params mt block}
         {aps : Abstract.params_spec ap}
         {qap : QuasiAbstract.abstract_params mt}
         {qaps : QuasiAbstract.params_spec qap}
-        {a_alloc : @Abstract.allocator _ ap}
+        {a_alloc : @Abstract.allocator _ block ap}
         {qa_alloc : @QuasiAbstract.allocator _ qap}.
+
+Context `{syscall_regs mt} `{@Abstract.allocator mt block ap} `{@memory_syscall_addrs mt}.
 
 Hypothesis binop_addDl : forall x y z,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
@@ -65,7 +70,7 @@ Record meminj amem := Meminj {
      - w1 is the address of b's first memory location
      - w2 is b's pointer nonce
   *)
-    mi :> Abstract.block -> option (word mt * word mt);
+    mi :> block -> option (word mt * word mt);
     miIr : forall b b' base base' nonce nonce',
                 mi b = Some (base, nonce) ->
                 mi b' = Some (base', nonce') ->
@@ -89,8 +94,8 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
     | _,      _      => False
   end.
 
-Inductive refine_val : Abstract.value mt -> word mt -> QuasiAbstract.type mt -> Prop :=
-  | RefineInt : forall w, refine_val (Abstract.ValInt w) w INT
+Inductive refine_val : Abstract.value mt block -> word mt -> QuasiAbstract.type mt -> Prop :=
+  | RefineInt : forall w, refine_val (Abstract.ValInt _ w) w INT
   | RefinePtr : forall b base nonce off, mi b = Some (base,nonce) ->
                 refine_val (Abstract.ValPtr (b,off)) (base + off) (PTR nonce).
 
@@ -100,8 +105,8 @@ Lemma refine_binop f v1 w1 ty1 v2 w2 ty2 w3 ty3 : refine_val v1 w1 ty1 ->
   exists v3, Abstract.lift_binop f v1 v2 = Some v3 /\ refine_val v3 w3 ty3.
 Proof.
 destruct f; intros [x1 | b1 base1 nonce1 off1 mi_b1]
-  [x2 | b2 base2 nonce2 off2 mi_b2] H; try discriminate H;
-try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor.
+  [x2 | b2 base2 nonce2 off2 mi_b2] hyp; try discriminate hyp;
+try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try constructor.
 + by rewrite binop_addDr; constructor.
 + by rewrite binop_addDl; constructor.
 + by rewrite binop_subDl; constructor.
@@ -112,11 +117,11 @@ try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor
   destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
          (SetoidDec.eq_setoid (QuasiAbstract.block mt))
          (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce; try discriminate.
-  injection H; intros <- <-.
+  injection hyp; intros <- <-.
   eexists.
   move: (mi_b1) => mi_b1'.
   rewrite {mi_b1'}(miIr mi_b1' mi_b2) // in mi_b1 *.
-  rewrite Z.eqb_refl.
+  rewrite eqxx.
       split; try reflexivity.
       (* This has a silly behavior:
          apply eqb_true_iff in eq_nonce.
@@ -129,10 +134,10 @@ try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor
       constructor.
     by apply eqb_true_iff.
 + simpl in *.
-  destruct (Z.eqb_spec b1 b2) as [eq_b|neq_b].
+  case: eqP => [eq_b|neq_b].
     rewrite eq_b mi_b2 in mi_b1.
     injection mi_b1 as <- <-.
-    rewrite eqb_refl in H; injection H as <- <-.
+    rewrite eqb_refl in hyp; injection hyp as <- <-.
     eexists; split; try reflexivity.
     by rewrite binop_eq_add2l; constructor.
   destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
@@ -144,7 +149,7 @@ try (injection H; intros <- <-; eexists; split; [reflexivity|]); try constructor
     assert (eq_nonce' : nonce1 = nonce2).
       by apply eqb_true_iff.
     rewrite (miIr mi_b1 mi_b2 eq_nonce') in neq_b; congruence.
-  injection H as <- <-.
+  injection hyp as <- <-.
   eexists; split; try reflexivity.
 by constructor.
 Qed.
@@ -170,14 +175,14 @@ Definition refine_memory (amem : Abstract.memory mt) (qamem : QuasiAbstract.memo
 Lemma refine_memory_get_int qamem (w1 w2 w3 : word mt) pt :
          refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
          PartMaps.get qamem w1 = Some w3@M(w2,INT) ->
-         Abstract.getv amem pt = Some (Abstract.ValInt w3).
+         Abstract.getv amem pt = Some (Abstract.ValInt _ w3).
 Proof.
 intros rmem rpt get_w.
 unfold refine_memory in rmem.
 destruct pt as [b' off'].
 (* Hit the too many names bug here too. *)
 inversion rpt as [ | b base nonce off mi_b eq_b eq_w1 eq_nonce (* eq_off *)].
-rewrite <-eq_nonce,<-eq_b,<-H in *.
+rewrite <-eq_nonce,<-eq_b,<-H2 in *.
 specialize (rmem b base nonce off mi_b).
 rewrite eq_w1 get_w in rmem.
 destruct (Abstract.getv amem (b, off)) eqn:get_b; try contradiction.
@@ -214,7 +219,7 @@ destruct pt as [b' off'].
 simpl in *.
 (* Too many names bug... *)
 inversion rpt as [|b base nonce off mi_b eq_b eq_w1 eq_nonce].
-rewrite <-eq_nonce,<-eq_b,<-H in *.
+rewrite <-eq_nonce,<-eq_b,<-H2 in *.
 specialize (rmem b base nonce off mi_b).
 rewrite <-eq_w1 in get_w.
 rewrite get_w in rmem.
@@ -242,8 +247,7 @@ intros upd neq_bb'.
 unfold size.
 simpl.
 generalize (PartMaps.get_upd_neq neq_bb' upd). simpl.
-unfold Abstract.frame. simpl.
-intros H. by rewrite H.
+by rewrite /Abstract.frame /= ; move->.
 Qed.
 
 Lemma size_getv b off v :
@@ -264,10 +268,9 @@ Lemma size_update b fr base nonce off fr' x :
   off < size amem b.
 Proof.
 unfold size; intros -> mi_b upd_x.
-assert (H : 0 <= off < Z.of_nat (length fr)).
-  eapply update_list_Z_Some.
-  by exists fr'; eassumption.
-by destruct H.
+have: 0 <= off < Z.of_nat (length fr).
+  by eapply update_list_Z_Some; exists fr'.
+by case.
 Qed.
 
 Lemma refine_memory_upd qamem qamem' w1 w2 pt ty n fr fr' x :
@@ -283,8 +286,7 @@ intros rmem rpt (* in_bounds_pt *) upd_w1 get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
 exists amem'; split; try assumption.
 intros b base nonce off mi_b.
-destruct (b =? fst pt)%Z eqn:eq_b.
-  apply Z.eqb_eq in eq_b.
+have [eq_b|neq_b] := altP (b =P pt.1).
   rewrite eq_b.
   unfold Abstract.getv.
   simpl; rewrite (PartMaps.get_upd_eq upd_pt).
@@ -303,7 +305,7 @@ destruct (b =? fst pt)%Z eqn:eq_b.
       by destruct pt.
     congruence.
   assert (neqw_off : word_to_Z off <> word_to_Z (snd pt)).
-    by intros H; apply word_to_Z_inj in H.
+    by move/word_to_Z_inj.
   rewrite <-(update_list_Z_spec2 update_pt neqw_off).
   specialize (rmem b base nonce off mi_b).
   unfold Abstract.getv in rmem.
@@ -315,13 +317,13 @@ destruct (b =? fst pt)%Z eqn:eq_b.
     rewrite (refine_ptr_inv rpt mi_b).
     by intros eq_w1; apply addwI in eq_w1; congruence.
   by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
-apply Z.eqb_neq in eq_b.
 specialize (rmem b base nonce off mi_b).
 unfold Abstract.getv in *.
 (* grr... *)
-generalize (PartMaps.get_upd_neq eq_b upd_pt).
-unfold Abstract.frame, Abstract.block. simpl.
-intros H. rewrite H. clear H.
+move/eqP: neq_b => neq_b.
+generalize (PartMaps.get_upd_neq neq_b upd_pt).
+unfold Abstract.frame. simpl.
+move->.
 simpl in *.
 (* Why does fold fail?
 fold (Abstract.getv amem (b,off)) in *.
@@ -382,7 +384,7 @@ Qed.
 Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
   refine_registers aregs qaregs ->
   PartMaps.get qaregs n = Some w@V(INT) ->
-  PartMaps.get aregs n = Some (Abstract.ValInt w).
+  PartMaps.get aregs n = Some (Abstract.ValInt _ w).
 Proof.
 intros rregs get_n.
 specialize (rregs n).
@@ -441,6 +443,7 @@ Definition refine_state (ast : Abstract.state mt) (qast : QuasiAbstract.state mt
   | _ => False
   end.
 
+(*
 Definition refine_syscall (asc : Abstract.syscall mt) (qasc : QuasiAbstract.syscall mt) :=
   Abstract.address asc = QuasiAbstract.address qasc
   /\ forall ast qast, refine_state ast qast ->
@@ -460,6 +463,7 @@ by intros rst'; exists ast'; split.
 Qed.
 
 Axiom refine_syscalls : forall amem, meminj amem -> list (Abstract.syscall mt) -> list (QuasiAbstract.syscall mt) -> Prop.
+*)
 
 (*
 Axiom refine_syscalls_get : forall asc qasc w sc, refine_syscalls mi asc qasc ->
@@ -477,16 +481,16 @@ Lemma refine_pc_inv amem (mi : meminj amem) nonce apcb apci pc :
   refine_val mi (Abstract.ValPtr (apcb, apci)) pc (PTR nonce) ->
   exists base, mi apcb = Some (base, nonce) /\ (base + apci)%w = pc.
 Proof.
-intros H; inversion H.
+intros rpc; inversion rpc.
 by exists base; split.
 Qed.
 
-Lemma backward_simulation ast (mi : meminj (Abstract.mem ast)) qast qast' asc qasc :
-  refine_state mi ast qast -> refine_syscalls mi asc qasc -> QuasiAbstract.step qasc qast qast' ->
+Lemma backward_simulation ast (mi : meminj (Abstract.mem ast)) qast qast' qasc :
+  refine_state mi ast qast -> (* refine_syscalls mi asc qasc -> *) QuasiAbstract.step qasc qast qast' ->
   exists ast', Abstract.step ast ast' /\ refine_state mi ast' qast'.
 Proof.
 destruct ast as [amem aregs [apcb apci]].
-intros rst rsc step_qabs.
+intros rst step_qabs.
 destruct step_qabs; generalize rst; intros (rmem & rregs & rpc);
 assert (rpc_inv := refine_pc_inv rpc); destruct rpc_inv as (rpcb & mi_apcb & rpci);
 repeat match goal with
@@ -531,7 +535,7 @@ repeat try match goal with
 by simpl; rewrite <-rpci, <-addwA; econstructor; eassumption]).
 
 (* STORE *)
-destruct (valid_update H4 x) as (? & ?).
+destruct (valid_update H7 x) as (? & ?).
 eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?).
 eexists; split;
 [econstructor (by eauto)
