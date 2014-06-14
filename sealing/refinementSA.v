@@ -3,6 +3,17 @@ Require Import Coq.Classes.SetoidDec.
 Require Import utils common symbolic.symbolic.
 Require Import symbolic_sealing sealing.classes sealing.abstract.
 
+(* At the moment we're considering (morally) the same key generation
+   partial function at both levels and the identity mapping on keys.
+   TODO: We plan to get rid of this assumption by:
+   - changing the abstract machine to have an infinite set of keys
+     that is different to the finite set of keys of the finite one
+   - make key generation total at the abstract level
+   - for backwards refinement use someting similar to Maxime's memory
+     injections to relate symbolic and abstract keys
+   - give up any hope of forwards refinement
+*)
+
 Section RefinementSA.
 
 Set Implicit Arguments.
@@ -96,11 +107,11 @@ Hypothesis kmax_cons_inc_key_kmax : forall ks,
   kmax ks =/= max_key ->
   kmax (inc_key (kmax ks) :: ks) = inc_key (kmax ks).
 
-Program Instance gen_key_inst : AbsSeal.key_generator := {
-  mkkey_f := mkkey_f
-}.
-Next Obligation.
-  unfold mkkey_f in *. unfold bind in H.
+Lemma mkkey_fresh : forall ks ks' k,
+  mkkey_f ks = Some (ks', k) ->
+  ~ In k ks /\ In k ks' /\ incl ks ks'.
+Proof.
+  intros ks ks' k H. unfold mkkey_f in *. unfold bind in H.
   remember (inc_key_opt (kmax ks)) as o. destruct o as [k'|].
   - inversion H. subst. split; [|split].
     + unfold inc_key_opt in *.
@@ -110,6 +121,12 @@ Next Obligation.
     + right; assumption.
   - inversion H.
 Qed.
+
+(* Need to define this instance to use AbsSeal.step *)
+Program Instance gen_key_inst : AbsSeal.key_generator := {
+  mkkey_f := mkkey_f;
+  mkkey_fresh := mkkey_fresh
+}.
 
 Definition refine_ins (keys : list key) (next_key : key) : Prop :=
   match mkkey_f keys with
