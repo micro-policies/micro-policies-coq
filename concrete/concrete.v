@@ -216,6 +216,7 @@ Definition miss_state (st : state) (mvec : MVec) : option state :=
    combined with its arguments (new register value and/or new pc value
    *)
 (* TODO: find better name for these ... lookup? *)
+(* BCP: check? *)
 
 Definition next_state (st : state) (mvec : MVec)
                       (k : RVec -> option state) : option state :=
