@@ -13,6 +13,9 @@ Unset Printing Implicit Defensive.
 (** * Useful tactics *)
 Ltac gdep x := generalize dependent x.
 
+Ltac split3 := split; [| split].
+Ltac split4 := split; [| split3].
+
 (* inv by name of the Inductive relation *)
 Ltac invh f :=
     match goal with

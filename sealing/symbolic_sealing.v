@@ -6,7 +6,7 @@ Require Import sealing.classes.
 
 Set Implicit Arguments.
 
-Module SymSeal.
+Module Sym.
 
 Section WithClasses.
 
@@ -15,13 +15,20 @@ Import PartMaps.
 Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
-        {sk : sealing_key}
-        {sko : sealing_key_ops}
         {scr : @syscall_regs t}
         {ssa : @sealing_syscall_addrs t}.
 
+Class sealing_key := {
+  key : Type;
+  max_key : key;
+  inc_key : key -> key;
+  eq_key :> EqDec (eq_setoid key)
+}.
+
+Context {sk : sealing_key}.
+
 Inductive stag :=
-| DATA   :        stag
+| DATA   :            stag
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
@@ -133,4 +140,4 @@ End WithClasses.
    and I expect that to use any of Arthur's results we'll need
    to give this kind of details *)
 
-End SymSeal.
+End Sym.

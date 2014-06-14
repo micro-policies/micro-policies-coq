@@ -12,27 +12,28 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Module AbsSeal.
+Module Abs.
 
 Section WithClasses.
 
 Context (t : machine_types)
         {ops : machine_ops t}
-        {sk : sealing_key}.
+        {scr : @syscall_regs t}
+        {ssa : @sealing_syscall_addrs t}.
 
-Class key_generator := {
-  (* CH: TODO: we eventually want to make this total *)
-  mkkey_f : list key -> option (list key * key);
+Class sealing_key := {
+  key       : Type;
+
+  (* This function is total, so sym_key has to be infinite *)
+  mkkey_f : list key -> (list key) * key;
  
   (* This ensures freshness without fixing a generation strategy *)
   mkkey_fresh : forall ks ks' k,
-                  mkkey_f ks = Some (ks', k) ->
+                  mkkey_f ks = (ks', k) ->
                   ~In k ks /\ In k ks' /\ incl ks ks'
 }.
 
-Context {kg : key_generator}
-        {scr : @syscall_regs t}
-        {ssa : @sealing_syscall_addrs t}.
+Context {sk : sealing_key}.
 
 Inductive value := 
 | VData   : word t        -> value
@@ -127,7 +128,7 @@ Inductive step (st st' : state) : Prop :=
     (ST   : st = State mem reg pc es)
     (INST : decode mem pc =? Jal _ r)
     (RW   : get reg r =? VData mkkey_addr)
-    (GEN  : mkkey_f es =? (es',nk))
+    (GEN  : mkkey_f es = (es',nk))
     (UPD  : upd reg syscall_ret (VKey nk) =? reg')
     (NEXT : st' = State mem reg' pc es'),   step st st'
 | step_seal : forall mem reg reg' pc r es payload key
@@ -149,4 +150,4 @@ Inductive step (st st' : state) : Prop :=
 
 End WithClasses.
 
-End AbsSeal.
+End Abs.

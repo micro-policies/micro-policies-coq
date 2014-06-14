@@ -1,16 +1,18 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
-Require Import utils common symbolic.symbolic.
-Require Import symbolic_sealing sealing.classes sealing.abstract.
+Require Import utils common. Import PartMaps.
+Require Import symbolic.symbolic.
+Require Import symbolic_sealing (* TODO: rename this *)
+               sealing.classes sealing.abstract.
 
 (* At the moment we're considering (morally) the same key generation
    partial function at both levels and the identity mapping on keys.
    TODO: We plan to get rid of this assumption by:
-   - changing the abstract machine to have an infinite set of keys
+   - [DONE] changing the abstract machine to have an infinite set of keys
      that is different to the finite set of keys of the finite one
-   - make key generation total at the abstract level
-   - for backwards refinement use someting similar to Maxime's memory
-     injections to relate symbolic and abstract keys
+   - [DONE] make key generation total at the abstract level
+   - [STARTED] for backwards refinement use someting similar to Maxime's
+     memory injections to relate symbolic and abstract keys
    - give up any hope of forwards refinement?
      + we could consider a weakened version of forwards refinement
        that only holds up to a failed symbolic key generation
@@ -20,42 +22,58 @@ Section RefinementSA.
 
 Set Implicit Arguments.
 
-Import PartMaps.
-
 Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
-
-        {sk : sealing_key}
-        {sko : sealing_key_ops}
-
         {scr : @syscall_regs t}
         {ssa : @sealing_syscall_addrs t}
 
+        {ssk : Sym.sealing_key}
+        {ask : Abs.sealing_key}
+
         {smemory : Type}
-        {sm : partial_map smemory (word t) (atom (word t) SymSeal.stag)}
+        {sm : partial_map smemory (word t) (atom (word t) Sym.stag)}
         {smemspec : axioms sm}
 
         {sregisters : Type}
-        {sr : partial_map sregisters (reg t) (atom (word t) SymSeal.stag)}
+        {sr : partial_map sregisters (reg t) (atom (word t) Sym.stag)}
         {sregspec : axioms sr}
 
         {amemory : Type}
-        {am : partial_map amemory (word t) (AbsSeal.value t)}
+        {am : partial_map amemory (word t) (Abs.value t)}
         {amemspec : axioms am}
 
         {aregisters : Type}
-        {ar : partial_map aregisters (reg t) (AbsSeal.value t)}
+        {ar : partial_map aregisters (reg t) (Abs.value t)}
         {aregspec : axioms ar}.
 
-(* Could consider writing this in relational style (inductive relation) *)
-Definition refine_val_atom (v : AbsSeal.value t)
-                           (a : atom (word t) SymSeal.stag) : Prop :=
+Section WithFixedKeyInjection.
+
+Record key_inj := mkKeyInj {
+  (* ki k returns Some sk when k is allocated and sk is the
+                               corresponding symbolic key *)
+  ki :> Abs.key -> option Sym.key;
+
+  (* still unclear where this is used *)    
+  kiIr : forall ak ak' sk sk',
+           ki ak = Some sk ->
+           ki ak' = Some sk' ->
+           sk = sk' ->
+           ak = ak'
+}.
+
+Variable ki : key_inj.
+
+Definition refine_key (ak : Abs.key) (sk : Sym.key) : Prop :=
+  ki ak = Some sk.
+
+Definition refine_val_atom (v : Abs.value t)
+                           (a : atom (word t) Sym.stag) : Prop :=
   match v,a with
-  | AbsSeal.VData w    , w'@(SymSeal.DATA)      => w = w'
-  | AbsSeal.VKey k     ,  _@(SymSeal.KEY k')    => k = k'
-  | AbsSeal.VSealed w k, w'@(SymSeal.SEALED k') => w = w' /\ k = k'
-  | _                  , _                      => False
+  | Abs.VData w     , w'@(Sym.DATA)      => w = w'
+  | Abs.VKey ak     ,  _@(Sym.KEY sk)    => refine_key ak sk
+  | Abs.VSealed w ak, w'@(Sym.SEALED sk) => w = w' /\ refine_key ak sk
+  | _                   , _                      => False
   end.
 
 Definition refine_mem (amem : amemory) (smem : smemory) : Prop :=
@@ -75,8 +93,10 @@ Definition refine_reg (areg : aregisters) (sreg : sregisters) : Prop :=
     end.
 
 (* We make no assumption about the pc tag, since it's unused in the policy *)
-Definition refine_pc (w : word t) (a : atom (word t) SymSeal.stag) : Prop :=
+Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
   w = val a.
+
+(* XXX: Old, unclear whether we will still need anything like this
 
 (* Instantiating mkkey_f at abstract level to something
    corresponding to what's happening at the symbolic level. *)
@@ -124,8 +144,8 @@ Proof.
   - inversion H.
 Qed.
 
-(* Need to define this instance to use AbsSeal.step *)
-Program Instance gen_key_inst : AbsSeal.key_generator := {
+(* Need to define this instance to use Abs.step *)
+Program Instance gen_key_inst : Abs.key_generator := {
   mkkey_f := mkkey_f;
   mkkey_fresh := mkkey_fresh
 }.
@@ -136,20 +156,18 @@ Definition refine_ins (keys : list key) (next_key : key) : Prop :=
   | _           => False (* ??? *)
   end.
 
-Definition astate := @AbsSeal.state t sk amemory aregisters.
-Definition sstate := @Symbolic.state t SymSeal.sym_sealing.
+*)
+
+Definition astate := @Abs.state t ask amemory aregisters.
+Definition sstate := @Symbolic.state t Sym.sym_sealing.
 
 Definition refine_state (ast : astate) (sst : sstate) : Prop :=
-  let '(AbsSeal.State amem areg apc akeys) := ast in
+  let '(Abs.State amem areg apc akeys) := ast in
   let '(Symbolic.State smem sreg spc skey) := sst in
   refine_mem amem smem /\
   refine_reg areg sreg /\
-  refine_pc apc spc /\
-  refine_ins akeys skey.
-
-Ltac gdep x := generalize dependent x.
-Ltac split3 := split; [| split].
-Ltac split4 := split; [| split3].
+  refine_pc apc spc.
+(* /\ refine_ins akeys skey -- just gone? *)
 
 Lemma refine_pc_inv : forall apc spc tpc,
   refine_pc apc spc@tpc ->
@@ -178,17 +196,11 @@ Lemma refine_get_reg_inv : forall areg sreg r a,
 Admitted. (* same as above *)
 
 Lemma refine_val_data : forall v w,
-  refine_val_atom v w@SymSeal.DATA ->
-  v = AbsSeal.VData w.
+  refine_val_atom v w@Sym.DATA ->
+  v = Abs.VData w.
 Proof.
   intros v w ref. destruct v; simpl in ref; try tauto; subst; reflexivity.
 Qed.
-
-Tactic Notation "unfold_next_state_in" ident(H) :=
-  try unfold Symbolic.next_state_reg in H;
-  try unfold Symbolic.next_state_pc in H;
-  try unfold Symbolic.next_state_reg_and_pc in H;
-  try unfold Symbolic.next_state in H.
 
 Lemma refine_upd_reg1 : forall aregs sregs sregs' r a v,
   refine_reg aregs sregs ->
@@ -233,18 +245,25 @@ Proof.
   eauto using refine_upd_reg2.
 Qed.
 
-Lemma backward_simulation : forall ast sst sst',
-  refine_state ast sst ->
-  SymSeal.step sst sst' ->
-  exists ast',
-    AbsSeal.step ast ast' /\
-    refine_state ast' sst'.
+End WithFixedKeyInjection.
+
+Tactic Notation "unfold_next_state_in" ident(H) :=
+  try unfold Symbolic.next_state_reg in H;
+  try unfold Symbolic.next_state_pc in H;
+  try unfold Symbolic.next_state_reg_and_pc in H;
+  try unfold Symbolic.next_state in H.
+
+Lemma backward_simulation : forall (ki : key_inj) ast sst sst',
+  refine_state ki ast sst ->
+  Sym.step sst sst' ->
+  exists ast' ki',
+    Abs.step ast ast' /\
+    refine_state ki' ast' sst'.
 Proof.
-  intros [amem aregs apc akeys]
-         sst sst' ref sstep. gdep ref.
+  intros ki [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
   destruct sstep; destruct sst as [smem sregs spc skey];
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
-    intros [rmem [rreg [rpc ris]]].
+    intros [rmem [rreg rpc]].
   - (* NOP *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     apply (refine_get_mem_inv _ rmem) in PC.
@@ -252,10 +271,10 @@ Proof.
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
     injection NEXT; intro H; subst; clear NEXT.
     apply refine_val_data in riv. subst.
-    eexists. split.
-    + eapply AbsSeal.step_nop; [reflexivity | | reflexivity].
-      unfold AbsSeal.decode. rewrite PC. now apply INST.
-    + split4; now trivial.
+    eexists. exists ki. split.
+    + eapply Abs.step_nop; [reflexivity | | reflexivity].
+      unfold Abs.decode. rewrite PC. now apply INST.
+    + split3; now trivial.
   - (* CONST *)
     (* copy paste *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
@@ -269,10 +288,10 @@ Proof.
     apply refine_val_data in riv. subst.
     (* the rest is quite different *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= AbsSeal.VData (imm_to_word n)). reflexivity.
-    eexists. split.
-    + eapply AbsSeal.step_const; [reflexivity | | | reflexivity]. (* extra goal *)
-      unfold AbsSeal.decode. rewrite PC. now apply INST.
+    instantiate (1:= Abs.VData (imm_to_word n)). reflexivity.
+    eexists. exists ki. split.
+    + eapply Abs.step_const; [reflexivity | | | reflexivity]. (* extra goal *)
+      unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
     + split4; now trivial.
   - admit. (* MOV *)
@@ -300,10 +319,10 @@ Proof.
     destruct v; try contradiction rva. simpl in rva. subst.
     (* the rest similar to CONST *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= AbsSeal.VData (apc + 1)%w). reflexivity.
-    eexists. split.
-    + eapply AbsSeal.step_jal; [reflexivity | | | | | reflexivity].
-      unfold AbsSeal.decode. rewrite PC. now apply INST.
+    instantiate (1:= Abs.VData (apc + 1)%w). reflexivity.
+    eexists. exists ki. split.
+    + eapply Abs.step_jal; [reflexivity | | | | | reflexivity].
+      unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
       simpl in *.
         (* not the right way of doing it *)
@@ -339,20 +358,21 @@ Proof.
     assert (mkkey_addr = w) by admit. subst.
     simpl in CALL.
     (* this should be easy, but it's not *)
-    destruct (@equiv_dec (@key sk) (eq_setoid (@key sk))
-                 (@eq_key sk sko) skey (@max_key sk sko)). discriminate CALL.
+    destruct (@equiv_dec (@Sym.key ssk) (eq_setoid (@Sym.key ssk))
+      (@Sym.eq_key ssk) skey (@Sym.max_key ssk)). discriminate CALL.
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     injection CALL; intro H; subst; clear CALL.
+admit. (* TODO: Update this proof to the new setting
     assert (exists new_keys, mkkey_f akeys = Some (new_keys, skey)) as H.
       simpl. unfold refine_ins in ris.
       destruct (mkkey_f akeys) as [[x1 x2] | ]. subst. eauto. contradiction.
     destruct H as [new_keys ?].
     (* dealing with the result -- similar to CONST *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= (AbsSeal.VKey _ skey)). reflexivity.
+    instantiate (1:= (Abs.VKey _ skey)). reflexivity.
     eexists. split.
-    + eapply AbsSeal.step_mkkey; [reflexivity | | | | | reflexivity].
-      unfold AbsSeal.decode. rewrite PC. now apply INST.
+    + eapply Abs.step_mkkey; [reflexivity | | | | | reflexivity].
+      unfold Abs.decode. rewrite PC. now apply INST.
       assumption.
       simpl; eassumption.
       eassumption.
@@ -372,6 +392,7 @@ Proof.
                (@eq_key sk sko) (@inc_key sk sko (kmax akeys))
                (@max_key sk sko)). contradiction.
       reflexivity.
+*)
     }
     + {(* seal *)
     assert (seal_addr = w) by admit. subst.
@@ -387,13 +408,13 @@ Proof.
     destruct (refine_get_reg_inv _ rreg gp) as [vp [ggp H]].
     destruct vp; try contradiction H. simpl in H. subst.
     destruct (refine_get_reg_inv _ rreg gk) as [vk [ggk H]].
-    destruct vk; try contradiction H. simpl in H. subst.
+    destruct vk; try contradiction H. simpl in H.
     (* register update *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= AbsSeal.VSealed p k). split; reflexivity. (* extra split *)
-    eexists. split.
-    + eapply AbsSeal.step_seal; [reflexivity | | | | | | reflexivity].
-      unfold AbsSeal.decode. rewrite PC. now apply INST.
+    instantiate (1:= Abs.VSealed p k0). split; now trivial. (* extra split *)
+    eexists. exists ki. split.
+    + eapply Abs.step_seal; [reflexivity | | | | | | reflexivity].
+      unfold Abs.decode. rewrite PC. now apply INST.
       eassumption. eassumption. eassumption. eassumption.
     + split4; now trivial.
     }
@@ -406,8 +427,8 @@ Proof.
     apply bind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
     destruct tk; try discriminate CALL.
     (* additional: equality check between keys *)
-    destruct (@equiv_dec (@key sk) (eq_setoid (@key sk)) (@eq_key sk sko) k k0);
-      [| discriminate CALL].
+    destruct (@equiv_dec (@Sym.key ssk) (eq_setoid (@Sym.key ssk))
+               (@Sym.eq_key ssk) k k0); [| discriminate CALL].
     apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
     injection CALL; intro H; subst; clear CALL.
     (* 2 register lookups *)
@@ -418,12 +439,18 @@ Proof.
     destruct vk; try contradiction H. simpl in H. subst.
     (* register update *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= AbsSeal.VData p). reflexivity.
-    eexists. split.
-    + eapply AbsSeal.step_unseal; [reflexivity | | | | | | reflexivity].
-      unfold AbsSeal.decode. rewrite PC. now apply INST.
+    instantiate (1:= Abs.VData p). reflexivity.
+    eexists. exists ki. split.
+    + eapply Abs.step_unseal; [reflexivity | | | | | | reflexivity].
+      unfold Abs.decode. rewrite PC. now apply INST.
       eassumption. eassumption.
-      rewrite e. eassumption. eassumption.
+      (* here we use injectivity *)
+      repeat match goal with
+               | [H : refine_key _ _ _ |- _] =>
+                 unfold refine_key in H; try rewrite e in H
+             end.
+      assert(k1 = k2) by eauto using kiIr. subst. assumption.
+      eassumption.
     + split4; now trivial.
     }
 Admitted.
