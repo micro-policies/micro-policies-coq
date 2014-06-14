@@ -11,7 +11,9 @@ Require Import symbolic_sealing sealing.classes sealing.abstract.
    - make key generation total at the abstract level
    - for backwards refinement use someting similar to Maxime's memory
      injections to relate symbolic and abstract keys
-   - give up any hope of forwards refinement
+   - give up any hope of forwards refinement?
+     + we could consider a weakened version of forwards refinement
+       that only holds up to a failed symbolic key generation
 *)
 
 Section RefinementSA.
