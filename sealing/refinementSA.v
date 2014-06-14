@@ -61,11 +61,9 @@ Definition refine_reg (areg : aregisters) (sreg : sregisters) : Prop :=
     | _     , _      => False
     end.
 
+(* We make no assumption about the pc tag, since it's unused in the policy *)
 Definition refine_pc (w : word t) (a : atom (word t) SymSeal.stag) : Prop :=
-  match a with
-  | w'@SymSeal.DATA => w = w'
-  | _               => False
-  end.
+  w = val a.
 
 (* Instantiating mkkey_f at abstract level to something
    corresponding to what's happening at the symbolic level. *)
@@ -89,7 +87,7 @@ Definition mkkey_f (ks : list key) : option (list key * key) :=
 
 End WithDoNotation.
 
-(* TODO: reduce these to a hypotheses about order and inc_key and stuff *)
+(* TODO: reduce these to hypotheses about order and inc_key and stuff *)
 Hypothesis inc_max_not_in : forall ks,
   kmax ks =/= max_key ->
    ~ In (inc_key (kmax ks)) ks.
@@ -134,18 +132,13 @@ Ltac gdep x := generalize dependent x.
 Ltac split3 := split; [| split].
 Ltac split4 := split; [| split3].
 
-Lemma refine_pc_inv_with_tag : forall apc spc tpc,
+Lemma refine_pc_inv : forall apc spc tpc,
   refine_pc apc spc@tpc ->
-  apc = spc /\ tpc = SymSeal.DATA.
+  apc = spc.
 Proof.
   intros apc spc tpc ref. unfold refine_pc in ref.
   destruct tpc; try contradiction ref; now eauto.
 Qed.
-
-Lemma refine_pc_inv : forall apc spc tpc,
-  refine_pc apc spc@tpc ->
-  apc = spc.
-Proof. intros ? ? ? H. apply refine_pc_inv_with_tag in H. tauto. Qed.
 
 Lemma refine_get_mem_inv : forall amem smem w a,
   refine_mem amem smem ->
@@ -303,12 +296,10 @@ Proof.
     + split4; now trivial.
   - (* JAL - system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
+    apply refine_pc_inv in rpc; symmetry in rpc; subst.
     apply (refine_get_mem_inv _ rmem) in PC.
       destruct PC as [iv [PC riv]].
     destruct ti; simpl in ALLOWED; try discriminate ALLOWED.
-    (* slightly more general than usual *)
-    destruct (refine_pc_inv_with_tag _ _ _ rpc) as [rpc' ?].
-      symmetry in rpc'. clear rpc. subst.
     (* copy paste (all cases) *)
     apply refine_val_data in riv. subst.
     (* new -- useful only for t1, rvec ignored by semantic bug *)
@@ -364,8 +355,5 @@ Proof.
     + admit. (* seal *)
     + admit. (* unseal *)
 Admitted.
-
-(* TODO: at should try to change default away from DATA and see if
-    that breaks anything *)
 
 End RefinementSA.

@@ -30,7 +30,8 @@ Context {memory : Type}
         {registers : Type}
         {sr : partial_map registers (reg t) (atom (word t) stag)}.
 
-Definition none := DATA.
+(* One should not depend on the precise value of this tag! *)
+Definition none := KEY max_key.
 
 Section WithVectors.
 Import Coq.Vectors.Vector.VectorNotations.
