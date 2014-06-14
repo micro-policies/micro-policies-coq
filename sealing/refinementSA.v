@@ -89,9 +89,14 @@ Definition mkkey_f (ks : list key) : option (list key * key) :=
 
 End WithDoNotation.
 
+(* TODO: reduce these to a hypotheses about order and inc_key and stuff *)
 Hypothesis inc_max_not_in : forall ks,
   kmax ks =/= max_key ->
    ~ In (inc_key (kmax ks)) ks.
+
+Hypothesis kmax_cons_inc_key_kmax : forall ks,
+  kmax ks =/= max_key ->
+  kmax (inc_key (kmax ks) :: ks) = inc_key (kmax ks).
 
 Program Instance gen_key_inst : AbsSeal.key_generator := {
   mkkey_f := mkkey_f
@@ -321,12 +326,7 @@ Proof.
     + {(* mkkey *)
     assert (mkkey_addr = w) by admit. subst.
     simpl in CALL.
-    (* this should be easy, but it's not
-Lemma if_none_eq_some : forall A B C (a : {A} + {B}) b (c : option C),
-  ((if a then None else b) = Some c) -> (b = Some c).
-Admitted.
-    Set Printing All.
-    apply if_none_eq_some in CALL.  WTF? *)
+    (* this should be easy, but it's not *)
     destruct (@equiv_dec (@key sk) (eq_setoid (@key sk))
                  (@eq_key sk sko) skey (@max_key sk sko)). discriminate CALL.
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
@@ -334,7 +334,7 @@ Admitted.
     assert (exists new_keys, mkkey_f akeys = Some (new_keys, skey)) as H.
       simpl. unfold refine_ins in ris.
       destruct (mkkey_f akeys) as [[x1 x2] | ]. subst. eauto. contradiction.
-    destruct H as [new_key ?].
+    destruct H as [new_keys ?].
     (* dealing with the result -- similar to CONST *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= (AbsSeal.VKey _ skey)). reflexivity.
@@ -345,10 +345,21 @@ Admitted.
       simpl; eassumption.
       eassumption.
     + split4; trivial. reflexivity.
-      (* TODO: need to reprove refinement on keys, this doesn't seem easy
-         at all with the current definition *)
+      (* the interesting part: reestablish refinement on keys *)
       unfold refine_ins.
-      admit.
+      unfold mkkey_f in H. apply bind_inv in H. destruct H as [new_key [H' H'']].
+      injection H''; intros; subst; clear H''.
+      unfold inc_key_opt in H'.
+      destruct (@equiv_dec (@key sk) (eq_setoid (@key sk))
+             (@eq_key sk sko) (kmax akeys) (@max_key sk sko)). discriminate H'.
+      injection H'; intros; subst; clear H'.
+      unfold mkkey_f, bind.
+      rewrite kmax_cons_inc_key_kmax; [| assumption].
+      unfold inc_key_opt.
+      destruct (@equiv_dec (@key sk) (eq_setoid (@key sk))
+               (@eq_key sk sko) (@inc_key sk sko (kmax akeys))
+               (@max_key sk sko)). contradiction.
+      reflexivity.
     }
     + admit. (* seal *)
     + admit. (* unseal *)
