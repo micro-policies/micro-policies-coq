@@ -131,6 +131,14 @@ Definition lift_binop (f : binop) (x y : value) :=
            else Some (ValInt (Z_to_word (0%Z))) (* 0 for false *)
           | _, _ => None
          end
+  | LEQ => match x, y with
+         | ValInt w1, ValInt w2 => Some (ValInt (binop_denote f w1 w2))
+         | ValPtr(b1,w1), ValPtr (b2,w2)=>
+           if b1 == b2 then Some (ValInt (binop_denote f w1 w2))
+           else None (* comparing pointers to different regions dissallowed
+                        as it would expose too much about allocation *)
+          | _, _ => None
+         end
   | _ => match x, y with
          | ValInt w1, ValInt w2 => Some (ValInt (binop_denote f w1 w2))
          | _, _ => None

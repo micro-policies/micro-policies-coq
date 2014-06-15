@@ -57,6 +57,10 @@ Hypothesis binop_subDr : forall x y z,
 Hypothesis binop_eq_add2l : forall x y z,
   binop_denote EQ (x + y) (x + z) = binop_denote EQ y z.
 
+(* CH: Is this really true??? It's what makes the proof go through *)
+Hypothesis binop_leq_add2l : forall x y z,
+  binop_denote LEQ (x + y) (x + z) = binop_denote LEQ y z.
+
 Section memory_injections.
 
 Definition size amem pt :=
@@ -152,6 +156,24 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
   injection hyp as <- <-.
   eexists; split; try reflexivity.
 by constructor.
++ (* CH: minless copy paste from above *)
+  simpl in *.
+  case: eqP => [eq_b|neq_b].
+    rewrite eq_b mi_b2 in mi_b1.
+    injection mi_b1 as <- <-.
+    rewrite eqb_refl in hyp; injection hyp as <- <-.
+    eexists; split; try reflexivity.
+    by rewrite binop_leq_add2l; constructor.
+  destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
+       (SetoidDec.eq_setoid (QuasiAbstract.block mt))
+       (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce.
+  (* again, I would like to do
+     apply eqb_true_iff in eq_nonce.
+  *)
+    assert (eq_nonce' : nonce1 = nonce2).
+      by apply eqb_true_iff.
+    rewrite (miIr mi_b1 mi_b2 eq_nonce') in neq_b; congruence.
+  discriminate hyp. (* CH: not sure what I'm doing :) *)
 Qed.
 
 Lemma refine_ptr_inv w n b off base nonce :

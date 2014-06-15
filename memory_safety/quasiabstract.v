@@ -164,6 +164,14 @@ Definition lift_binop (f : binop) (x y : atom) :=
             else Some (Z_to_word (0%Z), INT) (* 0 for false *)
           | _, _ => None
           end
+  | LEQ => match x, y with
+          | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
+          | w1@V(PTR b1), w2@V(PTR b2) =>
+            if b1 ==b b2 then Some (binop_denote f w1 w2, INT)
+            else None (* comparing pointers to different regions dissallowed
+                        as it would expose too much about allocation *)
+          | _, _ => None
+          end
   | _ => match x, y with
          | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
          | _, _ => None

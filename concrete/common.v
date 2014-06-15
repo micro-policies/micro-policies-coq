@@ -16,7 +16,8 @@ Inductive binop :=
 | ADD
 | SUB
 | MUL
-| EQ.
+| EQ
+| LEQ.
 
 Inductive opcode : Set :=
 | NOP
@@ -43,6 +44,7 @@ Definition opcodes :=
    BINOP SUB;
    BINOP MUL;
    BINOP EQ;
+   BINOP LEQ;
    LOAD;
    STORE;
    JUMP;
@@ -55,7 +57,7 @@ Definition opcodes :=
 
 (* This should be a proof by reflexion... *)
 Lemma opcodesP : forall op, In op opcodes.
-Proof. intros []; try intros []; vm_compute; auto 17. Qed.
+Proof. intros []; try intros []; vm_compute; auto 20. Qed.
 
 Record machine_types := {
   word : Type;
@@ -330,27 +332,29 @@ Definition Z_to_op (z : Z) : option opcode :=
   | 13 => Some (BINOP SUB)
   | 14 => Some (BINOP MUL)
   | 15 => Some (BINOP EQ)
+  | 16 => Some (BINOP LEQ)
   | _  => None
   end.
 
 Definition op_to_Z (o : opcode) : Z :=
   match o with
-  | NOP         =>  0
-  | CONST       =>  1
-  | MOV         =>  2
-  | LOAD     =>  3
-  | STORE    =>  4
-  | JUMP     =>  5
-  | BNZ      =>  6
-  | JAL      =>  7
-  | JUMPEPC  =>  8
-  | ADDRULE  =>  9
-  | GETTAG   => 10
-  | PUTTAG   => 11
-  | BINOP ADD=> 12
-  | BINOP SUB=> 13
-  | BINOP MUL=> 14
-  | BINOP EQ => 15
+  | NOP        =>  0
+  | CONST      =>  1
+  | MOV        =>  2
+  | LOAD       =>  3
+  | STORE      =>  4
+  | JUMP       =>  5
+  | BNZ        =>  6
+  | JAL        =>  7
+  | JUMPEPC    =>  8
+  | ADDRULE    =>  9
+  | GETTAG     => 10
+  | PUTTAG     => 11
+  | BINOP ADD  => 12
+  | BINOP SUB  => 13
+  | BINOP MUL  => 14
+  | BINOP EQ   => 15
+  | BINOP LEQ  => 16
   end.
 
 Definition word_to_op (w : word t) : option opcode :=

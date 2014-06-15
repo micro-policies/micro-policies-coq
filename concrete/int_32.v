@@ -60,6 +60,8 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     | SUB => sub
     | MUL => mul
     | EQ => fun x y => if Z.eqb (unsigned x) (unsigned y) then repr 1
+                       else repr 0
+    | LEQ => fun x y => if Z.leb (unsigned x) (unsigned y) then repr 1
                         else repr 0
     end;
 
