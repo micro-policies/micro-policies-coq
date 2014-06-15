@@ -23,7 +23,8 @@ Class sealing_key := {
   max_key : key;
   inc_key : key -> key;
   eq_key :> EqDec (eq_setoid key);
-  ord_key :> Ordered key
+  ord_key :> Ordered key;
+  ltb_inc : forall sk, sk =/= max_key -> sk <? inc_key sk = true
 }.
 
 Context {sk : sealing_key}.

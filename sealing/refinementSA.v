@@ -39,18 +39,20 @@ Context {t : machine_types}
         {ar : partial_map aregisters (reg t) (Abs.value t)}
         {aregspec : axioms ar}.
 
-Hypothesis lt_inc : forall sk,
-  sk =/= Sym.max_key ->
-  sk <? Sym.inc_key sk.
-
 Section WithFixedKeyInjection.
 
+(* CH: It's silly to have kiIr as a field in this sigma-type-like
+   dependent record type: it forces upd_ki to be too dependently
+   typed, all I need is a "regular" partial map, the proofs should go
+   in the refinement (e.g. could be another conjunct in refine_ins) *)
 Record key_inj := mkKeyInj {
   (* ki k returns Some sk when k is allocated and sk is the
                                corresponding symbolic key *)
   ki :> Abs.key -> option Sym.key;
 
-  (* this is already used for unsealing, maybe in other places too *)    
+  (* injectivity; this is used in the unsealing case;
+     if we were to show fwd refinement we would probably need
+     bijectivity (a permutation on keys) *)
   kiIr : forall ak ak' sk sk',
            ki ak = Some sk ->
            ki ak' = Some sk' ->
@@ -390,9 +392,9 @@ Proof.
       - (* symbolic keys *)
         move => ak sk /=. case eqP => [heq | hneq] hsk.
         + injection hsk => hsk'. clear hsk.
-          rewrite hsk'. rewrite hsk' in c. by eauto using lt_inc.
+          rewrite hsk'. rewrite hsk' in c. by eauto using Sym.ltb_inc.
         + destruct rins as [rins1 rins2]. eapply ltb_trans. eapply rins2.
-          eassumption. apply lt_inc; assumption.
+          eassumption. apply Sym.ltb_inc; assumption.
     }
     + {(* seal *)
     assert (seal_addr = w) by admit. subst.
