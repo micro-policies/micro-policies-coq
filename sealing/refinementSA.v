@@ -1,18 +1,11 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
-Require Import utils common. Import PartMaps.
+Require Import ssreflect ssrfun ssrbool eqtype.
+Require Import utils ordered common. Import PartMaps.
 Require Import symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
-(* At the moment we're considering (morally) the same key generation
-   partial function at both levels and the identity mapping on keys.
-   TODO: We plan to get rid of this assumption by:
-   - [DONE] changing the abstract machine to have an infinite set of keys
-     that is different to the finite set of keys of the finite one
-   - [DONE] make key generation total at the abstract level
-   - [STARTED] for backwards refinement use someting similar to Maxime's
-     memory injections to relate symbolic and abstract keys
-   - give up any hope of forwards refinement?
+(* Give up any hope of forwards refinement?
      + we could consider a weakened version of forwards refinement
        that only holds up to a failed symbolic key generation
 *)
@@ -46,6 +39,10 @@ Context {t : machine_types}
         {ar : partial_map aregisters (reg t) (Abs.value t)}
         {aregspec : axioms ar}.
 
+Hypothesis lt_inc : forall sk,
+  sk =/= Sym.max_key ->
+  sk <? Sym.inc_key sk.
+
 Section WithFixedKeyInjection.
 
 Record key_inj := mkKeyInj {
@@ -53,13 +50,21 @@ Record key_inj := mkKeyInj {
                                corresponding symbolic key *)
   ki :> Abs.key -> option Sym.key;
 
-  (* still unclear where this is used *)    
+  (* this is already used for unsealing, maybe in other places too *)    
   kiIr : forall ak ak' sk sk',
            ki ak = Some sk ->
            ki ak' = Some sk' ->
            sk = sk' ->
            ak = ak'
 }.
+
+Definition upd_ki (ki : key_inj) (akey : Abs.key) (skey : Sym.key)
+  (H : forall ak, ~ki ak = Some skey) : key_inj.
+  refine (mkKeyInj (fun ak => if ak == akey then Some skey else ki ak) _).
+  intros ak ak' sk sk'.
+  case: eqP => [Heq | Hneq]; case: eqP => [Heq' | Hneq']; try congruence.
+  now apply (kiIr ki).
+Defined.
 
 Variable ki : key_inj.
 
@@ -95,67 +100,10 @@ Definition refine_reg (areg : aregisters) (sreg : sregisters) : Prop :=
 Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
   w = val a.
 
-(* XXX: Old, unclear whether we will still need anything like this
-
-(* Instantiating mkkey_f at abstract level to something
-   corresponding to what's happening at the symbolic level. *)
-
-Variable min_key : key. (* the initial key for the symbolic machine *)
-Variable key_lt : key -> key -> bool.
-
-Definition kmax (ks : list key) : key :=
-   List.fold_left (fun kmax k => if key_lt kmax k then k else kmax) ks min_key.
-
-Definition inc_key_opt k :=
-  if k == max_key then None
-                  else Some (inc_key k).
-
-Section WithDoNotation.
-Import DoNotation.
-
-Definition mkkey_f (ks : list key) : option (list key * key) :=
-  do k <- inc_key_opt (kmax ks);
-  Some (k::ks,k).
-
-End WithDoNotation.
-
-(* TODO: reduce these to hypotheses about order and inc_key and stuff *)
-Hypothesis inc_max_not_in : forall ks,
-  kmax ks =/= max_key ->
-   ~ In (inc_key (kmax ks)) ks.
-
-Hypothesis kmax_cons_inc_key_kmax : forall ks,
-  kmax ks =/= max_key ->
-  kmax (inc_key (kmax ks) :: ks) = inc_key (kmax ks).
-
-Lemma mkkey_fresh : forall ks ks' k,
-  mkkey_f ks = Some (ks', k) ->
-  ~ In k ks /\ In k ks' /\ incl ks ks'.
-Proof.
-  intros ks ks' k H. unfold mkkey_f in *. unfold bind in H.
-  remember (inc_key_opt (kmax ks)) as o. destruct o as [k'|].
-  - inversion H. subst. split; [|split].
-    + unfold inc_key_opt in *.
-      destruct (equiv_dec (kmax ks) max_key). congruence.
-      inversion Heqo. eauto using inc_max_not_in.
-    + left; reflexivity.
-    + right; assumption.
-  - inversion H.
-Qed.
-
-(* Need to define this instance to use Abs.step *)
-Program Instance gen_key_inst : Abs.key_generator := {
-  mkkey_f := mkkey_f;
-  mkkey_fresh := mkkey_fresh
-}.
-
-Definition refine_ins (keys : list key) (next_key : key) : Prop :=
-  match mkkey_f keys with
-  | Some (_, k) => k = next_key
-  | _           => False (* ??? *)
-  end.
-
-*)
+(* This is surprisingly weak? The rest would be needed for the fwd direction? *)
+Definition refine_ins (akeys : list Abs.key) (next_skey : Sym.key) : Prop :=
+  (forall ak, ~In ak akeys -> ki ak = None) /\
+  (forall ak sk, ki ak = Some sk -> (sk <? next_skey)%ordered).
 
 Definition astate := @Abs.state t ask amemory aregisters.
 Definition sstate := @Symbolic.state t Sym.sym_sealing.
@@ -165,8 +113,8 @@ Definition refine_state (ast : astate) (sst : sstate) : Prop :=
   let '(Symbolic.State smem sreg spc skey) := sst in
   refine_mem amem smem /\
   refine_reg areg sreg /\
-  refine_pc apc spc.
-(* /\ refine_ins akeys skey -- just gone? *)
+  refine_pc apc spc /\
+  refine_ins akeys skey.
 
 Lemma refine_pc_inv : forall apc spc tpc,
   refine_pc apc spc@tpc ->
@@ -252,6 +200,46 @@ Tactic Notation "unfold_next_state_in" ident(H) :=
   try unfold Symbolic.next_state_reg_and_pc in H;
   try unfold Symbolic.next_state in H.
 
+Lemma refine_key_upd_ki : forall (ki : key_inj) ak sk akey skey
+  (new : forall ak, ~ki ak = Some skey),
+  (ki akey = None) ->
+  refine_key ki ak sk ->
+  refine_key (@upd_ki ki akey skey new) ak sk.
+Proof.
+  unfold refine_key. intros. simpl.
+  case eqP => [heq | hneq]; [congruence | exact].
+Qed.
+
+Lemma refine_val_atom_upd_ki : forall (ki : key_inj) v a akey skey
+  (new : forall ak, ~ki ak = Some skey),
+  (ki akey = None) ->
+  refine_val_atom ki v a ->
+  refine_val_atom (@upd_ki ki akey skey new) v a.
+Proof.
+  move => ki v [w tg] akey skey snew anew rva.
+  destruct v; destruct tg; simpl in * => //=;
+    intuition; eauto using refine_key_upd_ki.
+Qed.
+
+Lemma refine_reg_upd_ki : forall (ki : key_inj) aregs sregs akey skey
+  (new : forall ak, ~ki ak = Some skey),
+  (ki akey = None) ->
+  refine_reg ki aregs sregs ->
+  refine_reg (@upd_ki ki akey skey new) aregs sregs.
+Proof.
+  unfold refine_reg.
+  move => ki areg sreg akey skey snew anew rreg w. specialize (rreg w).
+  destruct (get areg w); destruct (get sreg w) => //.
+  by auto using refine_val_atom_upd_ki.
+Qed.
+
+Lemma refine_mem_upd_ki : forall (ki : key_inj) amem smem akey skey
+  (new : forall ak, ~ki ak = Some skey),
+  (ki akey = None) ->
+  refine_mem ki amem smem ->
+  refine_mem (@upd_ki ki akey skey new) amem smem.
+Admitted. (* same as above *)
+
 Lemma backward_simulation : forall (ki : key_inj) ast sst sst',
   refine_state ki ast sst ->
   Sym.step sst sst' ->
@@ -262,7 +250,7 @@ Proof.
   intros ki [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
   destruct sstep; destruct sst as [smem sregs spc skey];
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
-    intros [rmem [rreg rpc]].
+    intros [rmem [rreg [rpc rins]]].
   - (* NOP *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     apply (refine_get_mem_inv _ rmem) in PC.
@@ -273,7 +261,7 @@ Proof.
     eexists. exists ki. split.
     + eapply Abs.step_nop; [reflexivity | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
-    + split3; now trivial.
+    + split4; now trivial.
   - (* CONST *)
     (* copy paste *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
@@ -361,37 +349,50 @@ Proof.
       (@Sym.eq_key ssk) skey (@Sym.max_key ssk)). discriminate CALL.
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     injection CALL; intro H; subst; clear CALL.
-admit. (* TODO: Update this proof to the new setting
-    assert (exists new_keys, mkkey_f akeys = Some (new_keys, skey)) as H.
-      simpl. unfold refine_ins in ris.
-      destruct (mkkey_f akeys) as [[x1 x2] | ]. subst. eauto. contradiction.
-    destruct H as [new_keys ?].
+    
+    (* need to show freshness for the new symbolic key to preserve injectivity *)
+    assert (forall ak : Abs.key, ki ak <> Some skey) as new.
+    - destruct rins as [_ rins2].
+      intros ? Hc. apply rins2 in Hc. rewrite ltb_irrefl in Hc.
+      discriminate Hc.
+
+    pose (@upd_ki ki (Abs.mkkey_f akeys) skey new) as ki'.
+    assert (refine_key ki' (Abs.mkkey_f akeys) skey) as rk.
+      unfold refine_key. simpl. case eqP; congruence.
+
+    assert(refine_val_atom ki' (Abs.VKey t (Abs.mkkey_f akeys))
+              (max_word@(Sym.KEY skey))) as rva by apply rk.
+
+    (* need to show freshness for new abstract key to be able to use
+       refine...upd_ki lemmas to port refinements to the extended ki *)
+    assert (ki (Abs.mkkey_f akeys) = None).
+    - pose proof Abs.mkkey_fresh.
+      destruct rins as [rins1 _]. by apply rins1.
+
     (* dealing with the result -- similar to CONST *)
-    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= (Abs.VKey _ skey)). reflexivity.
-    eexists. split.
-    + eapply Abs.step_mkkey; [reflexivity | | | | | reflexivity].
+    edestruct refine_upd_reg3 as [aregs' [G1 G2]]; [| exact rva | eassumption |].
+    apply refine_reg_upd_ki; eassumption.
+
+    eexists. exists ki'. split.
+    + eapply Abs.step_mkkey; [reflexivity | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       assumption.
-      simpl; eassumption.
       eassumption.
-    + split4; trivial. reflexivity.
-      (* the interesting part: reestablish refinement on keys *)
-      unfold refine_ins.
-      unfold mkkey_f in H. apply bind_inv in H. destruct H as [new_key [H' H'']].
-      injection H''; intros; subst; clear H''.
-      unfold inc_key_opt in H'.
-      destruct (@equiv_dec (@key sk) (eq_setoid (@key sk))
-             (@eq_key sk sko) (kmax akeys) (@max_key sk sko)). discriminate H'.
-      injection H'; intros; subst; clear H'.
-      unfold mkkey_f, bind.
-      rewrite kmax_cons_inc_key_kmax; [| assumption].
-      unfold inc_key_opt.
-      destruct (@equiv_dec (@key sk) (eq_setoid (@key sk))
-               (@eq_key sk sko) (@inc_key sk sko (kmax akeys))
-               (@max_key sk sko)). contradiction.
-      reflexivity.
-*)
+    + split4; trivial; try reflexivity.
+        by eauto using refine_mem_upd_ki.
+      split. (* the interesting part: reestablish refinement on keys *)
+      - (* abstract keys *)
+        intros ak ninak. simpl. case eqP => [heq | hneq].
+        + subst. apply False_ind. apply ninak. simpl. tauto.
+        + simpl in ninak.
+          destruct rins as [rins1 _]. apply rins1.
+          intro Hc. apply ninak. right. exact Hc.
+      - (* symbolic keys *)
+        move => ak sk /=. case eqP => [heq | hneq] hsk.
+        + injection hsk => hsk'. clear hsk.
+          rewrite hsk'. rewrite hsk' in c. by eauto using lt_inc.
+        + destruct rins as [rins1 rins2]. eapply ltb_trans. eapply rins2.
+          eassumption. apply lt_inc; assumption.
     }
     + {(* seal *)
     assert (seal_addr = w) by admit. subst.
@@ -410,7 +411,7 @@ admit. (* TODO: Update this proof to the new setting
     destruct vk; try contradiction H. simpl in H.
     (* register update *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= Abs.VSealed p k0). split; now trivial. (* extra split *)
+    instantiate (1:= Abs.VSealed p s). split; now trivial. (* extra split *)
     eexists. exists ki. split.
     + eapply Abs.step_seal; [reflexivity | | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
@@ -448,7 +449,7 @@ admit. (* TODO: Update this proof to the new setting
                | [H : refine_key _ _ _ |- _] =>
                  unfold refine_key in H; try rewrite e in H
              end.
-      assert(k1 = k2) by eauto using kiIr. subst. assumption.
+      assert(s = s0) by eauto using kiIr. subst. assumption.
       eassumption.
     + split4; now trivial.
     }

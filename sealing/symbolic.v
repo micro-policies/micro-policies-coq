@@ -1,7 +1,7 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
 
-Require Import utils common symbolic.symbolic. Import rules.
+Require Import utils ordered common symbolic.symbolic. Import rules.
 Require Import sealing.classes.
 
 Set Implicit Arguments.
@@ -22,7 +22,8 @@ Class sealing_key := {
   key : Type;
   max_key : key;
   inc_key : key -> key;
-  eq_key :> EqDec (eq_setoid key)
+  eq_key :> EqDec (eq_setoid key);
+  ord_key :> Ordered key
 }.
 
 Context {sk : sealing_key}.
