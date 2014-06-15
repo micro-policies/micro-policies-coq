@@ -764,27 +764,29 @@ Theorem backwards_simulation_attacker ast sst sst' :
 Proof.
   intros REF SSTEP.
   destruct ast as [[[[imem dmem] aregs] apc] b].
-  destruct b; inversion SSTEP as [? ? ? ? ? ? NOV REQUIV MEQUIV]; subst;
-  unfold refine_state in REF; destruct pc;
-  destruct REF as [REFI [REFD [REFR [REFPC CORRECTNESS]]]].
-  - 
-    destruct (reg_refinement_preserved_by_equiv REFR REQUIV) as [aregs' REFR'].
-    assert (REFI' := imem_refinement_preserved_by_equiv REFI MEQUIV).
-    destruct (dmem_refinement_preserved_by_equiv REFD MEQUIV) as [dmem' REFD'].
-    exists (imem, dmem', aregs', apc, true); 
-      split; [constructor | repeat (split; auto)].
+  destruct b; inversion SSTEP; subst;
+  unfold refine_state in REF; 
+  destruct REF as [REFI [REFD [REFR [REFPC CORRECTNESS]]]];
+  unfold refine_pc in REFPC; simpl in REFPC; subst.
+  - destruct (reg_refinement_preserved_by_equiv REFR REQUIV) as [aregs' REFR'];
+    assert (REFI' := imem_refinement_preserved_by_equiv REFI MEQUIV);
+    destruct (dmem_refinement_preserved_by_equiv REFD MEQUIV) as [dmem' REFD'];
+    assert (EFETCH : exists id, get mem pc = Some i@(INSTR id)) by (eexists; eauto);
+    apply REFI in EFETCH;
+    exists (imem, dmem', aregs', pc, true); 
+    split; [econstructor(eauto) | repeat (split; auto)];
     intros ? src TAG.
     unfold SymbolicCFI.mem_equiv in MEQUIV.
-    assert (MEQUIV' := MEQUIV val); clear MEQUIV.
-    destruct (get mem val) eqn:GET; simpl in GET; rewrite GET in MEQUIV'.
-    { destruct (get mem' val) eqn:GET'.
-      + destruct MEQUIV' as [? ? TG1 TG2 | a a0 id id' TG TG' EQ].
+    assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
+    destruct (get mem pc) eqn:GET; simpl in GET; rewrite GET in MEQUIV'.
+    { destruct (get mem' pc) eqn:GET'.
+      + destruct MEQUIV' as [a a' TG1 TG2 | a a0 id' id'' TG TG' EQ].
       - simpl in H. rewrite H in GET'.
         destruct a as [av atg].
         simpl in TG1. rewrite TG1 in GET. apply CORRECTNESS in GET.
         assert (TRUE: true = true) by reflexivity.
         destruct GET as [CORRECT ?].
-        destruct tag as [opt_id|].
+        destruct tpc as [opt_id|].
         * destruct opt_id.
           { apply CORRECT with (src := w) in TRUE.
             destruct TRUE as [? [CONTRA ?]].
@@ -802,10 +804,21 @@ Proof.
         reflexivity.
         + destruct MEQUIV'.
     }
-    { destruct (get mem' val) eqn:GET'.
+    { destruct (get mem' pc) eqn:GET'.
       - destruct MEQUIV'.
       - simpl in H. rewrite GET' in H. discriminate.
     }
-  - unfold SymbolicCFI.no_violation in NOV. Admitted.
+  - unfold SymbolicCFI.no_violation in NOV. 
+    destruct (get mem pc) eqn:GET.
+    * destruct a as [av atg]. inversion FETCH; subst.
+      destruct (CORRECTNESS i (INSTR id) GET) as [? CONTRA].
+      assert (HYPOTHESIS: (forall src : word t,
+            tpc = INSTR (Some src) ->
+            exists dst : word t,
+              INSTR id = INSTR (Some dst) /\ valid_jmp src dst = true)).
+      { intros src TPC. eapply NOV; eauto. }
+      apply CONTRA in HYPOTHESIS. discriminate.
+    * congruence.
+Qed.
     
 End Refinement.

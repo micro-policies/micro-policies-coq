@@ -48,7 +48,7 @@ Program Instance sym_cfi : (Symbolic.symbolic_params) := {
 
 Variable table : list (Symbolic.syscall t).
 
-Definition no_violation (sst : @Symbolic.state t sym_cfi) :=
+Definition no_violation (sst : Symbolic.state t) :=
   let '(Symbolic.State mem _ pc@tpc _) := sst in
   forall i ti src,
     get mem pc = Some i@ti ->
@@ -84,14 +84,15 @@ Definition mem_equiv (mem : memory) (mem' : memory) : Prop :=
     | _     , _      => False
     end.
 
-Inductive step_a : (@Symbolic.state t sym_cfi) -> 
-                   (@Symbolic.state t sym_cfi) -> Prop :=
-| step_attack : forall mem reg pc int mem' reg',
-                  no_violation (Symbolic.State mem reg pc int) ->
-                  reg_equiv reg reg' ->
-                  mem_equiv mem mem' ->
-                  step_a (Symbolic.State mem reg pc int) 
-                         (Symbolic.State mem' reg' pc int).
+Inductive step_a : Symbolic.state t ->
+                   Symbolic.state t -> Prop :=
+| step_attack : forall mem reg pc tpc int mem' reg' i id
+                  (FETCH: get mem pc = Some i@(INSTR id))
+                  (NOV: no_violation (Symbolic.State mem reg pc@tpc int))
+                  (REQUIV: reg_equiv reg reg')
+                  (MEQUIV: mem_equiv mem mem'),
+                  step_a (Symbolic.State mem reg pc@tpc int)
+                         (Symbolic.State mem' reg' pc@tpc int).
                   
 Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
 
