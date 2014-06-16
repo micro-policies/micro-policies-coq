@@ -183,9 +183,10 @@ Proof.
     eassumption. eassumption. eassumption.
   - erewrite (@get_upd_neq _ _ _ _ sregspec); [| | apply u1].
     erewrite (@get_upd_neq _ _ _ _ (@Abs.reg_axioms _ _ _ ps)); [| | apply u2].
-    apply rr.
-    admit. admit. (* silly equality stuff *)
-Admitted.
+    by apply rr.
+    intro Hc; by apply neq_rr'.
+    intro Hc; by apply neq_rr'.
+Qed.
 
 Lemma refine_upd_reg3 : forall aregs sregs sregs' r a v,
   refine_reg aregs sregs ->
@@ -315,16 +316,14 @@ Proof.
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (apc + 1)%w). reflexivity.
     eexists. exists ki. split.
-    + eapply Abs.step_jal; [reflexivity | | | | | reflexivity].
+    + eapply Abs.step_jal; [reflexivity | | | | eassumption | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
-      simpl in *.
-        (* not the right way of doing it *)
-        destruct (mkkey_addr == w). discriminate NOTCALL.
-        destruct (seal_addr == w). discriminate NOTCALL.
-        destruct (unseal_addr == w). discriminate NOTCALL.
-        admit. (* follows from NOTCALL, damn it! *)
-      eassumption.
+      simpl in NOTCALL. move : NOTCALL.
+        have [// | /eqP neq_mkkey] := altP (mkkey_addr =P w).
+        have [// | /eqP neq_seal] := altP (seal_addr =P w).
+        have [// | /eqP neq_unseal] := altP (unseal_addr =P w).
+        by move => _ [? | [? | [? | ?]]].
     + split4; now trivial.
   - (* JAL - system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
@@ -343,13 +342,12 @@ Proof.
     (* done with RW *)
     clear RW.
     (* figuring out which system call it was *)
-    simpl in GETCALL.
-    destruct (mkkey_addr == w);
-      [| destruct (seal_addr == w);
-      [| destruct (unseal_addr == w); [| discriminate GETCALL]]];
-      injection GETCALL; intro; subst; clear GETCALL.
+    simpl in GETCALL. move : GETCALL.
+      have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P w); [|
+      have [eq_seal | neq_seal] := altP (seal_addr =P w); [|
+      have [eq_unseal | //] := altP (unseal_addr =P w)]];
+      move => GETCALL; injection GETCALL; move {GETCALL} => ?; subst.
     + {(* mkkey *)
-    assert (mkkey_addr = w) by admit. subst.
     simpl in CALL; move: CALL.
     have [//|/eqP neq_skey CALL] := altP (skey =P Sym.max_key).
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
@@ -396,13 +394,12 @@ Proof.
         move => ak sk /=. case eqP => [heq | hneq] hsk.
         + injection hsk => hsk'. clear hsk.
           rewrite hsk'.
-          admit.
-          (* rewrite hsk' in c. by eauto using Sym.ltb_inc. *)
+          by rewrite hsk' in neq_skey; apply Sym.ltb_inc; apply /eqP.
         + destruct rins as [rins1 rins2]. eapply ltb_trans. eapply rins2.
-          eassumption. admit. (* apply Sym.ltb_inc; assumption. *)
+          eassumption.
+          apply Sym.ltb_inc. by apply /eqP.
     }
     + {(* seal *)
-    assert (seal_addr = w) by admit. subst.
     (* break up the effects of the system call *)
     simpl in CALL.
     apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
@@ -426,7 +423,6 @@ Proof.
     + split4; now trivial.
     }
     + {(* unseal -- very similar to seal *)
-    assert (unseal_addr = w) by admit. subst.
     (* break up the effects of the system call *)
     simpl in CALL.
     apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
