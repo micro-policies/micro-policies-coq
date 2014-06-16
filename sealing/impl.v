@@ -32,7 +32,20 @@ Context (t : machine_types)
         {scr : @syscall_regs t}.
 
 Definition admit {T: Type} : T.  Admitted.
-Definition concrete_sealing_machine : bool := admit.
+
+(* We need a constant here that tells application code where to put
+   its entry point. *)
+
+(* Most of this belongs in symbolic.v
+Definition concrete_sealing_machine : Concrete.state _ := 
+  Concrete.mkState
+    admit (* memory *)
+    admit (* registers *)
+    admit (* cache (should get it from symbolic machine!) *)
+    admit (* pc *)
+    admit (* epc *)
+.
+*)
 
 End WithClasses.
 End Con.
