@@ -15,7 +15,7 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect eqtype.
 Require Import lib.utils common.common.
-(* Require Import concrete.concrete. *)
+Require Import concrete.concrete.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -23,7 +23,7 @@ Unset Printing Implicit Defensive.
 
 Import DoNotation.
 
-Module Con.
+Module ConcreteSealing.
 
 Section WithClasses.
 
@@ -45,7 +45,12 @@ Definition concrete_sealing_machine : Concrete.state _ :=
     admit (* pc *)
     admit (* epc *)
 .
+
+(* And then I want to instantiate the symbolic refinement proof
+   appropriately so that I get a proof of refinement for this instance of
+   the concrete and symbolic machines. *)
+
 *)
 
 End WithClasses.
-End Con.
+End ConcreteSealing.
