@@ -41,10 +41,19 @@ Inductive value :=
 
 Import PartMaps.
 
-Context {memory : Type}
-        {am : partial_map memory (word t) value}
-        {registers : Type}
-        {ar : partial_map registers (reg t) value}.
+(* BCP: In the sfi development, am is called mem_class and ar is called reg_class *)
+Class abstract_params := {
+  memory    : Type;
+  am :> partial_map memory (word t) value;
+  registers : Type;
+  ar :> partial_map registers (reg t) value
+}.
+
+Class params_spec (ap : abstract_params) :=
+  { mem_axioms :> PartMaps.axioms (@am ap)
+  ; reg_axioms :> PartMaps.axioms (@ar ap) }.
+
+Context {ap : abstract_params}.
 
 Open Scope word_scope.
 
@@ -149,3 +158,7 @@ Inductive step (st st' : state) : Prop :=
 End WithClasses.
 
 End Abs.
+
+Arguments Abs.state t {_ _}.
+Arguments Abs.memory t {_ _}.
+Arguments Abs.registers t {_ _}.

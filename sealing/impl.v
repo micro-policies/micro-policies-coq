@@ -16,6 +16,7 @@ Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect eqtype.
 Require Import lib.utils common.common.
 Require Import concrete.concrete.
+Require Import concrete.int_32.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -27,11 +28,72 @@ Module ConcreteSealing.
 
 Section WithClasses.
 
-Context (t : machine_types)
-        {ops : machine_ops t}
-        {scr : @syscall_regs t}.
+Definition t := concrete_int_32_t.
+Definition ops := concrete_int_32_ops.
+
+Context {scr : @syscall_regs t}.
+
+Definition build_abstract_sealing_machine :=
+  fun user_memory : word t -> 
+
+
+Definition build_concrete_sealing_machine :=
+  fun user_memory : word t -> 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Definition admit {T: Type} : T.  Admitted.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 (* We need a constant here that tells application code where to put
    its entry point. *)

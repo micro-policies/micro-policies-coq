@@ -9,7 +9,7 @@ Import ListNotations.
 
 Require Import lib.FiniteMaps.
 Require Import lib.utils.
-Require Import concrete.common.
+Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 
@@ -39,7 +39,6 @@ Instance concrete_int_32_fh : fault_handler_params concrete_int_32_t := {
      fine when used on small immediates *)
   load_const c r := [Const concrete_int_32_t c r]
 }.
-
 
 Definition hello_world :=
   map (@encode_instr _ concrete_int_32_ops)

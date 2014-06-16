@@ -31,13 +31,18 @@ Context {t : machine_types}
         {sr : partial_map sregisters (reg t) (atom (word t) Sym.stag)}
         {sregspec : axioms sr}
 
+        {ap : Abs.abstract_params t}
+        {ps : Abs.params_spec ap}.
+
+(* DEAD?
         {amemory : Type}
         {am : partial_map amemory (word t) (Abs.value t)}
         {amemspec : axioms am}
 
         {aregisters : Type}
         {ar : partial_map aregisters (reg t) (Abs.value t)}
-        {aregspec : axioms ar}.
+        {aregspec : axioms ar}
+*)
 
 Section WithFixedKeyInjection.
 
@@ -82,7 +87,7 @@ Definition refine_val_atom (v : Abs.value t)
   | _                   , _                      => False
   end.
 
-Definition refine_mem (amem : amemory) (smem : smemory) : Prop :=
+Definition refine_mem (amem : Abs.memory t) (smem : smemory) : Prop :=
   forall w,
     match get amem w, get smem w with
     | None  , None   => True
@@ -90,7 +95,7 @@ Definition refine_mem (amem : amemory) (smem : smemory) : Prop :=
     | _     , _      => False
     end.
 
-Definition refine_reg (areg : aregisters) (sreg : sregisters) : Prop :=
+Definition refine_reg (areg : Abs.registers t) (sreg : sregisters) : Prop :=
   forall w,
     match get areg w, get sreg w with
     | None  , None   => True
@@ -107,7 +112,7 @@ Definition refine_ins (akeys : list Abs.key) (next_skey : Sym.key) : Prop :=
   (forall ak, ~In ak akeys -> ki ak = None) /\
   (forall ak sk, ki ak = Some sk -> (sk <? next_skey)%ordered).
 
-Definition astate := @Abs.state t ask amemory aregisters.
+Definition astate := @Abs.state t ask ap.
 Definition sstate := @Symbolic.state t Sym.sym_sealing.
 
 Definition refine_state (ast : astate) (sst : sstate) : Prop :=
@@ -160,7 +165,7 @@ Proof.
   intros aregs sregs sregs' r a v rr rv up. pose proof up as up'.
   apply (@upd_inv _ _ _ _ sregspec) in up. destruct up as [[w tg] ge].
   eapply (refine_get_reg_inv _ rr) in ge. destruct ge as [v' [ge rva]].
-  eapply (@upd_defined _ _ _ _ aregspec) in ge. destruct ge as [aregs' up].
+  eapply (@upd_defined _ _ _ _ (@Abs.reg_axioms _ _ _ ps)) in ge. destruct ge as [aregs' up].
   exists aregs'. eassumption.
 Qed.
 
@@ -173,11 +178,11 @@ Lemma refine_upd_reg2 : forall aregs aregs' sregs sregs' r a v,
 Proof.
   intros aregs aregs' sregs sregs' r a v rr rva u1 u2.
   intro r'. have [<-|/eqP neq_rr'] := altP (r =P r').
-  - erewrite (@get_upd_eq _ _ _ _ aregspec).
+  - erewrite (@get_upd_eq _ _ _ _ (@Abs.reg_axioms _ _ _ ps)).
     erewrite (@get_upd_eq _ _ _ _ sregspec).
     eassumption. eassumption. eassumption.
   - erewrite (@get_upd_neq _ _ _ _ sregspec); [| | apply u1].
-    erewrite (@get_upd_neq _ _ _ _ aregspec); [| | apply u2].
+    erewrite (@get_upd_neq _ _ _ _ (@Abs.reg_axioms _ _ _ ps)); [| | apply u2].
     apply rr.
     admit. admit. (* silly equality stuff *)
 Admitted.
