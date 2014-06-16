@@ -1,5 +1,5 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import common.
+Require Import common.common.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
