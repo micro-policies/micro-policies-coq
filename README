@@ -1,0 +1,9 @@
+
+* Prerequisites
+
+- Coq 8.4pl4 (might work with 8.4pl3 too though)
+- ssreflect 1.5
+
+* Compiling
+
+$ make
