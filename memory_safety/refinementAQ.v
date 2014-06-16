@@ -115,12 +115,8 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
 + by rewrite binop_addDl; constructor.
 + by rewrite binop_subDl; constructor.
 + simpl in *.
-(* We hit here a bug in destruct (and probably pattern) *)
-(* ssreflect's case tactic works fine... *)
-(* I will refactor this part, by case analysis on equalities on blocks first *)
-  destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
-         (SetoidDec.eq_setoid (QuasiAbstract.block mt))
-         (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce; try discriminate.
+  move: hyp.
+  have [eq_nonce hyp|//] := altP (nonce1 =P nonce2).
   injection hyp; intros <- <-.
   eexists.
   move: (mi_b1) => mi_b1'.
@@ -136,44 +132,32 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
       rewrite binop_subDl binop_subDr.
       rewrite addwA subww add0w.
       constructor.
-    by apply eqb_true_iff.
 + simpl in *.
   case: eqP => [eq_b|neq_b].
     rewrite eq_b mi_b2 in mi_b1.
     injection mi_b1 as <- <-.
-    rewrite eqb_refl in hyp; injection hyp as <- <-.
+    rewrite eqxx in hyp; injection hyp as <- <-.
     eexists; split; try reflexivity.
     by rewrite binop_eq_add2l; constructor.
-  destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
-       (SetoidDec.eq_setoid (QuasiAbstract.block mt))
-       (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce.
-  (* again, I would like to do
-     apply eqb_true_iff in eq_nonce.
-  *)
-    assert (eq_nonce' : nonce1 = nonce2).
-      by apply eqb_true_iff.
-    rewrite (miIr mi_b1 mi_b2 eq_nonce') in neq_b; congruence.
+  move: hyp.
+  have [eq_nonce hyp|neq_nonce hyp] := altP (nonce1 =P nonce2).
+    rewrite (miIr mi_b1 mi_b2 eq_nonce) in neq_b; congruence.
   injection hyp as <- <-.
   eexists; split; try reflexivity.
 by constructor.
+
+
 + (* CH: minless copy paste from above *)
   simpl in *.
   case: eqP => [eq_b|neq_b].
     rewrite eq_b mi_b2 in mi_b1.
     injection mi_b1 as <- <-.
-    rewrite eqb_refl in hyp; injection hyp as <- <-.
+    rewrite eqxx in hyp; injection hyp as <- <-.
     eexists; split; try reflexivity.
     by rewrite binop_leq_add2l; constructor.
-  destruct (@SetoidDec.equiv_decb (QuasiAbstract.block mt)
-       (SetoidDec.eq_setoid (QuasiAbstract.block mt))
-       (@eq_word mt ops) nonce1 nonce2) eqn:eq_nonce.
-  (* again, I would like to do
-     apply eqb_true_iff in eq_nonce.
-  *)
-    assert (eq_nonce' : nonce1 = nonce2).
-      by apply eqb_true_iff.
-    rewrite (miIr mi_b1 mi_b2 eq_nonce') in neq_b; congruence.
-  discriminate hyp. (* CH: not sure what I'm doing :) *)
+    move: hyp.
+  have [eq_nonce hyp|//] := altP (nonce1 =P nonce2).
+    rewrite (miIr mi_b1 mi_b2 eq_nonce) in neq_b; congruence.
 Qed.
 
 Lemma refine_ptr_inv w n b off base nonce :
@@ -312,8 +296,7 @@ have [eq_b|neq_b] := altP (b =P pt.1).
   rewrite eq_b.
   unfold Abstract.getv.
   simpl; rewrite (PartMaps.get_upd_eq upd_pt).
-  destruct (eq_word off (snd pt)) as [eq_off|neq_off].
-    rewrite eq_off. (* Why doesn't a -> intro pattern work above *)
+  have [->|/eqP neq_off] := altP (off =P snd pt).
     rewrite (update_list_Z_spec update_pt).
     assert (eq_w1 : (base + snd pt)%w = w1).
       replace pt with (fst pt, snd pt) in rpt.
@@ -356,7 +339,7 @@ change (match PartMaps.get amem b with
            end)
 with (Abstract.getv amem (b,off)) in *.
 
-destruct (eq_word (base + off) w1) as [eq_w1|neq_w1].
+have [eq_w1|/eqP neq_w1] := altP (base + off =P w1).
   rewrite <-eq_w1 in upd_w1.
   rewrite (PartMaps.get_upd_eq upd_w1).
   destruct (Abstract.getv amem (b, off)) eqn:get_b.
@@ -387,7 +370,7 @@ Lemma refine_registers_val aregs qaregs r v : refine_registers aregs qaregs ->
 Proof.
 intros rregs get_r; specialize (rregs r); revert rregs.
 rewrite get_r; destruct (PartMaps.get aregs r); try easy.
-by destruct v as [w [ty|]]; try easy; exists w; exists ty.
+by destruct v as [w [ty | |]]; try easy; exists w; exists ty.
 Qed.
 
 Lemma refine_registers_get aregs qaregs (n : common.reg mt) w ty :
@@ -447,7 +430,7 @@ destruct (PartMaps.get aregs r) as [w'|] eqn:get_r_a; try contradiction.
 destruct (PartMaps.upd_defined v get_r_a) as [aregs' upd_r_a].
 exists aregs'; split; try easy.
 intros r'.
-destruct (eq_reg r' r) as [->|neq_rr'].
+have [->|/eqP neq_rr'] := altP (r' =P r).
   rewrite (PartMaps.get_upd_eq upd_r_a).
   by rewrite (PartMaps.get_upd_eq upd_r_qa).
 rewrite (PartMaps.get_upd_neq neq_rr' upd_r_a).
@@ -458,7 +441,7 @@ Qed.
 Definition refine_state (ast : Abstract.state mt) (qast : QuasiAbstract.state mt) :=
   let '(Abstract.mkState amem aregs apc) := ast in
   match qast with
-  | QuasiAbstract.mkState qamem qaregs w@V(ty) =>
+  | QuasiAbstract.mkState qamem qaregs ist w@V(ty) =>
     refine_memory amem qamem
       /\ refine_registers aregs qaregs
       /\ refine_val (Abstract.ValPtr apc) w ty
@@ -507,8 +490,8 @@ intros rpc; inversion rpc.
 by exists base; split.
 Qed.
 
-Lemma backward_simulation ast (mi : meminj (Abstract.mem ast)) qast qast' qasc :
-  refine_state mi ast qast -> (* refine_syscalls mi asc qasc -> *) QuasiAbstract.step qasc qast qast' ->
+Lemma backward_simulation ast (mi : meminj (Abstract.mem ast)) qast qast' (* qasc *) :
+  refine_state mi ast qast -> (* refine_syscalls mi asc qasc -> *) QuasiAbstract.step (* qasc *) qast qast' ->
   exists ast', Abstract.step ast ast' /\ refine_state mi ast' qast'.
 Proof.
 destruct ast as [amem aregs [apcb apci]].
@@ -543,12 +526,14 @@ try match goal with
   | UPD : PartMaps.upd ?mem ?w1 ?v = Some _ |- _ =>
     eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?)
   end;
+(*
 try match goal with
   | GETCALL : QuasiAbstract.get_syscall ?qasc ?w = Some _,
     CALL : QuasiAbstract.sem ?sc ?st = Some _ |- _ =>
     eapply (refine_syscalls_get rsc) in GETCALL; destruct GETCALL as (? & ? & ?);
     eapply refine_syscall_sem in CALL; [|by eauto|by eauto]; destruct CALL as (? & ? & ?)
   end;
+*)
 repeat try match goal with
   | def := _ |- _ => unfold def
   end; try (eexists; split;

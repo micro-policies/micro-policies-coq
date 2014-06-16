@@ -1,5 +1,7 @@
 Require Import List NPeano Arith Bool.
-Require Import Coq.Classes.SetoidDec.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
 Require Import lib.utils lib.Coqlib.
 Require Import concrete.common.
 Require Import concrete.concrete.
@@ -67,7 +69,7 @@ Hint Unfold Concrete.next_state_pc.
 Hint Unfold Concrete.next_state.
 Hint Unfold Concrete.miss_state.
 
-Let in_kernel_user t ic : Concrete.is_kernel_tag ops (encode (USER t ic)) = false.
+Let in_kernel_user t ic : Concrete.is_kernel_tag (encode (USER t ic)) = false.
 Proof.
   unfold Concrete.is_kernel_tag.
   erewrite encode_kernel_tag.
@@ -180,13 +182,13 @@ Lemma no_syscall_no_entry_point mem addr :
   wf_entry_points table mem ->
   Symbolic.get_syscall table addr = None ->
   negb match PartMaps.get mem addr with
-       | Some _@it => it ==b encode ENTRY
+       | Some _@it => it == encode ENTRY
        | None => false
        end = true.
 Proof.
   intros WF GETSC.
   destruct (match PartMaps.get mem addr with
-            | Some _@it => it ==b encode ENTRY
+            | Some _@it => it == encode ENTRY
             | None => false
             end) eqn:E; trivial.
   apply WF in E.

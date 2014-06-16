@@ -1,5 +1,7 @@
 Require Import Coq.Lists.List Coq.Arith.Arith Coq.ZArith.ZArith.
-Require Import Coq.Classes.SetoidDec.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
 Require Import lib.utils.
 Require Import concrete.common.
 Require Import symbolic.symbolic.
@@ -30,7 +32,7 @@ Context {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
 Variable valid_jmp : word t -> word t -> bool.
 
 Program Instance sym_cfi : (Symbolic.symbolic_params) := {
-  tag := cfi_tag;
+  tag := cfi_tag_eqType;
 
   handler := cfi_rules.cfi_handler valid_jmp;
 
@@ -94,7 +96,7 @@ Inductive step_a : Symbolic.state t ->
                   step_a (Symbolic.State mem reg pc@tpc int)
                          (Symbolic.State mem' reg' pc@tpc int).
                   
-Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
+Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
 Open Scope word_scope.
 
@@ -109,9 +111,9 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
         | Some (Jump r) => valid_jmp pc_s pc_s'
         | Some (Jal r) => valid_jmp pc_s pc_s'
         | Some (Bnz r imm) => 
-          (pc_s' ==b pc_s .+1) || (pc_s' ==b pc_s + imm_to_word imm)
+          (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
         | None => false
-        | _ => pc_s' ==b pc_s .+1
+        | _ => pc_s' == pc_s .+1
       end
     | None => false
   end.

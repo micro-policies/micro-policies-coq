@@ -172,7 +172,7 @@ Lemma refine_upd_reg2 : forall aregs aregs' sregs sregs' r a v,
   refine_reg aregs' sregs'.
 Proof.
   intros aregs aregs' sregs sregs' r a v rr rva u1 u2.
-  intro r'. destruct (eq_reg r r') as [[]|].
+  intro r'. have [<-|/eqP neq_rr'] := altP (r =P r').
   - erewrite (@get_upd_eq _ _ _ _ aregspec).
     erewrite (@get_upd_eq _ _ _ _ sregspec).
     eassumption. eassumption. eassumption.
@@ -315,9 +315,9 @@ Proof.
       eassumption.
       simpl in *.
         (* not the right way of doing it *)
-        destruct (mkkey_addr ==b w). discriminate NOTCALL.
-        destruct (seal_addr ==b w). discriminate NOTCALL.
-        destruct (unseal_addr ==b w). discriminate NOTCALL.
+        destruct (mkkey_addr == w). discriminate NOTCALL.
+        destruct (seal_addr == w). discriminate NOTCALL.
+        destruct (unseal_addr == w). discriminate NOTCALL.
         admit. (* follows from NOTCALL, damn it! *)
       eassumption.
     + split4; now trivial.
@@ -339,16 +339,14 @@ Proof.
     clear RW.
     (* figuring out which system call it was *)
     simpl in GETCALL.
-    destruct (mkkey_addr ==b w);
-      [| destruct (seal_addr ==b w);
-      [| destruct (unseal_addr ==b w); [| discriminate GETCALL]]];
+    destruct (mkkey_addr == w);
+      [| destruct (seal_addr == w);
+      [| destruct (unseal_addr == w); [| discriminate GETCALL]]];
       injection GETCALL; intro; subst; clear GETCALL.
     + {(* mkkey *)
     assert (mkkey_addr = w) by admit. subst.
-    simpl in CALL.
-    (* this should be easy, but it's not *)
-    destruct (@equiv_dec (@Sym.key ssk) (eq_setoid (@Sym.key ssk))
-      (@Sym.eq_key ssk) skey (@Sym.max_key ssk)). discriminate CALL.
+    simpl in CALL; move: CALL.
+    have [//|/eqP neq_skey CALL] := altP (skey =P Sym.max_key).
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     injection CALL; intro H; subst; clear CALL.
     
@@ -392,9 +390,11 @@ Proof.
       - (* symbolic keys *)
         move => ak sk /=. case eqP => [heq | hneq] hsk.
         + injection hsk => hsk'. clear hsk.
-          rewrite hsk'. rewrite hsk' in c. by eauto using Sym.ltb_inc.
+          rewrite hsk'.
+          admit.
+          (* rewrite hsk' in c. by eauto using Sym.ltb_inc. *)
         + destruct rins as [rins1 rins2]. eapply ltb_trans. eapply rins2.
-          eassumption. apply Sym.ltb_inc; assumption.
+          eassumption. admit. (* apply Sym.ltb_inc; assumption. *)
     }
     + {(* seal *)
     assert (seal_addr = w) by admit. subst.
@@ -413,7 +413,7 @@ Proof.
     destruct vk; try contradiction H. simpl in H.
     (* register update *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= Abs.VSealed p s). split; now trivial. (* extra split *)
+    instantiate (1:= Abs.VSealed p s0). split; now trivial. (* extra split *)
     eexists. exists ki. split.
     + eapply Abs.step_seal; [reflexivity | | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
@@ -428,9 +428,9 @@ Proof.
     destruct tp; try discriminate CALL.
     apply bind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
     destruct tk; try discriminate CALL.
+    move: CALL.
     (* additional: equality check between keys *)
-    destruct (@equiv_dec (@Sym.key ssk) (eq_setoid (@Sym.key ssk))
-               (@Sym.eq_key ssk) k k0); [| discriminate CALL].
+    have [eq_s CALL|//] := eqP.
     apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
     injection CALL; intro H; subst; clear CALL.
     (* 2 register lookups *)
@@ -451,7 +451,7 @@ Proof.
                | [H : refine_key _ _ _ |- _] =>
                  unfold refine_key in H; try rewrite e in H
              end.
-      assert(s = s0) by eauto using kiIr. subst. assumption.
+      assert(s = s1) by eauto using kiIr. subst. assumption.
       eassumption.
     + split4; now trivial.
     }

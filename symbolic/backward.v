@@ -1,5 +1,7 @@
 Require Import List NPeano Arith Bool.
-Require Import Coq.Classes.SetoidDec.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
 Require Import lib.utils lib.Coqlib.
 Require Import concrete.common.
 Require Import concrete.concrete.
@@ -71,7 +73,7 @@ Proof.
   unfold Concrete.miss_state in MISS.
   unfold in_kernel, Concrete.is_kernel_tag in INUSER.
   match_inv. simpl in *.
-  rewrite eqb_refl in INUSER; try apply eq_wordP.
+  rewrite eqxx in INUSER; try apply eq_wordP.
   simpl in INUSER. discriminate.
 Qed.
 
@@ -83,7 +85,7 @@ Ltac analyze_cache :=
     INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
     CACHE  : cache_correct ?cache |- _ =>
     unfold in_user, in_kernel in INUSER; simpl in INUSER; rewrite PC in INUSER;
-    assert (CACHEHIT := analyze_cache mvec _ CACHE LOOKUP INUSER eq_refl);
+    assert (CACHEHIT := analyze_cache mvec _ CACHE LOOKUP INUSER (erefl _));
     simpl in CACHEHIT;
     repeat match type of CACHEHIT with
     | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
@@ -166,7 +168,7 @@ Proof.
 
   try match goal with
   | INST : decode_instr _ = Some (Jal _ _) |- _ =>
-    pose proof (in_user_no_system_call _ _ INUSER' eq_refl WFENTRYPOINTS)
+    pose proof (in_user_no_system_call _ _ INUSER' (erefl _) WFENTRYPOINTS)
   end;
 
   solve [eexists; split;
@@ -308,16 +310,14 @@ Proof.
         rewrite TAG in ISUSER. rewrite TAG.
         apply andb_true_iff in ISUSER.
         destruct ISUSER as [H ISUSER]. rewrite H. clear H. simpl.
-        rewrite orb_true_iff in ISUSER.
-        destruct ISUSER as [ISUSER | ISUSER].
+        case/orP: ISUSER => ISUSER.
         { simpl in ISUSER. now rewrite ISUSER. }
         destruct (PartMaps.get cmem'' apc) as [[i it]|] eqn:GET;
           [|apply orb_true_r].
-        unfold equiv_decb.
-        destruct (equiv_dec it (encode ENTRY)); [|apply orb_true_r]; simpl in *; subst.
+        have [eq_it|neq_it] := altP (it =P (encode ENTRY)); [|apply orb_true_r]; simpl in *; subst.
         generalize (proj2 (WFENTRYPOINTS' apc)).
-        rewrite GET. rewrite eqb_refl. intros DEF.
-        specialize (DEF eq_refl).
+        rewrite GET. rewrite eqxx. intros DEF.
+        specialize (DEF (erefl _)).
         apply WFENTRYPOINTS in DEF.
         now rewrite DEF in ISUSER.
       * now rewrite TAG.
@@ -338,21 +338,21 @@ Proof.
       { destruct KEXEC. eauto. }
       apply EXEC in KEXEC.
       destruct (handler_correct_disallowed_case cmem mvec int KINV HANDLER STORE ISUSER' KEXEC).
-  - right. rewrite andb_true_iff in SYSCALL. destruct SYSCALL as [S1 S2].
+  - right. case/andP: SYSCALL => S1 S2.
     destruct (PartMaps.get (Concrete.mem kst) (common.val (Concrete.pc kst)))
       as [[i it]|] eqn:GET; try discriminate.
-    rewrite eqb_true_iff in S2. subst.
+    move/eqP: S2=> S2. subst.
     exploit state_on_syscalls; eauto. simpl.
     intros (EM & ER & r & w & tpc & ic & ti & t1 & old & told & trpc & tr &
             EC & MEM & ? & INST & DEC & PC' & RA' & LOOKUP').
     rewrite EM in GET. subst.
     assert (SYSCALL : exists sc, Symbolic.get_syscall table (common.val (Concrete.pc kst)) = Some sc).
     { unfold wf_entry_points in WFENTRYPOINTS. rewrite WFENTRYPOINTS.
-      rewrite GET. apply eqb_refl. }
+      rewrite GET. apply eqxx. }
     destruct SYSCALL as [sc GETSC].
     assert (HANDLER := fun H => CACHE _ _ H LOOKUP').
     unfold word_lift in HANDLER. simpl in HANDLER. rewrite decodeK in HANDLER.
-    specialize (HANDLER eq_refl).
+    specialize (HANDLER (erefl _)).
     destruct HANDLER as (mvec & rvec & E1 & E2 & HANDLER).
     apply encode_mvec_inj in E1; eauto. apply encode_rvec_inj in E2. subst.
     unfold handler, rules.handler in HANDLER. simpl in HANDLER.
@@ -432,10 +432,9 @@ Proof.
   - rewrite <- DEC in NKERNEL.
     erewrite eq_tag_eq_word in NKERNEL.
     simpl in NKERNEL.
-    rewrite negb_false_iff in NUSER.
-    congruence.
+    by rewrite NKERNEL in NUSER.
   - rewrite DEC in NKERNEL.
-    now rewrite eqb_refl in NKERNEL.
+    by rewrite eqxx in NKERNEL.
 Qed.
 
 Lemma backwards_refinement_aux cst cst' (EXEC : exec (Concrete.step _ masks) cst cst') :
@@ -468,7 +467,7 @@ Proof.
         eapply hit_simulation in USTEP; eauto.
         destruct USTEP as (ast' & ASTEP & REF').
         destruct IH as [IH _]; eauto.
-        specialize (IH eq_refl _ REF').
+        specialize (IH (erefl _) _ REF').
         destruct IH as (ast'' & AEXEC & REF'').
         now eauto. }
       exploit user_into_kernel; eauto. intros KERNEL''.
@@ -481,7 +480,7 @@ Proof.
       { assert (KEXEC'' : kernel_exec kst cst'').
         { apply restricted_exec_trans with cst; eauto. }
         destruct IH as [_ IH].
-        specialize (IH eq_refl ast cst0 kst REF STEP0 KEXEC'').
+        specialize (IH (erefl _) ast cst0 kst REF STEP0 KEXEC'').
         destruct IH as (ast' & AEXEC & REF').
         eexists ast'.
         split; eauto. }

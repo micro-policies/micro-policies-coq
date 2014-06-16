@@ -1,5 +1,6 @@
 Require Import List. Import ListNotations.
-Require Import Coq.Classes.SetoidDec.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import utils ordered common symbolic.symbolic. Import rules.
 Require Import sealing.classes.
@@ -19,12 +20,11 @@ Context {t : machine_types}
         {ssa : @sealing_syscall_addrs t}.
 
 Class sealing_key := {
-  key : Type;
+  key : eqType;
   max_key : key;
   inc_key : key -> key;
-  eq_key :> EqDec (eq_setoid key);
   ord_key :> Ordered key;
-  ltb_inc : forall sk, sk =/= max_key -> sk <? inc_key sk = true
+  ltb_inc : forall sk, sk != max_key -> sk <? inc_key sk = true
 }.
 
 Context {sk : sealing_key}.
@@ -61,24 +61,24 @@ Definition sealing_handler (mv : MVec stag) : option (RVec stag) :=
 
 End WithVectors.
 
-Global Instance equ : EqDec (eq_setoid stag).
-  intros t1 t2.
-  refine (
-      match t1, t2 with
-      | DATA, DATA => left eq_refl
-      | KEY k1, KEY k2
-      |  SEALED k1, SEALED k2 =>
-        match k1 == k2 with
-        | left H1 => _
-        | _ => _
-        end
-      | _, _ => _
-      end
-    ); simpl in *; subst; auto; right; congruence. 
-Defined.
+Definition stag_eq t1 t2 :=
+  match t1, t2 with
+    | DATA, DATA => true
+    | KEY k1, KEY k2
+    | SEALED k1, SEALED k2 => k1 == k2
+    | _, _ => false
+  end.
+
+Lemma stag_eqP : Equality.axiom stag_eq.
+Proof.
+by move=> [|k1|k1] [|k2|k2] /=; apply: (iffP idP) => // [/eqP->|[->]].
+Qed.
+
+Definition stag_eqMixin := EqMixin stag_eqP.
+Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
 Program Instance sym_sealing : (Symbolic.symbolic_params) := {
-  tag := stag;
+  tag := stag_eqType;
 
   handler := sealing_handler;
 

@@ -28,20 +28,22 @@
 Require Import List Arith Bool.
 Require Import ZArith.
 Import ListNotations.
-Require Import Coq.Classes.SetoidDec.
 Require Coq.Vectors.Vector.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import common concrete utils Coqlib.
 Import DoNotation.
 Import Concrete.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Section rules.
 
-Variable user_tag : Type.
+Variable user_tag : eqType.
 Variable tnone : user_tag.
-Context {equ : EqDec (eq_setoid user_tag)}.
 
 Open Scope nat_scope.
 
@@ -64,21 +66,23 @@ Inductive tag : Type :=
 | KERNEL
 | ENTRY.
 
-Global Instance tag_eq_dec : EqDec (eq_setoid tag).
-  intros t1 t2.
-  refine (
-      match t1, t2 with
-      | USER ut1 b1, USER ut2 b2 =>
-        match ut1 == ut2, b1 == b2 with
-        | left H1, left H2 => _
-        | _, _ => _
-        end
-      | KERNEL, KERNEL
-      | ENTRY, ENTRY => left eq_refl
-      | _, _ => _
-      end
-    ); simpl in *; subst; solve [left; congruence | right; congruence].
-Defined.
+Definition tag_eq u v :=
+  match u, v with
+    | USER ut1 b1, USER ut2 b2 => (ut1 == ut2) && (b1 == b2)
+    | KERNEL, KERNEL
+    | ENTRY, ENTRY => true
+    | _, _ => false
+  end.
+
+Lemma tag_eqP : Equality.axiom tag_eq.
+Proof.
+move=> [ut1 b1||] [ut2 b2||] /=; try by apply: (iffP idP).
+apply: (iffP andP) => [[]|[<- <-]] //.
+by repeat move/eqP->.
+Qed.
+
+Definition tag_eqMixin := EqMixin tag_eqP.
+Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 
 Definition is_user (t : tag) : bool :=
   match t with
@@ -244,7 +248,7 @@ Definition encode_fields (fs : option (nat * nat)) : mvec_fields tag fs -> Vecto
   end.
 
 Definition encode_mvec (mvec : MVec tag) : Concrete.MVec (word t) :=
-  let f n := Vector.nth (encode_fields _ (ts mvec)) n in
+  let f n := Vector.nth (encode_fields (ts mvec)) n in
   {|
     Concrete.cop := op_to_word (op mvec);
     Concrete.ctpc := encode (tpc mvec);
@@ -279,7 +283,7 @@ Definition decode_mvec (cmvec : Concrete.MVec (word t)) : option (MVec tag) :=
 
             | None => None
             end;
-     Some (mkMVec op tpc ti ts).
+     Some (mkMVec tpc ti ts).
 
 Lemma decode_mvecK (mvec : MVec tag) :
   decode_mvec (encode_mvec mvec) = Some mvec.
@@ -310,15 +314,9 @@ Proof.
 Qed.
 
 Lemma eq_tag_eq_word t1 t2 :
-  (encode t1 ==b encode t2) = (t1 ==b t2).
+  (encode t1 == encode t2) = (t1 == t2).
 Proof.
-  destruct (t1 ==b t2) eqn:E.
-  - rewrite eqb_true_iff in E.
-    rewrite eqb_true_iff. congruence.
-  - rewrite eqb_false_iff in E.
-    rewrite eqb_false_iff.
-    contradict E.
-    now apply encode_inj.
+by rewrite (inj_eq encode_inj).
 Qed.
 
 Definition encode_rvec (rvec : RVec tag) : Concrete.RVec (word t) :=
@@ -362,7 +360,7 @@ Definition ground_rules : Concrete.rules (word t) :=
 Definition mvec_of_umvec (call : bool) (mvec : MVec user_tag) : MVec tag :=
   match mvec with
   | mkMVec op tpc ti ts =>
-    mkMVec op (USER tpc call) (USER ti false)
+    mkMVec (USER tpc call) (USER ti false)
            (match nfields op as fs return mvec_fields user_tag fs ->
                                           mvec_fields tag fs
             with
@@ -385,7 +383,7 @@ Definition handler (mvec : MVec tag) : option (RVec tag) :=
   match mvec with
   | mkMVec op (USER tpc _) (USER ti false) ts =>
     let process ts :=
-        do rvec <- uhandler (mkMVec op tpc ti ts);
+        do rvec <- uhandler (mkMVec tpc ti ts);
         Some (rvec_of_urvec op rvec) in
     match nfields op as fs return (mvec_fields user_tag fs -> option (RVec tag)) ->
                                   mvec_fields tag fs -> option (RVec tag) with
@@ -409,3 +407,4 @@ End rules.
 
 Arguments ENTRY {user_tag}.
 Arguments KERNEL {user_tag}.
+Arguments mkMVec {T} op _ _ _.

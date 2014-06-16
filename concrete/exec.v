@@ -1,8 +1,12 @@
 (* Executable formulation of concrete machine semantics *)
 
-Require Import Coq.Classes.SetoidDec.
 Require Import ZArith.
-Require Import utils Coqlib common concrete. Import Concrete. Import DoNotation.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
+Require Import utils Coqlib common concrete.
+
+Import Concrete. Import DoNotation.
 
 Open Scope Z_scope.
 
@@ -16,7 +20,7 @@ Context {cp : concrete_params mt}.
 
 Open Scope word_scope.
 
-Local Notation "x .+1" := (x + Z_to_word 1) (at level 60).
+Local Notation "x .+1" := (x + Z_to_word 1).
 
 Definition step (st : state mt) : option (state mt) :=
   let 'mkState mem reg cache pc@tpc epc := st in
@@ -63,7 +67,7 @@ Definition step (st : state mt) : option (state mt) :=
   | Bnz r n =>
     let v := TotalMaps.get reg r in
     let mvec := mvec (tag v) TNone TNone in
-    let pc' := pc + if (val v) ==b Z_to_word 0 then Z_to_word 1 else imm_to_word n in
+    let pc' := pc + if (val v) == Z_to_word 0 then Z_to_word 1 else imm_to_word n in
     next_state_pc _ masks st mvec pc'
   | Jal r =>
     let v := TotalMaps.get reg r in
@@ -76,7 +80,7 @@ Definition step (st : state mt) : option (state mt) :=
   | AddRule =>
     let mvec := mvec TNone TNone TNone in
     next_state _ masks st mvec (fun rvec =>
-      do cache' <- add_rule ops cache masks (is_kernel_tag ops tpc) mem;
+      do cache' <- add_rule ops cache masks (is_kernel_tag tpc) mem;
       Some (mkState mem reg cache' epc epc))
   | GetTag r1 r2 =>
     let v1 := TotalMaps.get reg r1 in
@@ -98,7 +102,7 @@ Proof. destruct a; reflexivity. Qed.
 
 Ltac atom_eta :=
   match goal with
-  | |- ?t = _ => apply (eq_trans (atom_eta t) eq_refl)
+  | |- ?t = _ => apply (eq_trans (atom_eta t) (erefl _))
   end.
 
 Lemma stepP : forall st st', step st = Some st' <->
@@ -131,7 +135,7 @@ Proof.
     rewrite INST; clear INST; simpl; subst mvec; try subst lookup; simpl; try congruence;
     repeat match goal with
     | H : _ = _ |- _ =>
-    rewrite H in *; clear H
+    rewrite ->H in *; clear H
     end; simpl; trivial.
     + rewrite M1. simpl. trivial.
     + rewrite M1. simpl. trivial.

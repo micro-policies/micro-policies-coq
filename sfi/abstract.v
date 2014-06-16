@@ -1,5 +1,8 @@
 Require Import List Arith Sorted Bool.
 Require Import Coq.Classes.SetoidDec.
+
+Require Import (* ssreflect *) ssrfun ssrbool eqtype ssrnat seq.
+
 Require Import lib.utils concrete.common lib.ordered.
 Require Import list_utils set_utils ranges.
 
@@ -27,7 +30,7 @@ Context (t    : machine_types)
 
 Open Scope word_scope.
 Local Notation word  := (word t).
-Local Notation value := word.
+Local Notation value := (eqtype.Equality.sort word).
 
 (* I want to use S as a variable. *)
 Let S := Datatypes.S.
@@ -63,10 +66,19 @@ Implicit Type c     : compartment.
 Implicit Type A J S : list value.
 Implicit Type C     : list compartment.
 
-Instance compartment_eqdec : EqDec (eq_setoid compartment).
+Definition compartment_eq c1 c2 :=
+  [&& address_space c1 == address_space c2,
+      jump_targets c1 == jump_targets c2 &
+      shared_memory c1 == shared_memory c2].
+
+Lemma compartment_eqP : Equality.axiom compartment_eq.
 Proof.
-  cbv; intros c1 c2; fold (c1 <> c2); decide equality; apply list_eqdec.
-Defined.
+move=> [? ? ?] [? ? ?]; apply: (iffP and3P) => [[]|[<- <- <-]]; try by [].
+by simpl; repeat move/eqP->.
+Qed.
+
+Definition compartment_eqMixin := EqMixin compartment_eqP.
+Canonical compartment_eqType := Eval hnf in EqType compartment compartment_eqMixin.
 
 Definition good_compartment (c : compartment) : bool :=
   is_set (address_space c) &&
@@ -194,7 +206,7 @@ Variable othercalls : list syscall.
 Let table := isolate :: othercalls.
 
 Definition get_syscall (addr : value) : option syscall :=
-  find (fun sc => address sc ==b addr) table.
+  List.find (fun sc => address sc == addr) table.
 
 Notation simple_step C pc c := (C ⊢ pc, pc + 1 ∈ c).
 
@@ -535,8 +547,8 @@ Theorem non_overlapping_comm : forall c1 c2,
   good_compartment c1 = true -> good_compartment c2 = true ->
   non_overlapping c1 c2 = non_overlapping c2 c1.
 Proof.
-  unfold non_overlapping; intros; rewrite set_intersection_comm;
-  destruct c1 as [[|a1 A1] J1 S1], c2 as [[|a2 A2] J2 S2]; auto;
+  unfold non_overlapping; intros; rewrite ->set_intersection_comm;
+  destruct c1 as [[|a1 A1] J1 S1], c2 as [[|a2 A2] J2 S2];
   destruct_all_good_compartments; auto.
 Qed.
 Hint Resolve non_overlapping_comm.
@@ -548,7 +560,7 @@ Theorem non_overlapping_in2_comm : forall c1 c2 C,
 Proof.
   intros c1 c2 C GOOD IN2.
   apply in2_in in IN2; destruct IN2.
-  rewrite forallb_forall in GOOD; auto.
+  rewrite ->forallb_forall in GOOD; auto.
 Qed.
 Hint Resolve non_overlapping_in2_comm.
 
@@ -583,7 +595,7 @@ Proof.
   clear S; intros; unfold contained_compartments; rewrite subset_spec; split.
   - intros SUBSET c a IN_c IN_a.
     specialize SUBSET with a;
-      rewrite in_app_iff in SUBSET; repeat rewrite concat_in in SUBSET.
+      rewrite ->in_app_iff in SUBSET; repeat rewrite concat_in in SUBSET.
     destruct SUBSET as [A [IN_A IN_a_A]].
     + destruct IN_a;
         [left; exists (jump_targets c) | right; exists (shared_memory c)];
@@ -778,7 +790,7 @@ Proof.
   assert (OVERLAPPING : non_overlapping c1 c2 = false) by eauto 2.
   assert (NOL : non_overlapping_list C = true) by auto.
   rewrite non_overlapping_list_spec in NOL; auto.
-  destruct (c1 == c2); auto.
+  have [|/eqP neq_c1c2] := altP (c1 =P c2); auto.
   lapply (NOL c1 c2); [congruence | eauto].
 Qed.
 Hint Resolve in_unique_compartment.
@@ -1065,8 +1077,8 @@ Proof.
   match goal with ST : State _ _ _ _ = State _ ?R' ?M' ?C' |- _ =>
     inversion ST; subst
   end; repeat f_equal.
-  match goal with |- (if equiv_dec ?b1 0 then 1 else imm_to_word ?x1) =
-                     (if equiv_dec ?b2 0 then 1 else imm_to_word ?x2) =>
+  match goal with |- (if ?b1 == 0 then 1 else imm_to_word ?x1) =
+                     (if ?b2 == 0 then 1 else imm_to_word ?x2) =>
     replace b2 with b1 by congruence; replace x2 with x1 by congruence
   end; reflexivity.
 Qed.
@@ -1174,7 +1186,7 @@ Proof.
     try (subst; simpl in *; congruence).
   - (* Store *)
     subst; simpl in *.
-    destruct (a == p) as [EQ | NE].
+    have [EQ|/eqP NE] := altP (a =P p).
     + ssubst. apply in_app_iff. destruct STEP.
       match goal with IC1 : ?C ⊢ ?pc ∈ ?c1, IC2 : ?C ⊢ ?pc ∈ ?c2 |- _ =>
         replace c1 with c2 in * by eauto

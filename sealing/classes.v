@@ -1,4 +1,4 @@
-Require Import Coq.Classes.SetoidDec.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import common.
 
 Section WithClasses.

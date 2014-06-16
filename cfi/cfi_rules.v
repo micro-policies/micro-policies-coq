@@ -1,9 +1,8 @@
 Require Import Coq.Lists.List Coq.Arith.Arith Bool.
-Require Import Coq.Classes.SetoidDec.
-Require Import concrete.common.
-Require Import lib.utils.
-Require Import symbolic.rules.
 Require Coq.Vectors.Vector.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
+Require Import concrete.common lib.utils symbolic.rules.
 
 Set Implicit Arguments.
 Import Coq.Vectors.Vector.VectorNotations.
@@ -15,34 +14,23 @@ Context {ops : machine_ops t}.
 
 Inductive cfi_tag : Type :=
 | INSTR : option (word t) -> cfi_tag
-| DATA  : cfi_tag. 
+| DATA  : cfi_tag.
 
-Program Instance id_eq_eqdec : EqDec (eq_setoid (option (word t))).
-Next Obligation.
+
+Definition cfi_tag_eq t1 t2 :=
+  match t1, t2 with
+    | INSTR id1, INSTR id2 => id1 == id2
+    | DATA, DATA => true
+    | _, _ => false
+  end.
+
+Lemma cfi_tag_eqP : Equality.axiom cfi_tag_eq.
 Proof.
-  destruct x,y.
-  - assert (DEC:{ w = w0} + {w <> w0}) by (apply eq_word).
-    destruct DEC; subst; auto.
-    right. unfold complement. intro H; inversion H; auto.
-  - right; intros CONTRA. inversion CONTRA.
-  - right; unfold complement; intro H; inversion H.
-  -  left; reflexivity.
-Defined.
+by move=> [w1|] [w2|] /=; apply: (iffP idP) => // [/eqP->|[->]].
+Qed.
 
-Global Instance equ : EqDec (eq_setoid cfi_tag).
-  intros t1 t2.
-  refine (
-      match t1, t2 with
-      | INSTR id1, INSTR id2 =>
-        match id1 == id2 with
-        | left H1 => _
-        | _ => _
-        end
-      | DATA, DATA => left eq_refl
-      | _, _ => _
-      end
-    ); simpl in *; subst; unfold complement in *; auto; right; congruence. 
-Defined.
+Definition cfi_tag_eqMixin := EqMixin cfi_tag_eqP.
+Canonical cfi_tag_eqType := Eval hnf in EqType cfi_tag cfi_tag_eqMixin.
 
 Variable valid_jmp : word t -> word t -> bool.
 

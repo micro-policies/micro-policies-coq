@@ -1,5 +1,7 @@
 Require Import List NPeano Arith Bool.
-Require Import Coq.Classes.SetoidDec.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
 Require Import lib.utils lib.Coqlib.
 Require Import concrete.common.
 Require Import concrete.concrete.
@@ -61,10 +63,10 @@ Definition refine_registers (areg : Symbolic.registers mt) (creg : Concrete.regi
 Definition in_kernel st :=
   let pct := common.tag (Concrete.pc st) in
   let i := PartMaps.get (Concrete.mem st) (common.val (Concrete.pc st)) in
-  Concrete.is_kernel_tag _ pct
+  Concrete.is_kernel_tag pct
   || word_lift (fun x => is_call x) pct
   && match i with
-     | Some _@it => it ==b encode ENTRY
+     | Some _@it => it == encode ENTRY
      | None => false
      end.
 Hint Unfold in_kernel.
@@ -72,7 +74,7 @@ Hint Unfold in_kernel.
 Definition user_pc_and_instr pct it :=
   word_lift (fun t =>
                is_user t
-               && (negb (is_call t) || negb (it ==b encode ENTRY)))
+               && (negb (is_call t) || negb (it == encode ENTRY)))
             pct.
 
 Definition in_user st :=
@@ -83,7 +85,7 @@ Definition in_user st :=
                && (negb (is_call t)
                    || negb match i with
                            | Some _@it =>
-                             it ==b encode ENTRY
+                             it == encode ENTRY
                            | None => false
                            end))
             pct.
@@ -130,7 +132,8 @@ Lemma mvec_in_kernel_store_mvec cmem mvec :
 Proof.
   unfold mvec_in_kernel, in_mvec, Concrete.mvec_fields, Concrete.store_mvec.
   intros DEF.
-  eapply PartMaps.upd_list_defined; eauto using Concrete.mem_axioms, eq_word.
+  eapply PartMaps.upd_list_defined; eauto using Concrete.mem_axioms.
+  apply eqType_EqDec.
   simpl map. intros addr IN.
   apply DEF in IN.
   destruct IN.
@@ -184,14 +187,14 @@ Hint Resolve kernel_invariant_store_mvec.
 Variable ki : kernel_invariant.
 
 Lemma is_user_pc_tag_is_kernel_tag tg :
-  word_lift (fun x => is_user x) tg = true -> Concrete.is_kernel_tag _ tg = false.
+  word_lift (fun x => is_user x) tg = true -> Concrete.is_kernel_tag tg = false.
 Proof.
   unfold word_lift, is_user, Concrete.is_kernel_tag.
   destruct (decode tg) as [[ut b| |]|] eqn:E; try discriminate.
   intros _.
   apply encodeK in E.
-  unfold equiv_decb.
-  destruct (tg == Concrete.TKernel) as [E' | NEQ']; simpl in *; subst; eauto.
+  have [E'|//] := eqP.
+  simpl in *; subst; eauto.
   erewrite encode_kernel_tag in E'.
   now apply encode_inj in E'.
 Qed.
@@ -205,9 +208,9 @@ Proof.
     as [[t [|]| |]|] eqn:DEC; simpl in *; try discriminate;
   apply encodeK in DEC.
   - rewrite <- DEC.
-    erewrite encode_kernel_tag.
-    erewrite eq_tag_eq_word. simpl.
-    now rewrite negb_true_iff in H.
+    rewrite encode_kernel_tag.
+    rewrite eq_tag_eq_word. simpl.
+    by apply negbTE in H.
   - rewrite <- DEC.
     erewrite encode_kernel_tag.
     now erewrite eq_tag_eq_word.
@@ -219,14 +222,14 @@ Definition wf_entry_points cmem :=
   forall addr,
     (exists sc, Symbolic.get_syscall table addr = Some sc) <->
     match PartMaps.get cmem addr with
-    | Some _@it => it ==b encode ENTRY
+    | Some _@it => it == encode ENTRY
     | None => false
     end = true.
 
 Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
   in_user st' = true /\
   let '(Symbolic.State mem regs pc@tpc int) := st in
-  let 'Concrete.mkState mem' regs' cache pc'@tpc' epc := st' in
+  let '(Concrete.mkState mem' regs' cache pc'@tpc' epc) := st' in
   pc = pc' /\
   match decode tpc' with
   | Some (USER tpc' _) => tpc' = tpc
@@ -253,7 +256,7 @@ Proof.
   destruct (PartMaps.upd_defined v'@t' GET') as [amem' UPD'].
   do 2 eexists; eauto.
   intros addr' w'.
-  destruct (addr' == addr) as [EQ | NEQ]; simpl in *; subst.
+  have [EQ|/eqP NEQ] := altP (addr' =P addr); simpl in *; subst.
   - apply MEM in GET.
     rewrite (PartMaps.get_upd_eq UPD).
     rewrite (PartMaps.get_upd_eq UPD').
@@ -276,14 +279,13 @@ Proof.
   unfold wf_entry_points.
   intros WF GET UPD addr'.
   split; intros H.
-  - rewrite WF in H.
+  - rewrite ->WF in H.
     destruct (PartMaps.get cmem addr') as [[v'' t'']|] eqn:MEM; try discriminate.
     erewrite PartMaps.get_upd_neq; eauto using Concrete.mem_axioms.
     { now rewrite MEM. }
     intros ?. subst addr'.
     assert (EQ : t'' = encode (USER t false)) by congruence. subst.
-    rewrite eqb_true_iff in H.
-    now apply encode_inj in H.
+    by move/eqP/encode_inj: H.
   - apply WF. clear WF.
     destruct (PartMaps.get cmem' addr') as [[v'' t'']|] eqn:GET'; try discriminate.
     erewrite PartMaps.get_upd_neq in GET'; eauto using Concrete.mem_axioms.
@@ -292,8 +294,7 @@ Proof.
     erewrite PartMaps.get_upd_eq in GET'; eauto using Concrete.mem_axioms.
     assert (EQ : t''= encode (USER t' false)) by congruence. subst.
     simpl in H.
-    rewrite eqb_true_iff in H.
-    now apply encode_inj in H.
+    by move/eqP/encode_inj: H.
 Qed.
 
 Lemma mvec_in_kernel_user_upd cmem cmem' addr v v' t t' :
@@ -321,7 +322,7 @@ Lemma mvec_in_kernel_kernel_upd cmem cmem' addr w :
   mvec_in_kernel cmem'.
 Proof.
   intros MVEC UPD addr' IN.
-  destruct (addr' == addr) as [? | NEQ]; simpl in *; subst.
+  have [?|/eqP NEQ] := altP (addr' =P addr); simpl in *; subst.
   - erewrite PartMaps.get_upd_eq; eauto using Concrete.mem_axioms.
   - erewrite (PartMaps.get_upd_neq NEQ UPD).
     now apply MVEC.
@@ -341,7 +342,7 @@ Proof.
   destruct GET as [cmem' UPD'].
   eexists. split; eauto.
   intros addr' w'' t''.
-  destruct (addr' == addr) as [EQ | NEQ]; simpl in *; subst.
+  have [EQ|/eqP NEQ] := altP (addr' =P addr); simpl in *; subst.
   - rewrite (PartMaps.get_upd_eq UPD').
     rewrite (PartMaps.get_upd_eq UPD).
     split; try congruence.
@@ -366,7 +367,7 @@ Proof.
   destruct NEW as [areg' UPD].
   eexists. split; eauto.
   intros r' v'' t''.
-  destruct (r' == r) as [EQ | NEQ]; simpl in *; subst.
+  have [EQ|/eqP NEQ] := altP (r' =P r); simpl in *; subst.
   - rewrite (TotalMaps.get_upd_eq (Concrete.reg_axioms (t := mt))).
     rewrite (PartMaps.get_upd_eq UPD).
     split; try congruence.
@@ -384,7 +385,7 @@ Lemma refine_registers_upd' areg areg' creg r v t :
   refine_registers areg' (TotalMaps.upd creg r v@(encode (USER t false))).
 Proof.
   intros REF UPD r' v' t'.
-  destruct (r' == r) as [|NEQ]; simpl in *.
+  have [EQ|/eqP NEQ] := altP (r' =P r); simpl in *.
   - subst r'.
     rewrite (TotalMaps.get_upd_eq (Concrete.reg_axioms (t := mt))).
     rewrite (PartMaps.get_upd_eq UPD).
@@ -402,7 +403,7 @@ Lemma ra_in_user_upd creg r v t :
   ra_in_user (TotalMaps.upd creg r v@(encode (USER t false))).
 Proof.
   unfold ra_in_user.
-  destruct (r == ra) as [|NEQ]; simpl in *; autounfold.
+  have [EQ|/eqP NEQ] := altP (r =P ra); simpl in *; autounfold.
   - subst r.
     rewrite (TotalMaps.get_upd_eq (Concrete.reg_axioms (t := mt))).
     simpl. unfold word_lift. now rewrite decodeK.
@@ -470,7 +471,7 @@ Lemma analyze_cache cache cmvec crvec op :
   end (mkMVec op).
 Proof.
   intros CACHE LOOKUP INUSER EQ.
-  assert (USERPC := word_lift_impl _ _ _ (fun t H => proj1 (andb_prop _ _ H)) INUSER).
+  assert (USERPC := word_lift_impl (fun t H => proj1 (andb_prop _ _ H)) INUSER).
   destruct (CACHE cmvec crvec USERPC LOOKUP)
     as ([op' tpc ti ts] & [trpc tr] & ? & ? & HIT). subst.
   unfold encode_mvec, encode_rvec in *. simpl in *.
@@ -519,7 +520,7 @@ Proof.
   unfold Concrete.miss_state in MISS.
   unfold in_kernel, Concrete.is_kernel_tag in INUSER.
   match_inv. simpl in *.
-  rewrite eqb_refl in INUSER; try apply eq_wordP.
+  rewrite eqxx in INUSER; try apply eq_wordP.
   simpl in INUSER. discriminate.
 Qed.
 
@@ -531,7 +532,7 @@ Ltac analyze_cache :=
     INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
     CACHE  : cache_correct ?cache |- _ =>
     unfold in_user, in_kernel in INUSER; simpl in INUSER; rewrite PC in INUSER;
-    assert (CACHEHIT := analyze_cache mvec _ CACHE LOOKUP INUSER eq_refl);
+    assert (CACHEHIT := analyze_cache mvec _ CACHE LOOKUP INUSER (erefl _));
     simpl in CACHEHIT;
     repeat match type of CACHEHIT with
     | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
@@ -573,7 +574,6 @@ Proof.
 
 Qed.
 
-
 Ltac current_instr_opcode :=
   match goal with
   | H : decode_instr _ = Some ?instr |- _ =>
@@ -596,9 +596,7 @@ Proof.
   assert (H := proj1 (WF (common.val (Concrete.pc st))) (ex_intro _ _ EQ)).
   destruct (PartMaps.get (Concrete.mem st) (val (Concrete.pc st)))
     as [[v t']|] eqn:EQ'; try discriminate.
-  rewrite eqb_true_iff in H. subst.
-  rewrite eqb_refl in INUSER.
-  now simpl in *.
+  by rewrite H in INUSER.
 Qed.
 
 Ltac simpl_word_lift :=
@@ -795,7 +793,7 @@ Proof.
   destruct (decode t) as [t'|] eqn:E'; try discriminate.
   unfold is_user in RA. destruct t'; try discriminate.
   apply encodeK in E'. subst. simpl in RA.
-  rewrite negb_true_iff in RA. subst.
+  rewrite (negbTE RA) in E.
   apply H in E.
   rewrite E.
   simpl.

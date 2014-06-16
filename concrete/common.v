@@ -1,9 +1,6 @@
-Require Import List.
-
-Require Import Arith.
-Require Import ZArith.
-Require Import Bool.
+Require Import List Arith ZArith Bool.
 Require Import Coq.Classes.SetoidDec.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.ordered.
 
 Require Import utils.
@@ -60,8 +57,8 @@ Lemma opcodesP : forall op, In op opcodes.
 Proof. intros []; try intros []; vm_compute; auto 20. Qed.
 
 Record machine_types := {
-  word : Type;
-  reg : Type;
+  word : eqType;
+  reg : eqType;
   imm : Type
 }.
 
@@ -104,6 +101,13 @@ Definition opcode_of (i : instr) : opcode :=
 
 End instr.
 
+Instance eqType_EqDec (A : eqType) : EqDec (eq_setoid A).
+Proof.
+move=> x y.
+have [->|neq_xy] := altP (x =P y); first by left.
+by right=> eq_xy; move: neq_xy; rewrite eq_xy eqxx.
+Qed.
+
 Class machine_ops (t : machine_types) := {
   binop_denote : binop -> word t -> word t -> word t;
   encode_instr : instr t -> word t;
@@ -121,10 +125,7 @@ Class machine_ops (t : machine_types) := {
 
   add_word : word t -> word t -> word t;
   opp_word : word t -> word t;
-  eq_word  :> EqDec (eq_setoid (word t));
   ord_word :> Ordered (word t);
-
-  eq_reg :> EqDec (eq_setoid (reg t));
 
   ra : reg t
 
@@ -211,17 +212,17 @@ now intros x; rewrite <-(word_to_ZK x), addwP, Z.add_0_r.
 Qed.
 
 Lemma addwN : right_inverse 0 -%w +%w.
-Proof. now intros x; rewrite addwC, addNw. Qed.
+Proof. now intros x; rewrite addwC addNw. Qed.
 Definition subww := addwN.
 
 Lemma addKw : left_loop -%w +%w.
 Proof.
-now intros x y; rewrite addwA, addNw, add0w.
+now intros x y; rewrite addwA addNw add0w.
 Qed.
 
 Lemma addNKw : rev_left_loop -%w +%w.
 Proof. 
-now intros x y; rewrite addwA, addwN, add0w.
+now intros x y; rewrite addwA addwN add0w.
 Qed.
 
 Lemma addwK : right_loop -%w +%w.

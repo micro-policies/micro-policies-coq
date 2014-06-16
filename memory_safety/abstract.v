@@ -1,5 +1,4 @@
 Require Import List Arith ZArith.
-Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.utils concrete.common memory_safety.classes.
 
@@ -33,7 +32,7 @@ Definition pointer := (block * word t)%type.
 Definition eq_pointer pt1 pt2 :=
   let '(b1,i1) := pt1 in
   let '(b2,i2) := pt2 in
-  Z.eqb b1 b2 && i1 ==b i2.
+  Z.eqb b1 b2 && i1 == i2.
 
 Inductive value :=
 | ValInt : word t -> value
@@ -60,7 +59,6 @@ Class params_spec (ap : abstract_params) := {
 
 Context {ap : abstract_params}.
 
-Local Coercion Z_to_word : Z >-> word.
 Open Scope word_scope.
 
 Local Notation word := (word t).
@@ -194,7 +192,7 @@ Inductive step : state -> state -> Prop :=
              forall (PC :    getv mem pc = Some (ValInt i)),
              forall (INST :  decode_instr i = Some (Bnz _ r n)),
              forall (RW :    get reg r = Some (ValInt w)),
-             let             off_pc' := add_word (snd pc) (if w ==b Z_to_word 0
+             let             off_pc' := add_word (snd pc) (if w == Z_to_word 0
                                                    then Z_to_word 1
                                                    else imm_to_word n) in
              step (mkState mem reg pc) (mkState mem reg (fst pc,off_pc'))

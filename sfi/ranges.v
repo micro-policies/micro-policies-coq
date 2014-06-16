@@ -1,4 +1,5 @@
 Require Import List Bool ZArith.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.utils concrete.common lib.ordered list_utils set_utils.
 
 Section WithClasses.
@@ -43,7 +44,7 @@ Qed.
 Lemma lebw_succ : forall x y, x < y -> x <? x + 1 = true.
 Proof.
   intros x y LT. apply addw_succ in LT.
-  rewrite word_to_Z_ltb, LT, Z.ltb_lt; omega.
+  rewrite word_to_Z_ltb LT Z.ltb_lt; omega.
 Qed.
 
 Theorem range'_set : forall meas l h,

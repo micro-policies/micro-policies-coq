@@ -1,10 +1,10 @@
 Require Import List Arith ZArith.
 Require Import Coq.Bool.Bool.
-Require Import Coq.Classes.SetoidDec.
 Require Coq.Vectors.Vector.
 
-Require Import utils common.
-Require Import rules.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
+Require Import utils common rules.
 
 Set Implicit Arguments.
 
@@ -44,10 +44,9 @@ Class symbolic_params := {
   (* CH: The symbolic handler has to be well-typed, so unless some
      tag types are equal, the error you describe would be caught
      by the (Coq) type checker *)
-  tag : Type;
+  tag : eqType;
   (* BCP: Maxime was wondering why we are using setoids... do we need
      that?  Apparently they tickle quite a few bugs in tactics... *)
-  tag_eq :> EqDec (eq_setoid tag);
 
   handler : MVec tag -> option (RVec tag);
 
@@ -62,12 +61,11 @@ Class symbolic_params := {
 
 Context {sp : symbolic_params}.
 
-Local Coercion Z_to_word : Z >-> word.
 Open Scope word_scope.
 
 Local Notation word := (word t).
 Let atom := (atom word tag).
-Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
+Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
 Record state := State {
   mem : memory;
@@ -84,7 +82,7 @@ Record syscall := Syscall {
 Variable table : list syscall.
 
 Definition get_syscall (addr : word) : option syscall :=
-  find (fun sc => address sc ==b addr) table.
+  find (fun sc => address sc == addr) table.
 
 Definition next_state (st : state) (mvec : MVec tag)
                       (k : RVec tag -> option state) : option state :=
@@ -98,7 +96,7 @@ Definition next_state_reg_and_pc (st : state) (mvec : MVec tag) r x pc'
     Some (State (mem st) regs' pc'@(trpc rvec) (internal st))).
 
 Definition next_state_reg (st : state) (mvec : MVec tag) r x : option state :=
-  next_state_reg_and_pc st mvec r x (val (pc st).+1).
+  next_state_reg_and_pc st mvec r x (val (pc st)).+1.
 
 Definition next_state_pc (st : state) (mvec : MVec tag) x : option state :=
   next_state st mvec (fun rvec =>
@@ -172,7 +170,7 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode_instr i = Some (Bnz _ r n))
     (RW   : get reg r = Some w@t1),
      let mvec := mkMVec BNZ tpc ti [t1] in
-     let pc' := add_word pc (if w ==b Z_to_word 0
+     let pc' := add_word pc (if w == Z_to_word 0
                              then Z_to_word 1 else imm_to_word n) in forall
     (NEXT : next_state_pc st mvec pc' = Some st'),     step st st'
 | step_jal : forall mem reg pc i r w tpc ti t1 old told int

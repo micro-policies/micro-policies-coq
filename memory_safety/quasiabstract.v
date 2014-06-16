@@ -1,8 +1,10 @@
 Require Import List Arith ZArith.
-Require Import Coq.Classes.SetoidDec.
-Require Import utils common.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
+Require Import utils common ordered.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 (* This abstract machine corresponds to the one described under the name
 "Slightly less high-level abstract machine" in Catalin's notes on memory safety:
@@ -49,12 +51,14 @@ Inductive type :=
 (* CH: calling this tag would be better *)
 Inductive label :=
 | LabelValue : type -> label
-| LabelMemory : block -> type -> label.
+| LabelMemory : block -> type -> label
+| LabelFree.
 
 Local Notation INT := TypeInt.
 Local Notation PTR := TypePointer.
 Local Notation "V( ty )" := (LabelValue ty) (at level 4).
 Notation "M( n , ty )" := (LabelMemory n ty) (at level 4).
+Local Notation FREE := LabelFree.
 
 Record atom := mkatom { val : word t; atom_label : label }.
 
@@ -77,17 +81,45 @@ Class params_spec (ap : abstract_params) := {
 
 }.
 
-Context {ap : abstract_params}.
+Context `{ap : abstract_params, syscall_regs t}.
 
-Local Coercion Z_to_word : Z >-> word.
 Open Scope word_scope.
 
 Local Notation word := (word t).
-Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 9).
+Local Notation "x .+1" := (add_word x (Z_to_word 1)).
+
+Record block_info := mkBlockInfo {
+  block_base : word;
+  block_size : word;
+  block_color : option word
+}.
+
+Section BlockInfoEq.
+
+(*
+Variable info1 info2 : block_info.
+*)
+
+Definition block_info_eq :=
+  [rel u v : block_info | [&& block_base u == block_base v,
+                           block_size u == block_size v &
+                           block_color u == block_color v]].
+
+Lemma block_info_eqP : Equality.axiom block_info_eq.
+Proof.
+move=> [x1 x2 x3] [y1 y2 y3] /=; apply: (iffP and3P) => [[]|[<- <- <-]] //=.
+by repeat move/eqP->.
+Qed.
+
+Definition block_info_eqMixin := EqMixin block_info_eqP.
+Canonical block_info_eqType := Eval hnf in EqType block_info block_info_eqMixin.
+
+End BlockInfoEq.
 
 Record state := mkState {
   mem : memory;
   regs : registers;
+  internal : word * list block_info;
   pc : atom
 }.
 
@@ -111,6 +143,7 @@ Class allocator := {
 
 }.
 
+(*
 Class allocator_spec (alloc : allocator) := {
 
   alloc_get_fresh : forall s s' b,
@@ -125,7 +158,70 @@ Class allocator_spec (alloc : allocator) := {
 }.
 
 Context `{allocator}.
+*)
 
+Definition malloc_fun st : option state :=
+  let: pcv@pcl := pc st in
+  let: (color,info) := internal st in
+  do sz <- get (regs st) syscall_arg1;
+  match sz with
+    | sz@V(INT) =>
+      match compare 0 sz with
+        | Lt =>
+          if ohead [seq x <- info | ((sz <=? block_size x) && ~~ is_some (block_color x))%ordered] is Some x then
+          let i := index x info in
+          let block1 := mkBlockInfo (block_base x) sz (Some color) in
+          let pre := take i info in
+          let post := drop (i+1) info in
+          let info' :=
+              if sz == block_size x then
+                pre ++ [block1] ++ post
+              else
+                let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
+                pre ++ [block1;block2] ++ post
+          in
+          let P := fun n => memory in
+          let upd_fun := fun n acc =>
+            if @upd memory _ _ (@mem_class _) acc (block_base x + (Z_to_word (Z.of_nat n))) (0@M(color,INT)) is Some mem then mem else acc
+          in
+          let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z sz)) in
+          let regs' := if @upd registers _ _ (@reg_class _) (regs st) syscall_ret ((block_base x)@V(PTR color)) is Some regs' then regs' else regs st in
+          let color' := color + 1 in
+          Some (mkState mem' regs' (color',info') (pcv.+1@pcl))
+          else None
+        | _ => None
+      end
+    | _ => None
+  end.
+
+Definition def_info : block_info :=
+  mkBlockInfo 0 0 None.
+
+(* TODO: avoid memory fragmentation *)
+Definition free_fun st : option state :=
+  let: pcv@pcl := pc st in
+  let: (color,info) := internal st in
+  do ptr <- get (regs st) syscall_arg1;
+    (* Removing the return clause makes Coq loop... *)
+  match ptr return option state with
+  | ptr@V(PTR color) =>
+    if ohead [seq x <- info | block_color x == Some color] is Some x then
+      let i := index x info in
+      if (block_base x <=? ptr <? block_base x + block_size x) then
+        let P := fun n => memory in
+        let upd_fun := fun n acc =>
+          if upd acc (block_base x + Z_to_word (Z.of_nat n)) (0@FREE) is Some mem then mem else acc
+        in
+        let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z (block_size x))) in
+        let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
+        in
+        Some (mkState mem' (regs st) (color,info') pcv.+1@pcl)
+        else None
+    else None
+  | _ => None
+  end.
+
+(*
 Definition malloc : syscall :=
 {| address := alloc_addr;
    sem := fun s => do r <- alloc_fun s;
@@ -138,8 +234,10 @@ Variable othercalls : list syscall.
 
 Let table := malloc :: othercalls.
 
+
 Definition get_syscall (addr : word) : option syscall :=
   find (fun sc => address sc ==b addr) table.
+*)
 
 Definition lift_binop (f : binop) (x y : atom) :=
   match f with
@@ -153,21 +251,21 @@ Definition lift_binop (f : binop) (x y : atom) :=
            | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
            | w1@V(PTR b), w2@V(INT) => Some (binop_denote f w1 w2, PTR b)
            | w1@V(PTR b1), w2@V(PTR b2) =>
-             if b1 ==b b2 then Some (binop_denote f w1 w2, INT)
+             if b1 == b2 then Some (binop_denote f w1 w2, INT)
              else None
            | _, _ => None
            end
   | EQ => match x, y with
           | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
           | w1@V(PTR b1), w2@V(PTR b2) =>
-            if b1 ==b b2 then Some (binop_denote f w1 w2, INT)
+            if b1 == b2 then Some (binop_denote f w1 w2, INT)
             else Some (Z_to_word (0%Z), INT) (* 0 for false *)
           | _, _ => None
           end
   | LEQ => match x, y with
           | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
           | w1@V(PTR b1), w2@V(PTR b2) =>
-            if b1 ==b b2 then Some (binop_denote f w1 w2, INT)
+            if b1 == b2 then Some (binop_denote f w1 w2, INT)
             else None (* comparing pointers to different regions dissallowed
                         as it would expose too much about allocation *)
           | _, _ => None
@@ -179,37 +277,37 @@ Definition lift_binop (f : binop) (x y : atom) :=
   end.
 
 Inductive step : state -> state -> Prop :=
-| step_nop : forall mem reg pc b i,
+| step_nop : forall mem reg ist pc b i,
              forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Nop _)),
-             step (mkState mem reg pc@V(PTR b)) (mkState mem reg pc.+1@V(PTR b))
-| step_const : forall mem reg reg' pc b i n r,
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg ist pc.+1@V(PTR b))
+| step_const : forall mem reg reg' ist pc b i n r,
              forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Const _ n r)),
              forall (UPD :   upd reg r (imm_to_word n)@V(INT) = Some reg'),
-             step (mkState mem reg pc@V(PTR b)) (mkState mem reg' pc.+1@V(PTR b))
-| step_mov : forall mem reg reg' pc b i r1 r2 w ty,
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg' ist pc.+1@V(PTR b))
+| step_mov : forall mem reg reg' ist pc b i r1 r2 w ty,
              forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Mov _ r1 r2)),
              forall (R1W :   get reg r1 = Some w@V(ty)),
              forall (UPD :   upd reg r2 w@V(ty) = Some reg'),
-             step (mkState mem reg pc@V(PTR b)) (mkState mem reg' pc.+1@V(PTR b))
-| step_binop : forall mem reg reg' pc b i f r1 r2 r3 w1 w2 ty1 ty2 w3 ty3,
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg' ist pc.+1@V(PTR b))
+| step_binop : forall mem reg reg' ist pc b i f r1 r2 r3 w1 w2 ty1 ty2 w3 ty3,
              forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Binop _ f r1 r2 r3)),
              forall (R1W :   get reg r1 = Some w1@V(ty1)),
              forall (R2W :   get reg r2 = Some w2@V(ty2)),
              forall (BINOP : lift_binop f w1@V(ty1) w2@V(ty2) = Some (w3,ty3)),
              forall (UPD :   upd reg r3 w3@V(ty3) = Some reg'),
-             step (mkState mem reg pc@V(PTR b)) (mkState mem reg' pc.+1@V(PTR b))
-| step_load : forall mem reg reg' pc b i r1 r2 w1 w2 n ty,
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg' ist pc.+1@V(PTR b))
+| step_load : forall mem reg reg' ist pc b i r1 r2 w1 w2 n ty,
              forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Load _ r1 r2)),
              forall (R1W :   get reg r1 = Some w1@V(PTR n)),
              forall (MEM1 :  get mem w1 = Some w2@M(n,ty)),
              forall (UPD :   upd reg r2 w2@V(ty) = Some reg'),
-             step (mkState mem reg pc@V(PTR b)) (mkState mem reg' pc.+1@V(PTR b))
-| step_store : forall mem mem' reg pc b i r1 r2 w1 w2 w3 n ty ty',
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg' ist pc.+1@V(PTR b))
+| step_store : forall mem mem' reg ist pc b i r1 r2 w1 w2 w3 n ty ty',
              forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Store _ r1 r2)),
              forall (R1W :   get reg r1 = Some w1@V(PTR n)),
@@ -217,34 +315,34 @@ Inductive step : state -> state -> Prop :=
              (* The line below checks that the block was allocated *)
              forall (MEM1 :  get mem w1 = Some w3@M(n,ty')),
              forall (UPD :   upd mem w1 w2@M(n,ty) = Some mem'),
-             step (mkState mem reg pc@V(PTR b)) (mkState mem' reg pc.+1@V(PTR b))
-| step_jump : forall mem reg pc b b' i r w,
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem' reg ist pc.+1@V(PTR b))
+| step_jump : forall mem reg ist pc b b' i r w,
              forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Jump _ r)),
              forall (RW :    get reg r = Some w@V(PTR b')),
-             step (mkState mem reg pc@V(PTR b)) (mkState mem reg w@V(PTR b'))
-| step_bnz : forall mem reg pc b i r n w,
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg ist w@V(PTR b'))
+| step_bnz : forall mem reg ist pc b i r n w,
              forall (PC :    get mem pc = Some i@M(b,INT)),
              forall (INST :  decode_instr i = Some (Bnz _ r n)),
              forall (RW :    get reg r = Some w@V(INT)),
-             let             pc' := add_word pc (if w ==b Z_to_word 0
+             let             pc' := add_word pc (if w == Z_to_word 0
                                                    then Z_to_word 1
                                                    else imm_to_word n) in
-             step (mkState mem reg pc@V(PTR b)) (mkState mem reg pc'@V(PTR b))
-| step_jal : forall mem reg reg' pc b b' i r w,
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg ist pc'@V(PTR b))
+| step_jal : forall mem reg reg' ist pc b b' i r w,
              forall (PC :       get mem pc = Some i@M(b,INT)),
              forall (INST :     decode_instr i = Some (Jal _ r)),
              forall (RW :       get reg r = Some w@V(PTR b')),
-             forall (NOTCALL :  get_syscall w = None),
+(*             forall (NOTCALL :  get_syscall w = None), *)
              forall (UPD :      upd reg ra (pc.+1)@V(PTR b) = Some reg'),
-             step (mkState mem reg pc@V(PTR b)) (mkState mem reg' w@V(PTR b'))
-| step_syscall : forall mem reg pc b i r w st' sc,
+             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg' ist w@V(PTR b'))
+| step_syscall : forall mem reg ist pc b i r w st' sc,
                  forall (PC :      get mem pc = Some i@M(b,INT)),
                  forall (INST :    decode_instr i = Some (Jal _ r)),
                  forall (RW :      get reg r = Some w@V(INT)),
-                 forall (GETCALL:  get_syscall w = Some sc),
-                 forall (CALL :    sem sc (mkState mem reg pc@V(PTR b)) = Some st'),
-                 step (mkState mem reg pc@V(PTR b)) st'.
+(*                 forall (GETCALL:  get_syscall w = Some sc), *)
+                 forall (CALL :    sem sc (mkState mem reg ist pc@V(PTR b)) = Some st'),
+                 step (mkState mem reg ist pc@V(PTR b)) st'.
 
 Variable initial_block : block.
 
@@ -262,7 +360,7 @@ End WithClasses.
 Module Notations.
 
 Notation INT := (TypeInt _).
-Notation PTR := (TypePointer _).
+Notation PTR := TypePointer.
 Notation "V( ty )" := (LabelValue ty) (at level 4).
 Notation "M( n , ty )" := (LabelMemory n ty) (at level 4).
 

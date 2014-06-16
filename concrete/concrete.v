@@ -1,6 +1,8 @@
 Require Import List Arith ZArith Bool. Import ListNotations.
-Require Import Coq.Classes.SetoidDec.
+
 Require Import utils.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
 Import DoNotation.
 
 Require Import utils.
@@ -79,9 +81,9 @@ Lemma store_same_tag cmem cmem' addr addr' w tg :
   PartMaps.upd cmem addr' w@tg = Some cmem' ->
   exists w, PartMaps.get cmem' addr = Some w@tg.
 Proof.
-  intros [w' GET] UPD.
-  destruct (addr' == addr) as [E|E]; simpl in E.
-  - subst addr'. erewrite PartMaps.get_upd_eq; eauto.
+  move=> [w' GET] UPD.
+  have [<-|/eqP neq_addr] := altP (addr' =P addr).
+  - erewrite PartMaps.get_upd_eq; eauto.
     apply mem_axioms.
   - erewrite PartMaps.get_upd_neq; eauto.
     apply mem_axioms.
@@ -103,8 +105,8 @@ Definition mvec_and_rvec_fields := mvec_fields ++ rvec_fields.
 Definition beq_mvec (mv1 mv2 : MVec) : bool :=
   let '(mkMVec op tpc ti t1 t2 t3) := mv1 in
   let '(mkMVec op' tpc' ti' t1' t2' t3') := mv2 in
-  (op ==b op') && (tpc ==b tpc') && (ti ==b ti')
-  && (t1 ==b t1') && (t2 ==b t2') && (t3 ==b t3').
+  (op == op') && (tpc == tpc') && (ti == ti')
+  && (t1 == t1') && (t2 == t2') && (t3 == t3').
 
 Inductive mvec_part : Set :=
   | mvp_tpc : mvec_part
@@ -151,7 +153,7 @@ Definition copy (mv : MVec) (rv : RVec) (ctm : CTMask) : RVec :=
   mkRVec (copy_mvec_part mv (ctrpc rv) (ct_trpc ctm))
          (copy_mvec_part mv (ctr   rv) (ct_tr   ctm)).
 
-Definition is_kernel_tag (tpc:word t) : bool := tpc ==b TKernel.
+Definition is_kernel_tag (tpc:word t) : bool := tpc == TKernel.
 
 Definition cache_lookup (cache : rules)
     (masks : Masks) (mv : MVec) : option RVec :=
@@ -199,7 +201,7 @@ Section ConcreteSection.
 
 Variable masks : Masks.
 
-Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
+Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
 (* The mvector is written at fixed locations in kernel memory where
    the fault handler can access them (using the same addresses as for
@@ -232,7 +234,7 @@ Definition next_state_reg_and_pc (st : state) (mvec : MVec) r x pc' : option sta
     Some (mkState (mem st) reg' (cache st) pc'@(ctrpc rvec) (epc st))).
 
 Definition next_state_reg (st : state) (mvec : MVec) r x : option state :=
-  next_state_reg_and_pc st mvec r x (val (pc st).+1).
+  next_state_reg_and_pc st mvec r x (val (pc st)).+1.
 
 Definition next_state_pc (st : state) (mvec : MVec) x : option state :=
   next_state st mvec (fun rvec =>
@@ -319,7 +321,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (Bnz _ r n)),
     forall (REG : TotalMaps.get reg r = w@t1),
     let mvec := mkMVec (op_to_word BNZ) tpc ti t1 TNone TNone in
-    let pc' := pc + if w ==b Z_to_word 0 then Z_to_word 1 else imm_to_word n in
+    let pc' := pc + if w == Z_to_word 0 then Z_to_word 1 else imm_to_word n in
     forall (NEXT : next_state_pc st mvec pc' = Some st'),
       step st st'
 | step_jal :

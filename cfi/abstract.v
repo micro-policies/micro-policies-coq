@@ -1,5 +1,7 @@
 Require Import Coq.Lists.List Coq.Arith.Arith Coq.ZArith.ZArith.
-Require Import Coq.Classes.SetoidDec.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+
 Require Import lib.utils.
 Require Import concrete.common.
 Require Import cfi.cfi.
@@ -43,11 +45,10 @@ Class params_spec (ap : abstract_params) := {
 
 Context {ap : abstract_params}.
 
-Local Coercion Z_to_word : Z >-> word.
 Open Scope word_scope.
 
 Local Notation word := (word t).
-Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
+Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
 Definition state := 
   (imemory * dmemory * registers * word (* pc *) * bool (*jump check*))%type.
@@ -60,7 +61,7 @@ Record syscall := Syscall {
 Variable table : list syscall.
 
 Definition get_syscall (addr : word) : option syscall :=
-  find (fun sc => address sc ==b addr) table.
+  List.find (fun sc => address sc == addr) table.
 
 Variable valid_jmp : word -> word -> bool.
 
@@ -111,7 +112,7 @@ Inductive step : state -> state -> Prop :=
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Bnz _ r n)),
              forall (RW : get reg r = Some w),
-             let pc' := add_word pc (if w ==b Z_to_word 0 then Z_to_word 1 
+             let pc' := add_word pc (if w == Z_to_word 0 then Z_to_word 1 
                                      else imm_to_word n) in
              step (imem,dmem,reg,pc,true) (imem,dmem,reg,pc',true)
 | step_jal : forall imem dmem reg reg' pc i r w b,
@@ -155,9 +156,9 @@ Definition succ (st : state) (st' : state) : bool :=
                                         end
                             | None => false
                           end
-        | Some (Bnz r imm) => (pc' ==b pc .+1) || (pc' ==b pc + imm_to_word imm)
+        | Some (Bnz r imm) => (pc' == pc .+1) || (pc' == pc + imm_to_word imm)
         | None => false
-        | _ => pc' ==b pc .+1
+        | _ => pc' == pc .+1
       end
     | None => false
   end.
@@ -203,7 +204,7 @@ Proof.
              |- trace_has_cfi _ _ \/ _] =>
             left; intros si sj IN2; destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst
           | [ |- _ \/ cfi.succ (_,_,_,_,true) (_,_,_,_,true) = true ] =>
-              right; simpl; rewrite FETCH, INST
+              right; simpl; rewrite FETCH INST
           | [H: In2 _ _ [_] |- _ ] => destruct H
           | [H: true = valid_jmp _ _ |- valid_jmp _ _ = true] => 
             symmetry; assumption 
@@ -214,7 +215,7 @@ Proof.
             right; eexists; eexists; exists []; exists [];
             split; [simpl; auto | idtac]
           | [ |- V _ _ /\ _ ] => split;
-            [unfold V; simpl; rewrite FETCH, INST; auto | idtac]
+            [unfold V; simpl; rewrite FETCH INST; auto | idtac]
           | [ |- trace_has_cfi _ _ /\ _] => split; 
             [intros csi csj IN2; destruct IN2 | idtac]
           | [ |- S _ ] => unfold S; eexists; split; [eauto | idtac]
@@ -223,15 +224,14 @@ Proof.
           | [H : get _ _ = _, H1 : get_syscall _ = _ 
              |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
-          | [ |- (_ ==b _) = true ] =>  apply eqb_refl
+          | [ |- (_ == _) = true ] => by rewrite !eqxx
           | [H : get _ _ = _, H1 : get_syscall _ = _ 
              |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
                                      
-              end).     
-    destruct (w ==b Z_to_word 0);
-    unfold pc'; apply Bool.orb_true_iff; 
-    constructor (apply eqb_refl; apply eq_wordP). 
+              end).
+    by destruct (w == Z_to_word 0);
+    unfold pc'; rewrite eqxx ?orbT.
   + apply interm_equiv_intermrev in INTERM.
     destruct (IHINTERM INIT) as [TSAFE | [sv1 [sv2 [hs [tl VIOLATION]]]]].
     - destruct STEP as [STEPA | STEP].
@@ -258,8 +258,8 @@ Proof.
           | [H: In2 _ _ _ \/ _ |- _] => destruct H as [? | [? ?]]; 
           [apply TSAFE; assumption | subst; right]
           | [ |- cfi.succ (_,_,_,_,true) (_,_,_,_,true) = _ ] =>
-               simpl; rewrite FETCH, INST
-          | [ |- (_ ==b _) = true] => apply eqb_refl; apply eq_wordP
+               simpl; rewrite FETCH INST
+          | [ |- (_ == _) = true] => by rewrite eqxx
           | [H: cfi.step (_,_,_,_,true) (_,_,_,_,valid_jmp ?pc ?w) 
              |- trace_has_cfi _ _ \/ _] =>
             remember (valid_jmp pc w) as validjmp; destruct validjmp
@@ -272,7 +272,7 @@ Proof.
             exists (Imem',Dmem',Reg',Pc',false); exists xs; exists [];
             split; [rewrite <- app_assoc; reflexivity | idtac] 
           | [ |- V _ _ /\ _ ] => split; 
-            [unfold V; simpl; rewrite FETCH, INST; auto | idtac]
+            [unfold V; simpl; rewrite FETCH INST; auto | idtac]
           | [ |- trace_has_cfi _ _ /\ _] => split
           | [H: trace_has_cfi _ ?Xs |- trace_has_cfi _ ?Xs] => assumption
           | [ |- trace_has_cfi _ [?S] ] => intros ? ? IN2; destruct IN2
@@ -283,9 +283,8 @@ Proof.
              |- match _ with _ => _ end = _] =>
             rewrite H; rewrite H1; auto
                   end).
-        destruct (w ==b Z_to_word 0);
-        unfold pc'; apply Bool.orb_true_iff; 
-        constructor (apply eqb_refl; apply eq_wordP).
+        by destruct (w == Z_to_word 0);
+        unfold pc'; rewrite eqxx ?orbT.
    - (*Case a violation occurs in the trace*)
      induction xs using rev_ind. inversion INTERM. subst. clear IHxs.
      destruct VIOLATION as [LST [VIO [T1 [T2 STOPS]]]].

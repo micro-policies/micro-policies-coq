@@ -1,5 +1,7 @@
 Require Import Coq.Bool.Bool.
-Require Import Coq.Classes.SetoidDec.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+
 Require Import lib.utils.
 Require Import lib.Coqlib.
 Require Import concrete.common.
@@ -137,7 +139,7 @@ Proof.
     destruct tpc.
     + right. destruct o.
       * right.
-        assert (H' := H w).
+        assert (H' := H s).
         destruct H' as [dst [? ?]]. reflexivity.
         eexists; eexists; eauto.
       * left; reflexivity.
@@ -312,7 +314,7 @@ Proof.
   destruct NEW as [areg' UPD'].
   eexists; split; eauto.
   unfold refine_registers. intros r' v''.
-  destruct (r' == r) as [EQ | NEQ]; [simpl in EQ | simpl in NEQ]; subst.
+  have [EQ|/eqP NEQ] := altP (r' =P r); [simpl in EQ | simpl in NEQ]; subst.
   *
     rewrite (PartMaps.get_upd_eq UPD').
     rewrite (PartMaps.get_upd_eq UPD). 
@@ -338,7 +340,7 @@ Proof.
   destruct (PartMaps.upd_defined v' GET') as [amem' UPD'].
   do 2 eexists; eauto.
   intros addr' w'.
-  destruct (addr' == addr) as [EQ | NEQ]; [simpl in EQ | simpl in NEQ]; subst.
+  have [EQ|/eqP NEQ] := altP (addr' =P addr); [simpl in EQ | simpl in NEQ]; subst.
   - rewrite (PartMaps.get_upd_eq UPD).
     rewrite (PartMaps.get_upd_eq UPD').
     split; try congruence.
@@ -355,7 +357,7 @@ Lemma data_memory_upd (smem : @Symbolic.memory t sym_params) smem' addr v v' :
      get smem' addr' = Some i@(INSTR id)).
 Proof.
   intros GET UPD addr' i id GET'.
-  destruct (addr' == addr) as [EQ | NEQ]; [simpl in EQ | simpl in NEQ]; subst.
+  have [EQ|/eqP NEQ] := altP (addr' =P addr); [simpl in EQ | simpl in NEQ]; subst.
   * rewrite GET in GET'. discriminate.
   * rewrite (PartMaps.get_upd_neq NEQ UPD);
     assumption.
@@ -371,7 +373,7 @@ Proof.
   intros MEM GET UPD w x.
   split.
   - intros (id & GET').
-    destruct (addr == w) as [EQ | NEQ]; [simpl in EQ | simpl in NEQ]; subst.
+    have [EQ|/eqP NEQ] := altP (addr =P w); [simpl in EQ | simpl in NEQ]; subst.
     * assert (CONTRA := PartMaps.get_upd_eq UPD).
       simpl in CONTRA. rewrite CONTRA in GET'. discriminate.
     * eapply PartMaps.get_upd_neq in UPD; eauto.
@@ -379,7 +381,7 @@ Proof.
       eapply MEM; eauto.
   - intro GET'.
     apply MEM in GET'.
-    destruct (addr == w) as [EQ | NEQ]; [simpl in EQ | simpl in NEQ]; subst.
+    have [EQ|/eqP NEQ] := altP (addr =P w); [simpl in EQ | simpl in NEQ]; subst.
     * simpl in GET. rewrite GET in GET'. destruct GET'; congruence.
     * eapply PartMaps.get_upd_neq in UPD; eauto; simpl in UPD;
       rewrite UPD; assumption.
@@ -788,7 +790,7 @@ Proof.
         destruct GET as [CORRECT ?].
         destruct tpc as [opt_id|].
         * destruct opt_id.
-          { apply CORRECT with (src := w) in TRUE.
+          { apply CORRECT with (src := s) in TRUE.
             destruct TRUE as [? [CONTRA ?]].
             discriminate.
             reflexivity.

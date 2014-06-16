@@ -4,7 +4,8 @@ Require Import ZArith.
 Require Import Integers.
 Require Import List.
 Require Import Bool.
-Require Import Coq.Classes.SetoidDec.
+
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Import ListNotations.
 
@@ -23,12 +24,22 @@ Module Int32Indexed := Int32Ordered.IntIndexed.
 Module Int32        := Int32Indexed.Int.
 Import Int32.
 
+Lemma int_eqP : Equality.axiom Int32.eq.
+Proof.
+move=> x y; apply: (iffP idP) => [|->].
+  by have := eq_spec x y; case: (eq x y).
+by rewrite eq_true.
+Qed.
+
+Definition int_eqMixin := EqMixin int_eqP.
+Canonical int_eqType := Eval hnf in EqType int int_eqMixin.
+
 (* These types will yield an incorrect (but still executable/useful) encoding *)
 (* CH: What's incorrect about it?  Is it the fact that you're
    abusing int instead of using a more precise type? *)
 Definition concrete_int_32_t : machine_types := {|
-  word := int;
-  reg := int; (* 5 bits *)
+  word := int_eqType;
+  reg := int_eqType; (* 5 bits *)
   imm := int  (* 5 bits; CH: this is extrementy little! *)
 |}.
 
@@ -53,7 +64,16 @@ Definition unpack (x : int) : option (opcode * int * int * int * int) :=
         and (shr x (repr 5)) mask_31,
         and x mask_31).
 
-Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
+Instance int_ordered : @Ordered (word concrete_int_32_t) (eqType_EqDec (word concrete_int_32_t)) :=
+  {| compare := compare;
+     compare_refl := compare_refl;
+     compare_asym :=compare_asym;
+     compare_eq :=compare_eq;
+     compare_lt_trans :=compare_lt_trans;
+     compare_gt_trans := compare_gt_trans
+|}.
+
+Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   binop_denote b :=
     match b with
     | ADD => add
@@ -86,9 +106,9 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   decode_instr i :=
     do t <- unpack i;
     (* Removing the annotation in the match causes this to fail on 8.4pl3 *)
-    Some match t : opcode * int * int * int * int with
+    Some match t : let int := reg concrete_int_32_t in opcode * int * int * int * int with
          | (NOP, _, _, _, _) => Nop _
-         | (CONST, i, r, _, _) => Const _ i r
+         | (CONST, i, r, _, _) => Const _ (i: imm concrete_int_32_t) r
          | (MOV, r1, r2, _, _) => Mov _ r1 r2
          | (BINOP op, r1, r2, r3, _) => Binop _ op r1 r2 r3
          | (LOAD, r1, r2, _, _) => Load _ r1 r2
@@ -119,10 +139,7 @@ Program Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 
   opp_word := neg;
 
-  eq_word := _; (* In-scope type class instance *)
-  ord_word := _; (* In-scope type class instance *)
-
-  eq_reg := _; (* In-scope type class instance *)
+  ord_word := int_ordered;
 
   ra := repr 0
 |}.
@@ -145,27 +162,27 @@ Proof.
   - replace (x mod modulus + (y mod modulus - modulus))%Z
        with (x mod modulus + y mod modulus - modulus)%Z
          by omega.
-    rewrite Zminus_mod, <- Zplus_mod.
-    rewrite Z_mod_same_full, Zminus_0_r.
+    rewrite Zminus_mod -Zplus_mod.
+    rewrite Z_mod_same_full Zminus_0_r.
     rewrite Zmod_mod; reflexivity.
   - replace (x mod modulus - modulus + y mod modulus)%Z
        with (x mod modulus + y mod modulus - modulus)%Z
          by omega.
-    rewrite Zminus_mod, <- Zplus_mod.
-    rewrite Z_mod_same_full, Zminus_0_r.
+    rewrite Zminus_mod -Zplus_mod.
+    rewrite Z_mod_same_full Zminus_0_r.
     rewrite Zmod_mod; reflexivity.
   - replace (x mod modulus - modulus + (y mod modulus - modulus))%Z
        with (x mod modulus + y mod modulus - (2*modulus))%Z
          by omega.
-    rewrite Zminus_mod, <- Zplus_mod.
-    rewrite Zmult_mod, Z_mod_same_full, Zmult_0_r, Zminus_0_r.
+    rewrite Zminus_mod -Zplus_mod.
+    rewrite Zmult_mod Z_mod_same_full Zmult_0_r Zminus_0_r.
     rewrite Zmod_mod; reflexivity.
 Qed.
 
 Lemma compare_signed : forall x y, (x <=> y) = (signed x ?= signed y)%Z.
 Proof.
   simpl; intros; unfold Int32Ordered.int_compare,lt.
-  destruct (x == y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
+  destruct (SetoidDec.equiv_dec x y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
   destruct (zlt (signed x) (signed y)) as [LT | GE]; [auto with zarith|].
   unfold Zge in GE; destruct (_ ?= _)%Z eqn:CMP.
   + apply Z.compare_eq in CMP.
@@ -193,13 +210,13 @@ Proof.
   - intros w.
     assert (min_signed <= word_to_Z w) by apply signed_range.
     unfold min_word,word_to_Z,concrete_int_32_ops,le in *.
-    rewrite compare_signed,signed_repr by
+    rewrite compare_signed signed_repr; last by
       (generalize (signed_range (repr 0)); omega).
     assumption.
   - intros w.
     assert (word_to_Z w <= max_signed) by apply signed_range.
     unfold max_word,word_to_Z,concrete_int_32_ops,le in *.
-    rewrite compare_signed,signed_repr by
+    rewrite compare_signed signed_repr; last by
       (generalize (signed_range (repr 0)); omega).
     assumption.
 Defined.

@@ -1,4 +1,5 @@
 Require Import List.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import utils common.
 
 Set Implicit Arguments.
@@ -11,7 +12,7 @@ Context (t : machine_types).
 Context {ops : machine_ops t}.
 
 Local Notation word := (word t).
-Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
+Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
 Class cfi_machine := {
   state : Type;
