@@ -257,23 +257,23 @@ Definition encode_mvec (mvec : MVec tag) : Concrete.MVec (word t) :=
   |}.
 
 Definition decode_mvec (cmvec : Concrete.MVec (word t)) : option (MVec tag) :=
-  do op  <- word_to_op (Concrete.cop cmvec);
-  do tpc <- decode (Concrete.ctpc cmvec);
-  do ti  <- decode (Concrete.cti cmvec);
-  do ts  <- match nfields op as fs return option (mvec_fields tag fs) with
+  do! op  <- word_to_op (Concrete.cop cmvec);
+  do! tpc <- decode (Concrete.ctpc cmvec);
+  do! ti  <- decode (Concrete.cti cmvec);
+  do! ts  <- match nfields op as fs return option (mvec_fields tag fs) with
             | Some fs =>
               match fst fs as n return option (Vector.t tag n) with
               | 0 => Some (Vector.nil _)
               | S n' =>
-                do t1 <- decode (Concrete.ct1 cmvec);
+                do! t1 <- decode (Concrete.ct1 cmvec);
                 match n' return option (Vector.t tag (S n')) with
                 | 0 => Some (Vector.of_list [t1])
                 | S n'' =>
-                  do t2 <- decode (Concrete.ct2 cmvec);
+                  do! t2 <- decode (Concrete.ct2 cmvec);
                   match n'' return option (Vector.t tag (S (S n''))) with
                   | 0 => Some (Vector.of_list [t1; t2])
                   | S n''' =>
-                    do t3 <- decode (Concrete.ct3 cmvec);
+                    do! t3 <- decode (Concrete.ct3 cmvec);
                     Some (Vector.cons _ t1 _ (Vector.cons _ t2 _ (Vector.const t3 _)))
                   end
                 end
@@ -381,13 +381,13 @@ Definition handler (mvec : MVec tag) : option (RVec tag) :=
   match mvec with
   | mkMVec op (USER tpc _) (USER ti false) ts =>
     let process ts :=
-        do rvec <- uhandler (mkMVec tpc ti ts);
+        do! rvec <- uhandler (mkMVec tpc ti ts);
         Some (rvec_of_urvec op rvec) in
     match nfields op as fs return (mvec_fields user_tag fs -> option (RVec tag)) ->
                                   mvec_fields tag fs -> option (RVec tag) with
     | Some fs =>
       fun process ts =>
-        do ts <- sequence (Vector.map (fun t =>
+        do! ts <- sequence (Vector.map (fun t =>
                                          match t with
                                          | USER t false => Some t
                                          | _ => None

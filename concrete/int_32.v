@@ -57,7 +57,7 @@ Definition pack (x1 : opcode) (x2 x3 x4 x5 : int) : int :=
 Definition mask_31 : int := repr 31.
 
 Definition unpack (x : int) : option (opcode * int * int * int * int) :=
-  do opcode <- Z_to_op (unsigned (and (shr x (repr 20)) mask_31));
+  do! opcode <- Z_to_op (unsigned (and (shr x (repr 20)) mask_31));
   Some (opcode,
         and (shr x (repr 15)) mask_31,
         and (shr x (repr 10)) mask_31,
@@ -104,7 +104,7 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     end;
 
   decode_instr i :=
-    do t <- unpack i;
+    do! t <- unpack i;
     (* Removing the annotation in the match causes this to fail on 8.4pl3 *)
     Some match t : let int := reg concrete_int_32_t in opcode * int * int * int * int with
          | (NOP, _, _, _, _) => Nop _

@@ -99,14 +99,14 @@ Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
   if key == max_key then None
   else
     let key' := inc_key key in
-    do reg' <- upd reg syscall_ret (max_word@(KEY key));
+    do! reg' <- upd reg syscall_ret (max_word@(KEY key));
     Some (Symbolic.State mem reg' pc key').
 
 Definition seal (s : Symbolic.state t) : option (Symbolic.state t) :=
   let 'Symbolic.State mem reg pc next_key := s in
   match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@DATA), Some (_@(KEY key)) =>
-    do reg' <- upd reg syscall_ret (payload@(SEALED key));
+    do! reg' <- upd reg syscall_ret (payload@(SEALED key));
     Some (Symbolic.State mem reg' pc next_key)
   | _, _ => None
   end.
@@ -116,7 +116,7 @@ Definition unseal (s : Symbolic.state t) : option (Symbolic.state t) :=
   match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
     if key == key' then
-      do reg' <- upd reg syscall_ret (payload@DATA);
+      do! reg' <- upd reg syscall_ret (payload@DATA);
       Some (Symbolic.State mem reg' pc next_key)
     else None
   | _, _ => None

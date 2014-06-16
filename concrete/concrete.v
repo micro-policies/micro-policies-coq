@@ -155,10 +155,10 @@ Definition is_kernel_tag (tpc:word t) : bool := tpc == TKernel.
 
 Definition cache_lookup (cache : rules)
     (masks : Masks) (mv : MVec) : option RVec :=
-  do op <- word_to_op (cop mv);
+  do! op <- word_to_op (cop mv);
   let mask := masks (is_kernel_tag (ctpc mv)) op in
   let masked_mv := mask_dc (dc mask) mv in
-  do rv <- assoc_list_lookup cache (beq_mvec masked_mv);
+  do! rv <- assoc_list_lookup cache (beq_mvec masked_mv);
   Some (copy mv rv (ct mask)).
 
 Record state := mkState {
@@ -172,15 +172,15 @@ Record state := mkState {
 (* Need to do this masking both on lookup, and on rule add, right?
    This is optional; the software could do it *)
 Definition add_rule (cache : rules) (masks : Masks) (kmode : bool) (mem : memory) : option rules :=
-  do aop   <- PartMaps.get mem Mop;
-  do atpc  <- PartMaps.get mem Mtpc;
-  do ati   <- PartMaps.get mem Mti;
-  do at1   <- PartMaps.get mem Mt1;
-  do at2   <- PartMaps.get mem Mt2;
-  do at3   <- PartMaps.get mem Mt3;
-  do atrpc <- PartMaps.get mem Mtrpc;
-  do atr   <- PartMaps.get mem Mtr;
-  do op    <- word_to_op (val aop);
+  do! aop   <- PartMaps.get mem Mop;
+  do! atpc  <- PartMaps.get mem Mtpc;
+  do! ati   <- PartMaps.get mem Mti;
+  do! at1   <- PartMaps.get mem Mt1;
+  do! at2   <- PartMaps.get mem Mt2;
+  do! at3   <- PartMaps.get mem Mt3;
+  do! atrpc <- PartMaps.get mem Mtrpc;
+  do! atr   <- PartMaps.get mem Mtr;
+  do! op    <- word_to_op (val aop);
   let dcm := dc (masks kmode op) in
   Some ((mask_dc dcm (mkMVec (val aop) (val atpc)
                              (val ati) (val at1) (val at2) (val at3)),
@@ -300,7 +300,7 @@ Inductive step (st st' : state) : Prop :=
     let mvec := mkMVec (op_to_word STORE) tpc ti t1 t2 t3 in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        do mem' <- PartMaps.upd mem w1 w2@(ctr rvec);
+        do! mem' <- PartMaps.upd mem w1 w2@(ctr rvec);
         Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc)) = Some st'),
       step st st'
 | step_jump :
@@ -349,7 +349,7 @@ Inductive step (st st' : state) : Prop :=
         mkMVec (op_to_word ADDRULE) tpc ti TNone TNone TNone in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        do cache' <- add_rule cache masks (is_kernel_tag tpc) mem;
+        do! cache' <- add_rule cache masks (is_kernel_tag tpc) mem;
         Some (mkState mem reg cache' epc epc)) = Some st'),
       step st st'
 | step_gettag :

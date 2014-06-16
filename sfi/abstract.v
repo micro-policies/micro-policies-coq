@@ -1,7 +1,7 @@
 Require Import List Arith Sorted Bool.
 Require Import Coq.Classes.SetoidDec.
 
-Require Import (* ssreflect *) ssrfun ssrbool eqtype ssrnat seq.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils common.common lib.ordered.
 Require Import sfi.list_utils sfi.set_utils sfi.ranges.
@@ -156,7 +156,7 @@ Class isolate_params := {
 }.
 Context {IP : isolate_params}.
 
-Notation "'do' 'guard' cond ; rest" :=
+Notation "'do!' 'guard' cond ; rest" :=
   (if cond then rest else None)
   (at level 200, cond at level 100, rest at level 200).
 
@@ -164,7 +164,7 @@ Definition isolate_create_set (M : memory)
                               (base size : value) : option (list value) :=
   let pre_set := map (fun p => get M (p + (base + 1)))
                      (range 0 (size - 1)) in
-  do guard forallb is_some pre_set;
+  do! guard forallb is_some pre_set;
   Some (to_set (cat_somes pre_set)).
 
 (* From Greg: An objection to SFI could be "but we have page table tricks for
@@ -175,27 +175,27 @@ Definition isolate_create_set (M : memory)
    into fragments in this way. *)
 Definition isolate_fn (MM : state) : option state :=
   let '(State pc R M C) := MM in
-  do c      <- in_compartment_opt C pc;
-  do al     <- get R riso1;
-  do ah     <- get R riso2;
-  do jt     <- get R riso3;
-  do sm     <- get R riso4;
-  do jtsz   <- get M jt;
-  do smsz   <- get M sm;
-  do guard al <=? ah;
+  do! c      <- in_compartment_opt C pc;
+  do! al     <- get R riso1;
+  do! ah     <- get R riso2;
+  do! jt     <- get R riso3;
+  do! sm     <- get R riso4;
+  do! jtsz   <- get M jt;
+  do! smsz   <- get M sm;
+  do! guard al <=? ah;
   let '<<A,J,S>> := c in
   let A' := range al ah in
-  do guard subset A' A;
-  do J' <- isolate_create_set M jt jtsz;
-  do guard subset J' (A ++ J);
-  do S' <- isolate_create_set M sm smsz;
-  do guard subset S' (A ++ S);
+  do! guard subset A' A;
+  do! J' <- isolate_create_set M jt jtsz;
+  do! guard subset J' (A ++ J);
+  do! S' <- isolate_create_set M sm smsz;
+  do! guard subset S' (A ++ S);
   let c_upd := << set_difference A  A'
                 , insert_unique  al J
                 , S >> in
   let c'    := <<A',J',S'>> in
   let C'    := c_upd :: c' :: delete c C in
-  do guard existsb (equiv_decb (pc + 1)) (address_space c_upd);
+  do! guard existsb (equiv_decb (pc + 1)) (address_space c_upd);
   Some (State (pc + 1) R M C').
 
 Definition isolate :=
@@ -211,7 +211,7 @@ Definition get_syscall (addr : value) : option syscall :=
 Notation simple_step C pc c := (C ⊢ pc, pc + 1 ∈ c).
 
 Definition decode M pc :=
-  do pc_val <- get M pc;
+  do! pc_val <- get M pc;
   decode_instr pc_val.
 
 Notation "x ?= y" := (x = Some y) (at level 70, no associativity).
@@ -344,7 +344,7 @@ Ltac destruct_good_compartment_hyp_impl name GOOD :=
       let SET_JT_c := fresh "SET_JT_" name in
       let SET_SM_c := fresh "SET_SM_" name in
       assert (TEMP_c : good_compartment c = true) by exact GOOD;
-      unfold good_compartment in TEMP_c; repeat rewrite andb_true_iff in TEMP_c;
+      unfold good_compartment in TEMP_c; repeat rewrite ->andb_true_iff in TEMP_c;
       destruct TEMP_c as [[SET_AS_c SET_JT_c] SET_SM_c]
     | _ => fail 1 GOOD "is not a `good_compartment' assertion"
   end.
@@ -596,7 +596,7 @@ Proof.
   clear S; intros; unfold contained_compartments; rewrite subset_spec; split.
   - intros SUBSET c a IN_c IN_a.
     specialize SUBSET with a;
-      rewrite ->in_app_iff in SUBSET; repeat rewrite concat_in in SUBSET.
+      rewrite ->in_app_iff in SUBSET; repeat rewrite ->concat_in in SUBSET.
     destruct SUBSET as [A [IN_A IN_a_A]].
     + destruct IN_a;
         [left; exists (jump_targets c) | right; exists (shared_memory c)];
@@ -605,7 +605,7 @@ Proof.
       exists c'; subst; tauto.
   - intros SPEC a IN_app.
     apply in_app_iff in IN_app.
-    rewrite concat_in; repeat rewrite concat_in in IN_app.
+    rewrite concat_in; repeat rewrite ->concat_in in IN_app.
     destruct IN_app as [[J [IN_J IN_a]] | [S [IN_S IN_a]]].
     + apply in_map_iff in IN_J; destruct IN_J as [c [EQ_J IN_c]].
       destruct SPEC with c a as [c' [IN_c' IN_a_c']];
@@ -623,7 +623,7 @@ Qed.
 
 Local Ltac good_compartments_trivial :=
   unfold good_compartments; intros C GOOD;
-  repeat rewrite andb_true_iff in GOOD;
+  repeat rewrite ->andb_true_iff in GOOD;
   tauto.
 
 (* For `auto' *)
@@ -661,7 +661,7 @@ Theorem good_no_duplicates : forall C,
 Proof.
   intros C GOOD;
     unfold good_compartments, non_overlapping_list in GOOD;
-    repeat rewrite andb_true_iff in GOOD; rewrite <- all_pairs_in2_comm in GOOD;
+    repeat rewrite ->andb_true_iff in GOOD; rewrite <- all_pairs_in2_comm in GOOD;
     repeat invh and; eauto 2.
 Qed.
 Hint Resolve good_no_duplicates.
@@ -685,7 +685,7 @@ Theorem non_overlapping_tail : forall c C,
   non_overlapping_list (c :: C) = true -> non_overlapping_list C = true.
 Proof.
   unfold non_overlapping_list; intros c C NOL;
-  rewrite all_tail_pairs_tail, andb_true_iff in NOL; tauto.
+  rewrite ->all_tail_pairs_tail, ->andb_true_iff in NOL; tauto.
 Qed.
 Hint Resolve non_overlapping_tail.
 
@@ -730,8 +730,8 @@ Proof.
   apply not_false_iff_true in IN2; apply IN2.
   unfold non_overlapping; destruct (set_intersection _ _) eqn:SI;
     [|reflexivity].
-  rewrite nil_iff_not_in in SI; specialize SI with a.
-  rewrite set_intersection_spec in SI; tauto.
+  rewrite ->nil_iff_not_in in SI; specialize SI with a.
+  rewrite ->set_intersection_spec in SI; tauto.
 Qed.
 Hint Resolve good_in2_no_common_addresses.
 
@@ -744,15 +744,15 @@ Proof.
   intros C p c GOOD NOL; induction 1 as [C A J S IN | C ch c IC]; simpl in *.
   - rewrite existsb_equiv_decb_in; auto.
   - destruct (existsb _ _) eqn:EX;
-      [|rewrite andb_true_iff in *; invh and; eauto 3].
+      [|rewrite ->andb_true_iff in *; invh and; eauto 3].
     assert (IN : In c C) by eauto 2; assert (IN2 : In2 ch c (ch :: C)) by auto.
     apply in_existsb_equiv_decb in EX;
       apply in_compartment__in_address_space in IC.
     apply non_overlapping_list_spec in IN2; auto.
     unfold non_overlapping in *.
     destruct (set_intersection _ _) eqn:SI; try congruence.
-    rewrite nil_iff_not_in in SI; specialize SI with p.
-    rewrite set_intersection_spec in SI; tauto.
+    rewrite ->nil_iff_not_in in SI; specialize SI with p.
+    rewrite ->set_intersection_spec in SI; tauto.
 Qed.
 Hint Resolve in_compartment_opt_sound.
 
@@ -790,7 +790,7 @@ Proof.
   intros until 0; intros GOOD IC1 IC2.
   assert (OVERLAPPING : non_overlapping c1 c2 = false) by eauto 2.
   assert (NOL : non_overlapping_list C = true) by auto.
-  rewrite non_overlapping_list_spec in NOL; auto.
+  rewrite ->non_overlapping_list_spec in NOL; auto.
   have [|/eqP neq_c1c2] := altP (c1 =P c2); auto.
   lapply (NOL c1 c2); [congruence | eauto].
 Qed.
@@ -814,7 +814,7 @@ Proof.
   clear - t ops spec; unfold isolate, good_syscall; intros MM; simpl.
   destruct (good_state MM) eqn:GOOD, MM as [pc R M C];
     [unfold good_state in *; simpl in * | reflexivity].
-  rewrite andb_true_iff in GOOD; destruct GOOD as [EICO GOOD].
+  rewrite ->andb_true_iff in GOOD; destruct GOOD as [EICO GOOD].
   assert (ICO : exists c, in_compartment_opt C pc ?= c) by
     (destruct (in_compartment_opt _ _) eqn:?; [eauto | simpl in *; congruence]);
     clear EICO; move ICO after GOOD; destruct ICO as [c ICO].
@@ -823,13 +823,13 @@ Proof.
   (* Now, compute in `isolate_fn'. *)
   let (* Can't get the binder name, so we provide it *)
       DO var := match goal with
-                  | |- match (do _ <- ?GET;   _) with _ => _ end = true =>
+                  | |- match (do! _ <- ?GET;   _) with _ => _ end = true =>
                     let def_var := fresh "def_" var in
                     destruct GET as [var|] eqn:def_var
-                  | |- match (do guard ?COND; _) with _ => _ end = true =>
+                  | |- match (match ?COND with true => _ | false => None end) with _ => _ end = true =>
                     destruct COND eqn:var
                 end; simpl; [|reflexivity]
-  in rewrite ICO; simpl;
+  in rewrite ->ICO; simpl;
      DO al; DO ah; DO jt; DO sm; DO jtsz; DO smsz;
      DO LE; apply leb_le in LE;
      destruct c as [A J S] eqn:def_c; simpl;
@@ -837,30 +837,30 @@ Proof.
      DO J'; DO SUBSET_J';
      DO S'; DO SUBSET_S';
      DO IC';
-     rewrite IC'; simpl;
+     rewrite ->IC'; simpl;
      set (c_upd := <<set_difference A A', insert_unique al J,S>>);
      set (c'    := <<A',J',S'>>);
      repeat rewrite <- def_c in *.
   unfold good_compartments in *; simpl;
     assert (good_compartments C = true) as TEMP by exact GOOD;
     move TEMP before GOOD; unfold good_compartments in TEMP;
-    repeat rewrite andb_true_iff in TEMP; destruct TEMP as [[GOODS NOL] CC].
+    repeat rewrite ->andb_true_iff in TEMP; destruct TEMP as [[GOODS NOL] CC].
   assert (IN : In c C) by (subst; eauto 2).
   let is_good := (subst c c' c_upd A'; unfold good_compartment; simpl;
                   andb_true_split; eauto 2)
-  in assert good_compartment c     by (rewrite forallb_forall in GOODS; auto);
+  in assert good_compartment c     by (rewrite ->forallb_forall in GOODS; auto);
      assert good_compartment c'    by is_good;
      assert good_compartment c_upd by is_good.
   assert (C'_NON_OVERLAPPING : forallb (non_overlapping c) (delete c C) =
                                true). {
-    rewrite non_overlapping_list_spec in NOL; [|assumption].
+    rewrite ->non_overlapping_list_spec in NOL; [|assumption].
     apply forallb_forall; intros ct IN_ct; apply NOL.
     apply delete_in_iff in IN_ct; apply in_neq_in2; intuition.
   }
   unfold non_overlapping_list; repeat rewrite all_tail_pairs_tail; simpl in *.
   andb_true_split; auto; try (eapply forallb_impl; [|apply C'_NON_OVERLAPPING]).
   - unfold non_overlapping; subst c c_upd c'; simpl in *.
-    rewrite set_intersection_difference_distrib,
+    rewrite ->set_intersection_difference_distrib,
             set_intersection_self_id,
             set_difference_intersection_distrib,
             set_difference_self_annihilating,
@@ -870,7 +870,7 @@ Proof.
       [|destruct (set_difference _ _); reflexivity].
     apply range_empty in RANGE; exfalso; auto.
   - intros c''; apply non_overlapping_subcompartment; auto; simpl.
-    + apply nonempty_iff_in; rewrite existsb_exists in IC';
+    + apply nonempty_iff_in; rewrite ->existsb_exists in IC';
         destruct IC' as [pc' IC']; exists pc'; tauto.
     + subst c; intros a; rewrite set_difference_spec; tauto.
   - intros c''; apply non_overlapping_subcompartment; auto;
@@ -886,7 +886,7 @@ Proof.
     assert (A_separated : forall a, In a A <->
                                     In a (set_difference A A') \/ In a A'). {
       intros; specialize In_dec with a A';
-        rewrite set_difference_spec; rewrite subset_spec in SUBSET_A'.
+        rewrite set_difference_spec; rewrite ->subset_spec in SUBSET_A'.
       split; [|destruct 1]; solve [auto | tauto].
     }
     assert (As_same : forall a,
@@ -915,11 +915,11 @@ Proof.
     rewrite subset_spec; intros a.
     rewrite As_same.
     repeat rewrite <- app_assoc; repeat rewrite in_app_iff.
-    rewrite subset_spec in SUBSET_A',SUBSET_J',SUBSET_S';
+    rewrite ->subset_spec in SUBSET_A',SUBSET_J',SUBSET_S';
       specialize SUBSET_A' with a;
       specialize SUBSET_J' with a;
       specialize SUBSET_S' with a;
-      rewrite in_app_iff in SUBSET_J', SUBSET_S'.
+      rewrite ->in_app_iff in SUBSET_J', SUBSET_S'.
     intros [IN_a_alJ | [IN_a_J' | [IN_a_JTs |
            [IN_a_S   | [IN_a_S' |  IN_a_SMs]]]]].
     (* There are essentially three proofs here: (1) In a J/S; (2) In a J'/S'
@@ -938,7 +938,7 @@ Proof.
         apply in_map_iff. exists c; subst c; auto.
       * (* Proof (1) *)
         move CC after IN_J.
-        rewrite contained_compartments_spec in CC;
+        rewrite ->contained_compartments_spec in CC;
           specialize (CC c a IN);
           subst c; simpl in *;
           specialize (CC (or_introl IN_J));
@@ -950,7 +950,7 @@ Proof.
       * apply concat_in; exists A; split; auto.
         apply in_map_iff; exists c; subst c; simpl; tauto.
       * (* Proof (1) *)
-        rewrite contained_compartments_spec in CC;
+        rewrite ->contained_compartments_spec in CC;
           specialize (CC c a IN);
           subst c; simpl in *;
           specialize (CC (or_introl IN_J));
@@ -962,7 +962,7 @@ Proof.
       apply in_map_iff in IN_J''; destruct IN_J'' as [c'' [EQ_J'' IN_c'']].
       apply delete_in_iff in IN_c''; destruct IN_c'' as [NEQ_c'' IN_c''].
       move CC after IN_a_J''.
-      rewrite contained_compartments_spec in CC.
+      rewrite ->contained_compartments_spec in CC.
         specialize (CC c'' a IN_c'');
         rewrite EQ_J'' in CC;
         specialize (CC (or_introl IN_a_J''));
@@ -970,7 +970,7 @@ Proof.
       apply concat_in; exists (address_space c'''); split; auto.
       apply in_map_iff; eauto.
     + (* Proof (1) *)
-      rewrite contained_compartments_spec in CC;
+      rewrite ->contained_compartments_spec in CC;
         specialize (CC c a IN);
         subst c; simpl in *;
         specialize (CC (or_intror IN_a_S));
@@ -982,7 +982,7 @@ Proof.
       * apply concat_in; exists A; split; auto.
         apply in_map_iff; exists c; subst c; simpl; tauto.
       * (* Proof (1) *)
-        rewrite contained_compartments_spec in CC;
+        rewrite ->contained_compartments_spec in CC;
           specialize (CC c a IN);
           subst c; simpl in *;
           specialize (CC (or_intror IN_S));
@@ -994,7 +994,7 @@ Proof.
       apply in_map_iff in IN_S''; destruct IN_S'' as [c'' [EQ_S'' IN_c'']].
       apply delete_in_iff in IN_c''; destruct IN_c'' as [NEQ_c'' IN_c''].
       move CC after IN_a_S''.
-      rewrite contained_compartments_spec in CC.
+      rewrite ->contained_compartments_spec in CC.
         specialize (CC c'' a IN_c'');
         rewrite EQ_S'' in CC;
         specialize (CC (or_intror IN_a_S''));
@@ -1035,7 +1035,7 @@ Lemma good_state__in_compartment_opt : forall MM,
   good_state MM = true ->
   is_some (in_compartment_opt (compartments MM) (pc MM)) = true.
 Proof.
-  unfold good_state; intros; rewrite andb_true_iff in *; tauto.
+  unfold good_state; intros; rewrite ->andb_true_iff in *; tauto.
 Qed.
 Hint Resolve good_state__in_compartment_opt.
 
@@ -1052,7 +1052,7 @@ Hint Resolve good_state_decomposed__in_compartment_opt.
 Lemma good_state__good_compartments : forall MM,
   good_state MM = true -> good_compartments (compartments MM) = true.
 Proof.
-  unfold good_state; intros; rewrite andb_true_iff in *; tauto.
+  unfold good_state; intros; rewrite ->andb_true_iff in *; tauto.
 Qed.
 Hint Resolve good_state__good_compartments.
 
@@ -1078,8 +1078,8 @@ Proof.
   match goal with ST : State _ _ _ _ = State _ ?R' ?M' ?C' |- _ =>
     inversion ST; subst
   end; repeat f_equal.
-  match goal with |- (if ?b1 == 0 then 1 else imm_to_word ?x1) =
-                     (if ?b2 == 0 then 1 else imm_to_word ?x2) =>
+  match goal with |- (match ?b1 == 0 with true => 1 | false => imm_to_word ?x1 end) =
+                     (match ?b2 == 0 with true => 1 | false => imm_to_word ?x2 end) =>
     replace b2 with b1 by congruence; replace x2 with x1 by congruence
   end; reflexivity.
 Qed.
@@ -1097,8 +1097,8 @@ Proof.
     apply in_app_or in VALID; destruct VALID as [VALID | VALID]; [eauto|].
     assert (CC : contained_compartments C = true) by auto.
     unfold contained_compartments in CC;
-      rewrite subset_spec in CC; specialize CC with pc';
-      rewrite in_app_iff in CC.
+      rewrite ->subset_spec in CC; specialize CC with pc';
+      rewrite ->in_app_iff in CC.
     lapply CC; clear CC; [intros CC|].
     + apply concat_in in CC; destruct CC as [A [IN_A IN_pc']].
       apply in_map_iff in IN_A; destruct IN_A as [c' [EQ IN_c']]; subst.
@@ -1111,8 +1111,8 @@ Proof.
     apply in_app_or in VALID; destruct VALID as [VALID | VALID]; [eauto|].
     assert (CC : contained_compartments C = true) by auto.
     unfold contained_compartments in CC;
-      rewrite subset_spec in CC; specialize CC with pc';
-      rewrite in_app_iff in CC.
+      rewrite ->subset_spec in CC; specialize CC with pc';
+      rewrite ->in_app_iff in CC.
     lapply CC; clear CC; [intros CC|].
     + apply concat_in in CC; destruct CC as [A [IN_A IN_pc']].
       apply in_map_iff in IN_A; destruct IN_A as [c' [EQ IN_c']]; subst.
@@ -1151,7 +1151,7 @@ Theorem good_state_preserved : forall `(STEP : step MM MM'),
   good_state MM  = true ->
   good_state MM' = true.
 Proof.
-  unfold good_state; intros; rewrite andb_true_iff in *; invh and; eauto 4.
+  unfold good_state; intros; rewrite ->andb_true_iff in *; invh and; eauto 4.
 Qed.
 Hint Resolve good_state_preserved.
 

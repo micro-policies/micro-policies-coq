@@ -163,7 +163,7 @@ Context `{allocator}.
 Definition malloc_fun st : option state :=
   let: pcv@pcl := pc st in
   let: (color,info) := internal st in
-  do sz <- get (regs st) syscall_arg1;
+  do! sz <- get (regs st) syscall_arg1;
   match sz with
     | sz@V(INT) =>
       match compare 0 sz with
@@ -201,7 +201,7 @@ Definition def_info : block_info :=
 Definition free_fun st : option state :=
   let: pcv@pcl := pc st in
   let: (color,info) := internal st in
-  do ptr <- get (regs st) syscall_arg1;
+  do! ptr <- get (regs st) syscall_arg1;
     (* Removing the return clause makes Coq loop... *)
   match ptr return option state with
   | ptr@V(PTR color) =>

@@ -89,13 +89,13 @@ Definition get_syscall (addr : word) : option syscall :=
 
 Definition next_state (st : state) (mvec : MVec tag)
                       (k : RVec tag -> option state) : option state :=
-  do rvec <- handler mvec;
+  do! rvec <- handler mvec;
     k rvec.
 
 Definition next_state_reg_and_pc (st : state) (mvec : MVec tag) r x pc'
     : option state :=
   next_state st mvec (fun rvec =>
-    do regs' <- upd (regs st) r x@(tr rvec);
+    do! regs' <- upd (regs st) r x@(tr rvec);
     Some (State (mem st) regs' pc'@(trpc rvec) (internal st))).
 
 Definition next_state_reg (st : state) (mvec : MVec tag) r x : option state :=
@@ -157,7 +157,7 @@ Inductive step (st st' : state) : Prop :=
     (OLD  : get mem w1 = Some w3@t3),
     let mvec := mkMVec STORE tpc ti [t1; t2; t3] in forall
     (NEXT : next_state st mvec (fun rvec =>
-                 do mem' <- upd mem w1 w2@(tr rvec);
+                 do! mem' <- upd mem w1 w2@(tr rvec);
                  Some (State mem' reg (pc.+1)@(trpc rvec) int)) = Some st'),
               step st st'
 | step_jump : forall mem reg pc i r w tpc ti t1 int

@@ -1130,11 +1130,11 @@ Qed.
 packaged in a module. *)
 Module DoNotation.
 
-Notation "'do' X <- A ; B" :=
+Notation "'do!' X <- A ; B" :=
   (bind (fun X => B) A)
   (at level 200, X ident, A at level 100, B at level 200).
 
-Notation "'do' X : T <- A ; B" :=
+Notation "'do!' X : T <- A ; B" :=
   (bind (fun X : T => B) A)
   (at level 200, X ident, A at level 100, B at level 200).
 
@@ -1976,8 +1976,8 @@ Fixpoint sequence A n (v : Vector.t (option A) n) : option (Vector.t A n) :=
   match v with
   | Vector.nil => Some (Vector.nil _)
   | Vector.cons a n' v' =>
-    do a  <- a;
-    do v' <- sequence v';
+    do! a  <- a;
+    do! v' <- sequence v';
     Some (Vector.cons _ a _ v')
   end.
 
