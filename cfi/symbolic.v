@@ -70,17 +70,11 @@ Inductive atom_equiv : atom (word t) (@cfi_tag t) -> atom (word t) (@cfi_tag t)
                     a = a' ->
                     atom_equiv a a'.
 
-Definition reg_equiv (reg : registers) (reg' : registers) : Prop :=
-  forall w,
-    match get reg w, get reg' w with
-    | None  , None   => True
-    | Some a, Some a' => atom_equiv a a'
-    | _     , _      => False
-    end.
-
-Definition mem_equiv (mem : memory) (mem' : memory) : Prop :=
-  forall w,
-    match get mem w, get mem' w with
+Definition equiv {M : Type} {Key : Type} 
+           {M_class : partial_map M Key (atom (word t) cfi_tag)}
+           (m : M) (m' : M) : Prop :=
+  forall (k : Key),
+    match get m k, get m' k with
     | None  , None   => True
     | Some a, Some a' => atom_equiv a a'
     | _     , _      => False
@@ -91,10 +85,22 @@ Inductive step_a : Symbolic.state t ->
 | step_attack : forall mem reg pc tpc int mem' reg' i id
                   (FETCH: get mem pc = Some i@(INSTR id))
                   (NOV: no_violation (Symbolic.State mem reg pc@tpc int))
-                  (REQUIV: reg_equiv reg reg')
-                  (MEQUIV: mem_equiv mem mem'),
+                  (REQUIV: equiv reg reg')
+                  (MEQUIV: equiv mem mem'),
                   step_a (Symbolic.State mem reg pc@tpc int)
                          (Symbolic.State mem' reg' pc@tpc int).
+
+Lemma equiv_same_domain {M : Type} {Key : Type} 
+           {M_class : partial_map M Key (atom (word t) cfi_tag)}
+           (m : M) (m' : M) :
+  equiv m m' ->
+  same_domain m m'.
+Proof.
+  intros EQUIV.
+  intro k.
+  assert (EQUIV' := EQUIV k).
+  destruct (get m k); destruct (get m' k); auto.
+Qed.
                   
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 

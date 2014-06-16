@@ -57,11 +57,24 @@ Section Filter.
                                               | Some v => 
                                                 if f v then Some v else None
                                               | None => None
-                                            end
+                                            end;
+
+    filter_domains : forall (f : V -> bool) (m : M) (m' : M) (k : K),
+                       same_domain m m' ->
+                       match get m k, get m' k with 
+                         | Some v, Some v' => f v = f v'
+                         | None, None => True
+                         | _, _ => False
+                       end ->
+                       same_domain (filter f m) (filter f m')
+                                              
+
     }.
 End Filter. 
 
 End Filter.
+
+Module RefinementAS.
 
 Section Refinement.
 Import PartMaps.
@@ -192,7 +205,7 @@ Definition refine_syscall acall scall :=
     scall sst = Some sres ->
     refine_state ares sres.
 
-Definition same_domain
+Definition syscall_domains
            (atbl : list (Abstract.syscall t))
            (stbl : list (@Symbolic.syscall t sym_params)) : Prop :=
   forall addr,
@@ -201,7 +214,7 @@ Definition same_domain
 
 Lemma same_domain_total :
   forall atbl stbl,
-    same_domain atbl stbl ->
+    syscall_domains atbl stbl ->
     forall addr', Abstract.get_syscall atbl addr' = None <-> 
                   Symbolic.get_syscall stbl addr' = None.
 Proof.
@@ -231,7 +244,7 @@ Qed.
 Definition refine_syscalls 
            (atbl : list (Abstract.syscall t))
            (stbl : list (@Symbolic.syscall t sym_params)) : Prop :=
-  same_domain atbl stbl /\
+  syscall_domains atbl stbl /\
   forall addr acall scall,
     Abstract.get_syscall atbl addr = Some acall ->
     Symbolic.get_syscall stbl addr = Some scall ->
@@ -405,6 +418,7 @@ Ltac match_inv :=
   | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
   | H : True |- _ => clear H
   end.
+  
 
 (*TODO: Syscalls and clean up of this mess*)
 Theorem backwards_simulation ast sst sst' :
@@ -654,12 +668,12 @@ Definition untag_atom (a : atom (word t) (@cfi_tag t)) := common.val a.
 Lemma reg_refinement_preserved_by_equiv : 
   forall areg reg reg',
     refine_registers areg reg ->
-    SymbolicCFI.reg_equiv reg reg' ->
+    SymbolicCFI.equiv reg reg' ->
     exists areg',
       refine_registers areg' reg'.
 Proof.
   intros areg reg reg' REF EQUIV.
-  unfold SymbolicCFI.reg_equiv in EQUIV.
+  unfold SymbolicCFI.equiv in EQUIV.
   unfold refine_registers in REF.
   destruct (Map.map_exists untag_atom reg') as [areg' ?].
   assert (MAP := Map.map_correctness untag_atom reg'). 
@@ -683,11 +697,11 @@ Qed.
 Lemma imem_refinement_preserved_by_equiv :
   forall imem mem mem',
     refine_imemory imem mem ->
-    SymbolicCFI.mem_equiv mem mem' ->
+    SymbolicCFI.equiv mem mem' ->
     refine_imemory imem mem'.
 Proof.
   intros imem mem mem' REF EQUIV.
-  unfold SymbolicCFI.mem_equiv in EQUIV.
+  unfold SymbolicCFI.equiv in EQUIV.
   intros addr v.
   split.
   - destruct (REF addr v) as [MEMSA MEMAS].
@@ -726,14 +740,45 @@ Definition is_data (a : atom (word t) (@cfi_tag t)) :=
     | INSTR _ => false
   end.
 
+Lemma refine_dmemory_domains dmem mem :
+  refine_dmemory dmem mem ->
+  same_domain dmem (Filter.filter is_data mem).
+Proof.
+  intros REF addr. 
+  unfold refine_dmemory in REF.
+  destruct (get dmem addr) eqn:GET.
+  + destruct (get (Filter.filter is_data mem) addr) eqn:GET'.
+    * auto.
+    * assert (FILTER := Filter.filter_correctness is_data mem).
+      assert (FILTER' := FILTER addr); clear FILTER.
+      apply REF in GET.
+      rewrite GET in FILTER'. simpl in FILTER'. congruence.
+  + destruct (get (Filter.filter is_data mem) addr) eqn:GET'.
+    * assert (FILTER := Filter.filter_correctness is_data mem).
+      assert (FILTER' := FILTER addr); clear FILTER.
+      destruct (get mem addr) eqn:GET''.
+      destruct a0 as [v tg].
+      destruct tg.
+      - simpl in FILTER'. congruence.
+      - simpl in FILTER'. apply REF in GET''. congruence.
+      - congruence.
+    * auto.
+Qed.
+
+
+(* D(mem) = D(mem')
+   D(filter mem) = D(filter mem') /\ D(filter mem) = D(dmem) /\ D(filter mem') = D(dmem') => ..
+   
+ *)
+
 Lemma dmem_refinement_preserved_by_equiv :
   forall dmem mem mem',
     refine_dmemory dmem mem ->
-    SymbolicCFI.mem_equiv mem mem' ->
+    SymbolicCFI.equiv mem mem' -> 
     exists dmem',
       refine_dmemory dmem' mem'.
 Proof.
-  intros  dmem mem mem' REF EQUIV.
+  intros dmem mem mem' REF EQUIV.
   destruct (Filter.filter_exists is_data mem') as [data_mem' ?].
   destruct (Map.map_exists untag_atom data_mem') as [dmem' ?].
   assert (FILTER := Filter.filter_correctness is_data mem').
@@ -757,6 +802,58 @@ Proof.
     + rewrite FILTER' in MAP'. simpl in MAP'. congruence.
 Qed.
 
+Lemma dmem_domain_preserved_by_equiv :
+  forall dmem dmem' mem mem',
+    refine_dmemory dmem mem ->
+    SymbolicCFI.equiv mem mem' -> 
+    refine_dmemory dmem' mem' ->
+    same_domain dmem dmem'.
+Proof.
+  intros dmem dmem' mem mem' REF EQUIV REF'.
+  assert (DOMAINMM' := SymbolicCFI.equiv_same_domain EQUIV).
+  destruct (Filter.filter_exists is_data mem') as [data_mem' ?].
+  assert (DOMAINDM' := refine_dmemory_domains REF').
+  assert (DOMAINDM := refine_dmemory_domains REF).
+  subst.
+  assert (FILTER := Filter.filter_correctness is_data mem').
+  intro addr.
+    assert (FILTER' := FILTER addr); clear FILTER.
+    assert (EQUIV' := EQUIV addr); clear EQUIV.
+    assert (DOMAINFMFM': same_domain (Filter.filter is_data mem) (Filter.filter is_data mem')).
+    { apply Filter.filter_domains with (k := addr); auto.
+      destruct (get mem addr) eqn:GET.
+      + destruct (get mem' addr) eqn:GET'.
+        * destruct a as [v tg], a0 as [v0 tg0].
+          destruct tg, tg0.
+          - reflexivity.
+          - destruct EQUIV' as [a a' TG TG' | a a' id id' TG TG' EQ].
+            { unfold is_data. rewrite TG, TG'. reflexivity. }
+            { inversion EQ; auto. }
+          - destruct EQUIV' as [a a' TG TG' | a a' id id' TG TG' EQ].
+            { unfold is_data. rewrite TG, TG'. reflexivity. }
+            { inversion EQ; auto. }
+          - reflexivity.
+        * destruct EQUIV'.
+      + destruct (get mem' addr) eqn:GET'.
+        * destruct EQUIV'.
+        * auto.
+    }
+    assert (DOMAIN: same_domain dmem dmem'). 
+    { eapply same_domain_trans; eauto. apply same_domain_comm.
+      eapply same_domain_trans; eauto. apply same_domain_comm;
+      assumption. }
+    apply DOMAIN.
+Qed.
+
+Lemma reg_domain_preserved_by_equiv :
+  forall areg areg' reg reg',
+    refine_registers areg reg ->
+    SymbolicCFI.equiv reg reg' -> 
+    refine_registers areg' reg' ->
+    same_domain areg areg'.
+Proof.
+Admitted.
+
 Theorem backwards_simulation_attacker ast sst sst' :
   refine_state ast sst ->
   SymbolicCFI.step_a sst sst' ->
@@ -773,18 +870,19 @@ Proof.
   - destruct (reg_refinement_preserved_by_equiv REFR REQUIV) as [aregs' REFR'];
     assert (REFI' := imem_refinement_preserved_by_equiv REFI MEQUIV);
     destruct (dmem_refinement_preserved_by_equiv REFD MEQUIV) as [dmem' REFD'];
+    assert (DOMAINM := dmem_domain_preserved_by_equiv REFD MEQUIV REFD').
+    assert (DOMAINR := reg_domain_preserved_by_equiv REFR REQUIV REFR').
     assert (EFETCH : exists id, get mem pc = Some i@(INSTR id)) by (eexists; eauto);
     apply REFI in EFETCH;
-    exists (imem, dmem', aregs', pc, true); 
-    split; [econstructor(eauto) | repeat (split; auto)];
+    exists (imem, dmem', aregs', pc, true).
+    split; [econstructor(eauto) | repeat (split; auto)].
     intros ? src TAG.
-    unfold SymbolicCFI.mem_equiv in MEQUIV.
+    unfold SymbolicCFI.equiv in MEQUIV.
     assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
-    destruct (get mem pc) eqn:GET; simpl in GET; rewrite GET in MEQUIV'.
+    destruct (get mem pc) eqn:GET.
     { destruct (get mem' pc) eqn:GET'.
       + destruct MEQUIV' as [a a' TG1 TG2 | a a0 id' id'' TG TG' EQ].
-      - simpl in H. rewrite H in GET'.
-        destruct a as [av atg].
+      - destruct a as [av atg].
         simpl in TG1. rewrite TG1 in GET. apply CORRECTNESS in GET.
         assert (TRUE: true = true) by reflexivity.
         destruct GET as [CORRECT ?].
@@ -801,14 +899,14 @@ Proof.
         apply CORRECTNESS in GET. destruct GET as [CORRECT ?].
         assert (TRUE: true = true) by reflexivity.
         simpl in TG. apply CORRECT with (src0 := src) in TRUE.
-        simpl in H. rewrite GET' in H. inversion H. subst a0_t.
+        simpl in GET'. simpl in H. rewrite GET' in H. inversion H. subst a0_t.
         subst ti. assumption.
         reflexivity.
         + destruct MEQUIV'.
     }
     { destruct (get mem' pc) eqn:GET'.
       - destruct MEQUIV'.
-      - simpl in H. rewrite GET' in H. discriminate.
+      - simpl in H. simpl in GET'. rewrite GET' in H. discriminate.
     }
   - unfold SymbolicCFI.no_violation in NOV. 
     destruct (get mem pc) eqn:GET.
@@ -822,5 +920,7 @@ Proof.
       apply CONTRA in HYPOTHESIS. discriminate.
     * congruence.
 Qed.
-    
+
 End Refinement.
+
+End RefinementAS.

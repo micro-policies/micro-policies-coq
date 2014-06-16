@@ -137,8 +137,10 @@ Inductive step : state -> state -> Prop :=
 Hypothesis step_determ : forall s s' s'', step s s' -> step s s'' -> s' = s''.
 
 Inductive step_a : state -> state -> Prop :=
-| step_attack : forall imem dmem dmem' reg reg' pc i,
-             get imem pc = Some i -> 
+| step_attack : forall imem dmem dmem' reg reg' pc i
+             (FETCH: get imem pc = Some i)
+             (MSAME: same_domain dmem dmem')
+             (RSAME: same_domain reg reg'),
              step_a (imem,dmem,reg,pc,true) (imem,dmem',reg',pc,true). 
 
 Definition succ (st : state) (st' : state) : bool :=

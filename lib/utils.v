@@ -1290,6 +1290,53 @@ End with_classes.
 
 End maps.
 
+Section PartMapDomains.
+Variable M M' M'' K V V' V'' : Type.
+
+Context {pm : partial_map M K V}
+        {a : axioms pm}
+
+        {pm' : partial_map M' K V'}
+        {a' : axioms pm'}
+
+        {pm'' : partial_map M'' K V''}
+        {a'' : axioms pm''}.
+
+Definition same_domain {M1 : Type} {M2 : Type} {V1 : Type} {V2: Type}
+  {M1_class : partial_map M1 K V1} {M2_class : partial_map M2 K V2}
+  (m : M1) (m' : M2) :=
+  forall (k : K),
+    match get m k, get m' k with
+      | Some _, Some _ => True
+      | None, None  => True
+      | _, _ => False
+    end.
+
+Lemma same_domain_trans (m : M) (m' : M') (m'' : M'') :
+  same_domain m m' ->
+  same_domain m' m'' ->
+  same_domain m m''.
+Proof.
+  intros SAME1 SAME2.
+  intro k. 
+  assert (SAME1k := SAME1 k); clear SAME1.
+  assert (SAME2k := SAME2 k); clear SAME2.
+  destruct (get m k), (get m' k), (get m'' k); auto.
+Qed.
+
+Lemma same_domain_comm (m : M) (m' : M') :
+  same_domain m m' ->
+  same_domain m' m.
+Proof.
+  intros SAME k;
+  assert (SAMEk := SAME k);
+  destruct (get m' k) eqn:GET;
+  destruct (get m k) eqn:GET';
+  auto. 
+Qed.
+  
+End PartMapDomains.
+
 End PartMaps.
 
 Module TotalMaps.

@@ -1,5 +1,6 @@
-Require Import Coq.Lists.List Bool.
-Require Import lib.utils lib.Coqlib common.common.
+Require Import Coq.Lists.List Coq.Bool.Bool.
+Require Import commom.common. 
+Require Import lib.utils.
 Require Import cfi.cfi.
 
 Set Implicit Arguments.
@@ -10,29 +11,29 @@ Import ListNotations.
 
 Section Refinement.
 
-Context {mt : machine_types}
-        {ops : machine_ops mt}
+Context {t : machine_types}
+        {ops : machine_ops t}
         {opss : machine_ops_spec ops}.
 
-Variable machine1 : cfi_machine mt.
-Variable machine2 : cfi_machine mt.
+Variable machine1 : cfi_machine t.
+Variable machine2 : cfi_machine t.
 
-Variable V1 : (@state mt machine1) -> (@state mt machine1) -> Prop.
-Variable S1 : (list (@state mt machine1)) -> Prop.
+Variable V1 : (@state t machine1) -> (@state t machine1) -> Prop.
+Variable S1 : (list (@state t machine1)) -> Prop.
 
-Variable V2 : (@state mt machine2) -> (@state mt machine2) -> Prop.
-Variable S2 : (list (@state mt machine2)) -> Prop.
+Variable V2 : (@state t machine2) -> (@state t machine2) -> Prop.
+Variable S2 : (list (@state t machine2)) -> Prop.
 
 (* General notion of refinement between two machines*)
-Class machine_refinement (machine1 : cfi_machine mt) (machine2 : cfi_machine mt) := {
-  refine_state : ((@state mt) machine1) -> ((@state mt) machine2) -> Prop;
+Class machine_refinement (machine1 : cfi_machine t) (machine2 : cfi_machine t) := {
+  refine_state : ((@state t) machine1) -> ((@state t) machine2) -> Prop;
  
-  visible : ((@state mt) machine2) -> ((@state mt) machine2) -> bool;
+  visible : ((@state t) machine2) -> ((@state t) machine2) -> bool;
   
   backwards_refinement_single : 
-    forall ast cst cst',
-      refine_state ast cst ->
-      cfi_step machine2 cst cst' ->
+    forall ast cst cst'
+      (REF: refine_state ast cst)
+      (STEP: cfi_step machine2 cst cst'),
       (visible cst cst' = true /\
        exists ast', cfi_step machine1 ast ast' /\ refine_state ast' cst') \/
       (visible cst cst' = false /\
@@ -41,9 +42,9 @@ Class machine_refinement (machine1 : cfi_machine mt) (machine2 : cfi_machine mt)
  }.
 
 Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := {
-  initial_refine : forall (cst : @state mt machine2),
+  initial_refine : forall (cst : @state t machine2),
     initial cst ->
-    exists (ast : @state mt machine1), initial ast /\ refine_state ast cst;
+    exists (ast : @state t machine1), initial ast /\ refine_state ast cst;
 
   astep_implies_cstep : forall asi asj csi csj,
     step_a asi asj ->
@@ -51,12 +52,12 @@ Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := 
     refine_state asj csj ->
     step_a csi csj;
 
-  cfg_kernel : forall (asi : @state mt machine1) csi csj, 
+  cfg_kernel : forall (asi : @state t machine1) csi csj, 
     step csi csj ->
     visible csi csj = false ->
     succ csi csj = true;
 
-  cfg_equiv1 : forall (asi asj : @state mt machine1) csi csj,
+  cfg_equiv1 : forall (asi asj : @state t machine1) csi csj,
     refine_state asi csi ->
     refine_state asj csj ->
     step asi asj ->
@@ -72,7 +73,7 @@ Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := 
 Context (rf : machine_refinement machine1 machine2).
 Context (rfs : machine_refinement_specs rf).
 
-Lemma backwards_refinement (ast : @state mt machine1) cst cst' cxs :
+Lemma backwards_refinement (ast : @state t machine1) cst cst' cxs :
   refine_state ast cst ->
   intermstep machine2 cxs cst cst' ->
   exists ast', exists axs,
@@ -138,7 +139,7 @@ Proof.
            {subst. exists asj; exists asj; split; [right; split; auto | auto]. }
 Qed.
 
-Lemma backwards_refinement' (ast : @state mt machine1) cst cst' cxs :
+Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
   refine_state ast cst ->
   intermstep machine2 cxs cst cst' ->
   exists ast', exists axs,
