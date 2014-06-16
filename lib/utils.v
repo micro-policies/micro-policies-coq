@@ -1290,6 +1290,36 @@ End with_classes.
 
 End maps.
 
+Section PartMapPointwise.
+
+Context {M1 M2 K V1 V2 : Type}
+        {pm1 : partial_map M1 K V1}
+        {pm2 : partial_map M2 K V2}.
+
+Definition pointwise (P : V1 -> V2 -> Prop) (m1 : M1) (m2 : M2) : Prop :=
+  forall k : K,
+    match get m1 k, get m2 k with
+    | None   , None   => True
+    | Some v1, Some v2 => P v1 v2
+    | _      , _      => False
+    end.
+
+Lemma refine_get_pointwise_inv : forall P m1 m2 v2 k,
+  (pointwise P) m1 m2 ->
+  get m2 k = Some v2 ->
+  exists v1, get m1 k = Some v1 /\ P v1 v2.
+Proof.
+  intros P m1 m2 v2 k ref sget.
+  unfold pointwise in ref. specialize (ref k).
+  rewrite sget in ref. destruct (get m1 k).
+  + eexists; split; now trivial.
+  + contradiction ref.
+Qed.
+
+Definition same_domain := pointwise (fun _ _ => True).
+
+End PartMapPointwise.
+
 Section PartMapDomains.
 Variable M M' M'' K V V' V'' : Type.
 
@@ -1301,16 +1331,6 @@ Context {pm : partial_map M K V}
 
         {pm'' : partial_map M'' K V''}
         {a'' : axioms pm''}.
-
-Definition same_domain {M1 : Type} {M2 : Type} {V1 : Type} {V2: Type}
-  {M1_class : partial_map M1 K V1} {M2_class : partial_map M2 K V2}
-  (m : M1) (m' : M2) :=
-  forall (k : K),
-    match get m k, get m' k with
-      | Some _, Some _ => True
-      | None, None  => True
-      | _, _ => False
-    end.
 
 Lemma same_domain_trans (m : M) (m' : M') (m'' : M'') :
   same_domain m m' ->

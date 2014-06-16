@@ -13,6 +13,10 @@ Require Import sealing.classes sealing.symbolic sealing.abstract.
 Section RefinementSA.
 
 Set Implicit Arguments.
+(*
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+*)
 
 Context {t : machine_types}
         {ops : machine_ops t}
@@ -33,16 +37,6 @@ Context {t : machine_types}
 
         {ap : Abs.abstract_params t}
         {ps : Abs.params_spec ap}.
-
-(* DEAD?
-        {amemory : Type}
-        {am : partial_map amemory (word t) (Abs.value t)}
-        {amemspec : axioms am}
-
-        {aregisters : Type}
-        {ar : partial_map aregisters (reg t) (Abs.value t)}
-        {aregspec : axioms ar}
-*)
 
 Section WithFixedKeyInjection.
 
@@ -87,21 +81,11 @@ Definition refine_val_atom (v : Abs.value t)
   | _                   , _                      => False
   end.
 
-Definition refine_mem (amem : Abs.memory t) (smem : smemory) : Prop :=
-  forall w,
-    match get amem w, get smem w with
-    | None  , None   => True
-    | Some v, Some a => refine_val_atom v a
-    | _     , _      => False
-    end.
+Definition refine_mem : Abs.memory t -> smemory -> Prop :=
+  pointwise refine_val_atom.
 
-Definition refine_reg (areg : Abs.registers t) (sreg : sregisters) : Prop :=
-  forall w,
-    match get areg w, get sreg w with
-    | None  , None   => True
-    | Some v, Some a => refine_val_atom v a
-    | _     , _      => False
-    end.
+Definition refine_reg : Abs.registers t -> sregisters -> Prop :=
+  pointwise refine_val_atom.
 
 (* We make no assumption about the pc tag, since it's unused in the policy *)
 Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
@@ -131,24 +115,6 @@ Proof.
   destruct tpc; try contradiction ref; now eauto.
 Qed.
 
-Lemma refine_get_mem_inv : forall amem smem w a,
-  refine_mem amem smem ->
-  get smem w = Some a ->
-  exists v, get amem w = Some v /\ refine_val_atom v a.
-Proof.
-  intros amem smem pc a ref sget.
-  unfold refine_mem in ref. specialize (ref pc).
-  rewrite sget in ref. destruct (get amem pc).
-  + eexists; split; now trivial.
-  + contradiction ref.
-Qed.
-
-Lemma refine_get_reg_inv : forall areg sreg r a,
-  refine_reg areg sreg ->
-  get sreg r = Some a ->
-  exists v, get areg r = Some v /\ refine_val_atom v a.
-Admitted. (* same as above *)
-
 Lemma refine_val_data : forall v w,
   refine_val_atom v w@Sym.DATA ->
   v = Abs.VData w.
@@ -164,8 +130,9 @@ Lemma refine_upd_reg1 : forall aregs sregs sregs' r a v,
 Proof.
   intros aregs sregs sregs' r a v rr rv up. pose proof up as up'.
   apply (@upd_inv _ _ _ _ sregspec) in up. destruct up as [[w tg] ge].
-  eapply (refine_get_reg_inv _ rr) in ge. destruct ge as [v' [ge rva]].
-  eapply (@upd_defined _ _ _ _ (@Abs.reg_axioms _ _ _ ps)) in ge. destruct ge as [aregs' up].
+  eapply (refine_get_pointwise_inv rr) in ge. destruct ge as [v' [ge rva]].
+  eapply (@upd_defined _ _ _ _ (@Abs.reg_axioms _ _ _ ps)) in ge.
+    destruct ge as [aregs' up].
   exists aregs'. eassumption.
 Qed.
 
@@ -261,7 +228,7 @@ Proof.
     intros [rmem [rreg [rpc rins]]].
   - (* NOP *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_get_mem_inv _ rmem) in PC.
+    apply (refine_get_pointwise_inv rmem) in PC.
       destruct PC as [iv [PC riv]].
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
     injection NEXT; intro H; subst; clear NEXT.
@@ -273,7 +240,7 @@ Proof.
   - (* CONST *)
     (* copy paste *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_get_mem_inv _ rmem) in PC.
+    apply (refine_get_pointwise_inv rmem) in PC.
       destruct PC as [iv [PC riv]].
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
     (* new *)
@@ -298,7 +265,7 @@ Proof.
   - (* JAL - not system call *)
     (* copy paste (all cases) *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_get_mem_inv _ rmem) in PC.
+    apply (refine_get_pointwise_inv rmem) in PC.
       destruct PC as [iv [PC riv]].
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
     (* copy paste, twice (CONST) *)
@@ -310,7 +277,7 @@ Proof.
     (* new *)
     destruct t1; try discriminate stag. injection stag; intro; subst; clear stag.
     (* new - reading a register *)
-    destruct (refine_get_reg_inv _ rreg RW) as [v [g rva]].
+    destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
     destruct v; try contradiction rva. simpl in rva. subst.
     (* the rest similar to CONST *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
@@ -328,7 +295,7 @@ Proof.
   - (* JAL - system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_get_mem_inv _ rmem) in PC.
+    apply (refine_get_pointwise_inv rmem) in PC.
       destruct PC as [iv [PC riv]].
     destruct ti; simpl in ALLOWED; try discriminate ALLOWED.
     (* copy paste (all cases) *)
@@ -337,7 +304,7 @@ Proof.
     destruct t1; try discriminate ALLOWED.
     injection ALLOWED; intro H; subst; clear ALLOWED.
     (* same as for normal JAL - reading a register *)
-    destruct (refine_get_reg_inv _ rreg RW) as [v [g rva]].
+    destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
     destruct v; try contradiction rva. simpl in rva. subst.
     (* done with RW *)
     clear RW.
@@ -409,9 +376,9 @@ Proof.
     apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
     injection CALL; intro H; subst; clear CALL.
     (* 2 register lookups *)
-    destruct (refine_get_reg_inv _ rreg gp) as [vp [ggp H]].
+    destruct (refine_get_pointwise_inv rreg gp) as [vp [ggp H]].
     destruct vp; try contradiction H. simpl in H. subst.
-    destruct (refine_get_reg_inv _ rreg gk) as [vk [ggk H]].
+    destruct (refine_get_pointwise_inv rreg gk) as [vk [ggk H]].
     destruct vk; try contradiction H. simpl in H.
     (* register update *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
@@ -435,10 +402,10 @@ Proof.
     apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
     injection CALL; intro H; subst; clear CALL.
     (* 2 register lookups *)
-    destruct (refine_get_reg_inv _ rreg gp) as [vp [ggp H]].
+    destruct (refine_get_pointwise_inv rreg gp) as [vp [ggp H]].
     destruct vp; try contradiction H. simpl in H.
       destruct H; subst. (* extra destruct *)
-    destruct (refine_get_reg_inv _ rreg gk) as [vk [ggk H]].
+    destruct (refine_get_pointwise_inv rreg gk) as [vk [ggk H]].
     destruct vk; try contradiction H. simpl in H. subst.
     (* register update *)
     edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
