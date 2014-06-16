@@ -2,7 +2,7 @@ Require Import List. Import ListNotations.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect eqtype.
-Require Import lib.utils.
+Require Import lib.utils lib.partial_maps.
 
 Import DoNotation.
 

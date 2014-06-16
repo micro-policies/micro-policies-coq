@@ -1,6 +1,6 @@
 Require Import List Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
-Require Import lib.utils common.common lib.ordered.
+Require Import lib.utils lib.ordered lib.partial_maps common.common.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

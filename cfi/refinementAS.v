@@ -2,8 +2,7 @@ Require Import Coq.Bool.Bool.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.utils.
-Require Import lib.Coqlib.
+Require Import lib.utils lib.partial_maps lib.Coqlib.
 Require Import common.common.
 Require Import symbolic.symbolic.
 Require Import cfi.abstract.

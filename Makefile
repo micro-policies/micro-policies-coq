@@ -110,6 +110,7 @@ VFILES:=sealing/refinementSA.v\
   concrete/exec.v\
   concrete/concrete.v\
   common/common.v\
+  lib/partial_maps.v\
   lib/ordered.v\
   lib/FiniteMaps.v\
   lib/utils.v\

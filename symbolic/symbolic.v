@@ -4,7 +4,7 @@ Require Coq.Vectors.Vector.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils common.common symbolic.rules.
+Require Import lib.utils lib.partial_maps common.common symbolic.rules.
 
 Set Implicit Arguments.
 

@@ -2,7 +2,7 @@ Require Import Coq.Lists.List Coq.Arith.Arith Coq.ZArith.ZArith.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils.
+Require Import lib.utils lib.partial_maps.
 Require Import common.common.
 Require Import symbolic.symbolic.
 Require Import cfi.cfi.

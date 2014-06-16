@@ -12,6 +12,7 @@ Import ListNotations.
 Require Import lib.Coqlib.
 Require Import lib.FiniteMaps.
 Require Import lib.utils.
+Require Import lib.partial_maps.
 Require Import lib.ordered.
 Require Import common.common.
 Require Import concrete.concrete.

@@ -6,6 +6,7 @@ lib/Integers.v
 lib/utils.v
 lib/FiniteMaps.v
 lib/ordered.v
+lib/partial_maps.v
 
 common/common.v
 

@@ -1,8 +1,8 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype.
-Require Import lib.utils lib.ordered common.common. Import PartMaps.
-Require Import symbolic.symbolic.
+Require Import lib.utils lib.ordered lib.partial_maps. Import PartMaps.
+Require Import common.common symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
 (* Give up any hope of forwards refinement?
@@ -122,50 +122,9 @@ Proof.
   intros v w ref. destruct v; simpl in ref; try tauto; subst; reflexivity.
 Qed.
 
-Lemma refine_upd_reg1 : forall aregs sregs sregs' r a v,
-  refine_reg aregs sregs ->
-  refine_val_atom v a ->
-  upd sregs r a = Some sregs' ->
-  exists aregs', upd aregs r v = Some aregs'.
-Proof.
-  intros aregs sregs sregs' r a v rr rv up. pose proof up as up'.
-  apply (@upd_inv _ _ _ _ sregspec) in up. destruct up as [[w tg] ge].
-  eapply (refine_get_pointwise_inv rr) in ge. destruct ge as [v' [ge rva]].
-  eapply (@upd_defined _ _ _ _ (@Abs.reg_axioms _ _ _ ps)) in ge.
-    destruct ge as [aregs' up].
-  exists aregs'. eassumption.
-Qed.
-
-Lemma refine_upd_reg2 : forall aregs aregs' sregs sregs' r a v,
-  refine_reg aregs sregs ->
-  refine_val_atom v a ->
-  upd sregs r a = Some sregs' -> 
-  upd aregs r v = Some aregs' ->
-  refine_reg aregs' sregs'.
-Proof.
-  intros aregs aregs' sregs sregs' r a v rr rva u1 u2.
-  intro r'. have [<-|/eqP neq_rr'] := altP (r =P r').
-  - erewrite (@get_upd_eq _ _ _ _ (@Abs.reg_axioms _ _ _ ps)).
-    erewrite (@get_upd_eq _ _ _ _ sregspec).
-    eassumption. eassumption. eassumption.
-  - erewrite (@get_upd_neq _ _ _ _ sregspec); [| | apply u1].
-    erewrite (@get_upd_neq _ _ _ _ (@Abs.reg_axioms _ _ _ ps)); [| | apply u2].
-    by apply rr.
-    intro Hc; by apply neq_rr'.
-    intro Hc; by apply neq_rr'.
-Qed.
-
-Lemma refine_upd_reg3 : forall aregs sregs sregs' r a v,
-  refine_reg aregs sregs ->
-  refine_val_atom v a ->
-  upd sregs r a = Some sregs' -> 
-  exists aregs', upd aregs r v = Some aregs' /\
-                 refine_reg aregs' sregs'.
-Proof.
-  intros aregs sregs sregs' r a v rr rv up.
-  destruct (refine_upd_reg1 _ _ _ rr rv up) as [aregs' up'].
-  eauto using refine_upd_reg2.
-Qed.
+(* helping the type class resolution a bit seems needed *)
+Definition refine_upd_reg3 (aregs : Abs.registers t) (sregs : sregisters) :=
+  @refine_upd_pointwise3 _ _ _ _ _ _ _ _ _ refine_val_atom aregs sregs.
 
 End WithFixedKeyInjection.
 
