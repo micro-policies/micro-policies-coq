@@ -88,6 +88,7 @@ VFILES:=sealing/refinementSA.v\
   sfi/set_utils.v\
   sfi/ranges.v\
   sfi/abstract.v\
+  memory_safety/symbolic.v\
   memory_safety/refinementAQ.v\
   memory_safety/abstract.v\
   memory_safety/quasiabstract.v\
