@@ -336,7 +336,8 @@ Inductive step (MM MM' : state) : Prop :=
 
 Ltac destruct_good_compartment_hyp_impl name GOOD :=
   (* Copy the GOOD hypothesis so it can be used by `auto' and friends later. *)
-  match type of GOOD with
+  let T := eval hnf in ((fun T (t : T) => T) _ GOOD) in
+  match T with
     | good_compartment ?c = true =>
       let TEMP_c   := fresh "TEMP_"   name in
       let SET_AS_c := fresh "SET_AS_" name in
