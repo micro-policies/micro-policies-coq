@@ -51,23 +51,19 @@ Class concrete_params := {
   memory : Type;
   mem_class :> PartMaps.partial_map memory (word t) atom;
   registers : Type;
-  reg_class :> TotalMaps.total_map registers (reg t) atom;
-
-  fault_handler_start : word t;
-
-  TKernel : word t;
-  TNone : word t;
-
-  cache_line_addr : word t
-
+  reg_class :> TotalMaps.total_map registers (reg t) atom
 }.
 
+(* If we were doing good modularization, these would be abstract! *)
+Definition cache_line_addr : word t := Z_to_word 0.
+(* BCP: Call it fault_handler_addr? *)
+Definition fault_handler_start : word t := Z_to_word 7.
+Definition TNone   : word t := Z_to_word 0.
+Definition TKernel : word t := Z_to_word 1.
+
 Class params_spec (cp : concrete_params) := {
-
   mem_axioms :> PartMaps.axioms (@mem_class cp);
-
   reg_axioms :> TotalMaps.axioms (@reg_class cp)
-
 }.
 
 Context {cp : concrete_params}

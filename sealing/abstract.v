@@ -25,7 +25,7 @@ Context (t : machine_types)
 Class sealing_key := {
   key       : eqType;
 
-  (* This function is total, so sym_key has to be infinite *)
+  (* This function is total, so key has to be infinite *)
   mkkey_f : list key -> key;
  
   (* This ensures freshness without fixing a generation strategy *)

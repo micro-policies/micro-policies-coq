@@ -243,14 +243,7 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
   reg_class := {|
     TotalMaps.get regs r := Int32TMap.get r regs;
     TotalMaps.upd regs r x := Int32TMap.set r x regs
-  |};
-
-  fault_handler_start := repr 2000;
-
-  TKernel := repr 1;
-  TNone := repr 0;
-
-  cache_line_addr := repr 0
+  |}
 |}.
 
 Program Instance concrete_int_32_params_spec :

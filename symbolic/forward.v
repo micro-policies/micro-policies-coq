@@ -30,7 +30,7 @@ Context {mt : machine_types}
         {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}
-        {e : @encodable (Symbolic.tag mt) mt cp}
+        {e : @encodable (Symbolic.tag mt) mt ops}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
@@ -69,7 +69,7 @@ Hint Unfold Concrete.next_state_pc.
 Hint Unfold Concrete.next_state.
 Hint Unfold Concrete.miss_state.
 
-Let in_kernel_user t ic : Concrete.is_kernel_tag (encode (USER t ic)) = false.
+Let in_kernel_user t ic : Concrete.is_kernel_tag _ (encode (USER t ic)) = false.
 Proof.
   unfold Concrete.is_kernel_tag.
   erewrite encode_kernel_tag.

@@ -13,10 +13,11 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
-Require Import ssreflect eqtype.
+Require Import ssreflect eqtype ssrnat.
 Require Import lib.utils common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
+Require Import sealing.abstract.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -33,8 +34,37 @@ Definition ops := concrete_int_32_ops.
 
 Context {scr : @syscall_regs t}.
 
+Definition admit {T: Type} : T.  Admitted.
+
+Instance sk : Abs.sealing_key := {|
+  key := [eqType of nat];
+  mkkey_f := admit;
+  mkkey_fresh := admit
+|}.
+
+Instance ap : Abs.abstract_params t := {|
+  memory    := Int32PMap.t (Abs.value t);
+  registers := Int32PMap.t (Abs.value t);
+
+  am := {|
+    PartMaps.get mem i := Int32PMap.get i mem;
+    PartMaps.upd mem i x := match Int32PMap.get i mem with
+                              | Some _ => Some (Int32PMap.set i x mem)
+                              | None   => None
+                            end
+  |};
+
+  ar := {|
+    PartMaps.get regs r := Int32PMap.get r regs;
+    PartMaps.upd regs r x := match Int32PMap.get r regs with
+                              | Some _ => Some (Int32PMap.set r x regs)
+                              | None   => None
+                            end
+  |}
+|}.
+
 Definition build_abstract_sealing_machine :=
-  fun user_memory : word t -> 
+  fun user_memory : (word t -> list (word t)) -> 
 
 
 Definition build_concrete_sealing_machine :=

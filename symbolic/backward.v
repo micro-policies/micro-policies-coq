@@ -30,7 +30,7 @@ Context {mt : machine_types}
         {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}
-        {e : @encodable (Symbolic.tag mt) mt cp}
+        {e : @encodable (Symbolic.tag mt) mt ops}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
@@ -202,7 +202,7 @@ Lemma initial_handler_state cst kst :
       kst = Concrete.mkState cmem'
                              (Concrete.regs cst)
                              (Concrete.cache cst)
-                             (Concrete.fault_handler_start (t := mt))@Concrete.TKernel
+                             (Concrete.fault_handler_start _ (t := mt))@Concrete.TKernel
                              (Concrete.pc cst).
 Proof.
   intros.

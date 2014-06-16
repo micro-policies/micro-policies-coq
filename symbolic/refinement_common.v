@@ -48,7 +48,7 @@ Context {mt : machine_types}
         {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}
-        {e : @encodable (Symbolic.tag mt) mt cp}.
+        {e : @encodable (Symbolic.tag mt) mt ops}.
 
 Definition refine_memory (amem : Symbolic.memory mt) (cmem : Concrete.memory mt) :=
   forall w x t,
@@ -63,7 +63,7 @@ Definition refine_registers (areg : Symbolic.registers mt) (creg : Concrete.regi
 Definition in_kernel st :=
   let pct := common.tag (Concrete.pc st) in
   let i := PartMaps.get (Concrete.mem st) (common.val (Concrete.pc st)) in
-  Concrete.is_kernel_tag pct
+  Concrete.is_kernel_tag _ pct
   || word_lift (fun x => is_call x) pct
   && match i with
      | Some _@it => it == encode ENTRY
@@ -187,7 +187,7 @@ Hint Resolve kernel_invariant_store_mvec.
 Variable ki : kernel_invariant.
 
 Lemma is_user_pc_tag_is_kernel_tag tg :
-  word_lift (fun x => is_user x) tg = true -> Concrete.is_kernel_tag tg = false.
+  word_lift (fun x => is_user x) tg = true -> Concrete.is_kernel_tag _ tg = false.
 Proof.
   unfold word_lift, is_user, Concrete.is_kernel_tag.
   destruct (decode tg) as [[ut b| |]|] eqn:E; try discriminate.
@@ -650,7 +650,7 @@ Class kernel_code_correctness : Prop := {
     exists st',
       kernel_user_exec
         (Concrete.mkState mem' reg cache
-                          (Concrete.fault_handler_start (t := mt))@Concrete.TKernel
+                          (Concrete.fault_handler_start (t := mt) _)@Concrete.TKernel
                           old_pc)
         st' /\
       (* then the new cache is still correct... *)
@@ -687,7 +687,7 @@ Class kernel_code_correctness : Prop := {
     in_kernel st' = false ->
     ~ exec (Concrete.step _ masks)
       (Concrete.mkState mem' reg cache
-                        (Concrete.fault_handler_start (t := mt))@Concrete.TKernel
+                        (Concrete.fault_handler_start (t := mt) _)@Concrete.TKernel
                         old_pc)
       st';
 

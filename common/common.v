@@ -413,3 +413,12 @@ Class syscall_regs := {
 }.
 
 End SyscallRegs.
+
+Section Relocate.
+
+Context {t : machine_types}.
+
+Definition relocatable_mem := fun X => (word t -> list X).
+
+End Relocate.
+
