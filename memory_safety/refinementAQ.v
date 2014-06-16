@@ -58,6 +58,9 @@ Hypothesis binop_eq_add2l : forall x y z,
   binop_denote EQ (x + y) (x + z) = binop_denote EQ y z.
 
 (* CH: Is this really true??? It's what makes the proof go through *)
+(* AAA: It's false if addition overflows. E.g. if working modulo 2, it
+   is not the case that (1 + 0 <= 1 + 1) == (0 <= 1) *)
+
 Hypothesis binop_leq_add2l : forall x y z,
   binop_denote LEQ (x + y) (x + z) = binop_denote LEQ y z.
 
