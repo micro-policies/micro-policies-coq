@@ -41,9 +41,12 @@ Class symbolic_params := {
      the tag from the current instruction to the next PC.  If we make
      these type distinctions, such rules would have to be disallowed,
      no? *)
-  (* CH: The symbolic handler has to be well-typed, so unless some
-     tag types are equal, the error you describe would be caught
-     by the (Coq) type checker *)
+  (* CH: The symbolic handler has to be well-typed, so if the tag
+     types are instantiated differently, the error you describe would
+     be caught by the (Coq) type checker. It would be allowed if some
+     of the tag types are instantiated to the same type though.  If
+     all tag types are instantiated with the same type we would
+     basically get the current behavior. *)
   tag : eqType;
   (* BCP: Maxime was wondering why we are using setoids... do we need
      that?  Apparently they tickle quite a few bugs in tactics... *)
