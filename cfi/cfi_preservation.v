@@ -1,5 +1,5 @@
-Require Import Coq.Lists.List Bool.
-Require Import common utils.
+Require Import common.common.
+Require Import lib.utils.
 Require Import cfi.cfi.
 Require Import cfi.cfi_refinement.
 
@@ -25,10 +25,10 @@ Context {rf : machine_refinement machine1 machine2}.
 Context {rfs : machine_refinement_specs V1 S1 V2 S2 rf}.
 
 Theorem backwards_refinement_preserves_cfi :
-  cfi' machine1 V1 S1 ->
-  cfi' machine2 V2 S2. 
-Proof.
-  intros CFI1 cst cst' cxs INIT2 INTERM2.
+  cfi machine1 V1 S1 ->
+  cfi machine2 V2 S2. 
+Proof. Admitted.
+  (*intros CFI1 cst cst' cxs INIT2 INTERM2.
   destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
   destruct (backwards_refinement' rf ast INITREF INTERM2) 
     as [ast' [axs [INTERMR1 [FINALREF [INTSTATES SPLITS]]]]].
@@ -134,8 +134,8 @@ Proof.
       subst.
       destruct (interm_in2_step INTERM2 IN2).
       - left; erewrite attacker_pc; eauto.
-      - right; eapply cfg_kernel; eauto.
-Qed.
+      - right; eapply cfg_kernel; eauto.*)
+
 
 End Preservation.
 

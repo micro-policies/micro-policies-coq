@@ -29,7 +29,7 @@ Section Mappable.
                    exists (m2 : M2), map f m1 = m2;
 *)
     map_correctness: forall (f : V1 -> V2) (m1 : M1) (k : K),
-                       get (map f m1) k = option_map f (get m1 k);
+                       get (map f m1) k = option_map f (get m1 k)
 
 (* unused
     map_domains: forall (f : V1 -> V2) (m1 : M1) (k : K) (v : V2),
@@ -680,9 +680,8 @@ Proof.
   intros areg reg reg' REF EQUIV.
   unfold SymbolicCFI.equiv in EQUIV.
   unfold refine_registers in REF.
-  destruct (Map.map_exists untag_atom reg') as [areg' ?].
   assert (MAP := Map.map_correctness untag_atom reg'). 
-  exists areg'. subst.
+  exists (Map.map untag_atom reg'). subst.
   intros r v.
   split.
   - intro GET. destruct GET as [ut GET].
@@ -770,12 +769,6 @@ Proof.
     * auto.
 Qed.
 
-
-(* D(mem) = D(mem')
-   D(filter mem) = D(filter mem') /\ D(filter mem) = D(dmem) /\ D(filter mem') = D(dmem') => ..
-   
- *)
-
 Lemma dmem_refinement_preserved_by_equiv :
   forall dmem mem mem',
     refine_dmemory dmem mem ->
@@ -784,11 +777,9 @@ Lemma dmem_refinement_preserved_by_equiv :
       refine_dmemory dmem' mem'.
 Proof.
   intros dmem mem mem' REF EQUIV.
-  destruct (Filter.filter_exists is_data mem') as [data_mem' ?].
-  destruct (Map.map_exists untag_atom data_mem') as [dmem' ?].
   assert (FILTER := Filter.filter_correctness is_data mem').
-  assert (MAP := Map.map_correctness untag_atom data_mem'). 
-  exists dmem'. subst.
+  assert (MAP := Map.map_correctness untag_atom (Filter.filter is_data mem')). 
+  exists (Map.map untag_atom (Filter.filter is_data mem')). subst.
   intros addr v.
   split.
   - intro GET.
@@ -816,7 +807,6 @@ Lemma dmem_domain_preserved_by_equiv :
 Proof.
   intros dmem dmem' mem mem' REF EQUIV REF'.
   assert (DOMAINMM' := SymbolicCFI.equiv_same_domain EQUIV).
-  destruct (Filter.filter_exists is_data mem') as [data_mem' ?].
   assert (DOMAINDM' := refine_dmemory_domains REF').
   assert (DOMAINDM := refine_dmemory_domains REF).
   subst.
@@ -832,10 +822,10 @@ Proof.
           destruct tg, tg0.
           - reflexivity.
           - destruct EQUIV' as [a a' TG TG' | a a' id id' TG TG' EQ].
-            { unfold is_data. rewrite TG, TG'. reflexivity. }
+            { unfold is_data. rewrite TG TG'. reflexivity. }
             { inversion EQ; auto. }
           - destruct EQUIV' as [a a' TG TG' | a a' id id' TG TG' EQ].
-            { unfold is_data. rewrite TG, TG'. reflexivity. }
+            { unfold is_data. rewrite TG TG'. reflexivity. }
             { inversion EQ; auto. }
           - reflexivity.
         * destruct EQUIV'.
