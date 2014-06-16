@@ -7,11 +7,11 @@ Require Import Bool.
 
 Import ListNotations.
 
-Require Import FiniteMaps.
+Require Import lib.FiniteMaps.
+Require Import lib.utils.
 Require Import concrete.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
-Require Import utils.
 
 Require Import kernel.rules.
 Require Import kernel.fault_handler.

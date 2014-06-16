@@ -2,7 +2,7 @@
 (* BCP: I wondered this too! *)
 Require Import ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import utils concrete.common memory_safety.abstract memory_safety.quasiabstract.
+Require Import utils common.common memory_safety.abstract memory_safety.quasiabstract.
 Require Import memory_safety.classes.
 
 Require Import EquivDec.

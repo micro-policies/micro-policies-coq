@@ -1,6 +1,6 @@
 Require Import Coq.Classes.SetoidDec Coqlib utils.
 Require Import Compare_dec ZArith. (* For instances *)
-Require Integers FiniteMaps. (* For instances *)
+Require lib.Integers lib.FiniteMaps. (* For instances *)
 
 Create HintDb ordered discriminated.
 

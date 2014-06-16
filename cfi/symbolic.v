@@ -3,7 +3,7 @@ Require Import Coq.Lists.List Coq.Arith.Arith Coq.ZArith.ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import lib.utils.
-Require Import concrete.common.
+Require Import common.common.
 Require Import symbolic.symbolic.
 Require Import cfi.cfi.
 Require Import cfi.cfi_rules.

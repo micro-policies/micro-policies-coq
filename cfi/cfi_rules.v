@@ -2,7 +2,7 @@ Require Import Coq.Lists.List Coq.Arith.Arith Bool.
 Require Coq.Vectors.Vector.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import concrete.common lib.utils symbolic.rules.
+Require Import lib.utils common.common symbolic.rules.
 
 Set Implicit Arguments.
 Import Coq.Vectors.Vector.VectorNotations.

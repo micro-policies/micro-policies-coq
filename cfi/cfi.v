@@ -1,6 +1,6 @@
 Require Import List.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import utils common.
+Require Import lib.utils common.common.
 
 Set Implicit Arguments.
 

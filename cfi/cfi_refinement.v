@@ -1,6 +1,6 @@
 Require Import Coq.Lists.List Bool.
-Require Import common utils Coqlib.
-Require Import cfi.
+Require Import lib.utils lib.Coqlib common.common.
+Require Import cfi.cfi.
 
 Set Implicit Arguments.
 

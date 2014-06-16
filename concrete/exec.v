@@ -4,7 +4,7 @@ Require Import ZArith.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import utils Coqlib common concrete.
+Require Import lib.utils lib.Coqlib common.common concrete.concrete.
 
 Import Concrete. Import DoNotation.
 

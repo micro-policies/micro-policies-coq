@@ -1,6 +1,7 @@
 Require Import List Bool ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import lib.utils concrete.common lib.ordered list_utils set_utils.
+Require Import lib.utils common.common lib.ordered.
+Require Import sfi.list_utils sfi.set_utils.
 
 Section WithClasses.
 

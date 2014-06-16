@@ -2,7 +2,7 @@ Require Import Coq.Classes.SetoidDec.
 Require Import ZArith. (* omega *)
 Require Import List.
 Require Import Bool.
-Require Import Coqlib.
+Require Import lib.Coqlib.
 
 Close Scope Z_scope.
 

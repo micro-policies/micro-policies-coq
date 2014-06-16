@@ -2,7 +2,8 @@ Require Import List. Import ListNotations.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import utils ordered common symbolic.symbolic. Import rules.
+Require Import lib.utils lib.ordered common.common.
+Require Import symbolic.symbolic symbolic.rules.
 Require Import sealing.classes.
 
 Set Implicit Arguments.

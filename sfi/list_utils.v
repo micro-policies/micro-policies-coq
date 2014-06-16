@@ -1,4 +1,4 @@
-Require Import List Bool Sorted Coqlib lib.utils.
+Require Import List Bool Sorted lib.Coqlib lib.utils.
 Require Import Coq.Classes.SetoidDec.
 Import ListNotations.
 Local Open Scope bool_scope.

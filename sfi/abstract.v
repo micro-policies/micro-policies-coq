@@ -3,8 +3,8 @@ Require Import Coq.Classes.SetoidDec.
 
 Require Import (* ssreflect *) ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.utils concrete.common lib.ordered.
-Require Import list_utils set_utils ranges.
+Require Import lib.utils common.common lib.ordered.
+Require Import sfi.list_utils sfi.set_utils sfi.ranges.
 
 Import DoNotation.
 

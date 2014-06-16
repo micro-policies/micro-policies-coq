@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List Bool.
 Require Import common utils.
-Require Import cfi.
-Require Import cfi_refinement.
+Require Import cfi.cfi.
+Require Import cfi.cfi_refinement.
 
 Set Implicit Arguments.
 

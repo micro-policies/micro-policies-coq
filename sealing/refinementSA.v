@@ -1,7 +1,7 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype.
-Require Import utils ordered common. Import PartMaps.
+Require Import lib.utils lib.ordered common.common. Import PartMaps.
 Require Import symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 

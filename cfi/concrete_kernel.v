@@ -2,7 +2,7 @@ Require Import Bool Arith ZArith.
 Require Import Coq.Classes.SetoidDec.
 
 Require Import lib.utils.
-Require Import concrete.common.
+Require Import common.common.
 Require Import concrete.concrete.
 Require Import cfi.fault_handler_spec.
 

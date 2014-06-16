@@ -6,7 +6,7 @@ Require Import lib.utils.
 
 Import DoNotation.
 
-Require Import utils common.
+Require Import lib.utils common.common.
 Require Import sealing.classes.
 
 Set Implicit Arguments.

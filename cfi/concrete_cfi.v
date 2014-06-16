@@ -2,9 +2,9 @@ Require Import List Arith ZArith Bool.
 Require Import Coq.Classes.SetoidDec.
 Import ListNotations.
 Require Import lib.utils.
-Require Import concrete.common.
+Require Import common.common.
 Require Import concrete.concrete.
-Require cfi.concrete_kernel.
+Require Import cfi.concrete_kernel.
 Require Import cfi.cfi.
 Require Import cfi.fault_handler_spec.
 

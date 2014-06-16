@@ -9,12 +9,12 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Import ListNotations.
 
-Require Import Coqlib.
-Require Import FiniteMaps.
-Require Import common.
-Require Import concrete.
-Require Import utils.
+Require Import lib.Coqlib.
+Require Import lib.FiniteMaps.
+Require Import lib.utils.
 Require Import lib.ordered.
+Require Import common.common.
+Require Import concrete.concrete.
 
 Import DoNotation.
 

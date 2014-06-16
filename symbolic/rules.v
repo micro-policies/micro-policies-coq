@@ -25,14 +25,12 @@
 
 *)
 
-Require Import List Arith Bool.
-Require Import ZArith.
-Import ListNotations.
+Require Import List Arith Bool ZArith. Import ListNotations.
 Require Coq.Vectors.Vector.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import common concrete utils Coqlib.
+Require Import lib.Coqlib lib.utils common.common concrete.concrete.
 Import DoNotation.
 Import Concrete.
 

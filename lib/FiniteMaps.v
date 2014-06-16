@@ -1,7 +1,5 @@
-Require Import Coqlib.
-Require Import Maps.
 Require Import List.
-Require Import utils.
+Require Import lib.Coqlib lib.Maps lib.utils.
 
 Set Implicit Arguments.
 

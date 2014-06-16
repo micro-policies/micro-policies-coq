@@ -2,7 +2,7 @@ Require Import List Arith Bool.
 Import ListNotations.
 
 Require Import ZArith.
-Require Import concrete.common.
+Require Import common.common.
 Require Import concrete.concrete.
 Require Import lib.utils.
 Import DoNotation.

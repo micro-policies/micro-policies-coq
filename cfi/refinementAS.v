@@ -4,11 +4,11 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils.
 Require Import lib.Coqlib.
-Require Import concrete.common.
+Require Import common.common.
+Require Import symbolic.symbolic.
 Require Import cfi.abstract.
 Require Import cfi.symbolic.
 Require Import cfi.cfi_rules.
-Require Import symbolic.symbolic.
 Require Coq.Vectors.Vector.
 
 Set Implicit Arguments.

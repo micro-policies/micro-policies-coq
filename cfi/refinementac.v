@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List NPeano Arith Bool.
 Require Import common utils.
 Require Import cfi.abstract.
-Require Import concrete exec.
+Require Import concrete.concrete exec.
 Require Import cfi.concrete_kernel.
 Require Import cfi.concrete_cfi.
 Require Import cfi.fault_handler_spec.

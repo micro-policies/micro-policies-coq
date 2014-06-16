@@ -8,7 +8,7 @@ Unset Strict Implicit.
 Import ListNotations.
 
 Require Import lib.utils.
-Require Import concrete.common.
+Require Import common.common.
 Require Import concrete.concrete.
 Require Import kernel.rules.
 Require Import kernel.refinement.

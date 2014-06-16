@@ -1,12 +1,10 @@
 Require Import List Arith ZArith Bool. Import ListNotations.
 
-Require Import utils.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Import DoNotation.
+Require Import lib.utils common.common.
 
-Require Import utils.
-Require Import common.
+Import DoNotation.
 
 Set Implicit Arguments.
 
