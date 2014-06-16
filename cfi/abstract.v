@@ -217,9 +217,20 @@ Lemma step_succ_violation ast ast' :
    b = false.
 Proof.
   intros SUCC STEP.
-  inversion STEP; subst; simpl in SUCC; match_inv.
-  
-  
+  inversion STEP; subst; simpl in SUCC; rewrite FETCH INST in SUCC;
+  try (rewrite eqxx in SUCC; congruence); 
+  try (destruct (w == 0)); try (rewrite eqxx ?orbT in SUCC); 
+  try (rewrite RW GETCALL in SUCC); auto.
+Qed.
+
+Lemma step_a_violation ast ast' :
+   step_a ast ast' ->
+   let '(_,_,_,_,b) := ast' in
+   b = true.
+Proof.
+  intros STEP.
+  inversion STEP; subst. reflexivity. 
+Qed.  
 
 Theorem cfi : cfi abstract_cfi_machine V S.
 Proof.
@@ -233,138 +244,63 @@ Proof.
       subst. split; [apply attacker_pc | idtac]; auto. 
     * (*case the step is outside the contro flow graph*)
       destruct STEP as [STEPA | STEP].
-      - left. intros si sj IN2.
+      - (*case it's an attacker step*)
+        left. intros si sj IN2.
         destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
         split; [apply attacker_pc | idtac]; auto.
-        intro STEP. 
- 
-
-      right. exists s; exists s'; exists []; exists [].
-      simpl. repeat(split;auto).
-      destruct INTRACE. destruct INTRACE.
-      unfold S. exists s'.
-      split; auto. intro STEP'.
-      destruct STEP' as [s'' STEP'].
-      inversion STEP; subst.
-      inversion H. unfold succ in SUCC. subst.
-      destruct (get imem pc) eqn:GET.
-      destruct (decode_instr). destruct i0.
-    
-destruct STEP as [STEPA | STEP].
-    - left. intros si sj IN2. 
-      destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst.
-      split. apply attacker_pc. intro.
-      
-
- destruct STEP as [STEPA | STEP].
-    - left. intros si sj IN2.
-      destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst.
-      { split. apply attacker_pc in STEPA. auto.
-        
-
-left. split; [assumption | apply attacker_pc in STEPA; assumption]. }
-      { destruct CONTRA. }
-
-
-Theorem cfi : cfi abstract_cfi_machine V S.
-Proof.
-  unfold cfi. intros. 
-  apply interm_equiv_intermrev in INTERM.
-  induction INTERM as [s s' STEP | s s' s'' xs STEP INTERM ].
-  + destruct STEP as [STEPA | STEP].
-    - left. intros si sj IN2.
-      destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst; 
-      { left. split; [assumption | apply attacker_pc in STEPA; assumption]. }
-      { destruct CONTRA. }
-    - inversion STEP; subst; simpl;      
-      repeat (  match goal with 
-          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,true) 
-             |- trace_has_cfi _ _ \/ _] =>
-            left; intros si sj IN2; destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst
-          | [ |- _ \/ cfi.succ (_,_,_,_,true) (_,_,_,_,true) = true ] =>
-              right; simpl; rewrite FETCH INST
-          | [H: In2 _ _ [_] |- _ ] => destruct H
-          | [H: true = valid_jmp _ _ |- valid_jmp _ _ = true] => 
-            symmetry; assumption 
-          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,valid_jmp ?pc ?w) 
-             |- trace_has_cfi _ _ \/ _] =>
-            remember (valid_jmp pc w) as validjmp; destruct validjmp
-          | [H: false = valid_jmp _ _ |- trace_has_cfi _ _ \/ _] => 
-            right; eexists; eexists; exists []; exists [];
-            split; [simpl; auto | idtac]
-          | [ |- V _ _ /\ _ ] => split;
-            [unfold V; simpl; rewrite FETCH INST; auto | idtac]
-          | [ |- trace_has_cfi _ _ /\ _] => split; 
-            [intros csi csj IN2; destruct IN2 | idtac]
-          | [ |- S _ ] => unfold S; eexists; split; [eauto | idtac]
-          | [ |- ~ _] => intro FALSE; inversion FALSE as [s''' FALSE2];
-            inversion FALSE2 as [FSTEP | FSTEP]; inversion FSTEP
-          | [H : get _ _ = _, H1 : get_syscall _ = _ 
-             |- match _ with _ => _ end = _] =>
-            rewrite H; rewrite H1; auto
-          | [ |- (_ == _) = true ] => by rewrite !eqxx
-          | [H : get _ _ = _, H1 : get_syscall _ = _ 
-             |- match _ with _ => _ end = _] =>
-            rewrite H; rewrite H1; auto
-                                     
-              end).
-    by destruct (w == Z_to_word 0);
-    unfold pc'; rewrite eqxx ?orbT.
+        intro STEP. assert (CONTRA := step_succ_violation SUCC STEP).
+        inversion STEPA. subst. discriminate.
+      - (*case it's a normal step*)
+        right; exists s; exists s'; exists []; exists [].
+        simpl; repeat (split;auto). destruct INTRACE. destruct INTRACE.
+        unfold S. exists s'. split; auto.
+        intro CONTRA. destruct CONTRA as [s'' CONTRA].
+        assert (FLAG := step_succ_violation SUCC STEP).
+        destruct s' as [[[[imem dmem] aregs] apc] b].
+        subst. inversion CONTRA.
   + apply interm_equiv_intermrev in INTERM.
     destruct (IHINTERM INIT) as [TSAFE | [sv1 [sv2 [hs [tl VIOLATION]]]]].
-    - destruct STEP as [STEPA | STEP].
-      * left. intros si sj IN2. 
+    { unfold trace_has_cfi in TSAFE.
+      destruct (succ s' s'') eqn:SUCC.
+      * (*case the step is in the control flow graph*)
+        left. intros si sj IN2.
         induction xs using rev_ind.
-        { simpl in IN2. destruct IN2. }
-        { rewrite <- app_assoc in IN2.
+        { destruct IN2. }
+        { clear IHxs.
+          rewrite <- app_assoc in IN2.
           simpl in IN2. 
           destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]].
           - apply TSAFE; assumption.
           - subst. apply interm_last_step in INTERM; subst.
-            left; split; [assumption | apply attacker_pc in STEPA; assumption].
+            split; [apply attacker_pc | auto].
         }
-      * induction xs using rev_ind.
-        inversion INTERM. 
-        inversion STEP; subst; simpl; apply interm_last_step in INTERM; subst;
-        repeat (  match goal with 
-          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,true) 
-             |- trace_has_cfi _ _ \/ _] =>
-            left; intros si sj IN2; rewrite <- app_assoc in IN2; 
-          simpl in IN2; apply in2_reverse in IN2
-          | [H: In2 _ _ _ |- _ ] => 
-            rewrite <- app_assoc in H; simpl in H; apply in2_reverse in H
-          | [H: In2 _ _ _ \/ _ |- _] => destruct H as [? | [? ?]]; 
-          [apply TSAFE; assumption | subst; right]
-          | [ |- cfi.succ (_,_,_,_,true) (_,_,_,_,true) = _ ] =>
-               simpl; rewrite FETCH INST
-          | [ |- (_ == _) = true] => by rewrite eqxx
-          | [H: cfi.step (_,_,_,_,true) (_,_,_,_,valid_jmp ?pc ?w) 
-             |- trace_has_cfi _ _ \/ _] =>
-            remember (valid_jmp pc w) as validjmp; destruct validjmp
-          | [H: true = valid_jmp _ _ |- valid_jmp _ _ = true] => 
-            symmetry; assumption
-          | [H: false = valid_jmp _ _, 
-            H1: cfi.step (?Imem, ?Dmem, ?Reg, ?Pc, true) (?Imem', ?Dmem', ?Reg', ?Pc', false)
-              |- trace_has_cfi _ _ \/ _] => 
-            right; exists (Imem,Dmem,Reg,Pc,true); 
-            exists (Imem',Dmem',Reg',Pc',false); exists xs; exists [];
-            split; [rewrite <- app_assoc; reflexivity | idtac] 
-          | [ |- V _ _ /\ _ ] => split; 
-            [unfold V; simpl; rewrite FETCH INST; auto | idtac]
-          | [ |- trace_has_cfi _ _ /\ _] => split
-          | [H: trace_has_cfi _ ?Xs |- trace_has_cfi _ ?Xs] => assumption
-          | [ |- trace_has_cfi _ [?S] ] => intros ? ? IN2; destruct IN2
-          | [ |- S _ ] => unfold S; eexists; split; [eauto | idtac]
-          | [ |- ~ _] => intro FALSE; inversion FALSE as [s''' FALSE2]; 
-            inversion FALSE2 as [FSTEP | FSTEP]; inversion FSTEP
-          | [H : get _ _ = _, H1 : get_syscall _ = _ 
-             |- match _ with _ => _ end = _] =>
-            rewrite H; rewrite H1; auto
-                  end).
-        by destruct (w == Z_to_word 0);
-        unfold pc'; rewrite eqxx ?orbT.
-   - (*Case a violation occurs in the trace*)
-     induction xs using rev_ind. inversion INTERM. subst. clear IHxs.
+      * (*case the step is not in the control flow graph*)
+        destruct STEP as [STEPA | STEP].
+      - (*case it's an attacker step*)
+        left. intros si sj IN2.
+        induction xs using rev_ind.
+        { destruct IN2. }
+        { rewrite <- app_assoc in IN2.
+          simpl in IN2. 
+          destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]]. 
+          - apply TSAFE; assumption.
+          - subst. apply interm_last_step in INTERM; subst.
+            split; [apply attacker_pc | idtac].
+            intro STEP. assert (CONTRA := step_succ_violation SUCC STEP).
+            inversion STEPA; subst; discriminate. }
+      - (*case it's a normal step*)
+        right. induction xs using rev_ind; [inversion INTERM | idtac]. 
+        apply interm_last_step in INTERM; subst.
+        exists s'; exists s''; exists xs; exists [].
+        simpl; rewrite <- app_assoc. repeat (split; auto).
+        destruct INTRACE.
+        unfold S. exists s''. split; [reflexivity | idtac].
+        intro CONTRA. destruct CONTRA as [s''' CONTRA].
+        assert (FLAG := step_succ_violation SUCC STEP).
+        destruct s'' as [[[[imem dmem] aregs] apc] b].
+        subst. inversion CONTRA. }
+    { (*Case a violation occurs in the trace*)
+     induction xs using rev_ind; [inversion INTERM | subst; clear IHxs].
      destruct VIOLATION as [LST [VIO [T1 [T2 STOPS]]]].
      rewrite LST in INTERM. unfold S in STOPS.
      destruct STOPS as [sv2' [EQ IRRED]].
@@ -374,9 +310,12 @@ Proof.
      rewrite app_assoc in INTERM.
      rewrite <- Heqhs' in INTERM.
      apply interm_last_step in INTERM; subst.
-     assert (CONTRA: exists s'', cfi_step abstract_cfi_machine s' s'') 
-       by (eexists; eauto).
-     destruct (IRRED CONTRA).
+     destruct VIO as [VSTEP SUCC].
+     assert (FLAG := step_succ_violation SUCC VSTEP).
+     destruct s' as [[[[imem dmem] aregs] apc] b]; subst. 
+     destruct STEP as [STEPA | STEP].
+     - inversion STEPA.
+     - inversion STEP. }
 Qed.
 
 End WithClasses.
