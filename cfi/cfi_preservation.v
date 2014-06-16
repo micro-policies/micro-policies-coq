@@ -5,8 +5,6 @@ Require Import cfi.cfi_refinement.
 
 Set Implicit Arguments.
 
-Import ListNotations.
-
 Section Preservation.
 
 Context {mt : machine_types}
