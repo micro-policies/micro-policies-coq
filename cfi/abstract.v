@@ -4,6 +4,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import lib.utils.
 Require Import common.common.
+Require Import lib.Coqlib.
 Require Import cfi.cfi.
 Set Implicit Arguments.
 
@@ -185,19 +186,94 @@ Next Obligation.
 Qed.
 
 Definition V (s : state) s' := 
-  succ s s' = false.
+  (*step s s' /\*) succ s s' = false.
 
 Definition S (xs : list state) :=
-  exists s, xs = [s] /\ ~ exists s', cfi_step abstract_cfi_machine s s'.
+  exists s, xs = [s] /\ ~ exists s', step s s'.
 
-Theorem cfi' : cfi' abstract_cfi_machine V S.
+Ltac match_inv :=
+  repeat match goal with
+  | H : bind (fun x : _ => _) _ = Some _ |- _ =>
+    apply bind_inv in H;
+    let x := fresh x in
+    let E := fresh "E" in
+    destruct H as (x & H & E);
+    simpl in H; simpl in E
+  | H : (if ?b then _ else _) = Some _ |- _ =>
+    let E := fresh "E" in
+    destruct b eqn:E;
+    try discriminate
+  | H : match ?E with _ => _ end = _ |- _ =>
+    destruct E eqn:?; try discriminate
+  | H : Some _ = Some _ |- _ => inv H
+  | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
+  | H : True |- _ => clear H
+  end.
+
+Lemma step_succ_violation ast ast' :
+   succ ast ast' = false ->
+   step ast ast' ->
+   let '(_,_,_,_,b) := ast' in
+   b = false.
 Proof.
-  unfold cfi'. intros. 
+  intros SUCC STEP.
+  inversion STEP; subst; simpl in SUCC; match_inv.
+  
+  
+
+Theorem cfi : cfi abstract_cfi_machine V S.
+Proof.
+  unfold cfi. intros. 
+  apply interm_equiv_intermrev in INTERM.
+  induction INTERM as [s s' STEP | s s' s'' xs STEP INTERM ].
+  + destruct (succ s s') eqn:SUCC.  
+    * (*case the step is in the control flow graph*) 
+      left. intros si sj IN2. 
+      destruct IN2 as [[? ?] | CONTRA]; [idtac | destruct CONTRA];
+      subst. split; [apply attacker_pc | idtac]; auto. 
+    * (*case the step is outside the contro flow graph*)
+      destruct STEP as [STEPA | STEP].
+      - left. intros si sj IN2.
+        destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
+        split; [apply attacker_pc | idtac]; auto.
+        intro STEP. 
+ 
+
+      right. exists s; exists s'; exists []; exists [].
+      simpl. repeat(split;auto).
+      destruct INTRACE. destruct INTRACE.
+      unfold S. exists s'.
+      split; auto. intro STEP'.
+      destruct STEP' as [s'' STEP'].
+      inversion STEP; subst.
+      inversion H. unfold succ in SUCC. subst.
+      destruct (get imem pc) eqn:GET.
+      destruct (decode_instr). destruct i0.
+    
+destruct STEP as [STEPA | STEP].
+    - left. intros si sj IN2. 
+      destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst.
+      split. apply attacker_pc. intro.
+      
+
+ destruct STEP as [STEPA | STEP].
+    - left. intros si sj IN2.
+      destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst.
+      { split. apply attacker_pc in STEPA. auto.
+        
+
+left. split; [assumption | apply attacker_pc in STEPA; assumption]. }
+      { destruct CONTRA. }
+
+
+Theorem cfi : cfi abstract_cfi_machine V S.
+Proof.
+  unfold cfi. intros. 
   apply interm_equiv_intermrev in INTERM.
   induction INTERM as [s s' STEP | s s' s'' xs STEP INTERM ].
   + destruct STEP as [STEPA | STEP].
     - left. intros si sj IN2.
-      destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst.
+      destruct IN2 as [[EQ1 EQ2] | CONTRA]; subst; 
       { left. split; [assumption | apply attacker_pc in STEPA; assumption]. }
       { destruct CONTRA. }
     - inversion STEP; subst; simpl;      

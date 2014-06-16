@@ -48,19 +48,34 @@ Variable S : list state -> Prop.
 
  (* Definition of CFI *)
 
-Definition trace_has_cfi (trace : list state) := 
+Definition trace_has_cfi' (trace : list state) := 
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
              (step_a si sj /\ get_pc si = get_pc sj) 
           \/ succ si sj = true.
 
-Definition cfi' := 
+
+(* New CFI definition *)
+Definition trace_has_cfi (trace : list state) := 
+  forall (si sj : state)
+         (INTRACE : In2 si sj trace ),
+             (step_a si sj -> get_pc si = get_pc sj) /\
+             (step si sj -> succ si sj = true).
+(* 1. Expose attacker step refinement separately
+      from normal step refinement
+   2. Return to previous problems with self loops;
+      maybe we don't need to expose visible steps
+      after all ... :)
+*)
+
+
+Definition cfi := 
   forall s s' xs
     (INIT : initial s)
     (INTERM : intermstep xs s s'),
       trace_has_cfi xs \/
       exists s'' s''' hs tl, xs = hs ++ s'' :: s''' :: tl
-                             /\ V s'' s'''
+                             /\ (step s'' s''' /\ V s'' s''')
                              /\ trace_has_cfi (hs ++ [s''])
                              /\ trace_has_cfi (s''' :: tl)
                              /\ S(s''' :: tl).

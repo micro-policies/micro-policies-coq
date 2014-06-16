@@ -24,15 +24,18 @@ Section Mappable.
 
     map : (V1 -> V2) -> M1 -> M2;
 
+(* silly
     map_exists : forall (f : V1 -> V2) (m1 : M1),
                    exists (m2 : M2), map f m1 = m2;
-
+*)
     map_correctness: forall (f : V1 -> V2) (m1 : M1) (k : K),
                        get (map f m1) k = option_map f (get m1 k);
 
+(* unused
     map_domains: forall (f : V1 -> V2) (m1 : M1) (k : K) (v : V2),
                    get (map f m1) k = Some v ->
                    exists (v' : V1), get m1 k = Some v'
+*)
     }.
 End Mappable. 
 
@@ -49,8 +52,10 @@ Section Filter.
 
     filter : (V -> bool) -> M -> M;
     
+(* silly
     filter_exists : forall (f : V -> bool) (m : M),
                       exists (m' : M), filter f m = m';
+*)
 
     filter_correctness: forall (f : V -> bool) (m : M) (k : K),
                        get (filter f m) k = match get m k with 
@@ -60,7 +65,7 @@ Section Filter.
                                             end;
 
     filter_domains : forall (f : V -> bool) (m : M) (m' : M) (k : K),
-                       same_domain m m' ->
+                       same_domain(*s*) m m' ->
                        match get m k, get m' k with 
                          | Some v, Some v' => f v = f v'
                          | None, None => True
