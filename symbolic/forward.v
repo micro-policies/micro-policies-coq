@@ -368,23 +368,13 @@ Proof.
     ]
   end.
 
-  - exploit H; eauto. clear H. intros H.
-    repeat match goal with
-    | H : exists _, _ |- _ => destruct H
-    | H : _ /\ _ |- _ => destruct H
-    end.
-    eexists. split.
+  - eexists. split.
     + eapply re_step; trivial; [solve_concrete_step|].
       eapply exec_until_weaken.
       eassumption.
     + solve_refine_state.
 
-  - exploit H4; eauto. clear H4. intros H4.
-    repeat match goal with
-    | H : exists _, _ |- _ => destruct H
-    | H : _ /\ _ |- _ => destruct H
-    end.
-    eexists. split.
+  - eexists. split.
     + eapply re_step; trivial; [solve_concrete_step|].
       eapply restricted_exec_trans.
       { eapply exec_until_weaken. eassumption. }
