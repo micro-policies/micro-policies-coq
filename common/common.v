@@ -131,6 +131,18 @@ Class machine_ops (t : machine_types) := {
 
 }.
 
+Section Functions.
+
+Context {t : machine_types}
+        {op : machine_ops t}.
+
+Definition nat_to_word (n : nat) : word t := Z_to_word (Z.of_nat n).
+Definition word_to_nat (w : word t) : nat := Z.to_nat (word_to_Z w).
+Arguments nat_to_word /.
+Arguments word_to_nat /.
+
+End Functions.
+
 Notation "+%w" := add_word.
 Notation "-%w" := opp_word.
 Notation "x + y" := (add_word x y) : word_scope.
@@ -138,6 +150,7 @@ Notation "- x" := (opp_word x) : word_scope.
 Notation "x - y" := (add_word x (opp_word y)) : word_scope.
 Notation "0" := (Z_to_word 0) : word_scope.
 Notation "1" := (Z_to_word 1) : word_scope.
+Notation "2" := (Z_to_word 2) : word_scope.
 
 Delimit Scope word_scope with w.
 

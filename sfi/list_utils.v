@@ -538,6 +538,16 @@ Proof.
 Qed.
 Hint Resolve in2_app.
 
+Lemma in2_delete : forall `{eqdec : ! EqDec (eq_setoid A)} (a b y : A) xs,
+  In2 a b (delete y xs) -> In2 a b xs.
+Proof.
+  induction xs as [|x xs]; [inversion 1 | simpl; intros IN2].
+  destruct (y == x); unsetoid; subst; auto.
+  inversion IN2 as [del' IN | del' IN | x' del' IN2' ]; subst;
+    solve [ auto | constructor; apply delete_in_iff in IN; tauto ].
+Qed.
+Hint Resolve in2_delete.
+
 Lemma tails_app  : forall {A} (xs ys : list A),
   tails (xs ++ ys) = init (map (fun t => t ++ ys) (tails xs)) ++ tails ys.
 Proof.

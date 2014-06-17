@@ -18,7 +18,6 @@ Import ListNotations.
 Module Abstract.
 
 Open Scope bool_scope.
-Open Scope Z_scope.
 
 Section WithClasses.
 
@@ -122,7 +121,7 @@ Fixpoint in_compartment_opt (C : list compartment)
                             (p : value) : option compartment :=
   match C with
     | []     => None
-    | c :: C => if existsb (equiv_decb p) (address_space c)
+    | c :: C => if set_elem p (address_space c)
                 then Some c
                 else in_compartment_opt C p
   end.
@@ -147,63 +146,100 @@ Definition good_syscall (sc : syscall) (MM : state) : bool :=
        end
   else true.
 
-Class isolate_params := {
+Class sfi_syscall_params := {
   (* The registers ISOLATE reads from. *)
-  riso1 : reg t; riso2 : reg t; riso3 : reg t; riso4 : reg t;
-
+  rIsoA : reg t; rIsoJ : reg t; rIsoS : reg t;
+  
   (* The location of ISOLATE *)
-  isolate_addr : word
+  isolate_addr : word;
+  
+  (* The register the add-to-$SET syscalls read from. *)
+  rAdd : reg t;
+  
+  (* The addresses of the add-to-{J,S} syscalls *)
+  add_to_jump_targets_addr : word; add_to_shared_memory_addr : word
 }.
-Context {IP : isolate_params}.
+Context {sfi_syscalls : sfi_syscall_params}.
 
 Notation "'do!' 'guard' cond ; rest" :=
   (if cond then rest else None)
   (at level 200, cond at level 100, rest at level 200).
 
-Definition isolate_create_set (M : memory)
-                              (base size : value) : option (list value) :=
-  let pre_set := map (fun p => get M (p + (base + 1)))
-                     (range 0 (size - 1)) in
-  do! guard forallb is_some pre_set;
-  Some (to_set (cat_somes pre_set)).
+Definition isolate_get_range (M : memory) (p : value) : option (list value) :=
+  do! low  <- get M p;
+  do! high <- get M (p + 1);
+  Some (range low high).
 
-(* From Greg: An objection to SFI could be "but we have page table tricks for
-   doing the same things".  So let's make the new address space similarly
-   disjoint.  (Except with sets of pairs.)  [TODO] *)
-(* ASZ: Except, hmm.  Compartments are created with continguous ranges, sure,
-   but they can isolate pieces of themselves arbitrarily and break themselves up
-   into fragments in this way. *)
+Fixpoint isolate_get_ranges (M : memory)
+                            (p : value)
+                            (n : nat) : option (list value) :=
+  match n with
+    | O      => Some []
+    | Suc n' => do! here <- isolate_get_range M p;
+                do! rest <- isolate_get_ranges M (p + 2) n';
+                Some (set_union here rest)
+  end.
+
+Definition isolate_create_set (M : memory)
+                              (base : value) : option (list value) :=
+  do! pairs <- get M base;
+  isolate_get_ranges M (base + 1) (word_to_nat pairs).
+
 Definition isolate_fn (MM : state) : option state :=
   let '(State pc R M C) := MM in
   do! c      <- in_compartment_opt C pc;
-  do! al     <- get R riso1;
-  do! ah     <- get R riso2;
-  do! jt     <- get R riso3;
-  do! sm     <- get R riso4;
-  do! jtsz   <- get M jt;
-  do! smsz   <- get M sm;
-  do! guard al <=? ah;
+  do! pA     <- get R rIsoA;
+  do! pJ     <- get R rIsoJ;
+  do! pS     <- get R rIsoS;
   let '<<A,J,S>> := c in
-  let A' := range al ah in
+  do! A' <- isolate_create_set M pA;
   do! guard subset A' A;
-  do! J' <- isolate_create_set M jt jtsz;
-  do! guard subset J' (A ++ J);
-  do! S' <- isolate_create_set M sm smsz;
-  do! guard subset S' (A ++ S);
-  let c_upd := << set_difference A  A'
-                , insert_unique  al J
-                , S >> in
+  do! guard nonempty A';
+  do! J' <- isolate_create_set M pJ;
+  do! guard subset J' (set_union A J);
+  do! S' <- isolate_create_set M pS;
+  do! guard subset S' (set_union A S);
+  let c_upd := <<set_difference A A', J, S>> in
   let c'    := <<A',J',S'>> in
   let C'    := c_upd :: c' :: delete c C in
-  do! guard existsb (equiv_decb (pc + 1)) (address_space c_upd);
+  do! guard set_elem (pc + 1) (address_space c_upd);
   Some (State (pc + 1) R M C').
 
 Definition isolate :=
   {| address   := isolate_addr
    ; semantics := isolate_fn |}.
 
+(* There are two possible design choices for this function: either it takes a
+   single address to add to the jump table, or it takes a pointer to memory with
+   a jump table layout as for isolate.  The former seems nicer, but the latter's
+   pretty easy too. *)
+
+Definition add_to_compartment_component
+             (rd : compartment -> list value)
+             (wr : list value -> compartment -> compartment)
+             (MM : state) : option state :=
+  let '(State pc R M C) := MM in
+  do! c <- in_compartment_opt C pc;
+  do! p <- get R rAdd;
+  do! guard set_elem p (set_union (address_space c) (rd c));
+  do! guard set_elem (pc + 1) (address_space c);
+  Some (State (pc + 1) R M (wr (insert_unique p (rd c)) c :: delete c C)).
+
+Definition add_to_jump_targets :=
+  {| address   := add_to_jump_targets_addr
+   ; semantics := add_to_compartment_component
+                    jump_targets
+                    (fun J' c => let '<<A,_,S>> := c in <<A,J',S>>) |}.
+
+Definition add_to_shared_memory :=
+  {| address   := add_to_shared_memory_addr
+   ; semantics := add_to_compartment_component
+                    shared_memory
+                    (fun S' c => let '<<A,J,_>> := c in <<A,J,S'>>) |}.
+
 Variable othercalls : list syscall.
-Let table := isolate :: othercalls.
+Let table := isolate :: add_to_jump_targets :: add_to_shared_memory ::
+             othercalls.
 
 Definition get_syscall (addr : value) : option syscall :=
   List.find (fun sc => address sc == addr) table.
@@ -383,6 +419,208 @@ Proof.
 Qed.
 Hint Resolve good_compartment_decomposed__is_set_shared_memory.
 
+(*** Proofs for `non_overlapping' ***)
+
+Theorem non_overlapping_address_spaces : forall c1 c2 c3,
+  address_space c1 = address_space c2 ->
+  non_overlapping c1 c3 = non_overlapping c2 c3.
+Proof.
+  intros c1 c2 c3 EQ.
+  unfold non_overlapping; rewrite EQ; reflexivity.
+Qed.
+
+Theorem non_overlapping_irrefl : forall c,
+  non_overlapping c c = false.
+Proof.
+  intros; unfold non_overlapping; rewrite set_intersection_self_id.
+  destruct (address_space c); reflexivity.
+Qed.
+Hint Resolve non_overlapping_irrefl.
+
+Theorem non_overlapping_comm : forall c1 c2,
+  good_compartment c1 = true -> good_compartment c2 = true ->
+  non_overlapping c1 c2 = non_overlapping c2 c1.
+Proof.
+  unfold non_overlapping; intros; rewrite set_intersection_comm;
+  destruct c1 as [[|a1 A1] J1 S1], c2 as [[|a2 A2] J2 S2]; auto.
+Qed.
+Hint Resolve non_overlapping_comm.
+
+Theorem non_overlapping_in2_comm : forall c1 c2 C,
+  forallb good_compartment C = true ->
+  In2 c1 c2 C ->
+  non_overlapping c1 c2 = non_overlapping c2 c1.
+Proof.
+  intros c1 c2 C GOOD IN2.
+  apply in2_in in IN2; destruct IN2.
+  rewrite ->forallb_forall in GOOD; auto.
+Qed.
+Hint Resolve non_overlapping_in2_comm.
+
+Theorem non_overlapping_subcompartment : forall c1 c2 c3,
+  good_compartment c1 = true ->
+  good_compartment c2 = true ->
+  good_compartment c3 = true ->
+  nonempty (address_space c1) = true ->
+  (forall a, In a (address_space c1) -> In a (address_space c2)) ->
+  non_overlapping c2 c3 = true ->
+  non_overlapping c1 c3 = true.
+Proof.
+  intros [A1 J1 S1] [A2 J2 S2] [A3 J3 S3] GOOD1 GOOD2 GOOD3 NONEMPTY SUBSET NO2;
+    unfold non_overlapping in *; simpl in *.
+  assert (SUBSET' : forall a, In a (set_intersection A1 A3) ->
+                              In a (set_intersection A2 A3)) by
+    (intros a; specialize SUBSET with a;
+     repeat rewrite set_intersection_spec; solve [eauto 2 | tauto]).
+  destruct (set_intersection A2 A3).
+  - destruct (set_intersection A1 A3).
+    + destruct A1; [inversion NONEMPTY | reflexivity].
+    + not_subset_cons_nil.
+  - inversion NO2.
+Qed.
+Hint Resolve non_overlapping_subcompartment.
+
+
+(*** Proofs for `good_compartments' ***)
+
+Local Ltac good_compartments_trivial :=
+  unfold good_compartments; intros C GOOD;
+  repeat rewrite ->andb_true_iff in GOOD;
+  tauto.
+
+(* For `auto' *)
+Lemma good_compartments__all_good_compartment : forall C,
+  good_compartments C = true -> forallb good_compartment C = true.
+Proof. good_compartments_trivial. Qed.
+Hint Resolve good_compartments__all_good_compartment.
+
+(* For `auto' *)
+Lemma good_compartments__non_overlapping_list : forall C,
+  good_compartments C = true -> non_overlapping_list C = true.
+Proof. good_compartments_trivial. Qed.
+Hint Resolve good_compartments__non_overlapping_list.
+
+(* For `auto' *)
+Lemma good_compartments__contained_compartments : forall C,
+  good_compartments C = true -> contained_compartments C = true.
+Proof. good_compartments_trivial. Qed.
+Hint Resolve good_compartments__contained_compartments.
+
+Lemma good_compartment_in : forall c C,
+  good_compartments C = true ->
+  In c C ->
+  good_compartment c = true.
+Proof.
+  intros c C GOOD IN;
+    eapply good_compartments__all_good_compartment, forallb_forall in GOOD;
+    eassumption.
+Qed.
+Hint Resolve good_compartment_in.
+
+Theorem good_no_duplicates : forall C,
+  good_compartments C = true ->
+  NoDup C.
+Proof.
+  intros C GOOD;
+    unfold good_compartments, non_overlapping_list in GOOD;
+    repeat rewrite ->andb_true_iff in GOOD;
+    rewrite <-all_pairs_in2_comm in GOOD;
+    repeat invh and; eauto 2.
+Qed.
+Hint Resolve good_no_duplicates.
+
+(*** Proofs for `non_overlapping_list' ***)
+
+Theorem non_overlapping_subset : forall C1 C2,
+  NoDup C1 ->
+  forallb good_compartment C2 = true ->
+  (forall c, In c C1 -> In c C2) ->
+  non_overlapping_list C2 = true ->
+  non_overlapping_list C1 = true.
+Proof.
+  unfold non_overlapping_list; intros C1 C2 SUBSET NO_DUP GOOD NOL.
+  apply all_pairs__all_tail_pairs.
+  rewrite <- all_pairs_in2_comm in NOL; eauto 2.
+Qed.
+Hint Resolve non_overlapping_subset.
+
+Theorem non_overlapping_tail : forall c C,
+  non_overlapping_list (c :: C) = true -> non_overlapping_list C = true.
+Proof.
+  unfold non_overlapping_list; intros c C NOL;
+  rewrite ->all_tail_pairs_tail, ->andb_true_iff in NOL; tauto.
+Qed.
+Hint Resolve non_overlapping_tail.
+
+Theorem non_overlapping_list_spec : forall C,
+  forallb good_compartment C = true ->
+  (non_overlapping_list C = true <-> (forall c1 c2,
+                                        In2 c1 c2 C ->
+                                        non_overlapping c1 c2 = true)).
+Proof.
+  intros C GOOD. unfold non_overlapping_list.
+  rewrite <- all_pairs_in2_comm, all_pairs_spec; [reflexivity|eauto 2].
+Qed.  
+
+Corollary non_overlapping_list_spec' : forall C,
+  good_compartments C = true ->
+  (non_overlapping_list C = true <-> (forall c1 c2,
+                                        In2 c1 c2 C ->
+                                        non_overlapping c1 c2 = true)).
+Proof. intros C GOOD; apply non_overlapping_list_spec; auto. Qed.
+
+Corollary good_compartments__in2_non_overlapping  : forall C c1 c2,
+  good_compartments C = true ->
+  In2 c1 c2 C ->
+  non_overlapping c1 c2 = true.
+Proof.
+  intros C c1 c2 GOOD;
+    assert (non_overlapping_list C = true) by auto;
+    apply non_overlapping_list_spec' in GOOD;
+    apply GOOD; assumption.
+Qed.
+Hint Resolve good_compartments__in2_non_overlapping.
+
+Theorem non_overlapping_list_delete : forall c C,
+  forallb good_compartment C = true ->
+  non_overlapping_list C = true ->
+  non_overlapping_list (delete c C) = true.
+Proof.
+  intros c C GOOD NOL.
+  rewrite ->non_overlapping_list_spec in * by auto.
+  intros c1 c2 IN2; apply NOL.
+  eapply in2_delete; eassumption.
+Qed.
+Hint Resolve non_overlapping_list_delete.
+
+Corollary non_overlapping_list_delete' : forall c C,
+  good_compartments C = true ->
+  non_overlapping_list (delete c C) = true.
+Proof. auto. Qed.
+Hint Resolve non_overlapping_list_delete'.
+
+Lemma non_overlapping_replace : forall c c' C,
+  forallb good_compartment C = true ->
+  non_overlapping_list C = true ->
+  non_overlapping_list (c' :: delete c C) =
+  forallb (non_overlapping c') (delete c C).
+Proof.
+  intros;
+    unfold non_overlapping_list;
+    repeat rewrite all_tail_pairs_tail;
+    fold (non_overlapping_list (delete c C)).
+  destruct (forallb (non_overlapping _) _); [simpl | reflexivity].
+  apply non_overlapping_list_delete; assumption.
+Qed.
+Hint Resolve non_overlapping_replace.
+
+Lemma non_overlapping_replace' : forall c c' C,
+  good_compartments C = true ->
+  non_overlapping_list (c' :: delete c C) =
+  forallb (non_overlapping c') (delete c C).
+Proof. auto. Qed.
+Hint Resolve non_overlapping_replace'.
+
 (*** Proofs for `in_compartment' and `in_compartment_opt' ***)
 
 (* Ltac *)
@@ -477,45 +715,38 @@ Tactic Notation (at level 0) "assert" "good_compartment" ident(c)
                              "by" tactic1(t) :=
   assert as c good_compartment c by t.
 
-Theorem in_compartment_opt_correct : forall C p c,
-  in_compartment_opt C p ?= c -> C ⊢ p ∈ c.
-Proof.
-  clear.
-  induction C as [|ch C]; [inversion 1|].
-  intros p c ICO; simpl in *.
-  destruct (existsb _ _) eqn:EX; auto.
-  inversion ICO; subst; apply in_existsb_equiv_decb in EX; destruct c; auto.
-Qed.
-Hint Resolve in_compartment_opt.
+Ltac destruct_set_elem_xX_as_by x X Hy Hn t :=
+  let H := fresh in
+  destruct (set_elem x X) eqn:H;
+    [ rename H into Hy; rewrite ->set_elem_true  in Hy by t
+    | rename H into Hn; rewrite ->set_elem_false in Hn by t ].
 
-Theorem in_compartment_opt_missing_correct : forall C p,
-  in_compartment_opt C p = None -> forall c, ~ C ⊢ p ∈ c.
-Proof.
-  clear.
-  induction C as [|ch C]; intros p ICO c IC; [inversion IC|]; simpl in *.
-  destruct (existsb _ _) eqn:EX; try congruence.
-  inversion IC as [C' A J S IN|]; subst; [|eapply IHC; eassumption].
-  apply existsb_equiv_decb_in in IN; simpl in *; congruence.
-Qed.
-Hint Resolve in_compartment_opt_missing_correct.
+(* If not re-implemented, the placeholders don't work *)
+Ltac destruct_set_elem_as_by Hy Hn t :=
+  let H := fresh in
+  destruct (set_elem _ _) eqn:H;
+    [ rename H into Hy; rewrite ->set_elem_true  in Hy by t
+    | rename H into Hn; rewrite ->set_elem_false in Hn by t ].
 
-Theorem in_compartment_opt_present : forall C p c,
-  C ⊢ p ∈ c -> exists c', in_compartment_opt C p ?= c'.
-Proof.
-  clear.
-  induction 1 as [C A J S IN | C ch c IC].
-  - exists <<A,J,S>>; simpl; rewrite existsb_equiv_decb_in; auto.
-  - simpl; destruct (existsb _ _); eauto.
-Qed.
-Hint Resolve in_compartment_opt_present.
+Tactic Notation "destruct" "set_elem" constr(x) constr(X)
+                "as" ident(Hy) "," ident(Hn)
+                "by" tactic(t) :=
+  destruct_set_elem_xX_as_by x X Hy Hn t.
 
-Corollary in_compartment_opt_is_some : forall C p c,
-  C ⊢ p ∈ c -> is_some (in_compartment_opt C p) = true.
-Proof.
-  intros C p c IC; apply in_compartment_opt_present in IC.
-  destruct IC as [c' ICO]; rewrite ICO; reflexivity.
-Qed.
-Hint Resolve in_compartment_opt_is_some.
+Tactic Notation "destruct" "set_elem"
+                "as" ident(Hy) "," ident(Hn)
+                "by" tactic(t) :=
+  (destruct_set_elem_as_by Hy Hn t).
+
+Tactic Notation "destruct" "set_elem" constr(x) constr(X) "by" tactic(t) :=
+  let Hy := fresh "Hy" in
+  let Hn := fresh "Hn" in
+  destruct set_elem x X as Hy , Hn by t.
+
+Tactic Notation "destruct" "set_elem" "by" tactic(t) :=
+  let Hy := fresh "Hy" in
+  let Hn := fresh "Hn" in
+  destruct set_elem as Hy , Hn by t.
 
 Theorem in_compartment_element : forall C p c,
   C ⊢ p ∈ c ->
@@ -588,58 +819,119 @@ Proof.
 Qed.
 Hint Resolve in_same_compartment__overlapping.
 
-(*** Proofs for `non_overlapping' ***)
-
-Theorem non_overlapping_irrefl : forall c,
-  non_overlapping c c = false.
+Theorem in_compartment_opt_correct : forall C p c,
+  forallb good_compartment C = true -> 
+  in_compartment_opt C p ?= c -> C ⊢ p ∈ c.
 Proof.
-  intros; unfold non_overlapping; rewrite set_intersection_self_id.
-  destruct (address_space c); reflexivity.
+  clear.
+  intros C p c GOOD ICO; rewrite ->forallb_forall in GOOD; gdep c; gdep p;
+    induction C as [|ch C]; [inversion 1|];
+    intros; simpl in *.
+  destruct set_elem as Hy,Hn by auto.
+  - inversion ICO; subst; destruct c; auto.
+  - auto 10.
 Qed.
-Hint Resolve non_overlapping_irrefl.
+Hint Resolve in_compartment_opt_correct.
 
-Theorem non_overlapping_comm : forall c1 c2,
-  good_compartment c1 = true -> good_compartment c2 = true ->
-  non_overlapping c1 c2 = non_overlapping c2 c1.
-Proof.
-  unfold non_overlapping; intros; rewrite -> set_intersection_comm;
-  destruct c1 as [[|a1 A1] J1 S1], c2 as [[|a2 A2] J2 S2]; auto.
-Qed.
-Hint Resolve non_overlapping_comm.
+Corollary in_compartment_opt_correct' : forall C p c,
+  good_compartments C = true -> 
+  in_compartment_opt C p ?= c -> C ⊢ p ∈ c.
+Proof. auto. Qed.
+Hint Resolve in_compartment_opt_correct'.
 
-Theorem non_overlapping_in2_comm : forall c1 c2 C,
+Theorem in_compartment_opt_missing_correct : forall C p,
   forallb good_compartment C = true ->
-  In2 c1 c2 C ->
-  non_overlapping c1 c2 = non_overlapping c2 c1.
+  in_compartment_opt C p = None -> forall c, ~ C ⊢ p ∈ c.
 Proof.
-  intros c1 c2 C GOOD IN2.
-  apply in2_in in IN2; destruct IN2.
-  rewrite ->forallb_forall in GOOD; auto.
+  clear.
+  intros C p GOOD; rewrite ->forallb_forall in GOOD; gdep p;
+    induction C as [|ch C]; intros p ICO c IC; [inversion IC|]; simpl in *.
+  destruct set_elem by auto.
+  - congruence.
+  - inversion IC; subst; [simpl in *; congruence | eapply IHC; eauto].
 Qed.
-Hint Resolve non_overlapping_in2_comm.
+Hint Resolve in_compartment_opt_missing_correct.
 
-Theorem non_overlapping_subcompartment : forall c1 c2 c3,
-  good_compartment c1 = true ->
-  good_compartment c2 = true ->
-  good_compartment c3 = true ->
-  nonempty (address_space c1) = true ->
-  (forall a, In a (address_space c1) -> In a (address_space c2)) ->
-  non_overlapping c2 c3 = true ->
-  non_overlapping c1 c3 = true.
+Corollary in_compartment_opt_missing_correct' : forall C p,
+  good_compartments C = true ->
+  in_compartment_opt C p = None -> forall c, ~ C ⊢ p ∈ c.
+Proof. auto. Qed.
+Hint Resolve in_compartment_opt_missing_correct'.
+
+Theorem in_compartment_opt_present : forall C p c,
+  forallb good_compartment C = true ->
+  C ⊢ p ∈ c -> exists c', in_compartment_opt C p ?= c'.
 Proof.
-  intros [A1 J1 S1] [A2 J2 S2] [A3 J3 S3] GOOD1 GOOD2 GOOD3 NONEMPTY SUBSET NO2;
-    unfold non_overlapping in *; simpl in *.
-  assert (SUBSET' : forall a, In a (set_intersection A1 A3) ->
-                              In a (set_intersection A2 A3)) by
-    (intros a; specialize SUBSET with a;
-     repeat rewrite set_intersection_spec; solve [eauto 2 | tauto]).
-  destruct (set_intersection A2 A3).
-  - destruct (set_intersection A1 A3).
-    + destruct A1; [inversion NONEMPTY | reflexivity].
-    + not_subset_cons_nil.
-  - inversion NO2.
+  clear.
+  intros until 0; intros GOOD; rewrite ->forallb_forall in GOOD;
+    induction 1 as [C A J S IN | C ch c IC].
+  - exists <<A,J,S>>; simpl;
+      (destruct set_elem by
+        (eapply good_compartment_decomposed__is_set_address_space; auto));
+      [reflexivity | congruence].
+  - simpl; (destruct set_elem by auto); eauto.
 Qed.
-Hint Resolve non_overlapping_subcompartment.
+Hint Resolve in_compartment_opt_present.
+
+Corollary in_compartment_opt_present' : forall C p c,
+  good_compartments C = true ->
+  C ⊢ p ∈ c -> exists c', in_compartment_opt C p ?= c'.
+Proof. eauto. Qed.
+Hint Resolve in_compartment_opt_present'.
+
+Corollary in_compartment_opt_is_some : forall C p c,
+  good_compartments C = true ->
+  C ⊢ p ∈ c -> is_some (in_compartment_opt C p) = true.
+Proof.
+  intros C p c GOOD IC; apply in_compartment_opt_present in IC; auto.
+  destruct IC as [c' ICO]; rewrite ICO; reflexivity.
+Qed.
+Hint Resolve in_compartment_opt_is_some.
+
+Theorem in_compartment_opt_sound : forall C p c,
+  forallb good_compartment C = true -> non_overlapping_list C = true ->
+  C ⊢ p ∈ c ->
+  in_compartment_opt C p ?= c.
+Proof.
+  clear.
+  intros C p c GOOD NOL; rewrite ->forallb_forall in GOOD;
+    induction 1 as [C A J S IN | C ch c IC];
+    simpl.
+  - (destruct set_elem by
+      (eapply good_compartment_decomposed__is_set_address_space; auto));
+    [reflexivity | congruence].
+  - (destruct set_elem by auto); [|apply IHIC; eauto 4].
+    assert (IN : In c C) by eauto 2; assert (IN2 : In2 ch c (ch :: C)) by auto.
+    apply in_compartment__in_address_space in IC.
+    apply non_overlapping_list_spec in IN2; try rewrite ->forallb_forall; auto.
+    unfold non_overlapping in *.
+    destruct (set_intersection _ _) eqn:SI; try congruence.
+    rewrite ->nil_iff_not_in in SI; specialize SI with p.
+    rewrite ->set_intersection_spec in SI by eauto; tauto.
+Qed.
+Hint Resolve in_compartment_opt_sound.
+
+Corollary in_compartment_opt_sound' : forall C p c,
+  good_compartments C = true ->
+  C ⊢ p ∈ c ->
+  in_compartment_opt C p ?= c.
+Proof. auto. Qed.
+Hint Resolve in_compartment_opt_sound'.
+
+Corollary in_compartment_opt_sound_is_some : forall C p c,
+  forallb good_compartment C = true -> non_overlapping_list C = true ->
+  C ⊢ p ∈ c -> is_some (in_compartment_opt C p) = true.
+Proof.
+  intros C p c GOOD NOL IC;
+    apply in_compartment_opt_sound in IC; [rewrite IC | | ]; auto.
+Qed.
+Hint Resolve in_compartment_opt_sound_is_some.
+
+Corollary in_compartment_opt_sound_is_some' : forall C p c,
+  good_compartments C = true ->
+  C ⊢ p ∈ c -> is_some (in_compartment_opt C p) = true.
+Proof. eauto. Qed.
+Hint Resolve in_compartment_opt_sound_is_some'.
 
 (*** Proofs for `contained_compartments' ***)
 
@@ -674,105 +966,6 @@ Proof.
       apply in_map_iff; eauto.
 Qed.
 
-(*** Proofs for `good_compartments' ***)
-
-Local Ltac good_compartments_trivial :=
-  unfold good_compartments; intros C GOOD;
-  repeat rewrite ->andb_true_iff in GOOD;
-  tauto.
-
-(* For `auto' *)
-Lemma good_compartments__all_good_compartment : forall C,
-  good_compartments C = true -> forallb good_compartment C = true.
-Proof. good_compartments_trivial. Qed.
-Hint Resolve good_compartments__all_good_compartment.
-
-(* For `auto' *)
-Lemma good_compartments__non_overlapping_list : forall C,
-  good_compartments C = true -> non_overlapping_list C = true.
-Proof. good_compartments_trivial. Qed.
-Hint Resolve good_compartments__non_overlapping_list.
-
-(* For `auto' *)
-Lemma good_compartments__contained_compartments : forall C,
-  good_compartments C = true -> contained_compartments C = true.
-Proof. good_compartments_trivial. Qed.
-Hint Resolve good_compartments__contained_compartments.
-
-Lemma good_compartment_in : forall c C,
-  good_compartments C = true ->
-  In c C ->
-  good_compartment c = true.
-Proof.
-  intros c C GOOD IN;
-    eapply good_compartments__all_good_compartment, forallb_forall in GOOD;
-    eassumption.
-Qed.
-Hint Resolve good_compartment_in.
-  
-Theorem good_no_duplicates : forall C,
-  good_compartments C = true ->
-  NoDup C.
-Proof.
-  intros C GOOD;
-    unfold good_compartments, non_overlapping_list in GOOD;
-    repeat rewrite ->andb_true_iff in GOOD; rewrite <- all_pairs_in2_comm in GOOD;
-    repeat invh and; eauto 2.
-Qed.
-Hint Resolve good_no_duplicates.
-
-(*** Proofs for `non_overlapping_list' ***)
-
-Theorem non_overlapping_subset : forall C1 C2,
-  NoDup C1 ->
-  forallb good_compartment C2 = true ->
-  (forall c, In c C1 -> In c C2) ->
-  non_overlapping_list C2 = true ->
-  non_overlapping_list C1 = true.
-Proof.
-  unfold non_overlapping_list; intros C1 C2 SUBSET NO_DUP GOOD NOL.
-  apply all_pairs__all_tail_pairs.
-  rewrite <- all_pairs_in2_comm in NOL; eauto 2.
-Qed.
-Hint Resolve non_overlapping_subset.
-
-Theorem non_overlapping_tail : forall c C,
-  non_overlapping_list (c :: C) = true -> non_overlapping_list C = true.
-Proof.
-  unfold non_overlapping_list; intros c C NOL;
-  rewrite ->all_tail_pairs_tail, ->andb_true_iff in NOL; tauto.
-Qed.
-Hint Resolve non_overlapping_tail.
-
-Theorem non_overlapping_list_spec : forall C,
-  forallb good_compartment C = true ->
-  (non_overlapping_list C = true <-> (forall c1 c2,
-                                        In2 c1 c2 C ->
-                                        non_overlapping c1 c2 = true)).
-Proof.
-  intros C GOOD. unfold non_overlapping_list.
-  rewrite <- all_pairs_in2_comm, all_pairs_spec; [reflexivity|eauto 2].
-Qed.  
-
-Corollary non_overlapping_list_spec' : forall C,
-  good_compartments C = true ->
-  (non_overlapping_list C = true <-> (forall c1 c2,
-                                        In2 c1 c2 C ->
-                                        non_overlapping c1 c2 = true)).
-Proof. intros C GOOD; apply non_overlapping_list_spec; auto. Qed.
-
-Corollary good_compartments__in2_non_overlapping  : forall C c1 c2,
-  good_compartments C = true ->
-  In2 c1 c2 C ->
-  non_overlapping c1 c2 = true.
-Proof.
-  intros C c1 c2 GOOD;
-    assert (non_overlapping_list C = true) by auto;
-    apply non_overlapping_list_spec' in GOOD;
-    apply GOOD; assumption.
-Qed.
-Hint Resolve good_compartments__in2_non_overlapping.
-
 (*** Proofs for/requiring `good_compartments' ***)
 
 Theorem good_in2_no_common_addresses : forall C c1 c2,
@@ -790,55 +983,6 @@ Proof.
   rewrite -> set_intersection_spec in SI by eauto 3; tauto.
 Qed.
 Hint Resolve good_in2_no_common_addresses.
-
-Theorem in_compartment_opt_sound : forall C p c,
-  forallb good_compartment C = true -> non_overlapping_list C = true ->
-  C ⊢ p ∈ c ->
-  in_compartment_opt C p ?= c.
-Proof.
-  clear.
-  intros C p c GOOD NOL; induction 1 as [C A J S IN | C ch c IC];
-    simpl; simpl in NOL. (* but don't simpl in GOOD *)
-  - rewrite existsb_equiv_decb_in; auto.
-  - destruct (existsb _ _) eqn:EX;
-      [|simpl in GOOD; rewrite ->andb_true_iff in *; invh and; eauto 3].
-    assert (IN : In c C) by eauto 2; assert (IN2 : In2 ch c (ch :: C)) by auto.
-    apply in_existsb_equiv_decb in EX;
-      apply in_compartment__in_address_space in IC.
-    apply non_overlapping_list_spec in IN2; auto.
-    unfold non_overlapping in *.
-    destruct (set_intersection _ _) eqn:SI; try congruence.
-    rewrite ->nil_iff_not_in in SI; specialize SI with p.
-    rewrite ->set_intersection_spec in SI
-      by (rewrite ->forallb_forall in GOOD; eauto);
-      tauto.
-Qed.
-Hint Resolve in_compartment_opt_sound.
-
-Corollary in_compartment_opt_sound' : forall C p c,
-  good_compartments C = true ->
-  C ⊢ p ∈ c ->
-  in_compartment_opt C p ?= c.
-Proof. intros C p c GOOD; apply in_compartment_opt_sound; auto. Qed.
-Hint Resolve in_compartment_opt_sound'.
-
-Corollary in_compartment_opt_sound_is_some : forall C p c,
-  forallb good_compartment C = true -> non_overlapping_list C = true ->
-  C ⊢ p ∈ c -> is_some (in_compartment_opt C p) = true.
-Proof.
-  intros C p c GOOD NOL IC;
-    apply in_compartment_opt_sound in IC; [rewrite IC | | ]; auto.
-Qed.
-Hint Resolve in_compartment_opt_sound_is_some.
-
-Corollary in_compartment_opt_sound_is_some' : forall C p c,
-  good_compartments C = true ->
-  C ⊢ p ∈ c -> is_some (in_compartment_opt C p) = true.
-Proof.
-  intros C p c GOOD IC;
-    apply in_compartment_opt_sound' in IC; [rewrite IC|]; auto.
-Qed.
-Hint Resolve in_compartment_opt_sound_is_some'.
 
 Theorem in_unique_compartment : forall C p c1 c2,
   good_compartments C = true ->
@@ -861,12 +1005,37 @@ Hint Resolve in_unique_compartment.
 Hypothesis good_othercalls : forall MM,
   forallb (fun sc => good_syscall sc MM) othercalls = true.
 
-Lemma isolate_create_set_is_set : forall M x sz X,
-  isolate_create_set M x sz ?= X -> is_set X = true.
-Proof.
-  intros until 0; unfold isolate_create_set;
-    destruct (forallb _ _); inversion 1; auto.
-Qed.
+Local Ltac isolate_fn_is_set :=
+  let H := fresh in
+  intros until 0; intros H;
+  let unfix gen f n := first [ gen; induction n; intros; simpl in H;
+                               [solve [inversion H; auto]|]
+                             | unfold f in H; simpl in H ] in
+  match type of H with
+      | ?f ?a ?b ?c ?n ?= ?X => unfix ltac:(gdep c; gdep b; gdep a; gdep X) f n
+      | ?f ?a ?b ?n    ?= ?X => unfix ltac:(gdep b; gdep a; gdep X)         f n
+      | ?f ?a ?n       ?= ?X => unfix ltac:(gdep a; gdep X)                 f n
+      | ?f ?n          ?= ?X => unfix ltac:(gdep X)                         f n
+  end;
+  repeat match type of H with (do! _ <- ?x; _) ?= _ =>
+    destruct x eqn:?; simpl in H; [|discriminate H]
+  end;
+  inversion H; subst;
+  eauto 4.
+
+Lemma isolate_get_range_is_set : forall M p X,
+  isolate_get_range M p ?= X -> is_set X = true.
+Proof. isolate_fn_is_set. Qed.
+Hint Resolve isolate_get_range_is_set.
+
+Lemma isolate_get_ranges_is_set : forall M p n X,
+  isolate_get_ranges M p n ?= X -> is_set X = true.
+Proof. isolate_fn_is_set. Qed.
+Hint Resolve isolate_get_ranges_is_set.
+
+Lemma isolate_create_set_is_set : forall M base X,
+  isolate_create_set M base ?= X -> is_set X = true.
+Proof. isolate_fn_is_set. Qed.
 Hint Resolve isolate_create_set_is_set.
 
 Theorem isolate_good : forall MM, good_syscall isolate MM = true.
@@ -878,7 +1047,7 @@ Proof.
   assert (ICO : exists c, in_compartment_opt C pc ?= c) by
     (destruct (in_compartment_opt _ _) eqn:?; [eauto | simpl in *; congruence]);
     clear EICO; move ICO after GOOD; destruct ICO as [c ICO].
-  assert (IC : C ⊢ pc ∈ c) by (eapply in_compartment_opt_correct; eassumption);
+  assert (IC : C ⊢ pc ∈ c) by (eapply in_compartment_opt_correct'; eassumption);
     move IC after GOOD.
   (* Now, compute in `isolate_fn'. *)
   let (* Can't get the binder name, so we provide it *)
@@ -890,23 +1059,21 @@ Proof.
                     destruct COND eqn:var
                 end; simpl; [|reflexivity]
   in rewrite ->ICO; simpl;
-     DO al; DO ah; DO jt; DO sm; DO jtsz; DO smsz;
-     DO LE; apply leb_le in LE;
+     DO pA; DO pJ; DO pS;
      destruct c as [A J S] eqn:def_c; simpl;
-     set (A' := range al ah); DO SUBSET_A';
+     DO A'; DO SUBSET_A'; DO NONEMPTY_A';
      DO J'; DO SUBSET_J';
      DO S'; DO SUBSET_S';
-     DO IC';
-     rewrite ->IC'; simpl;
-     set (c_upd := <<set_difference A A', insert_unique al J,S>>);
+     DO STEP; rewrite ->STEP; simpl;
+     set (c_upd := <<set_difference A A',J,S>>);
      set (c'    := <<A',J',S'>>);
-     repeat rewrite <- def_c in *.
+     repeat rewrite <-def_c in *.
   unfold good_compartments in *; simpl;
     assert (good_compartments C = true) as TEMP by exact GOOD;
     move TEMP before GOOD; unfold good_compartments in TEMP;
     repeat rewrite ->andb_true_iff in TEMP; destruct TEMP as [[GOODS NOL] CC].
   assert (IN : In c C) by (subst; eauto 2).
-  let is_good := (subst c c' c_upd A'; unfold good_compartment; simpl;
+  let is_good := (subst c c' c_upd; unfold good_compartment; simpl;
                   andb_true_split; eauto 2)
   in assert good_compartment c     by (rewrite ->forallb_forall in GOODS; auto);
      assert good_compartment c'    by is_good;
@@ -920,29 +1087,27 @@ Proof.
     - apply delete_in_iff in IN_ct; destruct IN_ct; eauto.
     - apply NOL. apply delete_in_iff in IN_ct; apply in_neq_in2; intuition.
   }
+  assert (NONEMPTY_A_A' : nonempty (set_difference A A') = true). {
+    destruct (set_difference A A') eqn:DIFF; [|reflexivity].
+    destruct A'; discriminate.
+  }
   unfold non_overlapping_list; repeat rewrite all_tail_pairs_tail; simpl in *.
   andb_true_split; auto; try (eapply forallb_impl; [|apply C'_NON_OVERLAPPING]).
-  - unfold non_overlapping; subst c c_upd c'; simpl in *.
+  - (* non_overlapping c_upd c' = true *)
+    unfold non_overlapping; subst c c_upd c'; simpl in *.
     rewrite ->set_intersection_difference_distrib,
-            set_intersection_self_id,
-            set_difference_intersection_distrib,
-            set_difference_self_annihilating,
-            set_intersection_nil_r;
-      try solve [subst A'; auto].
-    subst A'; destruct (range _ _) eqn:RANGE;
-      [|destruct (set_difference _ _); reflexivity].
-    apply range_empty in RANGE; exfalso; auto.
-  - simpl; intros c''; rewrite ->andb_true_iff; intros []; intros GOOD'';
+            ->set_intersection_self_id,
+            ->set_difference_intersection_distrib,
+            ->set_difference_self_annihilating,
+            ->set_intersection_nil_r
+      by auto.
+    destruct (set_difference A A'); [discriminate | reflexivity].
+  - simpl; intros c''; rewrite andb_true_iff; intros []; intros GOOD''.
       apply non_overlapping_subcompartment; auto; simpl.
-    + apply nonempty_iff_in; rewrite ->existsb_exists in IC';
-        destruct IC' as [pc' IC']; exists pc'; tauto.
-    + subst c; intros a; rewrite set_difference_spec; tauto.
+    subst c; intros a; rewrite set_difference_spec; tauto.
   - simpl; intros c''; rewrite andb_true_iff; intros []; intros GOOD'';
       apply non_overlapping_subcompartment; auto.
-    + subst c' A'; simpl.
-      apply nonempty_iff_in; exists al.
-      apply range_elts; auto with ordered.
-    + subst c; eapply subset_spec; eassumption.
+    subst c; eapply subset_spec; eassumption.
   - unfold contained_compartments; subst c_upd c'; simpl.
     assert (A_separated : forall a, In a A <->
                                     In a (set_difference A A') \/ In a A'). {
@@ -981,32 +1146,22 @@ Proof.
       specialize SUBSET_A' with a;
       specialize SUBSET_J' with a;
       specialize SUBSET_S' with a;
-      rewrite ->in_app_iff in SUBSET_J', SUBSET_S'.
-    intros [IN_a_alJ | [IN_a_J' | [IN_a_JTs |
-           [IN_a_S   | [IN_a_S' |  IN_a_SMs]]]]].
+      rewrite ->set_union_spec in SUBSET_J', SUBSET_S'.
+    intros [IN_a_J | [IN_a_J' | [IN_a_JTs |
+           [IN_a_S | [IN_a_S' |  IN_a_SMs]]]]].
     (* There are essentially three proofs here: (1) In a J/S; (2) In a J'/S'
        (which calls out to (1)); and (3) In a (concat (map
        jump_targets/shared_memory (delete c C)).  I could not figure out how to
        Ltac them together nicely, however, so here you have it. *)
-    + (* Unique proof *)
-      apply insert_unique_spec in IN_a_alJ.
-      destruct IN_a_alJ as [EQ | IN_J].
-      * (* Unique proof *)
-        subst a A'.
-        assert (IN_al_range : In al (range al ah)) by
-          (apply range_elts; auto with ordered).
-        specialize (SUBSET_A' IN_al_range).
-        rewrite concat_in; exists A; split; auto.
-        apply in_map_iff. exists c; subst c; auto.
-      * (* Proof (1) *)
-        move CC after IN_J.
-        rewrite ->contained_compartments_spec in CC;
-          specialize (CC c a IN);
-          subst c; simpl in *;
-          specialize (CC (or_introl IN_J));
-          destruct CC as [c'' [IN_c'' IN_a_c'']].
-        apply concat_in; exists (address_space c'').
-        split; auto. apply in_map_iff; eauto.
+    + (* Proof (1) *)
+      move CC after IN_a_J.
+      rewrite ->contained_compartments_spec in CC;
+        specialize (CC c a IN);
+        subst c; simpl in *;
+        specialize (CC (or_introl IN_a_J));
+        destruct CC as [c'' [IN_c'' IN_a_c'']].
+      apply concat_in; exists (address_space c'').
+      split; auto. apply in_map_iff; eauto.
     + (* Proof (2) *)
       destruct (SUBSET_J' IN_a_J') as [IN_A | IN_J].
       * apply concat_in; exists A; split; auto.
@@ -1065,6 +1220,120 @@ Proof.
       apply in_map_iff; eauto.
 Qed.
 Hint Resolve isolate_good.
+
+Lemma good_compartments_preserved_for_add_to_compartment_component :
+  forall c c' C,
+    good_compartments C = true ->
+    In c C ->
+    good_compartment c' = true ->
+    address_space c = address_space c' ->
+    subset (jump_targets  c')
+           (set_union (address_space c) (jump_targets  c)) = true ->
+    subset (shared_memory c')
+           (set_union (address_space c) (shared_memory c)) = true ->
+    good_compartments (c' :: delete c C) = true.
+Proof.
+  intros c c' C GOOD IN GOOD_c ADDR SUBSET_J SUBSET_S.
+  unfold good_compartments; repeat (andb_true_split; simpl); auto.
+  - rewrite ->non_overlapping_replace', forallb_forall by assumption.
+    intros c'' IN'; rewrite ->delete_in_iff in IN'; destruct IN' as [NEQ IN'].
+    rewrite ->non_overlapping_address_spaces with (c2 := c)
+      by auto.
+    assert (NOL : non_overlapping_list C = true) by auto;
+      rewrite ->non_overlapping_list_spec' in NOL by assumption.
+    auto.
+  - apply contained_compartments_spec; simpl.
+    intros d a IN_d IN_a.
+    assert (CC : contained_compartments C = true) by auto.
+    rewrite ->contained_compartments_spec in CC.
+    rewrite ->subset_spec in SUBSET_J,SUBSET_S;
+      specialize (SUBSET_J a); specialize (SUBSET_S a);
+      rewrite ->set_union_spec in SUBSET_J,SUBSET_S.
+    destruct (equiv_dec c' d); ssubst.
+    + specialize (CC c a IN); simpl in CC.
+      destruct IN_a as [IN_a | IN_a];
+        [apply SUBSET_J in IN_a | apply SUBSET_S in IN_a];
+        ( destruct IN_a as [IN_a | IN_a]
+        ; [ rewrite ->ADDR in IN_a; solve [eauto]
+          | destruct CC as [d' [IN_d' IN'_a]];
+            [ solve [auto]
+            | solve [ destruct (equiv_dec d' c);
+                      [ ssubst; rewrite ->ADDR in *; eauto
+                      | exists d'; rewrite ->delete_in_iff; auto ]]]]).
+    + destruct IN_d as [<- | IN_d]; [congruence|].
+      specialize CC with d a. destruct CC as [d' [IN_d' IN'_a]].
+      * apply delete_in_iff in IN_d; tauto.
+      * exact IN_a.
+      * destruct (equiv_dec d' c); [ssubst; rewrite ->ADDR in *; eauto|].
+        exists d'; rewrite ->delete_in_iff; auto.
+Qed.
+
+Lemma add_to_compartment_component_good : forall addr rd wr MM,
+  (forall X c, address_space c = address_space (wr X c)) ->
+  (forall c,   good_compartment c = true ->
+               is_set (rd c) = true) ->
+  (forall X c, good_compartment c = true ->
+               is_set X = true -> good_compartment (wr X c) = true) ->
+  (forall X c, jump_targets (wr X c) = jump_targets c \/
+               jump_targets (wr X c) = X /\ rd c = jump_targets c) ->
+  (forall X c, shared_memory (wr X c) = shared_memory c \/
+               shared_memory (wr X c) = X /\ rd c = shared_memory c) ->
+  good_syscall (Syscall addr (add_to_compartment_component rd wr)) MM = true.
+Proof.
+  clear - t ops spec.
+  unfold good_syscall; simpl;
+    intros _ rd wr MM ADDR rd_set wr_good eqJ eqS.
+  destruct (good_state MM) eqn:GOOD, MM as [pc R M C];
+    [unfold good_state in *; simpl in * | reflexivity].
+  rewrite ->andb_true_iff in GOOD; destruct GOOD as [EICO GOOD].
+  assert (ICO : exists c, in_compartment_opt C pc ?= c) by
+    (destruct (in_compartment_opt _ _) eqn:?; [eauto | simpl in *; congruence]);
+    clear EICO; move ICO after GOOD; destruct ICO as [c ICO].
+  assert (IC : C ⊢ pc ∈ c) by (eapply in_compartment_opt_correct'; eassumption);
+    move IC after GOOD.
+  rewrite ICO; simpl;
+    destruct (get R rAdd)          as [p|];  simpl; [|reflexivity].
+    destruct (set_elem p        _) eqn:ELEM;        [|reflexivity].
+    destruct (set_elem (pc + 1) _) eqn:STEP;        [|reflexivity];
+    simpl.
+  assert (IN : In c C) by eauto 2.
+  assert (GOOD_c : good_compartment c = true) by eauto.
+  destruct c as [A J S]; simpl in *.
+  rewrite <- ADDR; simpl; rewrite STEP.
+  andb_true_split; auto.
+  rewrite ->set_elem_true, ->set_union_spec in ELEM by
+    (apply set_union_preserves_set; eauto 2).
+  apply good_compartments_preserved_for_add_to_compartment_component; auto;
+    rewrite subset_spec; intros a; rewrite set_union_spec; simpl;
+    match goal with
+      | |- context[wr ?X ?c] =>
+        destruct (eqJ X c) as [eqWr | [eqWr eqRd]]; rewrite eqWr; auto
+      | |- context[wr ?X ?c] =>
+        destruct (eqS X c) as [eqWr | [eqWr eqRd]]; rewrite eqWr; auto
+    end;
+    rewrite ->insert_unique_spec, eqRd in *; simpl in *;
+    intros [-> | IN_a]; auto.
+Qed.
+
+Theorem add_to_jump_targets_good : forall MM,
+  good_syscall add_to_jump_targets MM = true.
+Proof.
+  clear - t ops spec.
+  intros; apply add_to_compartment_component_good;
+    intros; destruct c as [A J S]; auto.
+  unfold good_compartment; repeat andb_true_split; eauto 2.
+Qed.
+Hint Resolve add_to_jump_targets_good.
+
+Theorem add_to_shared_memory_good : forall MM,
+  good_syscall add_to_shared_memory MM = true.
+Proof.
+  clear - t ops spec.
+  intros; apply add_to_compartment_component_good;
+    intros; destruct c as [A J S]; auto.
+  unfold good_compartment; repeat andb_true_split; eauto 2.
+Qed.
+Hint Resolve add_to_shared_memory_good.
 
 Corollary good_syscalls_b : forall MM,
   forallb (fun sc => good_syscall sc MM) table = true.
@@ -1252,7 +1521,7 @@ Proof.
     have [EQ|/eqP NE] := altP (a =P p).
     + ssubst. apply in_app_iff. destruct STEP.
       match goal with IC1 : ?C ⊢ ?pc ∈ ?c1, IC2 : ?C ⊢ ?pc ∈ ?c2 |- _ =>
-        replace c1 with c2 in * by eauto
+        replace c1 with c2 in * by eauto 3
       end; assumption.
     + rewrite (PartMaps.get_upd_neq NE UPDR) in DIFF; congruence.
   - (* Syscall *)
