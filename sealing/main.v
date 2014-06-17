@@ -42,7 +42,7 @@ Instance sk : Abs.sealing_key := {|
   mkkey_fresh := admit
 |}.
 
-Instance ap : Abs.abstract_params t := {|
+Instance ap : Abs.params t := {|
   memory    := Int32PMap.t (Abs.value t);
   registers := Int32PMap.t (Abs.value t);
 
@@ -63,84 +63,12 @@ Instance ap : Abs.abstract_params t := {|
   |}
 |}.
 
+(*
 Definition build_abstract_sealing_machine :=
   fun user_memory : (word t -> list (word t)) -> 
 
 Definition build_concrete_sealing_machine :=
   fun user_memory : word t -> 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Definition admit {T: Type} : T.  Admitted.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(* We need a constant here that tells application code where to put
-   its entry point. *)
-
-(* Most of this belongs in symbolic.v
-Definition concrete_sealing_machine : Concrete.state _ := 
-  Concrete.mkState
-    admit (* memory *)
-    admit (* registers *)
-    admit (* cache (should get it from symbolic machine!) *)
-    admit (* pc *)
-    admit (* epc *)
-.
-
-(* And then I want to instantiate the symbolic refinement proof
-   appropriately so that I get a proof of refinement for this instance of
-   the concrete and symbolic machines. *)
-
 *)
 
 End WithClasses.
