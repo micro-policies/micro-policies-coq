@@ -7,6 +7,7 @@ Require Import common.common.
 Require Import symbolic.symbolic.
 Require Import cfi.cfi.
 Require Import cfi.cfi_rules.
+Require Import lib.Coqlib.
 Set Implicit Arguments.
 
 Import ListNotations.
@@ -148,6 +149,7 @@ Definition V s s' :=
 
 Definition S xs :=
   exists s, xs = [s] /\ ~ exists s', cfi_step symbolic_cfi_machine s s'.
+
 
 End WithClasses.
 

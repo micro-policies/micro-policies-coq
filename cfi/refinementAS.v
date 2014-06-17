@@ -422,7 +422,6 @@ Ltac match_inv :=
   | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
   | H : True |- _ => clear H
   end.
-  
 
 (*TODO: Syscalls and clean up of this mess*)
 Theorem backwards_simulation ast sst sst' :
@@ -915,6 +914,53 @@ Proof.
     * congruence.
 Qed.
 
+
+(*This is a helper lemma to instantiate CFI refinement*)
+Lemma contra : forall si sj,
+                 SymbolicCFI.ssucc si sj = false ->
+                 Symbolic.step stable si sj ->
+                 SymbolicCFI.step_a si sj ->
+                 False.
+Proof.
+  intros si sj SUCC STEP STEPA.
+  inversion STEPA. subst.
+  inversion STEP.
+  Focus 8. (*bnz case*)
+  unfold Symbolic.next_state_pc in NEXT.
+  unfold Symbolic.next_state in NEXT.
+  simpl in NEXT. match_inv.
+   - destruct (w == 0%w).
+     * inversion ST. 
+     * inversion ST.
+   - destruct (w == 0%w).
+     * simpl in SUCC. unfold SymbolicCFI.ssucc in SUCC.
+       inversion ST. subst mem' reg'.
+       rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
+       simpl in SUCC. rewrite H2 in SUCC. rewrite FETCH in SUCC.
+       rewrite INST in SUCC.
+       apply orb_false_iff in SUCC. destruct SUCC.
+       rewrite H2 in H. rewrite eqxx in H. discriminate.
+     * simpl in SUCC. unfold SymbolicCFI.ssucc in SUCC.
+       inversion ST. subst mem' reg'.
+       rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
+       simpl in SUCC. rewrite H2 in SUCC. rewrite FETCH in SUCC.
+       rewrite INST in SUCC.
+       apply orb_false_iff in SUCC. destruct SUCC.
+       rewrite H2 in H0. rewrite eqxx in H0. discriminate.
+  Focus 7. (*jump case*)
+  unfold Symbolic.next_state_pc in NEXT.
+  unfold Symbolic.next_state in NEXT.
+  simpl in NEXT.
+  simpl in SUCC. unfold SymbolicCFI.ssucc in SUCC.
+  inversion ST. subst.
+  rewrite FETCH in SUCC. rewrite FETCH in PC. inversion PC; subst. rewrite INST in SUCC.
+  simpl in SUCC. match_inv.
+  simpl in H3. inversion H3; subst.
+  assert (JMPTG := jump_tagged pc0 mem' FETCH INST). inversion JMPTG; subst.
+  congruence.
+  simpl in H3. inversion H3.
+Admitted.
+  
 End Refinement.
 
 End RefinementAS.
