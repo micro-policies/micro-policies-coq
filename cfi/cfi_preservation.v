@@ -28,9 +28,8 @@ Theorem backwards_refinement_preserves_cfi :
 Proof.
   intros CFI1 cst cst' cxs INIT2 INTERM2.
   destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
-(*
-  destruct (backwards_refinement _ _ INITREF INTERM2) 
-    as [ast' [axs [INTERMR1 [FINALREF INTSTATES]]]].
+  destruct (backwards_refinement_with_v _ _ INITREF INTERM2) 
+    as [axs [[ast' INTERMR1] [INTSTATES HSPLIT]]].
   destruct (intermr_implies_interm INTERMR1) as [INTERM1 | [EQ LST]].
   { (*machine1  steps*)
     destruct (CFI1 ast ast' axs INIT1 INTERM1) as [TSAFE1 | VIOLATED].
@@ -39,124 +38,55 @@ Proof.
       left. intros csi csj IN2 STEPN2.
       destruct (visible csi csj) eqn:VISIBLE.
       + (*case it's a visible step*)
-        destruct (INTSTATES _ _ IN2 STEPN2 VISIBLE) as [asi [asj [IN2' [STEPN1 [REFI REFJ]]]]].
+        destruct (INTSTATES _ _ IN2 STEPN2 VISIBLE) 
+          as [asi [asj [IN2' [STEPN1 [REFI REFJ]]]]].
         assert (SUCC := TSAFE1 asi asj IN2' STEPN1).
         apply (cfg_equiv asi asj csi csj REFI REFJ SUCC).
       + (*case it's an invisible step*)
-         apply (cfg_invisible _ _ STEPN2 VISIBLE).
-   - 
-        
-
-*)
-Admitted. 
-  (*
-  intros CFI1 cst cst' cxs INIT2 INTERM2.
-  destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
-  destruct (backwards_refinement' rf ast INITREF INTERM2) 
-    as [ast' [axs [INTERMR1 [FINALREF [INTSTATES SPLITS]]]]].
-  destruct (intermr_implies_interm INTERMR1) as [INTERM1 | [EQ LST]].
-  + (* machine1 steps*)
-    destruct (CFI1 ast ast' axs INIT1 INTERM1) as [TSAFE1 | H].
-    - (*machine1 has CFI at all steps*)
-      unfold trace_has_cfi in TSAFE1.
-      left.
-      intros csi csj IN2.
-      destruct (INTSTATES csi csj IN2) as [asi [asj [IN2' [REFI REFJ]]]].
-      destruct IN2' as [[VISIBLE IN2'] | [INVISIBLE  [EQ IN]]].
-      * (*case it's a visible STEP and In2 for machine1 is true*)
-        destruct (TSAFE1 asi asj IN2') as [[STEPA ?] | SUCC].
-        { left; split; [idtac | apply attacker_pc]; eapply astep_implies_cstep; eauto. }
-        { assert (STEP1: cfi_step machine1 asi asj) by (eapply interm_in2_step; eauto).
-          destruct STEP1 as [STEPA | STEPN].
-          - left.
-            eapply astep_implies_cstep in STEPA; eauto.
-            split; [assumption | erewrite attacker_pc; eauto].
-          - right. apply (cfg_equiv asi asj csi csj REFI REFJ STEPN SUCC). }
-      * (*case it's an invisible STEP*)
-        subst.
-        assert (STEP2: cfi_step machine2 csi csj) by (eapply interm_in2_step; eauto).
-        destruct STEP2 as [? | STEPN2].
-        left; erewrite attacker_pc; eauto.
-        destruct (cfg_invisible asj csi csj STEPN2 INVISIBLE); auto.
-    - (*machine1 has a violation*)
-      destruct H as [asi [asj [ahs [atl [TRACE [VIOLATES1 [CFIH [CFIT STOPS1]]]]]]]].
-      destruct (SPLITS asi asj ahs atl TRACE) as [csi [csj [chs [ctl [REFI [REFJ [CTRACE [INTHEAD INTAIL]]]]]]]].
-      right.
-      exists csi; exists csj; exists chs; exists ctl.
-      split. assumption.
-      split. 
-      eapply av_implies_cv; eauto.
-      split.
-      { (* trace_has_cfi chs++[csi] *)
-        intros csi' csj' IN2. 
-        destruct (INTHEAD csi' csj' IN2) as [asi' [asj' [IN2' [REFI' REFJ']]]].
-        destruct IN2' as [[VISIBLE IN2'] | [INVISIBLE  [EQ IN]]].
-        * (*machine2 takes a visible step*)
-          destruct (CFIH asi' asj' IN2') as [[STEPA ?] | SUCC]. 
-          { left; split; [idtac | apply attacker_pc]; eapply astep_implies_cstep; eauto. }
-          { assert (STEP1: cfi_step machine1 asi' asj'). 
-            { eapply interm_in2_step. eauto. rewrite TRACE. 
-              replace (ahs ++ asi :: asj :: atl) with ((ahs++[asi])++asj::atl). 
-              apply in2_strengthen'. assumption.
-              simpl; rewrite <- app_assoc; reflexivity. }
-            destruct STEP1 as [STEPA | STEPN]; 
-              [ left; erewrite attacker_pc; eapply astep_implies_cstep in STEPA; eauto |
-                right; apply (cfg_equiv asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
-          }
-        * (*machine2 takes an invisible step*)
-          subst.
-          assert (STEP2: cfi_step machine2 csi' csj').
-          { eapply interm_in2_step in INTERM2.
-            eauto. replace (chs ++ csi :: csj :: ctl) with ((chs ++ [csi]) ++ (csj :: ctl)).
-            apply in2_strengthen'. assumption.
-            rewrite <- app_assoc. reflexivity.
-          }
-          destruct STEP2 as [STEPA | STEPN].
-          { left; split; [idtac | apply attacker_pc]; eauto. }
-          { right; eapply cfg_invisible; eauto. }
-      }
-      { (*trace has cfi csj :: ctl and will halt *)
-        split.
-        + (*tail has cfi*)
-          intros csi' csj' IN2.
-          destruct (INTAIL csi' csj' IN2) as [asi' [asj' [IN2' [REFI' REFJ']]]].
-          destruct IN2' as [[VISIBLE IN2'] | [INVISIBLE  [EQ IN]]].
-          - (*visible step*)
-            destruct (CFIT asi' asj' IN2') as [[STEPA ?] | SUCC].
-            * left; split; [idtac | apply attacker_pc]; eapply astep_implies_cstep; eauto.
-            * assert (STEP1: cfi_step machine1 asi' asj').
-              { eapply interm_in2_step; eauto. rewrite TRACE.
-                apply in2_strengthen with (ys := (ahs ++ [asi])) in IN2'.
-                rewrite <- app_assoc in IN2'; auto.
-              }
-              destruct STEP1 as [STEPA | STEPN];
-              [ left; erewrite attacker_pc; eapply astep_implies_cstep in STEPA; eauto |
-                right; apply (cfg_equiv asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
-          - (*invisible step*)
-            subst.
-            assert (STEP2: cfi_step machine2 csi' csj').
-            { eapply interm_in2_step in INTERM2.
-              eauto. replace (chs ++ csi :: csj :: ctl) with ((chs ++ [csi]) ++ (csj :: ctl)).
-              apply in2_strengthen. assumption.
-              rewrite <- app_assoc. reflexivity.
-            }
-            destruct STEP2 as [STEPA | STEPN].
-            { left; split; [idtac | apply attacker_pc]; eauto. }
-            { right; eapply cfg_invisible; eauto. }
+        apply (cfg_invisible _ _ STEPN2 VISIBLE).
+         apply (cfg_kernel _ _ STEPN2 VISIBLE).
+     - destruct VIOLATED 
+         as [asi [asj [ahs [atl [ALST [[ASTEP AV] [TSAFE1 [TSAFE2 STOP1]]]]]]]].
+       right. 
+       destruct (HSPLIT _ _ _ _ ALST ASTEP) 
+         as [csi [csj [chs [ctl [REFI [REFJ [CLST [STEP2 [INTHEAD INTTAIL]]]]]]]]].
+       exists csi; exists csj; exists chs; exists ctl.
+       split; auto.
+       split. split; [assumption | eapply av_implies_cv; eauto].
+       split.
+       {(*cfi for head trace*)
+        intros csi' csj' IN2 STEP2'.
+        destruct (visible csi' csj') eqn:VIS.
+        - destruct (INTHEAD _ _ IN2 STEP2' VIS) 
+            as [asi' [asj' [IN2' [ASTEP' [REFI' REFJ']]]]].
+          assert (SUCC := TSAFE1 _ _ IN2' ASTEP').
+          apply (cfg_equiv1 _ _ _ _ REFI' REFJ' SUCC). 
+        - apply (cfg_kernel _ _ STEP2' VIS).
+       }
+       { split.
+         + (*cfi for tail trace*)
+           intros csi' csj' IN2 STEP2'.
+           destruct (visible csi' csj') eqn:VIS.
+           - destruct (INTTAIL _ _ IN2 STEP2' VIS) 
+             as [asi' [asj' [IN2' [ASTEP' [REFI' REFJ']]]]].
+             assert (SUCC := TSAFE2 _ _ IN2' ASTEP').
+             apply (cfg_equiv1 _ _ _ _ REFI' REFJ' SUCC). 
+           - apply (cfg_kernel _ _ STEP2' VIS).
          + eapply as_implies_cs; eauto.
-     }
-  + (* machine1 doesn't step at all*)   
-    subst. left.
-    intros csi csj IN2.
-    destruct (INTSTATES csi csj IN2) as [asi [asj [IN2' [REFI REFJ]]]].
-    destruct IN2' as [[VISIBLE IN2'] | [INVISIBLE  [EQ IN]]].
-    * (*case machine1 takes a step*)
-      destruct IN2'.
-    * (*case machine1 does not take a step*)
-      subst.
-      destruct (interm_in2_step INTERM2 IN2).
-      - left; erewrite attacker_pc; eauto.
-      - right; eapply cfg_invisible; eauto.*)
+       }
+  }
+  { (*machine1 doesn't step at all*)
+    subst.
+    left.
+    intros csi csj IN2 STEP2.
+    destruct (visible csi csj) eqn:VIS.
+    - (*case the step is visible - contradiction*)
+      destruct (INTSTATES _ _ IN2 STEP2 VIS) as [? [? [CONTRA ?]]].
+      destruct CONTRA.
+    - (*case the step is invisible*)
+      apply (cfg_kernel _ _ STEP2 VIS).
+  }
+Qed.
 
 (*
 Theorem backwards_refinement_preserves_cfi :
