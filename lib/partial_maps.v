@@ -192,7 +192,7 @@ End PartMapPointwise.
 Section PartMapPointwiseUpd.
 
 Context {M1 M2 V1 V2 : Type}
-        {K : eqType} (* need key equality to do updates properly? *)
+        {K : eqType} (* need key equality to reason about updates *)
         {pm1 : partial_map M1 K V1}
         {pm1s : axioms pm1}
         {pm2 : partial_map M2 K V2}
@@ -244,6 +244,41 @@ Proof.
 Qed.
 
 End PartMapPointwiseUpd.
+
+Section PartMapExtend.
+
+Context {M1 M2 V1 V2 M K1 K2 : Type}
+        {K : eqType} (* need key equality to reason about updates *)
+        {pm1 : partial_map M1 K V1}
+        {pm1s : axioms pm1}
+        {pm2 : partial_map M2 K V2}
+        {pm2s : axioms pm2}
+        {pmk : partial_map M K1 K2}
+        {pmks : axioms pm2}.
+
+(* We show that if P km is closed under a key map transformation
+   (e.g. extension) then so is any pointwise (P km) *)
+
+Variable P : M -> V1 -> V2 -> Prop.
+Variable f : M -> K1 -> K2 -> Prop. (* condition on key_map (e.g. freshness) *)
+Variable g : M -> K1 -> K2 -> M.    (* key_map operation ( e.g. set) *)
+
+Hypothesis p_extend_map : forall km k1 k2 v1 v2,
+  f km k1 k2 ->
+  P km v1 v2 ->
+  P (g km k1 k2) v1 v2.
+
+Lemma refine_extend_map : forall km m1 m2 k1 k2,
+  f km k1 k2 ->
+  (pointwise (P km)) m1 m2 ->
+  (pointwise (P (g km k1 k2))) m1 m2.
+Proof.
+  move => km m1 m2 k1 k2 cond ref k. specialize (ref k).
+  destruct (get m1 k); destruct (get m2 k) => //.
+  by auto using p_extend_map.
+Qed.
+
+End PartMapExtend.
 
 Section PartMapDomains.
 Variable M M' M'' K V V' V'' : Type.

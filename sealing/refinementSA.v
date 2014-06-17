@@ -138,6 +138,7 @@ Tactic Notation "unfold_next_state_in" ident(H) :=
   try unfold Symbolic.next_state_reg_and_pc in H;
   try unfold Symbolic.next_state in H.
 
+(* We show that refinement relations are closed under key map extension *)
 Lemma refine_key_set_km : forall km ak sk akey skey,
   get km akey = None ->
   refine_key km ak sk ->
@@ -158,22 +159,26 @@ Proof.
     intuition; eauto using refine_key_set_km.
 Qed.
 
+(* Instantiation of refine_extend_map not so simple *)
 Lemma refine_reg_set_km : forall km aregs sregs akey skey,
   get km akey = None ->
   refine_reg km aregs sregs ->
   refine_reg (set km akey skey) aregs sregs.
 Proof.
-  unfold refine_reg.
-  move => km areg sreg akey skey anew rreg w. specialize (rreg w).
-  destruct (get areg w); destruct (get sreg w) => //.
-  by auto using refine_val_atom_set_km.
+  intros. eapply refine_extend_map with
+            (f := fun km k1 k2 => get km k1 = None) => //.
+  intros. by apply refine_val_atom_set_km.
 Qed.
 
 Lemma refine_mem_set_km : forall km amem smem akey skey,
   get km akey = None ->
   refine_mem km amem smem ->
   refine_mem (set km akey skey) amem smem.
-Admitted. (* same as above *)
+Proof.
+  intros. eapply refine_extend_map with
+            (f := fun km k1 k2 => get km k1 = None) => //.
+  intros. by apply refine_val_atom_set_km.
+Qed.
 
 Lemma backward_simulation : forall km ast sst sst',
   refine_state km ast sst ->
@@ -279,14 +284,11 @@ Proof.
     have [//|/eqP neq_skey CALL] := altP (skey =P Sym.max_key).
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     injection CALL; intro H; subst; clear CALL.
-    
-    assert (refine_key (set km (Abs.mkkey_f akeys) skey)
-                        (Abs.mkkey_f akeys) skey) as rk.
-      unfold refine_key. by rewrite get_set_eq.
 
     assert(refine_val_atom (set km (Abs.mkkey_f akeys) skey)
               (Abs.VKey t (Abs.mkkey_f akeys))
-              (max_word@(Sym.KEY skey))) as rva by apply rk.
+              (max_word@(Sym.KEY skey))) as rva.
+      unfold refine_val_atom, refine_key. by rewrite get_set_eq.
 
     (* need to show freshness for new abstract key to be able to use
        refine...set lemmas to port refinements to the extended km *)
