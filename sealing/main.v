@@ -68,12 +68,7 @@ Instance ap : Abs.params t := {|
   |}
 |}.
 
-(* We forgot (in the initial_state function):
-
-   - An initial value for the extra state
-   - Relocatable stuff needs to be parameterized on location of extra state
-
-   Need to build...
+(* Need to build...
 
    - encoding of tags
 
