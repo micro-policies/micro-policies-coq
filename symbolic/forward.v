@@ -277,7 +277,7 @@ Ltac solve_refine_state :=
   try match goal with
   | USERREGS : user_regs_unchanged ?cregs _,
     H : TotalMaps.get ?cregs ?r = _ |- _ =>
-    simpl in USERREGS; rewrite (USERREGS r) in H
+    simpl in USERREGS; rewrite -> (USERREGS r) in H
   end;
   repeat match goal with
   | |- _ /\ _ =>
@@ -368,14 +368,23 @@ Proof.
     ]
   end.
 
-  - eexists. split.
+  - exploit H; eauto. clear H. intros H.
+    repeat match goal with
+    | H : exists _, _ |- _ => destruct H
+    | H : _ /\ _ |- _ => destruct H
+    end.
+    eexists. split.
     + eapply re_step; trivial; [solve_concrete_step|].
       eapply exec_until_weaken.
-(* XXX TODO: make this work again
-    eassumption.
+      eassumption.
     + solve_refine_state.
 
-  - eexists. split.
+  - exploit H4; eauto. clear H4. intros H4.
+    repeat match goal with
+    | H : exists _, _ |- _ => destruct H
+    | H : _ /\ _ |- _ => destruct H
+    end.
+    eexists. split.
     + eapply re_step; trivial; [solve_concrete_step|].
       eapply restricted_exec_trans.
       { eapply exec_until_weaken. eassumption. }
@@ -384,7 +393,5 @@ Proof.
     + solve_refine_state.
 
 Qed.
-*)
-Admitted.
 
 End Refinement.
