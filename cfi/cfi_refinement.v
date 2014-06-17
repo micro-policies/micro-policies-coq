@@ -64,6 +64,11 @@ Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := 
     step csi csj ->
     ~ step_a csi csj;
 
+  av_no_attacker : forall (asi asj : @state t machine1),
+    V1 asi asj ->
+    step asi asj ->
+    ~ step_a asi asj;
+
   av_implies_cv : forall ast ast' cst cst', refine_state ast cst -> refine_state ast' cst' -> V1 ast ast' -> V2 cst cst';
 
   as_implies_cs : forall ast cst axs cxs, refine_state ast cst -> S1 (ast::axs) -> S2 (cst::cxs)
@@ -86,10 +91,13 @@ Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
                                           \/ visible csi csj = false /\ asi = asj /\ In asi axs)
                                          /\ refine_state asi csi
                                          /\ refine_state asj csj) /\
-    (forall asi asj ahs atl, axs = ahs ++ asi :: asj :: atl -> 
+    (forall asi asj ahs atl, axs = ahs ++ asi :: asj :: atl ->
+                             step asi asj ->
+                             V1 asi asj ->
                             exists csi csj chs ctl,
                               refine_state asi csi /\ refine_state asj csj /\
                               cxs = chs ++ csi :: csj :: ctl /\
+                              step csi csj /\
                               (forall csi' csj', In2 csi' csj' (chs ++ [csi]) -> exists asi' asj', 
                                          (visible csi' csj' = true /\ In2 asi' asj' (ahs ++ [asi]) 
                                           \/ visible csi' csj' = false /\ asi' = asj' /\ In asi' (ahs ++ [asi]))
@@ -101,7 +109,7 @@ Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
                                          /\ refine_state asi' csi'
                                          /\ refine_state asj' csj')).
 Proof. 
-  intros INITREF INTERM2.
+ (* intros INITREF INTERM2.
   generalize dependent ast.
   induction INTERM2 as [cst cst' STEP2 | cst cst'' cst' cxs' STEP2 INTERM2']; intros.
   + destruct (backwards_refinement_single ast INITREF STEP2) 
@@ -133,11 +141,13 @@ Proof.
         - exists ast; exists ast'; split; [left; split; simpl; auto | auto].
         - destruct CONTRA.
       }
-      { intros asi asj ahs atl ALST.
+      { intros asi asj ahs atl ALST STEPN1 VIO1.
         destruct ahs.
         - simpl in ALST. destruct atl; inversion ALST; subst. 
           exists cst; exists cst'; exists []; exists [].
-          simpl. repeat (split; auto);
+          simpl. repeat (split; auto).
+          destruct (av_no_attacker VIO1 STEPN1); auto.
+          intros csi' csj' CONTRA; destruct CONTRA.
           intros csi' csj' CONTRA; destruct CONTRA.
         - repeat (destruct ahs; inversion ALST).
       }   
@@ -183,7 +193,7 @@ Proof.
              { subst. exists asj; exists asj. split; [right; split; [assumption | split; simpl; auto] | auto]. }
          }
          {(*violation case *)
-           intros asi asj ahs atl ALST.
+           intros asi asj ahs atl ALST stepn1.
            destruct ahs.
            - simpl in ALST.
              inversion ALST; subst.
@@ -392,6 +402,7 @@ Proof.
                 * apply INTHEAD. assumption.
           }
 Qed.  
+*) Admitted.
       
 End Refinement.
 
