@@ -68,32 +68,6 @@ Class machine_refinement (machine1 : cfi_machine t) (machine2 : cfi_machine t) :
                                                 
  }.
 
-(* Broken lemma: it seems that this does not follow from
-   backwards_refinement_normal and backwards_refinement_attacker
-
-Section Try.
-
-Context (rf : machine_refinement machine1 machine2).
-
-Lemma backwards_refinement_single' : 
-    forall ast cst cst'
-      (REF: refine_state ast cst)
-      (STEP: cfi_step machine2 cst cst'),
-      (exists ast', refine_state ast' cst' /\ 
-                    ((step cst cst' -> step ast ast') /\
-                     (step_a cst cst' -> step_a ast ast')))
-      \/
-      (step cst cst' /\ refine_state ast cst').
-Proof.
-  intros. destruct STEP.
-  - destruct (backwards_refinement_attacker _ _ _ REF H) as [ast' [H1 H2]].
-    left. exists ast'. split. assumption. split; intro.
-    intuition.
-  - destruct (backwards_refinement_normal _ _ _ REF H).
-
-End Try.
-*)
-
 Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := {
   initial_refine : forall (cst : @state t machine2),
     initial cst ->
@@ -168,17 +142,50 @@ Proof.
   - exists [ast]. split. exists ast. now constructor.
     intros ? ? IN HC. destruct IN as [[H1 H2]| H]. subst. tauto. now destruct H.    
   }
-Admitted.
-
-(*
-    destruct STEP2 as [STEPA | STEPN].
-    destruct (backwards_refinement_attacker _ _ _ INITREF STEPA) as [ast' [STEPA' FINALREF]].
-    exists ast'; exists [ast;ast'].
-    split. eapply intermr_multi; eauto. left. eauto. constructor.
-    split; auto.
-    intros csi csj IN2 STEPN2 VISIBLE.
- Admitted.
-*)
+  { destruct (step_classic cst cst'') as [STEPN | NST].
+    - destruct (backwards_refinement_normal _ _ _ INITREF STEPN) as [VIS INVIS].
+      destruct (visible cst cst'') eqn:VISIBLE.
+      + destruct (VIS eq_refl) as [ast'' [ASTEP AREF]]. clear INVIS VIS.
+        destruct (IHINTERM2' ast'' AREF) as [axs [[ast' INTERMR1] IH]]. 
+        exists (ast :: axs); split.
+        assert (INTERMR1' : intermrstep machine1 (ast :: axs) ast ast').
+        { eapply intermr_multi. right; eauto. assumption. }
+        eexists; now eassumption.
+        intros csi csj IN2 STEP VISIBLE'.
+        destruct cxs'; [inversion INTERM2' | idtac].
+        apply interm_first_step in INTERM2'; subst.
+        destruct IN2 as [[? ?] | IN2]; subst.
+        * destruct axs; [inversion INTERMR1 | idtac].
+          apply intermr_first_step in INTERMR1; subst.
+          exists ast; exists ast''. repeat(split;simpl;auto).
+        * destruct (IH _ _ IN2 STEP VISIBLE') as [asi [asj [IN2' [STEP' [REFI REFJ]]]]].
+          exists asi; exists asj. split. change (ast :: axs) with ([ast] ++ axs). 
+          apply in2_strengthen. now assumption.
+          repeat (split; auto). 
+     + specialize (INVIS eq_refl). clear VIS.
+       destruct (IHINTERM2' ast INVIS) as [axs [[ast' INTERMR1] IH]].
+       exists axs. split. exists ast'; now assumption.
+       intros csi csj IN2 step VIS.
+       destruct cxs'; [destruct IN2 | idtac].
+       apply interm_first_step in INTERM2'; subst.
+       destruct IN2 as [[? ?] | IN2]; subst; [congruence | eapply IH; eauto].
+    - (*this get's a little more complicated than the base case, because we need a refine_state ast cst''
+        in order to apply the IH*)
+      destruct STEP2 as [STEPA | STEPN].
+      { destruct (backwards_refinement_attacker _ _ _ INITREF STEPA) as [ast'' [ASTEPA REF]].
+        destruct (IHINTERM2' ast'' REF) as [axs [[ast' INTERMR1] IH]].
+        exists (ast :: axs). split.  exists ast'. eapply intermr_multi; eauto. left. now assumption.
+        intros csi csj IN2 STEP VISIBLE. destruct cxs'; [inversion INTERM2' | idtac].
+        apply interm_first_step in INTERM2'; subst.
+        destruct IN2 as [[? ?] | IN2]; subst.
+        * now tauto.
+        * destruct (IH _ _ IN2 STEP VISIBLE) as [asi [asj [IN2' [ASTEP [REFI REFJ]]]]].
+          exists asi; exists asj. split. change (ast :: axs) with ([ast] ++ axs). apply in2_strengthen.
+          assumption. repeat(split;auto).
+      }
+      { tauto. }
+  }
+Qed.
 
 Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
   refine_state ast cst ->
