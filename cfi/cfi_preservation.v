@@ -26,9 +26,13 @@ Theorem backwards_refinement_preserves_cfi :
   cfi machine1 V1 S1 ->
   cfi machine2 V2 S2. 
 Proof.
-Admitted.
- 
-  (*intros CFI1 cst cst' cxs INIT2 INTERM2.
+  intros CFI1 cst cst' cxs INIT2 INTERM2.
+  destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
+
+
+Admitted. 
+  (*
+  intros CFI1 cst cst' cxs INIT2 INTERM2.
   destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
   destruct (backwards_refinement' rf ast INITREF INTERM2) 
     as [ast' [axs [INTERMR1 [FINALREF [INTSTATES SPLITS]]]]].

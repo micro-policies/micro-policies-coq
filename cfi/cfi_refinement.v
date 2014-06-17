@@ -29,29 +29,83 @@ Class machine_refinement (machine1 : cfi_machine t) (machine2 : cfi_machine t) :
   refine_state : ((@state t) machine1) -> ((@state t) machine2) -> Prop;
  
   visible : ((@state t) machine2) -> ((@state t) machine2) -> bool;
-                     
+
+(* Q:
+      visible cst cst' = false -> 
+      cfi_step cst cst' ->
+      step cst cst' (or even ~step_a cst cst')
+*)
+
+  (* a better way to state this is as 3 properties (diagrams): a-a n-0 n-n *)
+  backwards_refinement_normal :  
+    forall ast cst cst'
+      (REF: refine_state ast cst)
+      (STEP: step cst cst'),
+      (visible cst cst' = true -> exists ast', step ast ast' /\ refine_state ast' cst')
+      /\ (visible cst cst' = false -> refine_state ast cst');
+
+  backwards_refinement_attacker :  
+    forall ast cst cst'
+      (REF: refine_state ast cst)
+      (STEP: step_a cst cst'),
+      exists ast', step_a ast ast'  /\ refine_state ast' cst';
+
   backwards_refinement_single : 
     forall ast cst cst'
       (REF: refine_state ast cst)
       (STEP: cfi_step machine2 cst cst'),
       (visible cst cst' = true /\
-       exists ast', cfi_step machine1 ast ast' /\ refine_state ast' cst' /\ 
+       exists ast', cfi_step machine1 ast ast' (* <- implied by line below *)  /\ refine_state ast' cst' /\ 
                     ((step cst cst' /\ step ast ast') \/ (step_a cst cst' /\ step_a ast ast'))) 
       \/
       (visible cst cst' = false /\
        refine_state ast cst')
-                                                                               
+                                                
  }.
+
+
+(* Broken lemma: it seems that this does not follow from
+   backwards_refinement_normal and backwards_refinement_attacker
+
+Section Try.
+
+Context (rf : machine_refinement machine1 machine2).
+
+Lemma backwards_refinement_single' : 
+    forall ast cst cst'
+      (REF: refine_state ast cst)
+      (STEP: cfi_step machine2 cst cst'),
+      (exists ast', refine_state ast' cst' /\ 
+                    ((step cst cst' -> step ast ast') /\
+                     (step_a cst cst' -> step_a ast ast')))
+      \/
+      (step cst cst' /\ refine_state ast cst').
+Proof.
+  intros. destruct STEP.
+  - destruct (backwards_refinement_attacker _ _ _ REF H) as [ast' [H1 H2]].
+    left. exists ast'. split. assumption. split; intro.
+    intuition.
+  - destruct (backwards_refinement_normal _ _ _ REF H).
+
+End Try.
+*)
 
 Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := {
   initial_refine : forall (cst : @state t machine2),
     initial cst ->
     exists (ast : @state t machine1), initial ast /\ refine_state ast cst;
 
-  cfg_kernel : forall (asi : @state t machine1) csi csj, 
+  cfg_kernel : forall csi csj, 
     step csi csj ->
     visible csi csj = false ->
     succ csi csj = true;
+  (* if we drop visible then we could return to something like this: *)
+  backwards_refinement_normal_zero_step :  
+    forall ast cst cst'
+      (REF: refine_state ast cst)
+      (STEP: step cst cst'),
+      refine_state ast cst' ->
+      succ cst cst' = true;
 
   cfg_equiv1 : forall (asi asj : @state t machine1) csi csj,
     refine_state asi csi ->
@@ -59,6 +113,8 @@ Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := 
     succ asi asj = true ->
     succ csi csj = true;
 
+  (* Why for concrete machine too??? If we could avoid this, we should.
+     Try to do proof below without it! *)
   vio_noattacker : forall (csi csj : @state t machine2),
     succ csi csj = false ->
     step csi csj ->
@@ -78,6 +134,24 @@ Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := 
 Context (rf : machine_refinement machine1 machine2).
 Context (rfs : machine_refinement_specs rf).
 
+(* This should follow from from backwards_refinement_normal and
+   backwards_refinement_attacker *)
+Lemma backwards_refinement_on_traces_ignoring_violations
+    (ast : @state t machine1) cst cst' cxs :
+  refine_state ast cst ->
+  intermstep machine2 cxs cst cst' ->
+  exists ast', exists axs,
+    intermrstep machine1 axs ast ast' /\
+    refine_state ast' cst' /\
+    (forall csi csj,
+       In2 csi csj cxs ->
+       step csi csj ->
+       visible cst cst' = true ->
+         exists asi asj,
+           In2 asi asj axs /\ step asi asj
+           /\ refine_state asi csi /\ refine_state asj csj).
+Admitted.
+
 Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
   refine_state ast cst ->
   intermstep machine2 cxs cst cst' ->
@@ -91,6 +165,8 @@ Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
                                           \/ visible csi csj = false /\ asi = asj /\ In asi axs)
                                          /\ refine_state asi csi
                                          /\ refine_state asj csj) /\
+    (* about violations -- why in the same property? *)
+    (* stated in reverse wrt above *)
     (forall asi asj ahs atl, axs = ahs ++ asi :: asj :: atl ->
                              step asi asj ->
                              V1 asi asj ->

@@ -42,7 +42,7 @@ Definition singlestep := single cfi_step.
 Hypothesis exists_initial : exists s, initial s.
 
 (* A violation occured *)
-Variable V : state -> state ->  Prop.
+Variable V : state -> state ->  Prop. (* TODO: Replace things with succ _ _ = false? *)
 (* Execution will stop *)
 Variable S : list state -> Prop.
 
@@ -59,6 +59,7 @@ Definition trace_has_cfi' (trace : list state) :=
 Definition trace_has_cfi (trace : list state) := 
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
+             (* TODO: remove first conjunct *)
              (step_a si sj -> get_pc si = get_pc sj) /\
              (step si sj -> succ si sj = true).
 (* 1. Expose attacker step refinement separately
@@ -74,6 +75,7 @@ Definition cfi :=
     (INIT : initial s)
     (INTERM : intermstep xs s s'),
       trace_has_cfi xs \/
+      (* the next part causes the most complexity in proofs *)
       exists s'' s''' hs tl, xs = hs ++ s'' :: s''' :: tl
                              /\ (step s'' s''' /\ V s'' s''')
                              /\ trace_has_cfi (hs ++ [s''])
