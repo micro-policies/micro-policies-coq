@@ -233,8 +233,8 @@ Proof.
 Qed.  
 
 Theorem cfi : cfi abstract_cfi_machine V S.
-Proof.
-  unfold cfi. intros. 
+Proof. Admitted. (*broken from change of cfi definition to not say anything about attacker*)
+  (*unfold cfi. intros. 
   apply interm_equiv_intermrev in INTERM.
   induction INTERM as [s s' STEP | s s' s'' xs STEP INTERM ].
   + destruct (succ s s') eqn:SUCC.  
@@ -316,7 +316,7 @@ Proof.
      destruct STEP as [STEPA | STEP].
      - inversion STEPA.
      - inversion STEP. }
-Qed.
+Qed. *)
 
 End WithClasses.
 

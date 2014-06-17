@@ -99,13 +99,6 @@ Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := 
     step csi csj ->
     visible csi csj = false ->
     succ csi csj = true;
-  (* if we drop visible then we could return to something like this: *)
-  backwards_refinement_normal_zero_step :  
-    forall ast cst cst'
-      (REF: refine_state ast cst)
-      (STEP: step cst cst'),
-      refine_state ast cst' ->
-      succ cst cst' = true;
 
   cfg_equiv1 : forall (asi asj : @state t machine1) csi csj,
     refine_state asi csi ->
@@ -136,21 +129,31 @@ Context (rfs : machine_refinement_specs rf).
 
 (* This should follow from from backwards_refinement_normal and
    backwards_refinement_attacker *)
-Lemma backwards_refinement_on_traces_ignoring_violations
+Lemma backwards_refinement
     (ast : @state t machine1) cst cst' cxs :
   refine_state ast cst ->
   intermstep machine2 cxs cst cst' ->
   exists ast', exists axs,
     intermrstep machine1 axs ast ast' /\
-    refine_state ast' cst' /\
+    refine_state ast' cst' /\ (*this may be removed*)
     (forall csi csj,
        In2 csi csj cxs ->
        step csi csj ->
-       visible cst cst' = true ->
+       visible csi csj = true ->
          exists asi asj,
            In2 asi asj axs /\ step asi asj
            /\ refine_state asi csi /\ refine_state asj csj).
-Admitted.
+Proof.
+  intros INITREF INTERM2.
+  generalize dependent ast.
+  induction INTERM2 as [cst cst' STEP2 | cst cst'' cst' cxs' STEP2 INTERM2']; intros.
+  + destruct STEP2 as [STEPA | STEPN].
+    destruct (backwards_refinement_attacker _ _ _ INITREF STEPA) as [ast' [STEPA' FINALREF]].
+    exists ast'; exists [ast;ast'].
+    split. eapply intermr_multi; eauto. left. eauto. constructor.
+    split; auto.
+    intros csi csj IN2 STEPN2 VISIBLE.
+ Admitted.
 
 Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
   refine_state ast cst ->

@@ -59,9 +59,7 @@ Definition trace_has_cfi' (trace : list state) :=
 Definition trace_has_cfi (trace : list state) := 
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
-             (* TODO: remove first conjunct *)
-             (step_a si sj -> get_pc si = get_pc sj) /\
-             (step si sj -> succ si sj = true).
+           step si sj -> succ si sj = true.
 (* 1. Expose attacker step refinement separately
       from normal step refinement
    2. Return to previous problems with self loops;

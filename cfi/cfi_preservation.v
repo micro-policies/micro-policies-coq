@@ -28,6 +28,23 @@ Theorem backwards_refinement_preserves_cfi :
 Proof.
   intros CFI1 cst cst' cxs INIT2 INTERM2.
   destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
+  destruct (backwards_refinement _ _ INITREF INTERM2) 
+    as [ast' [axs [INTERMR1 [FINALREF INTSTATES]]]].
+  destruct (intermr_implies_interm INTERMR1) as [INTERM1 | [EQ LST]].
+  { (*machine1  steps*)
+    destruct (CFI1 ast ast' axs INIT1 INTERM1) as [TSAFE1 | VIOLATED].
+    - (*machine1 has CFI at all steps*)
+      unfold trace_has_cfi in TSAFE1.
+      left. intros csi csj IN2 STEPN2.
+      destruct (visible csi csj) eqn:VISIBLE.
+      + (*case it's a visible step*)
+        destruct (INTSTATES _ _ IN2 STEPN2 VISIBLE) as [asi [asj [IN2' [STEPN1 [REFI REFJ]]]]].
+        assert (SUCC := TSAFE1 asi asj IN2' STEPN1).
+        apply (cfg_equiv1 asi asj csi csj REFI REFJ SUCC).
+      + (*case it's an invisible step*)
+         apply (cfg_kernel _ _ STEPN2 VISIBLE).
+   - 
+        
 
 
 Admitted. 
