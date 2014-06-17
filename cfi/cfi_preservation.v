@@ -28,6 +28,7 @@ Theorem backwards_refinement_preserves_cfi :
 Proof.
   intros CFI1 cst cst' cxs INIT2 INTERM2.
   destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
+(*
   destruct (backwards_refinement _ _ INITREF INTERM2) 
     as [ast' [axs [INTERMR1 [FINALREF INTSTATES]]]].
   destruct (intermr_implies_interm INTERMR1) as [INTERM1 | [EQ LST]].
@@ -46,7 +47,7 @@ Proof.
    - 
         
 
-
+*)
 Admitted. 
   (*
   intros CFI1 cst cst' cxs INIT2 INTERM2.

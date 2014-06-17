@@ -33,6 +33,8 @@ Context (cfim : cfi_machine).
 (* Definitions regarding stepping relations for CFI*)
 Definition cfi_step st st' := step_a st st' \/ step st st'.
 
+Definition cfi_step' st st' := step st st' \/ (~step st st' /\ step_a st st').
+
 Definition intermstep := interm cfi_step.
 
 Definition intermrstep := intermr cfi_step.

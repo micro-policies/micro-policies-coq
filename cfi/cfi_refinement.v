@@ -50,6 +50,11 @@ Class machine_refinement (machine1 : cfi_machine t) (machine2 : cfi_machine t) :
       (STEP: step_a cst cst'),
       exists ast', step_a ast ast'  /\ refine_state ast' cst';
 
+  step_classic : forall cst cst',
+    (step cst cst') \/ (~step cst cst');
+  (* in a hurry it can be instantiated with classic from  
+     Require Import Classical *)
+
   backwards_refinement_single : 
     forall ast cst cst'
       (REF: refine_state ast cst)
@@ -62,7 +67,6 @@ Class machine_refinement (machine1 : cfi_machine t) (machine2 : cfi_machine t) :
        refine_state ast cst')
                                                 
  }.
-
 
 (* Broken lemma: it seems that this does not follow from
    backwards_refinement_normal and backwards_refinement_attacker
@@ -133,9 +137,8 @@ Lemma backwards_refinement
     (ast : @state t machine1) cst cst' cxs :
   refine_state ast cst ->
   intermstep machine2 cxs cst cst' ->
-  exists ast', exists axs,
-    intermrstep machine1 axs ast ast' /\
-    refine_state ast' cst' /\ (*this may be removed*)
+  exists axs,
+    (exists ast', intermrstep machine1 axs ast ast') /\
     (forall csi csj,
        In2 csi csj cxs ->
        step csi csj ->
@@ -147,13 +150,35 @@ Proof.
   intros INITREF INTERM2.
   generalize dependent ast.
   induction INTERM2 as [cst cst' STEP2 | cst cst'' cst' cxs' STEP2 INTERM2']; intros.
-  + destruct STEP2 as [STEPA | STEPN].
+  {
+    destruct (step_classic cst cst') as [STEPN | NST].
+  - destruct (backwards_refinement_normal _ _ _ INITREF STEPN) as [VIS INVIS].
+    destruct (visible cst cst') eqn:VISIBLE.
+    + destruct (VIS eq_refl) as [ast' [ASTEP AREF]]. clear INVIS VIS.
+      exists [ast;ast']. split.
+      * exists ast'. eapply intermr_multi. right. eassumption. now constructor.
+      * intros csi csj IN STEPij VIS.
+        exists ast. exists ast'. split. simpl. tauto. split.
+        assumption. destruct IN as [[H1 H2]| H]. subst. split; now trivial.
+        now destruct H.
+    + specialize (INVIS eq_refl). clear VIS.
+      exists [ast]. split. exists ast. now constructor.
+      intros csi csj IN STEPij VIS. destruct IN as [[H1 H2]| H]. subst.
+      congruence. now destruct H.
+  - exists [ast]. split. exists ast. now constructor.
+    intros ? ? IN HC. destruct IN as [[H1 H2]| H]. subst. tauto. now destruct H.    
+  }
+Admitted.
+
+(*
+    destruct STEP2 as [STEPA | STEPN].
     destruct (backwards_refinement_attacker _ _ _ INITREF STEPA) as [ast' [STEPA' FINALREF]].
     exists ast'; exists [ast;ast'].
     split. eapply intermr_multi; eauto. left. eauto. constructor.
     split; auto.
     intros csi csj IN2 STEPN2 VISIBLE.
  Admitted.
+*)
 
 Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
   refine_state ast cst ->
