@@ -27,6 +27,7 @@ Context {t : machine_types}
         {ssk : Sym.sealing_key}
         {ask : Abs.sealing_key}
 
+        (* TODO: play the same trick as for ap/ps below? *)
         {smemory : Type}
         {sm : partial_map smemory (word t) (atom (word t) Sym.stag)}
         {smemspec : axioms sm}
@@ -36,38 +37,36 @@ Context {t : machine_types}
         {sregspec : axioms sr}
 
         {ap : Abs.abstract_params t}
-        {ps : Abs.params_spec ap}.
+        {aps : Abs.params_spec ap}.
 
-Section WithFixedKeyInjection.
+(* ki k returns Some sk when k is allocated and sk is the
+   corresponding symbolic key *)
+Definition key_map := Abs.key -> option Sym.key.
 
-(* CH: It's silly to have kiIr as a field in this sigma-type-like
-   dependent record type: it forces upd_ki to be too dependently
-   typed, all I need is a "regular" partial map, the proofs should go
-   in the refinement (e.g. could be another conjunct in refine_ins) *)
-Record key_inj := mkKeyInj {
-  (* ki k returns Some sk when k is allocated and sk is the
-                               corresponding symbolic key *)
-  ki :> Abs.key -> option Sym.key;
+(* this is used in the unsealing case; if we were to show fwd
+   refinement we would need bijectivity (a permutation on keys) *)
+Definition key_map_inj (ki : key_map) := forall ak ak' sk sk',
+  ki ak = Some sk ->
+  ki ak' = Some sk' ->
+  sk = sk' ->
+  ak = ak'.
 
-  (* injectivity; this is used in the unsealing case;
-     if we were to show fwd refinement we would probably need
-     bijectivity (a permutation on keys) *)
-  kiIr : forall ak ak' sk sk',
-           ki ak = Some sk ->
-           ki ak' = Some sk' ->
-           sk = sk' ->
-           ak = ak'
-}.
+Definition upd_ki (ki : key_map) (akey : Abs.key) (skey : Sym.key) :=
+  fun ak => if ak == akey then Some skey else ki ak.
 
-Definition upd_ki (ki : key_inj) (akey : Abs.key) (skey : Sym.key)
-  (H : forall ak, ~ki ak = Some skey) : key_inj.
-  refine (mkKeyInj (fun ak => if ak == akey then Some skey else ki ak) _).
-  intros ak ak' sk sk'.
+Lemma fresh_up_inj : forall (ki : key_map) akey skey,
+  key_map_inj ki ->
+  (forall ak, ~ki ak = Some skey) ->
+  key_map_inj (upd_ki ki akey skey).
+Proof.
+  move => ki akey skey kmi nkiamsk ak ak' sk sk'. unfold upd_ki.
   case: eqP => [Heq | Hneq]; case: eqP => [Heq' | Hneq']; try congruence.
-  now apply (kiIr ki).
-Defined.
+  now apply kmi.
+Qed.
 
-Variable ki : key_inj.
+Section WithFixedKeyMap.
+
+Variable ki : key_map.
 
 Definition refine_key (ak : Abs.key) (sk : Sym.key) : Prop :=
   ki ak = Some sk.
@@ -94,7 +93,8 @@ Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
 Definition refine_ins (akeys : list Abs.key) (next_skey : Sym.key) : Prop :=
   (forall ak, ~In ak akeys -> ki ak = None) /\
-  (forall ak sk, ki ak = Some sk -> (sk <? next_skey)%ordered).
+  (forall ak sk, ki ak = Some sk -> (sk <? next_skey)%ordered) /\
+  (key_map_inj ki).
 
 Definition astate := @Abs.state t ask ap.
 Definition sstate := @Symbolic.state t Sym.sym_sealing.
@@ -126,7 +126,7 @@ Qed.
 Definition refine_upd_reg3 (aregs : Abs.registers t) (sregs : sregisters) :=
   @refine_upd_pointwise3 _ _ _ _ _ _ _ _ _ refine_val_atom aregs sregs.
 
-End WithFixedKeyInjection.
+End WithFixedKeyMap.
 
 Tactic Notation "unfold_next_state_in" ident(H) :=
   try unfold Symbolic.next_state_reg in H;
@@ -134,47 +134,43 @@ Tactic Notation "unfold_next_state_in" ident(H) :=
   try unfold Symbolic.next_state_reg_and_pc in H;
   try unfold Symbolic.next_state in H.
 
-Lemma refine_key_upd_ki : forall (ki : key_inj) ak sk akey skey
-  (new : forall ak, ~ki ak = Some skey),
-  (ki akey = None) ->
+Lemma refine_key_upd_ki : forall ki ak sk akey skey,
+  ki akey = None ->
   refine_key ki ak sk ->
-  refine_key (@upd_ki ki akey skey new) ak sk.
+  refine_key (upd_ki ki akey skey) ak sk.
 Proof.
-  unfold refine_key. intros. simpl.
-  case eqP => [heq | hneq]; [congruence | exact].
+  unfold refine_key, upd_ki. intros.
+  case eqP; [congruence | exact].
 Qed.
 
-Lemma refine_val_atom_upd_ki : forall (ki : key_inj) v a akey skey
-  (new : forall ak, ~ki ak = Some skey),
-  (ki akey = None) ->
+Lemma refine_val_atom_upd_ki : forall ki v a akey skey,
+  ki akey = None ->
   refine_val_atom ki v a ->
-  refine_val_atom (@upd_ki ki akey skey new) v a.
+  refine_val_atom (upd_ki ki akey skey) v a.
 Proof.
-  move => ki v [w tg] akey skey snew anew rva.
+  move => ki v [w tg] akey skey anew rva.
   destruct v; destruct tg; simpl in * => //=;
     intuition; eauto using refine_key_upd_ki.
 Qed.
 
-Lemma refine_reg_upd_ki : forall (ki : key_inj) aregs sregs akey skey
-  (new : forall ak, ~ki ak = Some skey),
-  (ki akey = None) ->
+Lemma refine_reg_upd_ki : forall ki aregs sregs akey skey,
+  ki akey = None ->
   refine_reg ki aregs sregs ->
-  refine_reg (@upd_ki ki akey skey new) aregs sregs.
+  refine_reg (upd_ki ki akey skey) aregs sregs.
 Proof.
   unfold refine_reg.
-  move => ki areg sreg akey skey snew anew rreg w. specialize (rreg w).
+  move => ki areg sreg akey skey anew rreg w. specialize (rreg w).
   destruct (get areg w); destruct (get sreg w) => //.
   by auto using refine_val_atom_upd_ki.
 Qed.
 
-Lemma refine_mem_upd_ki : forall (ki : key_inj) amem smem akey skey
-  (new : forall ak, ~ki ak = Some skey),
+Lemma refine_mem_upd_ki : forall ki amem smem akey skey,
   (ki akey = None) ->
   refine_mem ki amem smem ->
-  refine_mem (@upd_ki ki akey skey new) amem smem.
+  refine_mem (upd_ki ki akey skey) amem smem.
 Admitted. (* same as above *)
 
-Lemma backward_simulation : forall (ki : key_inj) ast sst sst',
+Lemma backward_simulation : forall ki ast sst sst',
   refine_state ki ast sst ->
   Sym.step sst sst' ->
   exists ast' ki',
@@ -279,17 +275,12 @@ Proof.
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     injection CALL; intro H; subst; clear CALL.
     
-    (* need to show freshness for the new symbolic key to preserve injectivity *)
-    assert (forall ak : Abs.key, ki ak <> Some skey) as new.
-    - destruct rins as [_ rins2].
-      intros ? Hc. apply rins2 in Hc. rewrite ltb_irrefl in Hc.
-      discriminate Hc.
+    assert (refine_key (upd_ki ki (Abs.mkkey_f akeys) skey)
+                        (Abs.mkkey_f akeys) skey) as rk.
+      unfold refine_key. unfold upd_ki. case eqP; congruence.
 
-    pose (@upd_ki ki (Abs.mkkey_f akeys) skey new) as ki'.
-    assert (refine_key ki' (Abs.mkkey_f akeys) skey) as rk.
-      unfold refine_key. simpl. case eqP; congruence.
-
-    assert(refine_val_atom ki' (Abs.VKey t (Abs.mkkey_f akeys))
+    assert(refine_val_atom (upd_ki ki (Abs.mkkey_f akeys) skey)
+              (Abs.VKey t (Abs.mkkey_f akeys))
               (max_word@(Sym.KEY skey))) as rva by apply rk.
 
     (* need to show freshness for new abstract key to be able to use
@@ -302,28 +293,33 @@ Proof.
     edestruct refine_upd_reg3 as [aregs' [G1 G2]]; [| exact rva | eassumption |].
     apply refine_reg_upd_ki; eassumption.
 
-    eexists. exists ki'. split.
+    eexists. exists (upd_ki ki (Abs.mkkey_f akeys) skey). split.
     + eapply Abs.step_mkkey; [reflexivity | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       assumption.
       eassumption.
     + split4; trivial; try reflexivity.
         by eauto using refine_mem_upd_ki.
-      split. (* the interesting part: reestablish refinement on keys *)
+      split3. (* the interesting part: reestablish refinement on keys *)
       - (* abstract keys *)
-        intros ak ninak. simpl. case eqP => [heq | hneq].
+        intros ak ninak. unfold upd_ki. case eqP => [heq | hneq].
         + subst. apply False_ind. apply ninak. simpl. tauto.
         + simpl in ninak.
           destruct rins as [rins1 _]. apply rins1.
           intro Hc. apply ninak. right. exact Hc.
       - (* symbolic keys *)
-        move => ak sk /=. case eqP => [heq | hneq] hsk.
+        move => ak sk /=. unfold upd_ki. case eqP => [heq | hneq] hsk.
         + injection hsk => hsk'. clear hsk.
           rewrite hsk'.
           by rewrite hsk' in neq_skey; apply Sym.ltb_inc; apply /eqP.
-        + destruct rins as [rins1 rins2]. eapply ltb_trans. eapply rins2.
+        + destruct rins as [_ [rins2 _]]. eapply ltb_trans. eapply rins2.
           eassumption.
           apply Sym.ltb_inc. by apply /eqP.
+      - (* injectivity *)
+        apply fresh_up_inj. by destruct rins as [_ [_ rins3]].
+        destruct rins as [_ [rins2 _]].
+        intros ? Hc. apply rins2 in Hc. rewrite ltb_irrefl in Hc.
+        discriminate Hc.
     }
     + {(* seal *)
     (* break up the effects of the system call *)
@@ -374,11 +370,12 @@ Proof.
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption. eassumption.
       (* here we use injectivity *)
+      destruct rins as [_ [_ rins3]].
       repeat match goal with
                | [H : refine_key _ _ _ |- _] =>
                  unfold refine_key in H; try rewrite e in H
              end.
-      assert(s = s1) by eauto using kiIr. subst. assumption.
+      assert(s = s1) by eauto. (* NAMING! *) subst. assumption.
       eassumption.
     + split4; now trivial.
     }
