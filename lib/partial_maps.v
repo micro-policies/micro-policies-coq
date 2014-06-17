@@ -15,11 +15,20 @@ Variables M K V : Type.
 
 Class partial_map := {
   get : M -> K -> option V;
-  upd : M -> K -> V -> option M
+  set : M -> K -> V -> M;
+  upd : M -> K -> V -> option M (* Could be defined as get + set? *)
 }.
 
 Class axioms (pm : partial_map) := mkAxioms {
 
+  get_set_eq : forall km ak sk, get (set km ak sk) ak = Some sk;
+
+  get_set_neq : forall km ak ak' sk,
+                  ak' <> ak  ->
+                  get (set km ak sk) ak' = get km ak';
+
+(* These could all be proved as properties from axioms about get and set
+   -- the proofs are already done in concrete/int_32.v *)
   upd_defined : forall m key val val',
                   get m key = Some val ->
                   exists m',

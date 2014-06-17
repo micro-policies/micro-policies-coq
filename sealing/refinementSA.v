@@ -31,39 +31,45 @@ Context {t : machine_types}
         {sps : Sym.params_spec sp}
 
         {ap : Abs.params t}
-        {aps : Abs.params_spec ap}.
-
-(* km k returns Some sk when k is allocated and sk is the
-   corresponding symbolic key *)
-Definition key_map := Abs.key -> option Sym.key.
+        {aps : Abs.params_spec ap}
+        
+        {key_map : Type}
+        {kmap : partial_map key_map Abs.key Sym.key}
+        {kmaps : PartMaps.axioms kmap}.
 
 (* this is used in the unsealing case; if we were to show fwd
    refinement we would need bijectivity (a permutation on keys) *)
 Definition key_map_inj (km : key_map) := forall ak ak' sk sk',
-  km ak = Some sk ->
-  km ak' = Some sk' ->
+  get km ak = Some sk ->
+  get km ak' = Some sk' ->
   sk = sk' ->
   ak = ak'.
 
-Definition upd_km (km : key_map) (akey : Abs.key) (skey : Sym.key) :=
-  fun ak => if ak == akey then Some skey else km ak.
-
-Lemma fresh_up_inj : forall (km : key_map) akey skey,
+Lemma fresh_set_inj : forall (km : key_map) akey skey,
   key_map_inj km ->
-  (forall ak, ~km ak = Some skey) ->
-  key_map_inj (upd_km km akey skey).
+  (forall ak, ~get km ak = Some skey) ->
+  key_map_inj (set km akey skey).
 Proof.
-  move => km akey skey kmi nkmamsk ak ak' sk sk'. unfold upd_km.
-  case: eqP => [Heq | Hneq]; case: eqP => [Heq' | Hneq']; try congruence.
-  now apply kmi.
-Qed.
+  move => km akey skey kmi nk ak ak' sk sk'.
+  have [eq_ak | /eqP neq_ak] := altP (ak =P akey);
+  have [eq_ak' | /eqP neq_ak'] := altP (ak' =P akey); try congruence.
+  - intros g g' e. subst. rewrite -> get_set_eq in g => //.
+    rewrite -> get_set_neq in g' => //. congruence.
+  - intros g g' e. subst. rewrite get_set_eq in g' => //.
+    rewrite get_set_neq in g => //. congruence.
+  - intros g g' e. subst.
+    rewrite get_set_neq in g => //. rewrite get_set_neq in g' => //.
+    by eauto.
+Qed.    
 
 Section WithFixedKeyMap.
 
+(* km k returns Some sk when k is allocated and sk is the
+   corresponding symbolic key *)
 Variable km : key_map.
 
 Definition refine_key (ak : Abs.key) (sk : Sym.key) : Prop :=
-  km ak = Some sk.
+  get km ak = Some sk.
 
 Definition refine_val_atom (v : Abs.value t)
                            (a : atom (word t) Sym.stag) : Prop :=
@@ -86,8 +92,8 @@ Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
 
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
 Definition refine_ins (akeys : list Abs.key) (next_skey : Sym.key) : Prop :=
-  (forall ak, ~In ak akeys -> km ak = None) /\
-  (forall ak sk, km ak = Some sk -> (sk <? next_skey)%ordered) /\
+  (forall ak, ~In ak akeys -> get km ak = None) /\
+  (forall ak sk, get km ak = Some sk -> (sk <? next_skey)%ordered) /\
   (key_map_inj km).
 
 Definition astate := @Abs.state t ask ap.
@@ -132,40 +138,41 @@ Tactic Notation "unfold_next_state_in" ident(H) :=
   try unfold Symbolic.next_state_reg_and_pc in H;
   try unfold Symbolic.next_state in H.
 
-Lemma refine_key_upd_km : forall km ak sk akey skey,
-  km akey = None ->
+Lemma refine_key_set_km : forall km ak sk akey skey,
+  get km akey = None ->
   refine_key km ak sk ->
-  refine_key (upd_km km akey skey) ak sk.
+  refine_key (set km akey skey) ak sk.
 Proof.
-  unfold refine_key, upd_km. intros.
-  case eqP; [congruence | exact].
+  unfold refine_key. intros.
+  have [eq_ak | /eqP neq_ak] := altP (ak =P akey). congruence.
+  by rewrite -> get_set_neq.
 Qed.
 
-Lemma refine_val_atom_upd_km : forall km v a akey skey,
-  km akey = None ->
+Lemma refine_val_atom_set_km : forall km v a akey skey,
+  get km akey = None ->
   refine_val_atom km v a ->
-  refine_val_atom (upd_km km akey skey) v a.
+  refine_val_atom (set km akey skey) v a.
 Proof.
   move => km v [w tg] akey skey anew rva.
   destruct v; destruct tg; simpl in * => //=;
-    intuition; eauto using refine_key_upd_km.
+    intuition; eauto using refine_key_set_km.
 Qed.
 
-Lemma refine_reg_upd_km : forall km aregs sregs akey skey,
-  km akey = None ->
+Lemma refine_reg_set_km : forall km aregs sregs akey skey,
+  get km akey = None ->
   refine_reg km aregs sregs ->
-  refine_reg (upd_km km akey skey) aregs sregs.
+  refine_reg (set km akey skey) aregs sregs.
 Proof.
   unfold refine_reg.
   move => km areg sreg akey skey anew rreg w. specialize (rreg w).
   destruct (get areg w); destruct (get sreg w) => //.
-  by auto using refine_val_atom_upd_km.
+  by auto using refine_val_atom_set_km.
 Qed.
 
-Lemma refine_mem_upd_km : forall km amem smem akey skey,
-  (km akey = None) ->
+Lemma refine_mem_set_km : forall km amem smem akey skey,
+  get km akey = None ->
   refine_mem km amem smem ->
-  refine_mem (upd_km km akey skey) amem smem.
+  refine_mem (set km akey skey) amem smem.
 Admitted. (* same as above *)
 
 Lemma backward_simulation : forall km ast sst sst',
@@ -273,48 +280,52 @@ Proof.
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     injection CALL; intro H; subst; clear CALL.
     
-    assert (refine_key (upd_km km (Abs.mkkey_f akeys) skey)
+    assert (refine_key (set km (Abs.mkkey_f akeys) skey)
                         (Abs.mkkey_f akeys) skey) as rk.
-      unfold refine_key. unfold upd_km. case eqP; congruence.
+      unfold refine_key. by rewrite get_set_eq.
 
-    assert(refine_val_atom (upd_km km (Abs.mkkey_f akeys) skey)
+    assert(refine_val_atom (set km (Abs.mkkey_f akeys) skey)
               (Abs.VKey t (Abs.mkkey_f akeys))
               (max_word@(Sym.KEY skey))) as rva by apply rk.
 
     (* need to show freshness for new abstract key to be able to use
-       refine...upd_km lemmas to port refinements to the extended km *)
-    assert (km (Abs.mkkey_f akeys) = None).
+       refine...set lemmas to port refinements to the extended km *)
+    assert (get km (Abs.mkkey_f akeys) = None).
     - pose proof Abs.mkkey_fresh.
       destruct rins as [rins1 _]. by apply rins1.
 
     (* dealing with the result -- similar to CONST *)
     edestruct refine_upd_reg as [aregs' [G1 G2]]; [| exact rva | eassumption |].
-    apply refine_reg_upd_km; eassumption.
+    apply refine_reg_set_km; eassumption.
 
-    eexists. exists (upd_km km (Abs.mkkey_f akeys) skey). split.
+    eexists. exists (set km (Abs.mkkey_f akeys) skey). split.
     + eapply Abs.step_mkkey; [reflexivity | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       assumption.
       eassumption.
     + split4; trivial; try reflexivity.
-        by eauto using refine_mem_upd_km.
+        by eauto using refine_mem_set_km.
       split3. (* the interesting part: reestablish refinement on keys *)
       - (* abstract keys *)
-        intros ak ninak. unfold upd_km. case eqP => [heq | hneq].
+        intros ak ninak.
+        have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)).
         + subst. apply False_ind. apply ninak. simpl. tauto.
         + simpl in ninak.
-          destruct rins as [rins1 _]. apply rins1.
-          intro Hc. apply ninak. right. exact Hc.
+          rewrite -> get_set_neq => //.
+          destruct rins as [rins1 _]. apply rins1. tauto.
       - (* symbolic keys *)
-        move => ak sk /=. unfold upd_km. case eqP => [heq | hneq] hsk.
-        + injection hsk => hsk'. clear hsk.
+        move => ak sk /=. 
+        have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)) => hsk.
+        + subst. rewrite -> get_set_eq in hsk => //.
+          injection hsk => hsk'. clear hsk.
           rewrite hsk'.
           by rewrite hsk' in neq_skey; apply Sym.ltb_inc; apply /eqP.
-        + destruct rins as [_ [rins2 _]]. eapply ltb_trans. eapply rins2.
+        + rewrite -> get_set_neq in hsk => //.
+          destruct rins as [_ [rins2 _]]. eapply ltb_trans. eapply rins2.
           eassumption.
           apply Sym.ltb_inc. by apply /eqP.
       - (* injectivity *)
-        apply fresh_up_inj. by destruct rins as [_ [_ rins3]].
+        apply fresh_set_inj. by destruct rins as [_ [_ rins3]].
         destruct rins as [_ [rins2 _]].
         intros ? Hc. apply rins2 in Hc. rewrite ltb_irrefl in Hc.
         discriminate Hc.

@@ -235,6 +235,7 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
 
   mem_class := {|
     PartMaps.get mem i := Int32PMap.get i mem;
+    PartMaps.set mem i x := Int32PMap.set i x mem;
     PartMaps.upd mem i x := match Int32PMap.get i mem with
                               | Some _ => Some (Int32PMap.set i x mem)
                               | None   => None
@@ -251,6 +252,10 @@ Program Instance concrete_int_32_params_spec :
   params_spec (concrete_int_32_params).
 Next Obligation.
   constructor.
+  - (* get_set_eq *)
+    intros mem i x. by apply Int32PMap.gss.
+  - (* get_set_neq *)
+    intros mem i i' x y. by apply Int32PMap.gso.
   - (* upd_defined *)
     intros mem i x x' Hget. simpl in *.
     rewrite Hget; eauto.
