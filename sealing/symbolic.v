@@ -35,10 +35,19 @@ Inductive stag :=
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
-Context {memory : Type}
-        {sm : partial_map memory (word t) (atom (word t) stag)}
-        {registers : Type}
-        {sr : partial_map registers (reg t) (atom (word t) stag)}.
+Class params := {
+  memory : Type;
+  sm :> partial_map memory (word t) (atom (word t) stag);
+  registers : Type;
+  sr :> partial_map registers (reg t) (atom (word t) stag)
+}.
+
+Class params_spec (sp : params) := {
+  mem_axioms :> PartMaps.axioms (@sm sp);
+  reg_axioms :> PartMaps.axioms (@sr sp)
+}.
+
+Context {sp : params}.
 
 (* One should not depend on the precise value of this tag! *)
 Definition none := KEY max_key.

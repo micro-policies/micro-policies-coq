@@ -27,49 +27,43 @@ Context {t : machine_types}
         {ssk : Sym.sealing_key}
         {ask : Abs.sealing_key}
 
-        (* TODO: play the same trick as for ap/ps below? *)
-        {smemory : Type}
-        {sm : partial_map smemory (word t) (atom (word t) Sym.stag)}
-        {smemspec : axioms sm}
+        {sp : @Sym.params t ssk}
+        {sps : Sym.params_spec sp}
 
-        {sregisters : Type}
-        {sr : partial_map sregisters (reg t) (atom (word t) Sym.stag)}
-        {sregspec : axioms sr}
-
-        {ap : Abs.abstract_params t}
+        {ap : Abs.params t}
         {aps : Abs.params_spec ap}.
 
-(* ki k returns Some sk when k is allocated and sk is the
+(* km k returns Some sk when k is allocated and sk is the
    corresponding symbolic key *)
 Definition key_map := Abs.key -> option Sym.key.
 
 (* this is used in the unsealing case; if we were to show fwd
    refinement we would need bijectivity (a permutation on keys) *)
-Definition key_map_inj (ki : key_map) := forall ak ak' sk sk',
-  ki ak = Some sk ->
-  ki ak' = Some sk' ->
+Definition key_map_inj (km : key_map) := forall ak ak' sk sk',
+  km ak = Some sk ->
+  km ak' = Some sk' ->
   sk = sk' ->
   ak = ak'.
 
-Definition upd_ki (ki : key_map) (akey : Abs.key) (skey : Sym.key) :=
-  fun ak => if ak == akey then Some skey else ki ak.
+Definition upd_km (km : key_map) (akey : Abs.key) (skey : Sym.key) :=
+  fun ak => if ak == akey then Some skey else km ak.
 
-Lemma fresh_up_inj : forall (ki : key_map) akey skey,
-  key_map_inj ki ->
-  (forall ak, ~ki ak = Some skey) ->
-  key_map_inj (upd_ki ki akey skey).
+Lemma fresh_up_inj : forall (km : key_map) akey skey,
+  key_map_inj km ->
+  (forall ak, ~km ak = Some skey) ->
+  key_map_inj (upd_km km akey skey).
 Proof.
-  move => ki akey skey kmi nkiamsk ak ak' sk sk'. unfold upd_ki.
+  move => km akey skey kmi nkmamsk ak ak' sk sk'. unfold upd_km.
   case: eqP => [Heq | Hneq]; case: eqP => [Heq' | Hneq']; try congruence.
   now apply kmi.
 Qed.
 
 Section WithFixedKeyMap.
 
-Variable ki : key_map.
+Variable km : key_map.
 
 Definition refine_key (ak : Abs.key) (sk : Sym.key) : Prop :=
-  ki ak = Some sk.
+  km ak = Some sk.
 
 Definition refine_val_atom (v : Abs.value t)
                            (a : atom (word t) Sym.stag) : Prop :=
@@ -80,11 +74,11 @@ Definition refine_val_atom (v : Abs.value t)
   | _                   , _                      => False
   end.
 
-Definition refine_mem : Abs.memory t -> smemory -> Prop :=
+Definition refine_mem : Abs.memory t -> Sym.memory -> Prop :=
   pointwise refine_val_atom.
 
-Definition refine_reg : Abs.registers t -> sregisters -> Prop :=
-  pointwise refine_val_atom.
+Definition refine_reg : Abs.registers t -> Sym.registers -> Prop :=
+  @pointwise _ _ (reg t) _ _ _ _ refine_val_atom.
 
 (* We make no assumption about the pc tag, since it's unused in the policy *)
 Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
@@ -92,9 +86,9 @@ Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
 
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
 Definition refine_ins (akeys : list Abs.key) (next_skey : Sym.key) : Prop :=
-  (forall ak, ~In ak akeys -> ki ak = None) /\
-  (forall ak sk, ki ak = Some sk -> (sk <? next_skey)%ordered) /\
-  (key_map_inj ki).
+  (forall ak, ~In ak akeys -> km ak = None) /\
+  (forall ak sk, km ak = Some sk -> (sk <? next_skey)%ordered) /\
+  (key_map_inj km).
 
 Definition astate := @Abs.state t ask ap.
 Definition sstate := @Symbolic.state t Sym.sym_sealing.
@@ -123,8 +117,12 @@ Proof.
 Qed.
 
 (* helping the type class resolution a bit seems needed *)
-Definition refine_upd_reg3 (aregs : Abs.registers t) (sregs : sregisters) :=
-  @refine_upd_pointwise3 _ _ _ _ _ _ _ _ _ refine_val_atom aregs sregs.
+Definition refine_upd_reg (aregs : Abs.registers t) (sregs : Sym.registers) :=
+  @refine_upd_pointwise _ _ _ _ _ _ _ _ _ refine_val_atom aregs sregs.
+
+(* not yet used, but it should be helpful for store *)
+Definition refine_upd_mem (amem : Abs.memory t) (smem : Sym.memory) :=
+  @refine_upd_pointwise _ _ _ _ _ _ _ _ _ refine_val_atom amem smem.
 
 End WithFixedKeyMap.
 
@@ -134,50 +132,50 @@ Tactic Notation "unfold_next_state_in" ident(H) :=
   try unfold Symbolic.next_state_reg_and_pc in H;
   try unfold Symbolic.next_state in H.
 
-Lemma refine_key_upd_ki : forall ki ak sk akey skey,
-  ki akey = None ->
-  refine_key ki ak sk ->
-  refine_key (upd_ki ki akey skey) ak sk.
+Lemma refine_key_upd_km : forall km ak sk akey skey,
+  km akey = None ->
+  refine_key km ak sk ->
+  refine_key (upd_km km akey skey) ak sk.
 Proof.
-  unfold refine_key, upd_ki. intros.
+  unfold refine_key, upd_km. intros.
   case eqP; [congruence | exact].
 Qed.
 
-Lemma refine_val_atom_upd_ki : forall ki v a akey skey,
-  ki akey = None ->
-  refine_val_atom ki v a ->
-  refine_val_atom (upd_ki ki akey skey) v a.
+Lemma refine_val_atom_upd_km : forall km v a akey skey,
+  km akey = None ->
+  refine_val_atom km v a ->
+  refine_val_atom (upd_km km akey skey) v a.
 Proof.
-  move => ki v [w tg] akey skey anew rva.
+  move => km v [w tg] akey skey anew rva.
   destruct v; destruct tg; simpl in * => //=;
-    intuition; eauto using refine_key_upd_ki.
+    intuition; eauto using refine_key_upd_km.
 Qed.
 
-Lemma refine_reg_upd_ki : forall ki aregs sregs akey skey,
-  ki akey = None ->
-  refine_reg ki aregs sregs ->
-  refine_reg (upd_ki ki akey skey) aregs sregs.
+Lemma refine_reg_upd_km : forall km aregs sregs akey skey,
+  km akey = None ->
+  refine_reg km aregs sregs ->
+  refine_reg (upd_km km akey skey) aregs sregs.
 Proof.
   unfold refine_reg.
-  move => ki areg sreg akey skey anew rreg w. specialize (rreg w).
+  move => km areg sreg akey skey anew rreg w. specialize (rreg w).
   destruct (get areg w); destruct (get sreg w) => //.
-  by auto using refine_val_atom_upd_ki.
+  by auto using refine_val_atom_upd_km.
 Qed.
 
-Lemma refine_mem_upd_ki : forall ki amem smem akey skey,
-  (ki akey = None) ->
-  refine_mem ki amem smem ->
-  refine_mem (upd_ki ki akey skey) amem smem.
+Lemma refine_mem_upd_km : forall km amem smem akey skey,
+  (km akey = None) ->
+  refine_mem km amem smem ->
+  refine_mem (upd_km km akey skey) amem smem.
 Admitted. (* same as above *)
 
-Lemma backward_simulation : forall ki ast sst sst',
-  refine_state ki ast sst ->
+Lemma backward_simulation : forall km ast sst sst',
+  refine_state km ast sst ->
   Sym.step sst sst' ->
-  exists ast' ki',
+  exists ast' km',
     Abs.step ast ast' /\
-    refine_state ki' ast' sst'.
+    refine_state km' ast' sst'.
 Proof.
-  intros ki [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
+  intros km [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
   destruct sstep; destruct sst as [smem sregs spc skey];
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
     intros [rmem [rreg [rpc rins]]].
@@ -188,7 +186,7 @@ Proof.
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
     injection NEXT; intro H; subst; clear NEXT.
     apply refine_val_data in riv. subst.
-    eexists. exists ki. split.
+    eexists. exists km. split.
     + eapply Abs.step_nop; [reflexivity | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
     + split4; now trivial.
@@ -204,9 +202,9 @@ Proof.
     injection NEXT; intro H; subst; clear NEXT.
     apply refine_val_data in riv. subst.
     (* the rest is quite different *)
-    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (imm_to_word n)). reflexivity.
-    eexists. exists ki. split.
+    eexists. exists km. split.
     + eapply Abs.step_const; [reflexivity | | | reflexivity]. (* extra goal *)
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
@@ -235,9 +233,9 @@ Proof.
     destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
     destruct v; try contradiction rva. simpl in rva. subst.
     (* the rest similar to CONST *)
-    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (apc + 1)%w). reflexivity.
-    eexists. exists ki. split.
+    eexists. exists km. split.
     + eapply Abs.step_jal; [reflexivity | | | | eassumption | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
@@ -275,40 +273,40 @@ Proof.
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     injection CALL; intro H; subst; clear CALL.
     
-    assert (refine_key (upd_ki ki (Abs.mkkey_f akeys) skey)
+    assert (refine_key (upd_km km (Abs.mkkey_f akeys) skey)
                         (Abs.mkkey_f akeys) skey) as rk.
-      unfold refine_key. unfold upd_ki. case eqP; congruence.
+      unfold refine_key. unfold upd_km. case eqP; congruence.
 
-    assert(refine_val_atom (upd_ki ki (Abs.mkkey_f akeys) skey)
+    assert(refine_val_atom (upd_km km (Abs.mkkey_f akeys) skey)
               (Abs.VKey t (Abs.mkkey_f akeys))
               (max_word@(Sym.KEY skey))) as rva by apply rk.
 
     (* need to show freshness for new abstract key to be able to use
-       refine...upd_ki lemmas to port refinements to the extended ki *)
-    assert (ki (Abs.mkkey_f akeys) = None).
+       refine...upd_km lemmas to port refinements to the extended km *)
+    assert (km (Abs.mkkey_f akeys) = None).
     - pose proof Abs.mkkey_fresh.
       destruct rins as [rins1 _]. by apply rins1.
 
     (* dealing with the result -- similar to CONST *)
-    edestruct refine_upd_reg3 as [aregs' [G1 G2]]; [| exact rva | eassumption |].
-    apply refine_reg_upd_ki; eassumption.
+    edestruct refine_upd_reg as [aregs' [G1 G2]]; [| exact rva | eassumption |].
+    apply refine_reg_upd_km; eassumption.
 
-    eexists. exists (upd_ki ki (Abs.mkkey_f akeys) skey). split.
+    eexists. exists (upd_km km (Abs.mkkey_f akeys) skey). split.
     + eapply Abs.step_mkkey; [reflexivity | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       assumption.
       eassumption.
     + split4; trivial; try reflexivity.
-        by eauto using refine_mem_upd_ki.
+        by eauto using refine_mem_upd_km.
       split3. (* the interesting part: reestablish refinement on keys *)
       - (* abstract keys *)
-        intros ak ninak. unfold upd_ki. case eqP => [heq | hneq].
+        intros ak ninak. unfold upd_km. case eqP => [heq | hneq].
         + subst. apply False_ind. apply ninak. simpl. tauto.
         + simpl in ninak.
           destruct rins as [rins1 _]. apply rins1.
           intro Hc. apply ninak. right. exact Hc.
       - (* symbolic keys *)
-        move => ak sk /=. unfold upd_ki. case eqP => [heq | hneq] hsk.
+        move => ak sk /=. unfold upd_km. case eqP => [heq | hneq] hsk.
         + injection hsk => hsk'. clear hsk.
           rewrite hsk'.
           by rewrite hsk' in neq_skey; apply Sym.ltb_inc; apply /eqP.
@@ -336,9 +334,9 @@ Proof.
     destruct (refine_get_pointwise_inv rreg gk) as [vk [ggk H]].
     destruct vk; try contradiction H. simpl in H.
     (* register update *)
-    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VSealed p s0). split; now trivial. (* extra split *)
-    eexists. exists ki. split.
+    eexists. exists km. split.
     + eapply Abs.step_seal; [reflexivity | | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption. eassumption. eassumption. eassumption.
@@ -363,9 +361,9 @@ Proof.
     destruct (refine_get_pointwise_inv rreg gk) as [vk [ggk H]].
     destruct vk; try contradiction H. simpl in H. subst.
     (* register update *)
-    edestruct refine_upd_reg3 as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData p). reflexivity.
-    eexists. exists ki. split.
+    eexists. exists km. split.
     + eapply Abs.step_unseal; [reflexivity | | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption. eassumption.

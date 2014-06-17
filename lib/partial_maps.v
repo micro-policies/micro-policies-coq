@@ -222,7 +222,7 @@ Proof.
     intro Hc; by apply neq_kk'.
 Qed.
 
-Lemma refine_upd_pointwise3 : forall m1 m2 m2' k v1 v2,
+Lemma refine_upd_pointwise : forall m1 m2 m2' k v1 v2,
   (pointwise P) m1 m2 ->
   P v1 v2 ->
   upd m2 k v2 = Some m2' -> 
