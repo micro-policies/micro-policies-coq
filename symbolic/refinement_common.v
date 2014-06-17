@@ -443,14 +443,14 @@ Lemma analyze_cache cache cmvec crvec op :
   Concrete.cache_lookup _ cache masks cmvec = Some crvec ->
   user_pc_and_instr (Concrete.ctpc cmvec) (Concrete.cti cmvec) = true ->
   Concrete.cop cmvec = op_to_word op ->
-  match nfields op as fs return (_ -> _ -> mvec_fields _ fs -> _) -> Prop with
+  match Symbolic.nfields op as fs return (_ -> _ -> Symbolic.mvec_operands _ fs -> _) -> Prop with
   | Some fs => fun mk =>
     exists tpc ic ti (ts : Vector.t _ (fst fs)) trpc tr,
     Concrete.ctpc cmvec = encode (USER tpc ic) /\
     Concrete.cti  cmvec = encode (USER ti false) /\
     crvec = Concrete.mkRVec (encode (USER trpc (match op with JAL => true | _ => false end)))
                             (encode (USER tr false)) /\
-    Symbolic.handler (mk tpc ti ts) = Some (mkRVec trpc tr) /\
+    Symbolic.handler (mk tpc ti ts) = Some (Symbolic.mkRVec trpc tr) /\
     match fst fs as n return Vector.t _ n -> Prop with
     | 0 => fun ts => ts = []
     | 1 => fun ts => exists t1,
@@ -468,7 +468,7 @@ Lemma analyze_cache cache cmvec crvec op :
     | _ => fun _ => False
     end ts
   | None => fun _ => False
-  end (mkMVec op).
+  end (Symbolic.mkMVec op).
 Proof.
   intros CACHE LOOKUP INUSER EQ.
   assert (USERPC := word_lift_impl (fun t H => proj1 (andb_prop _ _ H)) INUSER).
@@ -483,7 +483,7 @@ Proof.
     now rewrite decodeK in INUSER
   ];
   try match goal with
-  | rvec : RVec _ |- _ => destruct rvec
+  | rvec : Symbolic.RVec _ |- _ => destruct rvec
   end;
   simpl in *;
   repeat (
@@ -703,7 +703,7 @@ Class kernel_code_correctness : Prop := {
     (* If [mvec] is an m-vector describing a JAL to address tpc with
        instruction tag ti and argument tags t1 and told...  *)
     (* (Could be strengthened to ensure that t1 and told do occur in the machine state.) *)
-    let mvec := mkMVec JAL tpc ti [t1; told] in
+    let mvec := Symbolic.mkMVec JAL tpc ti [t1; told] in
     (* and the kernel invariant holds... *)
     ki cmem creg cache int ->
     (* and the USER-tagged portion of the concrete memory cmem
@@ -736,9 +736,9 @@ Class kernel_code_correctness : Prop := {
              should bring the step_syscall rule back in sync *)
       kernel_user_exec (Concrete.mkState cmem
                                          (TotalMaps.upd creg ra
-                                                           (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
+                                                           (apc + Z_to_word 1)%w@(encode (USER (Symbolic.tr rvec) ic)))
                                          cache
-                                         addr@(encode (USER (trpc rvec) true)) epc)
+                                         addr@(encode (USER (Symbolic.trpc rvec) true)) epc)
                        (Concrete.mkState cmem' creg' cache'
                                          apc'@(encode (USER tpc' false))
                                          epc') /\
@@ -759,7 +759,7 @@ Class kernel_code_correctness : Prop := {
          cst'
          t1 ti told rvec ic,
     (* Could be strengthened to ensure that t1 and told do occur in the machine state *)
-    let mvec := mkMVec JAL tpc ti [t1; told] in
+    let mvec := Symbolic.mkMVec JAL tpc ti [t1; told] in
     ki cmem creg cache int ->
     refine_memory amem cmem ->
     refine_registers areg creg ->
@@ -772,9 +772,9 @@ Class kernel_code_correctness : Prop := {
     (* CH: could write handler_correct_disallowed_case in the same way *)
     ~ kernel_user_exec (Concrete.mkState cmem
                                          (TotalMaps.upd creg ra
-                                                           (apc + Z_to_word 1)%w@(encode (USER (tr rvec) ic)))
+                                                           (apc + Z_to_word 1)%w@(encode (USER (Symbolic.tr rvec) ic)))
                                          cache
-                                         addr@(encode (USER (trpc rvec) true)) epc)
+                                         addr@(encode (USER (Symbolic.trpc rvec) true)) epc)
                        cst'
 
 }.

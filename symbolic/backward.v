@@ -250,8 +250,8 @@ Lemma state_on_syscalls st st' :
       TotalMaps.get (Concrete.regs st) r = (common.val (Concrete.pc st'))@(encode (USER t1 false)) /\
       TotalMaps.get (Concrete.regs st) ra = old@(encode (USER told false)) /\
       Concrete.cache_lookup _ (Concrete.cache st) masks
-                            (encode_mvec (mvec_of_umvec ic (mkMVec JAL tpc ti [t1; told]))) =
-      Some (encode_rvec (rvec_of_urvec JAL (mkRVec trpc tr))).
+                            (encode_mvec (mvec_of_umvec ic (Symbolic.mkMVec JAL tpc ti [t1; told]))) =
+      Some (encode_rvec (rvec_of_urvec JAL (Symbolic.mkRVec trpc tr))).
 Proof.
   intros.
   inv STEP;
@@ -356,7 +356,7 @@ Proof.
     destruct HANDLER as (mvec & rvec & E1 & E2 & HANDLER).
     apply encode_mvec_inj in E1; eauto. apply encode_rvec_inj in E2. subst.
     unfold handler, rules.handler in HANDLER. simpl in HANDLER.
-    destruct (Symbolic.handler (mkMVec JAL tpc ti [t1; told])) as [[trpc' tr']|] eqn:HANDLER';
+    destruct (Symbolic.handler (Symbolic.mkMVec JAL tpc ti [t1; told])) as [[trpc' tr']|] eqn:HANDLER';
       try discriminate.
     unfold rvec_of_urvec in HANDLER. simpl in HANDLER. inv HANDLER.
     destruct kst as [kmem kregs kcache [kpc kpct] kepc]. subst. simpl in *.

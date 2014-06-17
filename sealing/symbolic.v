@@ -6,6 +6,9 @@ Require Import lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import sealing.classes.
 
+Import Symbolic.
+(* TODO: For good hygiene, we should remove Symbolic. everywhere it occurs below *)
+
 Set Implicit Arguments.
 
 Module Sym.
@@ -87,7 +90,7 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Program Instance sym_sealing : (Symbolic.symbolic_params) := {
+Program Instance sym_sealing : (symbolic_params) := {
   tag := stag_eqType;
 
   handler := sealing_handler;

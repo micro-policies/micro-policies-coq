@@ -2,10 +2,11 @@ Require Import Coq.Lists.List Coq.Arith.Arith Bool.
 Require Coq.Vectors.Vector.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils common.common symbolic.rules.
+Require Import lib.utils common.common symbolic.symbolic.
 
 Set Implicit Arguments.
 Import Coq.Vectors.Vector.VectorNotations.
+Import Symbolic.
 
 Section uhandler.
 
@@ -36,7 +37,7 @@ Variable valid_jmp : word t -> word t -> bool.
 
 (* Uncertain how we handle syscalls *)
 (* This allows loading of instructions as DATA *)
-Definition cfi_handler (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
+Definition cfi_handler (umvec : Symbolic.MVec cfi_tag) : option (Symbolic.RVec cfi_tag) :=
   match umvec with
   | mkMVec   JUMP   (INSTR (Some n))  (INSTR (Some m))  _
   | mkMVec   JAL    (INSTR (Some n))  (INSTR (Some m))  _  =>

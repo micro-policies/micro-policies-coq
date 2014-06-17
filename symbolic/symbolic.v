@@ -4,7 +4,7 @@ Require Coq.Vectors.Vector.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils lib.partial_maps common.common symbolic.rules.
+Require Import lib.utils lib.partial_maps common.common.
 
 Set Implicit Arguments.
 
@@ -13,8 +13,41 @@ Import ListNotations.
 
 Module Symbolic.
 
+(* BCP/AAA: Should some of this be shared with the concrete machine? *)
+Definition nfields (op : opcode) : option (nat * nat) :=
+  match op with
+  | NOP => Some (0, 0)
+  | CONST => Some (1, 1)
+  | MOV => Some (2, 1)
+  | BINOP _ => Some (3, 1)
+  | LOAD => Some (3, 1)
+  | STORE => Some (3, 1)
+  | JUMP => Some (1, 0)
+  | BNZ => Some (1, 0)
+  | JAL => Some (2, 1)
+  | _ => None
+  end.
+
+Definition mvec_operands T (fs : option (nat * nat)) : Type :=
+  match fs with
+  | Some fs => Vector.t T (fst fs)
+  | None => Empty_set
+  end.
+
+Record MVec T : Type := mkMVec {
+  op  : opcode;
+  tpc : T;
+  ti  : T;
+  ts  : mvec_operands T (nfields op)
+}.
+
+Record RVec T : Type := mkRVec {
+  trpc : T;
+  tr   : T
+}.
+
 Open Scope bool_scope.
-Open Scope Z_scope.
+(* Open Scope Z_scope. *)
 
 Section WithClasses.
 
@@ -207,3 +240,4 @@ Arguments Symbolic.registers t {_}.
 Arguments Symbolic.syscall t {_}.
 Arguments Symbolic.tag t {_}.
 Arguments Symbolic.internal_state t {_}.
+Arguments Symbolic.mkMVec {T} op _ _ _.

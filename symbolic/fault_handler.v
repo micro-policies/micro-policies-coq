@@ -8,8 +8,8 @@ Import ListNotations.
 Require Import lib.utils lib.Coqlib.
 Require Import concrete.common.
 Require Import concrete.concrete.
-Require Import symbolic.rules.
-Require Import symbolic.refinement_common.
+Require Import kernel.rules.
+Require Import kernel.refinement_common.
 
 Section fault_handler.
 

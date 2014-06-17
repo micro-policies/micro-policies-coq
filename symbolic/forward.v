@@ -224,7 +224,7 @@ Ltac solve_concrete_step :=
                          simpl in *; match_inv; eauto])
   end.
 
-Ltac destruct_mvec_fields :=
+Ltac destruct_mvec_operands :=
   repeat match goal with
   | ts : Vector.t _ 0 |- _ => induction ts using Vector.case0
   | ts : Vector.t _ (S _) |- _ => induction ts using caseS
@@ -235,7 +235,7 @@ Let symbolic_handler_concrete_cache cache umvec ic urvec rvec :
   cache_correct cache ->
   Symbolic.handler umvec = Some urvec ->
   Concrete.cache_lookup _ cache masks (encode_mvec (mvec_of_umvec ic umvec)) = Some rvec ->
-  rvec = encode_rvec (rvec_of_urvec (op umvec) urvec).
+  rvec = encode_rvec (rvec_of_urvec (Symbolic.op umvec) urvec).
 Proof.
   intros CACHE HANDLER LOOKUP.
   assert (INUSER : word_lift (fun t => is_user t)
@@ -252,7 +252,7 @@ Proof.
   destruct umvec as [op tpc ti ts].
   simpl in E3.
   destruct op; simpl in *;
-  destruct_mvec_fields; simpl in *;
+  destruct_mvec_operands; simpl in *;
   rewrite HANDLER in E3; simpl in E3; congruence.
 Qed.
 
@@ -261,14 +261,14 @@ Let symbolic_handler_concrete_handler mvec rvec ic :
   match decode_mvec (encode_mvec (mvec_of_umvec ic mvec)) with
   | Some mvec => handler (fun m => Symbolic.handler m) mvec
   | None => None
-  end = Some (rvec_of_urvec (op mvec) rvec).
+  end = Some (rvec_of_urvec (Symbolic.op mvec) rvec).
 Proof.
   intros H.
   rewrite decode_mvecK; eauto.
   destruct mvec as [op tpc ti ts].
   unfold handler, rules.handler. simpl.
   destruct op; simpl in *;
-  destruct_mvec_fields; simpl in *; now rewrite H.
+  destruct_mvec_operands; simpl in *; now rewrite H.
 Qed.
 
 Ltac solve_refine_state :=

@@ -1,7 +1,7 @@
 Require Import lib.utils.
 Require Import concrete.common.
 Require Import concrete.concrete.
-Require Import kernel.symbolic.
+Require Import symbolic.symbolic.
 
 Set Implicit Arguments.
 

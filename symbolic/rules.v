@@ -30,7 +30,7 @@ Require Coq.Vectors.Vector.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.Coqlib lib.utils common.common concrete.concrete.
+Require Import lib.Coqlib lib.utils common.common concrete.concrete symbolic.symbolic.
 Import DoNotation.
 Import Concrete.
 
@@ -44,20 +44,6 @@ Variable user_tag : eqType.
 Variable tnone : user_tag.
 
 Open Scope nat_scope.
-
-Definition nfields (op : opcode) : option (nat * nat) :=
-  match op with
-  | NOP => Some (0, 0)
-  | CONST => Some (1, 1)
-  | MOV => Some (2, 1)
-  | BINOP _ => Some (3, 1)
-  | LOAD => Some (3, 1)
-  | STORE => Some (3, 1)
-  | JUMP => Some (1, 0)
-  | BNZ => Some (1, 0)
-  | JAL => Some (2, 1)
-  | _ => None
-  end.
 
 Inductive tag : Type :=
 | USER (ut : user_tag) (is_call : bool)
@@ -102,24 +88,6 @@ Definition is_call (t : tag) : bool :=
 
 Variable TNONE : tag.
 Definition TCOPY := TNONE.
-
-Definition mvec_fields T (fs : option (nat * nat)) : Type :=
-  match fs with
-  | Some fs => Vector.t T (fst fs)
-  | None => Empty_set
-  end.
-
-Record MVec T : Type := mkMVec {
-  op  : opcode;
-  tpc : T;
-  ti  : T;
-  ts  : mvec_fields T (nfields op)
-}.
-
-Record RVec T : Type := mkRVec {
-  trpc : T;
-  tr   : T
-}.
 
 (* Returns true iff an opcode can only be executed by the kernel *)
 Definition privileged_op (op : opcode) : bool :=
@@ -231,10 +199,10 @@ Qed.
 
 Import DoNotation.
 
-Variable uhandler : MVec user_tag -> option (RVec user_tag).
+Variable uhandler : Symbolic.MVec user_tag -> option (Symbolic.RVec user_tag).
 
-Definition encode_fields (fs : option (nat * nat)) : mvec_fields tag fs -> Vector.t (word t) 3 :=
-  match fs return mvec_fields tag fs -> Vector.t (word t) 3 with
+Definition encode_fields (fs : option (nat * nat)) : Symbolic.mvec_operands tag fs -> Vector.t (word t) 3 :=
+  match fs return Symbolic.mvec_operands tag fs -> Vector.t (word t) 3 with
   | Some fs => fun v =>
                  let get n :=
                      match nth_error (Vector.to_list v) n with
@@ -245,22 +213,22 @@ Definition encode_fields (fs : option (nat * nat)) : mvec_fields tag fs -> Vecto
   | None => fun v => match v with end
   end.
 
-Definition encode_mvec (mvec : MVec tag) : Concrete.MVec (word t) :=
-  let f n := Vector.nth (encode_fields (ts mvec)) n in
+Definition encode_mvec (mvec : Symbolic.MVec tag) : Concrete.MVec (word t) :=
+  let f n := Vector.nth (encode_fields (Symbolic.ts mvec)) n in
   {|
-    Concrete.cop := op_to_word (op mvec);
-    Concrete.ctpc := encode (tpc mvec);
-    Concrete.cti := encode (ti mvec);
+    Concrete.cop := op_to_word (Symbolic.op mvec);
+    Concrete.ctpc := encode (Symbolic.tpc mvec);
+    Concrete.cti := encode (Symbolic.ti mvec);
     Concrete.ct1 := f Fin.F1;
     Concrete.ct2 := f (Fin.FS Fin.F1);
     Concrete.ct3 := f (Fin.FS (Fin.FS Fin.F1))
   |}.
 
-Definition decode_mvec (cmvec : Concrete.MVec (word t)) : option (MVec tag) :=
+Definition decode_mvec (cmvec : Concrete.MVec (word t)) : option (Symbolic.MVec tag) :=
   do! op  <- word_to_op (Concrete.cop cmvec);
   do! tpc <- decode (Concrete.ctpc cmvec);
   do! ti  <- decode (Concrete.cti cmvec);
-  do! ts  <- match nfields op as fs return option (mvec_fields tag fs) with
+  do! ts  <- match Symbolic.nfields op as fs return option (Symbolic.mvec_operands tag fs) with
             | Some fs =>
               match fst fs as n return option (Vector.t tag n) with
               | 0 => Some (Vector.nil _)
@@ -281,9 +249,9 @@ Definition decode_mvec (cmvec : Concrete.MVec (word t)) : option (MVec tag) :=
 
             | None => None
             end;
-     Some (mkMVec tpc ti ts).
+     Some (Symbolic.mkMVec op tpc ti ts).
 
-Lemma decode_mvecK (mvec : MVec tag) :
+Lemma decode_mvecK (mvec : Symbolic.MVec tag) :
   decode_mvec (encode_mvec mvec) = Some mvec.
 Proof.
   unfold decode_mvec, encode_mvec.
@@ -317,10 +285,10 @@ Proof.
 by rewrite (inj_eq encode_inj).
 Qed.
 
-Definition encode_rvec (rvec : RVec tag) : Concrete.RVec (word t) :=
+Definition encode_rvec (rvec : Symbolic.RVec tag) : Concrete.RVec (word t) :=
   {|
-    Concrete.ctrpc := encode (trpc rvec);
-    Concrete.ctr := encode (tr rvec)
+    Concrete.ctrpc := encode (Symbolic.trpc rvec);
+    Concrete.ctr := encode (Symbolic.tr rvec)
   |}.
 
 Lemma encode_rvec_inj rvec1 rvec2 :
@@ -355,36 +323,36 @@ Definition ground_rules : Concrete.rules (word t) :=
    (mk PUTTAG, Concrete.mkRVec (encode TCOPY) (encode TNONE))
   ].
 
-Definition mvec_of_umvec (call : bool) (mvec : MVec user_tag) : MVec tag :=
+Definition mvec_of_umvec (call : bool) (mvec : Symbolic.MVec user_tag) : Symbolic.MVec tag :=
   match mvec with
-  | mkMVec op tpc ti ts =>
-    mkMVec (USER tpc call) (USER ti false)
-           (match nfields op as fs return mvec_fields user_tag fs ->
-                                          mvec_fields tag fs
+  | Symbolic.mkMVec op tpc ti ts =>
+    Symbolic.mkMVec op (USER tpc call) (USER ti false)
+           (match Symbolic.nfields op as fs return Symbolic.mvec_operands user_tag fs ->
+                                          Symbolic.mvec_operands tag fs
             with
             | Some fs => fun ts => Vector.map (fun t => USER t false) ts
             | None => fun ts => ts
             end ts)
   end.
 
-Definition rvec_of_urvec (op : opcode) (rvec : RVec user_tag) : RVec tag :=
+Definition rvec_of_urvec (op : opcode) (rvec : Symbolic.RVec user_tag) : Symbolic.RVec tag :=
   let call := match op with JAL => true | _ => false end in
-  {| trpc := USER (trpc rvec) call;
-     tr   := USER (tr rvec) false |}.
+  {| Symbolic.trpc := USER (Symbolic.trpc rvec) call;
+     Symbolic.tr   := USER (Symbolic.tr rvec) false |}.
 
 (* This is the handler that should be implemented concretely by the
    fault handler. Notice that this only takes care of the tagging
    behavior on regular user instructions, and doesn't include anything
    about system calls. *)
 
-Definition handler (mvec : MVec tag) : option (RVec tag) :=
+Definition handler (mvec : Symbolic.MVec tag) : option (Symbolic.RVec tag) :=
   match mvec with
-  | mkMVec op (USER tpc _) (USER ti false) ts =>
+  | Symbolic.mkMVec op (USER tpc _) (USER ti false) ts =>
     let process ts :=
-        do! rvec <- uhandler (mkMVec tpc ti ts);
+        do! rvec <- uhandler (Symbolic.mkMVec op tpc ti ts);
         Some (rvec_of_urvec op rvec) in
-    match nfields op as fs return (mvec_fields user_tag fs -> option (RVec tag)) ->
-                                  mvec_fields tag fs -> option (RVec tag) with
+    match Symbolic.nfields op as fs return (Symbolic.mvec_operands user_tag fs -> option (Symbolic.RVec tag)) ->
+                                  Symbolic.mvec_operands tag fs -> option (Symbolic.RVec tag) with
     | Some fs =>
       fun process ts =>
         do! ts <- sequence (Vector.map (fun t =>
@@ -405,4 +373,4 @@ End rules.
 
 Arguments ENTRY {user_tag}.
 Arguments KERNEL {user_tag}.
-Arguments mkMVec {T} op _ _ _.
+

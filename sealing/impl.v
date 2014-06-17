@@ -66,7 +66,6 @@ Instance ap : Abs.abstract_params t := {|
 Definition build_abstract_sealing_machine :=
   fun user_memory : (word t -> list (word t)) -> 
 
-
 Definition build_concrete_sealing_machine :=
   fun user_memory : word t -> 
 

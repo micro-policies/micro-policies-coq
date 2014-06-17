@@ -1,7 +1,9 @@
 Require Import List Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
 Require Import lib.utils lib.ordered lib.partial_maps common.common.
-Require Import symbolic.rules.
+Require Import symbolic.symbolic.
+
+Import Symbolic.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -234,7 +236,7 @@ Definition mvec_const_dest {A B} op (b : B) : mvec_dest A B op :=
   | None => fun contra => match contra with end
   end.
 
-Definition mvec_match {A B} op : forall (fs : mvec_fields A (nfields op))
+Definition mvec_match {A B} op : forall (fs : mvec_operands A (nfields op))
                                         (f : mvec_dest A B op), B :=
   match nfields op as nf
                    return match nf with
