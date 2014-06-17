@@ -8,7 +8,7 @@ Require Import Bool.
 Import ListNotations.
 
 Require Import lib.FiniteMaps.
-Require Import lib.utils.
+Require Import lib.utils lib.Coqlib.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import symbolic.rules.
@@ -57,14 +57,6 @@ Definition faulthandler_bin := map (@encode_instr _ concrete_int_32_ops)
 Open Scope bool_scope.
 Open Scope Z_scope.
 
-(* Not needed *)
-Fixpoint insert_from_as {A B : Type} (i : int) (l : list A) (f : A -> B)
-                        (mem : Int32PMap.t B) : Int32PMap.t B :=
-  match l with
-    | []      => mem
-    | h :: l' => insert_from_as (add i one) l' f (Int32PMap.set i (f h) mem)
-  end.
-
 Fixpoint insert_from {A : Type} (i : int) (l : list A) 
                      (mem : Int32PMap.t A) : Int32PMap.t A :=
   match l with
@@ -79,44 +71,45 @@ Fixpoint constants_from {A : Type} (i : int) (n : nat) (x : A)
     | S n' => constants_from (add i one) n' x (Int32PMap.set i x mem)
   end.
 
-Definition initial_memory : 
-             forall handler_and_syscalls : relocatable_mem atom,
-             forall user_mem : relocatable_mem atom,
-             Concrete.memory concrete_int_32_t * (word concrete_int_32_t) :=
-  fun handler_and_syscalls : relocatable_mem atom =>
-  fun user_mem : relocatable_mem atom =>
-  let kernelZero := Atom zero Concrete.TKernel in
-  let policy_code_addr := 
-     add_word (Z_to_word (Z.of_nat (length fault_handler)))
-              (fault_handler_start concrete_int_32_ops) in
-  let policy_mem := handler_and_syscalls policy_code_addr in
-  let user_code_addr := 
-     add_word policy_code_addr (fault_handler_start concrete_int_32_ops) in
-  let user_mem_concrete := user_mem policy_code_addr in 
+Definition w := word concrete_int_32_t.
+
+Definition initial_memory 
+      (extra_state : relocatable_segment _ atom)
+      (handler_and_syscalls : relocatable_segment w atom)
+      (user_mem : relocatable_segment w atom) 
+    : Concrete.memory concrete_int_32_t * w :=
+  let cacheCell := Atom zero Concrete.TKernel in
+  let (_,gen) := concat_relocatable_segments 
+                    handler_and_syscalls
+                    (concat_relocatable_segments
+                       extra_state
+                       user_mem) in
+  let extra_state_addr := add_word (fault_handler_start concrete_int_32_ops)
+                                   (nat_to_word (fst handler_and_syscalls)) in
+  let user_code_addr := add_word extra_state_addr
+                                 (nat_to_word (fst extra_state)) in
+  let contents := 
+    gen (fault_handler_start concrete_int_32_ops) extra_state_addr in
   let mem := 
-     ( constants_from zero 7 kernelZero
-     ∘ insert_from user_code_addr user_mem_concrete
-     ∘ insert_from policy_code_addr policy_mem
-     ∘ insert_from (fault_handler_start concrete_int_32_ops) fault_handler )
+     ( constants_from zero 7 cacheCell
+     ∘ insert_from (fault_handler_start concrete_int_32_ops) contents )
      (Int32PMap.empty _) in
    (mem, user_code_addr).
 
 Program Definition initial_regs : Concrete.registers concrete_int_32_t :=
   Int32TMap.init zero@zero.
 
-Program Definition initial_state : 
-             forall handler_and_syscalls : relocatable_mem atom,
-             forall user_mem : relocatable_mem atom,
-             forall initial_pc_tag : word concrete_int_32_t,
-             Concrete.state concrete_int_32_t := 
-  fun handler_and_syscalls : relocatable_mem atom =>
-  fun user_mem : relocatable_mem atom => 
-  fun initial_pc_tag : word concrete_int_32_t =>
-  let (mem, start) := initial_memory handler_and_syscalls user_mem in
-{|  
-  Concrete.mem := mem;
-  Concrete.regs := initial_regs;
-  Concrete.cache := [];  (* BCP: Fix: (KERNEL: tag unit) ... *)
-  Concrete.pc := start@initial_pc_tag; 
-  Concrete.epc := zero@zero
-|}.
+Program Definition initial_state 
+      (extra_state : relocatable_segment _ atom)
+      (handler_and_syscalls : relocatable_segment w atom)
+      (user_mem : relocatable_segment w atom) 
+      (initial_pc_tag : w) 
+    : Concrete.state concrete_int_32_t := 
+  let (mem, start) := initial_memory extra_state handler_and_syscalls user_mem in
+  {|  
+    Concrete.mem := mem;
+    Concrete.regs := initial_regs;
+    Concrete.cache := [];  (* BCP: Fix: (KERNEL: tag unit) ... *)
+    Concrete.pc := start@initial_pc_tag; 
+    Concrete.epc := zero@zero
+  |}.

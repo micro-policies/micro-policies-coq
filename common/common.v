@@ -427,11 +427,36 @@ Class syscall_regs := {
 
 End SyscallRegs.
 
-Section Relocate.
+Section Relocation.
 
-Context {t : machine_types}.
+Context {t : machine_types}
+        {ops : machine_ops t}.
 
-Definition relocatable_mem := fun X => (word t -> list X).
+(* The type of relocatable memory segments.  The first nat specifies
+   the segment's size.  The argument type specifies what kind of
+   relocation information is needed (e.g., nothing for constant
+   segments; just one word for relocatable code; a pair of words for
+   relocatable code that also needs access to a shared data area).
 
-End Relocate.
+   TODO: One issue is that we need the resulting list to always be of
+   the specified size, but the type does not demand this at the
+   moment.  One way to deal with this is to add a proof component that
+   certifies that the resulting list always has the specified length.
+   Is there a better way?  (This seems not too bad: our structured
+   code combinators can build these certificates pretty easily.) *)
 
+Definition relocatable_segment := 
+  fun Args => fun Cell => (nat * (word t -> Args -> list Cell))%type.
+
+Definition concat_relocatable_segments 
+             (Args Cell : Type)
+             (seg1 seg2 : relocatable_segment Args Cell) 
+           : relocatable_segment Args Cell :=
+  let (l1,gen1) := seg1 in
+  let (l2,gen2) := seg2 in
+  let gen := fun (base : word t) (rest : Args) =>
+                  (gen1 base rest)
+               ++ (gen2 (add_word base (nat_to_word l1)) rest) in
+  (l1+l2, gen).
+
+End Relocation.
