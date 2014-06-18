@@ -4,7 +4,7 @@ Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils lib.partial_maps lib.ordered common.common.
-Require Import sfi.list_utils sfi.set_utils sfi.ranges.
+Require Import sfi.list_utils sfi.set_utils sfi.isolate_sets sfi.classes.
 
 Import DoNotation.
 
@@ -23,37 +23,25 @@ Section WithClasses.
 
 Import PartMaps.
 
-Context (t    : machine_types)
-        {ops  : machine_ops t}
-        {spec : machine_ops_spec ops}.
+Context (t            : machine_types)
+        {ops          : machine_ops t}
+        {spec         : machine_ops_spec ops}
+        {ap           : abstract_params t}
+        {ap_spec      : params_spec ap}
+        {sfi_syscalls : sfi_syscall_params t}.
 
 Open Scope word_scope.
 Local Notation word  := (word t).
 Local Notation value := (eqtype.Equality.sort word).
 
-(* I want to use S as a variable. *)
-Let S := Datatypes.S.
-Local Notation Suc := Datatypes.S.
-
 Implicit Type pc : value.
-
-Class abstract_params := {
-  memory    : Type;
-  mem_class :> partial_map memory value value;
-  registers : Type;
-  reg_class :> partial_map registers (reg t) value
-}.
-
-Class params_spec (ap : abstract_params) :=
-  { mem_axioms :> PartMaps.axioms (@mem_class ap)
-  ; reg_axioms :> PartMaps.axioms (@reg_class ap) }.
-
-Context {ap      : abstract_params}
-        {ap_spec : params_spec ap}.
-
 Implicit Type M : memory.
 Implicit Type R : registers.
 Implicit Type r rsrc rdest rpsrc rpdest rtgt : reg t.
+
+(* I want to use S as a variable. *)
+Let S := Datatypes.S.
+Local Notation Suc := Datatypes.S.
 
 (* BCP: Can we change `shared_memory' to `writable_memory', and disallow writes
    to `address_space'?  [TODO] *)
@@ -146,45 +134,6 @@ Definition good_syscall (sc : syscall) (MM : state) : bool :=
        end
   else true.
 
-Class sfi_syscall_params := {
-  (* The registers ISOLATE reads from. *)
-  rIsoA : reg t; rIsoJ : reg t; rIsoS : reg t;
-  
-  (* The location of ISOLATE *)
-  isolate_addr : word;
-  
-  (* The register the add-to-$SET syscalls read from. *)
-  rAdd : reg t;
-  
-  (* The addresses of the add-to-{J,S} syscalls *)
-  add_to_jump_targets_addr : word; add_to_shared_memory_addr : word
-}.
-Context {sfi_syscalls : sfi_syscall_params}.
-
-Notation "'do!' 'guard' cond ; rest" :=
-  (if cond then rest else None)
-  (at level 200, cond at level 100, rest at level 200).
-
-Definition isolate_get_range (M : memory) (p : value) : option (list value) :=
-  do! low  <- get M p;
-  do! high <- get M (p + 1);
-  Some (range low high).
-
-Fixpoint isolate_get_ranges (M : memory)
-                            (p : value)
-                            (n : nat) : option (list value) :=
-  match n with
-    | O      => Some []
-    | Suc n' => do! here <- isolate_get_range M p;
-                do! rest <- isolate_get_ranges M (p + 2) n';
-                Some (set_union here rest)
-  end.
-
-Definition isolate_create_set (M : memory)
-                              (base : value) : option (list value) :=
-  do! pairs <- get M base;
-  isolate_get_ranges M (base + 1) (word_to_nat pairs).
-
 Definition isolate_fn (MM : state) : option state :=
   let '(State pc R M C) := MM in
   do! c      <- in_compartment_opt C pc;
@@ -192,12 +141,12 @@ Definition isolate_fn (MM : state) : option state :=
   do! pJ     <- get R rIsoJ;
   do! pS     <- get R rIsoS;
   let '<<A,J,S>> := c in
-  do! A' <- isolate_create_set M pA;
+  do! A' <- isolate_create_set id M pA;
   do! guard subset A' A;
   do! guard nonempty A';
-  do! J' <- isolate_create_set M pJ;
+  do! J' <- isolate_create_set id M pJ;
   do! guard subset J' (set_union A J);
-  do! S' <- isolate_create_set M pS;
+  do! S' <- isolate_create_set id M pS;
   do! guard subset S' (set_union A S);
   let c_upd := <<set_difference A A', J, S>> in
   let c'    := <<A',J',S'>> in
@@ -1004,39 +953,6 @@ Hint Resolve in_unique_compartment.
 
 Hypothesis good_othercalls : forall MM,
   forallb (fun sc => good_syscall sc MM) othercalls = true.
-
-Local Ltac isolate_fn_is_set :=
-  let H := fresh in
-  intros until 0; intros H;
-  let unfix gen f n := first [ gen; induction n; intros; simpl in H;
-                               [solve [inversion H; auto]|]
-                             | unfold f in H; simpl in H ] in
-  match type of H with
-      | ?f ?a ?b ?c ?n ?= ?X => unfix ltac:(gdep c; gdep b; gdep a; gdep X) f n
-      | ?f ?a ?b ?n    ?= ?X => unfix ltac:(gdep b; gdep a; gdep X)         f n
-      | ?f ?a ?n       ?= ?X => unfix ltac:(gdep a; gdep X)                 f n
-      | ?f ?n          ?= ?X => unfix ltac:(gdep X)                         f n
-  end;
-  repeat match type of H with (do! _ <- ?x; _) ?= _ =>
-    destruct x eqn:?; simpl in H; [|discriminate H]
-  end;
-  inversion H; subst;
-  eauto 4.
-
-Lemma isolate_get_range_is_set : forall M p X,
-  isolate_get_range M p ?= X -> is_set X = true.
-Proof. isolate_fn_is_set. Qed.
-Hint Resolve isolate_get_range_is_set.
-
-Lemma isolate_get_ranges_is_set : forall M p n X,
-  isolate_get_ranges M p n ?= X -> is_set X = true.
-Proof. isolate_fn_is_set. Qed.
-Hint Resolve isolate_get_ranges_is_set.
-
-Lemma isolate_create_set_is_set : forall M base X,
-  isolate_create_set M base ?= X -> is_set X = true.
-Proof. isolate_fn_is_set. Qed.
-Hint Resolve isolate_create_set_is_set.
 
 Theorem isolate_good : forall MM, good_syscall isolate MM = true.
 Proof.

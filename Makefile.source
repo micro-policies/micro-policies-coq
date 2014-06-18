@@ -42,10 +42,13 @@ memory_safety/refinementAQ.v
 memory_safety/symbolic.v
 # memory-safety/fault_handler_spec.v
 
-sfi/abstract.v
-sfi/ranges.v
-sfi/set_utils.v
 sfi/list_utils.v
+sfi/set_utils.v
+sfi/ranges.v
+sfi/isolate_sets.v
+sfi/classes.v
+sfi/abstract.v
+sfi/symbolic.v
 
 sealing/classes.v
 sealing/abstract.v

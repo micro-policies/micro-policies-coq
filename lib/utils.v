@@ -234,6 +234,7 @@ Ltac allinv' :=
      end).
 
 Ltac andb_true_split :=
+  hnf;
   try match goal with
     | [|- Is_true _]  => apply Is_true_eq_left
     | [|- true  =  _] => symmetry
@@ -241,7 +242,8 @@ Ltac andb_true_split :=
     | [|- _ <> false] => apply not_false_iff_true
   end;
   match goal with
-    | [|- ?b1 && ?b = true] => apply andb_true_iff; split; try andb_true_split
+    | [|- ?b1 && ?b = true] => apply andb_true_iff; split;
+                               try andb_true_split
   end.
 
 (* For when you want to subst/congruence, but you have terms relying on
@@ -1137,6 +1139,10 @@ Notation "'do!' X <- A ; B" :=
 Notation "'do!' X : T <- A ; B" :=
   (bind (fun X : T => B) A)
   (at level 200, X ident, A at level 100, B at level 200).
+
+Notation "'do!' 'guard' cond ; rest" :=
+  (if cond then rest else None)
+  (at level 200, cond at level 100, rest at level 200).
 
 End DoNotation.
 
