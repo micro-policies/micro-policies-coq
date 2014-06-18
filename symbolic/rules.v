@@ -86,9 +86,6 @@ Definition is_call (t : tag) : bool :=
   | _ => false
   end.
 
-Variable TNONE : tag.
-Definition TCOPY := TNONE.
-
 (* Returns true iff an opcode can only be executed by the kernel *)
 Definition privileged_op (op : opcode) : bool :=
   match op with
@@ -301,26 +298,29 @@ Proof.
   f_equal; apply encode_inj; trivial.
 Qed.
 
+(* Just for clarity *)
+Let TCopy := TNone.
+
 Definition ground_rules : Concrete.rules (word t) :=
-  let mk op := Concrete.mkMVec (op_to_word op) (encode KERNEL) (encode KERNEL)
-                               (encode TNONE) (encode TNONE) (encode TNONE) in
+  let mk op := Concrete.mkMVec (op_to_word op) TKernel TKernel
+                               TNone TNone TNone in
   [
-   (mk NOP, Concrete.mkRVec (encode TCOPY) (encode TNONE));
-   (mk CONST, Concrete.mkRVec (encode TCOPY) (encode KERNEL));
-   (mk MOV, Concrete.mkRVec (encode TCOPY) (encode TCOPY));
-   (mk (BINOP ADD), Concrete.mkRVec (encode TCOPY) (encode KERNEL));
-   (mk (BINOP SUB), Concrete.mkRVec (encode TCOPY) (encode KERNEL));
-   (mk (BINOP MUL), Concrete.mkRVec (encode TCOPY) (encode KERNEL));
-   (mk (BINOP EQ),  Concrete.mkRVec (encode TCOPY) (encode KERNEL));
-   (mk LOAD, Concrete.mkRVec (encode TCOPY) (encode TCOPY));
-   (mk STORE, Concrete.mkRVec (encode TCOPY) (encode TCOPY));
-   (mk JUMP, Concrete.mkRVec (encode TCOPY) (encode TNONE));
-   (mk BNZ, Concrete.mkRVec (encode TCOPY) (encode TNONE));
-   (mk JAL, Concrete.mkRVec (encode TCOPY) (encode TCOPY));
-   (mk JUMPEPC, Concrete.mkRVec (encode TCOPY) (encode TNONE));
-   (mk ADDRULE, Concrete.mkRVec (encode TCOPY) (encode TNONE));
-   (mk GETTAG, Concrete.mkRVec (encode TCOPY) (encode KERNEL));
-   (mk PUTTAG, Concrete.mkRVec (encode TCOPY) (encode TNONE))
+   (mk NOP, Concrete.mkRVec TCopy TNone);
+   (mk CONST, Concrete.mkRVec TCopy TKernel);
+   (mk MOV, Concrete.mkRVec TCopy TCopy);
+   (mk (BINOP ADD), Concrete.mkRVec TCopy TKernel);
+   (mk (BINOP SUB), Concrete.mkRVec TCopy TKernel);
+   (mk (BINOP MUL), Concrete.mkRVec TCopy TKernel);
+   (mk (BINOP EQ),  Concrete.mkRVec TCopy TKernel);
+   (mk LOAD, Concrete.mkRVec TCopy TCopy);
+   (mk STORE, Concrete.mkRVec TCopy TCopy);
+   (mk JUMP, Concrete.mkRVec TCopy TNone);
+   (mk BNZ, Concrete.mkRVec TCopy TNone);
+   (mk JAL, Concrete.mkRVec TCopy TCopy);
+   (mk JUMPEPC, Concrete.mkRVec TCopy TNone);
+   (mk ADDRULE, Concrete.mkRVec TCopy TNone);
+   (mk GETTAG, Concrete.mkRVec TCopy TKernel);
+   (mk PUTTAG, Concrete.mkRVec TCopy TNone)
   ].
 
 Definition mvec_of_umvec (call : bool) (mvec : Symbolic.MVec user_tag) : Symbolic.MVec tag :=
@@ -373,4 +373,3 @@ End rules.
 
 Arguments ENTRY {user_tag}.
 Arguments KERNEL {user_tag}.
-
