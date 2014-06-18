@@ -118,9 +118,9 @@ Axiom mkkey_segment : @relocatable_segment t w atom.
 Axiom seal_segment : @relocatable_segment t w atom.
 Axiom unseal_segment : @relocatable_segment t w atom.
 
-Definition build_concrete_sealing_machine
-     (user_mem : @relocatable_segment t unit atom)
-     (initial_pc_tag : w)
+Definition build_concrete_sealing_machine 
+     (user_mem : @relocatable_segment t unit atom) 
+     (initial_pc_tag : w)   (* Doesn't make sense for sealing *)
    : Concrete.state concrete_int_32_t :=
   let syscalls :=
     concat_relocatable_segments
@@ -134,15 +134,18 @@ Definition build_concrete_sealing_machine
     (@relocate_ignore_args t w atom user_mem)
     initial_pc_tag.
 
-(*
-Definition build_abstract_sealing_machine :=
-  fun user_memory : relocatable_mem atom =>
-  ...
+(* BCP: One nontrivial issue here.  How do we find out the system call
+addresses to use when instantiating the sealing machine?
+Answer (roughly)...
 
-BCP: Hmmm -- I see one nontrivial problem looming here.  How do we
-     find out the system call addresses to use when instantiating the
-     sealing machine?
+Definition build_abstract_sealing_machine :=
+  fun user_memory : ...
+  let ... := build_concrete_sealing_machine ...
+  Instance ...
+  ... 
 *)
+
+(* TODO: Refinement proof from concrete to abstract instances *)
 
 End WithClasses.
 End ConcreteSealing.
