@@ -114,6 +114,91 @@ Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := 
 Context (rf : machine_refinement amachine cmachine).
 Context (rfs : machine_refinement_specs rf).
 
+
+Inductive refine_traces :
+  list (@state t amachine) -> list (@state t cmachine) -> Prop :=
+| TRNil : refine_traces [] []
+| TRNormal0 : forall ast cst cst' axs cxs,
+    step cst cst' ->
+    visible cst cst' = false ->
+    refine_state ast cst ->
+    refine_state ast cst' ->
+    refine_traces (ast :: axs) (cst :: cxs) ->
+    refine_traces (ast :: axs) (cst :: cst' :: cxs)
+| TRNormal1 : forall ast ast' cst cst' axs cxs,
+    step cst cst' ->
+    visible cst cst' = true ->
+    step ast ast' ->
+    refine_state ast cst ->
+    refine_state ast' cst' ->
+    refine_traces (ast' :: axs) (cst' :: cxs) ->
+    refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs)
+| TRAttacker : forall ast ast' cst cst' axs cxs,
+    ~step cst cst' ->
+    step_a cst cst' ->
+    step_a ast ast' ->
+    refine_state ast cst ->
+    refine_state ast' cst' ->
+    refine_traces (ast' :: axs) (cst' :: cxs) ->
+    refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs).
+
+Lemma backwards_refinement_traces_stronger
+    (ast : @state t amachine) cst cst' cxs :
+  refine_state ast cst ->
+  intermstep cmachine cxs cst cst' ->
+  exists axs,
+    (exists ast', intermrstep amachine axs ast ast') /\
+    refine_traces axs cxs.
+Admitted.
+
+Lemma refine_traces_weaken_backward : forall axs cxs,
+  refine_traces axs cxs ->
+    (forall csi csj,
+       In2 csi csj cxs ->
+       step csi csj ->
+       visible csi csj = true ->
+         exists asi asj,
+           In2 asi asj axs /\ step asi asj
+           /\ refine_state asi csi /\ refine_state asj csj).
+Admitted.
+
+Lemma refine_traces_weaken_forward : forall axs cxs,
+  refine_traces axs cxs ->
+  forall asi asj,
+    In2 asi asj axs ->
+    step asi asj ->
+    exists csi csj,
+      In2 csi csj cxs /\ step csi csj
+      /\ refine_state asi csi /\ refine_state asj csj.
+Admitted.
+
+Lemma refine_traces_preserves_cfi_trace : forall axs cxs,
+  refine_traces axs cxs ->
+  trace_has_cfi amachine axs ->
+  trace_has_cfi cmachine cxs.
+Admitted.
+
+(* Q: Do we have anything like this? Maybe a weaker variant?
+   Might be useful for the split_refine_traces? *)
+Lemma refine_traces_unique_proof : forall axs cxs
+  (H1 : refine_traces axs cxs)
+  (H2 : refine_traces axs cxs),
+  H1 = H2.
+Admitted.
+
+Lemma split_refine_traces : forall axs cxs asi asj csi csj,
+  refine_traces axs cxs ->
+  In2 asi asj axs ->
+  In2 csi csj cxs ->
+  refine_state asi csi ->
+  refine_state asj csj ->
+  exists apre cpre asuff csuff,
+    refine_traces apre cpre /\
+    refine_traces asuff csuff /\
+    axs = apre ++ asi :: asj :: asuff /\
+    cxs = cpre ++ csi :: csj :: csuff.
+Admitted.
+
 (* General advice: split off lemmas with recurring proof goals *)
 
 (* We're still missing the part about violations *)
