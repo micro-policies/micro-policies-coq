@@ -42,8 +42,9 @@ Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) :
   backwards_refinement_attacker :  
     forall ast cst cst'
       (REF: refine_state ast cst)
-      (STEP: step_a cst cst'),
-      exists ast', step_a ast ast' /\ refine_state ast' cst';
+      (STEPA: step_a cst cst')
+      (NOSTEP: ~step cst cst'),
+      exists ast', step_a ast ast' /\ ~step ast ast' /\ refine_state ast' cst';
 
   (* old, get rid of this *)
   backwards_refinement_single : 
@@ -107,17 +108,7 @@ Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := 
   as_implies_cs : forall ast cst axs cxs,
     refine_state ast cst ->
     AS (ast::axs) ->
-    CS (cst::cxs);
-
-  (* strange assumption about self loops, it seems to imply "no
-     attacker accessible extra state hidden at the abstract level" though *)
-  new_assumption : forall ast ast' cst cst',
-    step ast ast' ->
-    step_a ast ast' ->
-    refine_state ast cst ->
-    refine_state ast' cst' ->
-    step_a cst cst' ->
-    step cst cst'
+    CS (cst::cxs)
 
 }.
 
@@ -148,12 +139,15 @@ Inductive refine_traces :
 | TRAttacker : forall ast ast' cst cst' axs cxs,
     ~step cst cst' ->
     step_a cst cst' ->
+    ~step ast ast' ->
     step_a ast ast' ->
     refine_state ast cst ->
     refine_state ast' cst' ->
     refine_traces (ast' :: axs) (cst' :: cxs) ->
     refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs).
 
+(* nit: the final state is irrelevant for both intermstep and
+        intermrstep, can we remove it and get of useless existentials? *)
 Lemma backwards_refinement_traces_stronger
     (ast : @state t amachine) cst cst' cxs :
   refine_state ast cst ->
@@ -178,7 +172,8 @@ Proof.
       exists [ast]; split; [exists ast; constructor | apply TRNormal0; auto].
       now constructor(assumption).
   - destruct STEP2 as [STEP2A | STEP2N]; [idtac | tauto].
-    destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A) as [ast' [STEPA REF]].
+    destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A NST)
+      as [ast' [STEPA [NOSTEP REF]]].
     exists [ast;ast']; split;
     [exists ast' | apply TRAttacker; auto; constructor(assumption)].
     eapply intermr_multi; eauto. left; eassumption. now constructor.
@@ -209,8 +204,8 @@ Proof.
         apply TRNormal0; auto.
       + destruct STEP2 as [STEP2A | STEP2N]; subst.
         { (*case it's an attacker step*)
-          destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A) 
-          as [ast'' [ASTEP REF]].
+          destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A NST) 
+          as [ast'' [ASTEP [NOSTEP REF]]].
         destruct (IHINTERM2' _ REF) as [axs [[ast' INTERMR1] IH]].
         exists (ast::axs).
         split. exists ast'. eapply intermr_multi; eauto. 
@@ -272,7 +267,7 @@ Proof.
     * exists cst; exists cst'.
       split. simpl; auto.
       repeat (split; auto).
-      now eauto using new_assumption.
+      tauto.
     * admit. (* by IH? *)
 Admitted.
 
