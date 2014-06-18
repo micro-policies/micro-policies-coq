@@ -5,11 +5,14 @@ Require Import List.
 
 Import ListNotations.
 
-Require Import lib.utils lib.Coqlib.
-Require Import concrete.common.
+Require Import eqtype.
+
+Require Import lib.utils lib.Coqlib lib.partial_maps.
+Require Import common.common.
 Require Import concrete.concrete.
-Require Import kernel.rules.
-Require Import kernel.refinement_common.
+Require Import symbolic.rules.
+Require Import symbolic.refinement_common.
+Require Import symbolic.symbolic.
 
 Section fault_handler.
 
@@ -29,7 +32,7 @@ Class fault_handler_params := {
 
   rb : reg mt; (* Boolean result register *)
 
-  ri : reg mt; (* Auxiliary register for if statement *)
+  ri : reg mt; (* Auxiliary register *)
 
   rtrpc : reg mt; rtr : reg mt; (* Registers for tag results *)
   raddr : reg mt; (* Addressing register *)
@@ -51,7 +54,9 @@ Class fault_handler_params := {
      registers given above and runs the user-level fault-handler. If
      the operation is allowed, put a 1 in [rb], and the user-level
      result tags in [rtrpc] and [rtr]. *)
-  user_handler : code
+  user_handler : code;
+
+  is_entry_tag : reg mt -> reg mt -> code
 
 }.
 
@@ -64,7 +69,7 @@ Definition kernel_regs := mvec_regs ++ [rb; ri; rtrpc; rtr; raddr].
 Definition bool_to_imm (b : bool) : imm mt :=
   if b then Z_to_imm 1 else Z_to_imm 0.
 
-(* Test for value in [r]. If true (i.e., not zero), execute [t]. Otherwise, execute [f]. *)
+(* Test value in [r]. If true (i.e., not zero), execute [t]. Otherwise, execute [f]. *)
 Definition if_ (r : reg mt) (t f : code) : code :=
   let lt := Z_to_imm (Z.of_nat (length t + 1)) in
   let eend := [Const mt (bool_to_imm true) ri] ++
@@ -87,64 +92,73 @@ Definition load_mvec : code :=
                      [Load mt raddr r],
                      addr + Z_to_word 1))%w
                  mvec_regs
-                 ([],Concrete.cache_line_addr (t := mt))).
+                 ([],Concrete.cache_line_addr ops)).
 
-Definition srules_compile (srs : srules) : code :=
-  load_mvec ++
-  fold_right (fun op c =>
-                [Const mt (op_to_imm op) rb] ++
-                eq_code rb rop rb ++
-                if_ rb
-                    (srule_compile (srs op))
-                    c)
-             []
-             opcodes ++
+Definition analyze_operand_tags : code :=
+  (* Check whether instruction is tagged USER *)
+  extract_user_tag rti rb rti ri ++
   if_ rb
-      (load_const (Concrete.Mtrpc ops) raddr ++
-       [Store mt rtrpc raddr] ++
-       load_const (Concrete.Mtr ops) raddr ++
-       [Store mt rtr raddr] ++
-       [AddRule _] ++
-       [JumpEpc _])
+      (* We are in user mode, extract operand tags *)
+      [] (* TODO *)
+      (* We hit an invalid point; halt the machine *)
       inf_loop.
 
-Definition kernel_protection_fh := srules_compile (kernel_srules USER).
+Definition handler : code :=
+  load_mvec ++
+  extract_user_tag rtpc rb rtpc ri ++
+  if_ rb
+      (* PC has USER tag *)
+      (if_ ri
+           (* We just performed a Jal. Check whether we're an entry point *)
+           (is_entry_tag rti ri ++
+            if_ ri
+                (* We are in a system call. Put KERNEL tags and return *)
+                (load_const Concrete.TKernel ri ++
+                 load_const (Concrete.Mtrpc ops) raddr ++
+                 [Store _ ri raddr] ++
+                 load_const (Concrete.Mtr ops) raddr ++
+                 [Store _ ri raddr])
+                (* We are not in a system call. Proceed as normal. *)
+                analyze_operand_tags)
+           (* We have executed something else besides Jal. Proceed normally. *)
+           analyze_operand_tags)
+      (* PC is not tagged USER, halt execution *)
+      inf_loop.
 
 Section invariant.
 
 Context {s : machine_ops_spec ops}.
 
-Variable fhstart : word mt.
-
 Let invariant (mem : Concrete.memory _)
               (regs : Concrete.registers _)
               (cache : Concrete.rules (word mt)) : Prop :=
-  (forall addr, In addr (Concrete.rvec_fields _) ->
-                exists w, Concrete.get_mem mem addr = Some w@(tag_to_word KERNEL)) /\
+  (forall addr : word mt, In addr (Concrete.rvec_fields ops) ->
+                          exists w : word mt, PartMaps.get mem addr = Some w@Concrete.TKernel) /\
   (forall addr instr,
-     nth_error kernel_protection_fh addr = Some instr ->
-     Concrete.get_mem mem (add_word fhstart (Z_to_word (Z.of_nat addr))) =
-     Some (encode_instr instr)@(tag_to_word KERNEL)) /\
+     nth_error handler addr = Some instr ->
+     PartMaps.get mem (add_word (Concrete.fault_handler_start ops) (Z_to_word (Z.of_nat addr))) =
+     Some (encode_instr instr)@Concrete.TKernel) /\
   (* FIXME:
      This really shouldn't be included here, since it doesn't mention the neither the
      memory nor the register bank. Try to put this somewhere else. *)
-  (forall addr, addr < length kernel_protection_fh ->
-                ~ In (add_word fhstart (Z_to_word (Z.of_nat addr)))
+  (forall addr, addr < length handler ->
+                ~ In (add_word (Concrete.fault_handler_start ops) (Z_to_word (Z.of_nat addr)))
                      (Concrete.mvec_and_rvec_fields _)) /\
   (forall mvec rvec,
      Concrete.ctpc mvec = Concrete.TKernel ->
      Concrete.cache_lookup _ cache masks mvec = Some rvec ->
-     Concrete.cache_lookup _ concrete_ground_rules masks mvec = Some rvec) /\
+     Concrete.cache_lookup _ ground_rules masks mvec = Some rvec) /\
   (forall mvec rvec,
-     Concrete.cache_lookup _ concrete_ground_rules masks mvec = Some rvec ->
+     Concrete.cache_lookup _ ground_rules masks mvec = Some rvec ->
      Concrete.cache_lookup _ cache masks mvec = Some rvec) /\
   (forall r, In r kernel_regs ->
-             common.tag (Concrete.get_reg regs r) = tag_to_word KERNEL).
+             common.tag (TotalMaps.get regs r) = Concrete.TKernel).
 
+(*
 Lemma invariant_upd_mem :
-  forall regs mem1 mem2 cache addr w1 w2
+  forall regs mem1 mem2 cache addr w1 ut b w2 int
          (KINV : invariant mem1 regs cache)
-         (GET : Concrete.get_mem mem1 addr = Some w1@(tag_to_word USER)) (* TODO: non-kernel memory *)
+         (GET : PartMaps.get mem1 addr = Some w1@(tag_to_word USER)) (* TODO: non-kernel memory *)
          (UPD : Concrete.upd_mem mem1 addr w2 = Some mem2),
     invariant mem2 regs cache.
 Proof.
@@ -220,7 +234,7 @@ Definition fault_handler_invariant : kernel_invariant := {|
   kernel_invariant_upd_mem := invariant_upd_mem;
   kernel_invariant_store_mvec := invariant_store_mvec
 |}.
-
+*)
 End invariant.
 
 End fault_handler.
