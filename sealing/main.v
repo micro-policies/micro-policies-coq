@@ -1,12 +1,13 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
-Require Import ssreflect eqtype ssrnat.
+Require Import ssreflect eqtype ssrnat ssrbool.
 Require Import lib.utils lib.partial_maps common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import symbolic.int_32.
 Require Import sealing.abstract.
+Require Import Omega.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -29,12 +30,24 @@ Definition admit {T: Type} : T.  Admitted.
 
 Definition keytype := [eqType of nat].
 
-Definition max_element : list keytype -> keytype := admit.
+Definition max_element (l : list keytype) : keytype :=
+  fold_right maxn O l.
 
-Lemma max_element_plus_one_is_distinct : 
-  forall (l : list keytype), 
+Lemma max_element_plus_one_is_distinct :
+  forall (l : list keytype),
     ~(In (1 + max_element l) l).
-Admitted.
+Proof.
+  move => l.
+  have MAX: forall x, In x l -> x <= max_element l.
+  { elim: l => [|x' l IH] // x [-> | THERE] //=.
+    - by rewrite leq_max leqnn.
+    - by rewrite leq_max IH //= orb_true_r. }
+  move => CONTRA.
+  move: (MAX _ CONTRA).
+  rewrite /addn /addn_rec.
+  move/leP => LE.
+  omega.
+Qed.
 
 Instance sk : Abs.sealing_key := {|
   key := keytype;
@@ -73,7 +86,7 @@ Instance ap : Abs.params t := {|
    - encoding of tags
 
        DATA      --> 0
-       KEY(k)    --> k*2+1 
+       KEY(k)    --> k*2+1
        SEALED(k) --> k*2+2
 
    - concrete transfer function (with combinators)
@@ -91,7 +104,7 @@ Instance ap : Abs.params t := {|
        UNSEAL: check that the tag of one arg is KEY(k) and the other
        is SEAL(k) and then change the latter to DATA.
 
-   - fixpoint implementation of concrete step function 
+   - fixpoint implementation of concrete step function
      (with proof of correctness)
 
 *)
@@ -105,26 +118,26 @@ Axiom mkkey_segment : @relocatable_segment t w atom.
 Axiom seal_segment : @relocatable_segment t w atom.
 Axiom unseal_segment : @relocatable_segment t w atom.
 
-Definition build_concrete_sealing_machine 
-     (user_mem : @relocatable_segment t unit atom) 
-     (initial_pc_tag : w) 
+Definition build_concrete_sealing_machine
+     (user_mem : @relocatable_segment t unit atom)
+     (initial_pc_tag : w)
    : Concrete.state concrete_int_32_t :=
-  let syscalls := 
-    concat_relocatable_segments 
-      mkkey_segment 
+  let syscalls :=
+    concat_relocatable_segments
+      mkkey_segment
       (concat_relocatable_segments seal_segment unseal_segment) in
-  let handler_and_syscalls := 
+  let handler_and_syscalls :=
     concat_relocatable_segments fault_handler syscalls in
   initial_state
     extra_state
-    handler_and_syscalls 
+    handler_and_syscalls
     (@relocate_ignore_args t w atom user_mem)
     initial_pc_tag.
 
 (*
 Definition build_abstract_sealing_machine :=
   fun user_memory : relocatable_mem atom =>
-  ... 
+  ...
 
 BCP: Hmmm -- I see one nontrivial problem looming here.  How do we
      find out the system call addresses to use when instantiating the
