@@ -25,15 +25,13 @@ Class cfi_machine := {
   get_pc : state -> word;
   attacker_pc : forall s s', step_a s s' -> get_pc s = get_pc s';
   
-  succ : state -> state -> bool                                                            
- }.
+  succ : state -> state -> bool       
+}.
 
 Context (cfim : cfi_machine).
 
-(* Definitions regarding stepping relations for CFI*)
+(* Definitions regarding stepping relations for CFI *)
 Definition cfi_step st st' := step_a st st' \/ step st st'.
-
-Definition cfi_step' st st' := step st st' \/ (~step st st' /\ step_a st st').
 
 Definition intermstep := interm cfi_step.
 
@@ -44,31 +42,23 @@ Definition singlestep := single cfi_step.
 Hypothesis exists_initial : exists s, initial s.
 
 (* A violation occured *)
-Variable V : state -> state ->  Prop. (* TODO: Replace things with succ _ _ = false? *)
+(* TODO: Replace things with succ _ _ = false? *)
+Variable V : state -> state ->  Prop.
 (* Execution will stop *)
 Variable S : list state -> Prop.
 
- (* Definition of CFI *)
-
+(* Old definition of CFI (Abadi) *)
 Definition trace_has_cfi' (trace : list state) := 
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
              (step_a si sj /\ get_pc si = get_pc sj) 
           \/ succ si sj = true.
 
-
 (* New CFI definition *)
 Definition trace_has_cfi (trace : list state) := 
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
            step si sj -> succ si sj = true.
-(* 1. Expose attacker step refinement separately
-      from normal step refinement
-   2. Return to previous problems with self loops;
-      maybe we don't need to expose visible steps
-      after all ... :)
-*)
-
 
 Definition cfi := 
   forall s s' xs

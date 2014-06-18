@@ -41,9 +41,9 @@ Proof.
       + (*case it's a visible step*)
         destruct (INTSTATES _ _ IN2 STEPN2 VISIBLE) as [asi [asj [IN2' [STEPN1 [REFI REFJ]]]]].
         assert (SUCC := TSAFE1 asi asj IN2' STEPN1).
-        apply (cfg_equiv1 asi asj csi csj REFI REFJ SUCC).
+        apply (cfg_equiv asi asj csi csj REFI REFJ SUCC).
       + (*case it's an invisible step*)
-         apply (cfg_kernel _ _ STEPN2 VISIBLE).
+         apply (cfg_invisible _ _ STEPN2 VISIBLE).
    - 
         
 
@@ -71,13 +71,13 @@ Admitted.
           - left.
             eapply astep_implies_cstep in STEPA; eauto.
             split; [assumption | erewrite attacker_pc; eauto].
-          - right. apply (cfg_equiv1 asi asj csi csj REFI REFJ STEPN SUCC). }
+          - right. apply (cfg_equiv asi asj csi csj REFI REFJ STEPN SUCC). }
       * (*case it's an invisible STEP*)
         subst.
         assert (STEP2: cfi_step machine2 csi csj) by (eapply interm_in2_step; eauto).
         destruct STEP2 as [? | STEPN2].
         left; erewrite attacker_pc; eauto.
-        destruct (cfg_kernel asj csi csj STEPN2 INVISIBLE); auto.
+        destruct (cfg_invisible asj csi csj STEPN2 INVISIBLE); auto.
     - (*machine1 has a violation*)
       destruct H as [asi [asj [ahs [atl [TRACE [VIOLATES1 [CFIH [CFIT STOPS1]]]]]]]].
       destruct (SPLITS asi asj ahs atl TRACE) as [csi [csj [chs [ctl [REFI [REFJ [CTRACE [INTHEAD INTAIL]]]]]]]].
@@ -101,7 +101,7 @@ Admitted.
               simpl; rewrite <- app_assoc; reflexivity. }
             destruct STEP1 as [STEPA | STEPN]; 
               [ left; erewrite attacker_pc; eapply astep_implies_cstep in STEPA; eauto |
-                right; apply (cfg_equiv1 asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
+                right; apply (cfg_equiv asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
           }
         * (*machine2 takes an invisible step*)
           subst.
@@ -113,7 +113,7 @@ Admitted.
           }
           destruct STEP2 as [STEPA | STEPN].
           { left; split; [idtac | apply attacker_pc]; eauto. }
-          { right; eapply cfg_kernel; eauto. }
+          { right; eapply cfg_invisible; eauto. }
       }
       { (*trace has cfi csj :: ctl and will halt *)
         split.
@@ -131,7 +131,7 @@ Admitted.
               }
               destruct STEP1 as [STEPA | STEPN];
               [ left; erewrite attacker_pc; eapply astep_implies_cstep in STEPA; eauto |
-                right; apply (cfg_equiv1 asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
+                right; apply (cfg_equiv asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
           - (*invisible step*)
             subst.
             assert (STEP2: cfi_step machine2 csi' csj').
@@ -142,7 +142,7 @@ Admitted.
             }
             destruct STEP2 as [STEPA | STEPN].
             { left; split; [idtac | apply attacker_pc]; eauto. }
-            { right; eapply cfg_kernel; eauto. }
+            { right; eapply cfg_invisible; eauto. }
          + eapply as_implies_cs; eauto.
      }
   + (* machine1 doesn't step at all*)   
@@ -156,7 +156,7 @@ Admitted.
       subst.
       destruct (interm_in2_step INTERM2 IN2).
       - left; erewrite attacker_pc; eauto.
-      - right; eapply cfg_kernel; eauto.*)
+      - right; eapply cfg_invisible; eauto.*)
 
 (*
 Theorem backwards_refinement_preserves_cfi :
@@ -183,7 +183,7 @@ Proof.
           split; [apply attacker_pc | idtac].
            apply SAFE_STEP in STEPN1.
            intro.
-           apply (cfg_equiv1 asi asj csi csj REFI REFJ STEPN1).
+           apply (cfg_equiv asi asj csi csj REFI REFJ STEPN1).
         }
         { (*case it's an attacker step*)
           destruct (TSAFE1 asi asj IN2') as [SAFE_STEPA SAFE_STEP].
@@ -198,7 +198,7 @@ Proof.
         split.
         apply attacker_pc.
         intro STEPN2.
-        destruct (cfg_kernel asj csi csj STEPN2 INVISIBLE); auto.
+        destruct (cfg_invisible asj csi csj STEPN2 INVISIBLE); auto.
     - (*machine1 has a violation*) 
       destruct H as [asi [asj [ahs [atl [TRACE [VIOLATES [CFIH [CFIT STOPS1]]]]]]]].
       destruct (SPLITS asi asj ahs atl TRACE) as [csi [csj [chs [ctl [REFI [REFJ [CTRACE [INTHEAD INTAIL]]]]]]]].
@@ -231,7 +231,7 @@ Proof.
               simpl; rewrite <- app_assoc; reflexivity. }
             destruct STEP1 as [STEPA | STEPN]; 
               [ left; erewrite attacker_pc; eapply astep_implies_cstep in STEPA; eauto |
-                right; apply (cfg_equiv1 asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
+                right; apply (cfg_equiv asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
           }
         * (*machine2 takes an invisible step*)
           subst.
@@ -243,7 +243,7 @@ Proof.
           }
           destruct STEP2 as [STEPA | STEPN].
           { left; split; [idtac | apply attacker_pc]; eauto. }
-          { right; eapply cfg_kernel; eauto. }
+          { right; eapply cfg_invisible; eauto. }
       }
       { (*trace has cfi csj :: ctl and will halt *)
         split.
@@ -261,7 +261,7 @@ Proof.
               }
               destruct STEP1 as [STEPA | STEPN];
               [ left; erewrite attacker_pc; eapply astep_implies_cstep in STEPA; eauto |
-                right; apply (cfg_equiv1 asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
+                right; apply (cfg_equiv asi' asj' csi' csj' REFI' REFJ' STEPN); assumption ].
           - (*invisible step*)
             subst.
             assert (STEP2: cfi_step machine2 csi' csj').
@@ -272,7 +272,7 @@ Proof.
             }
             destruct STEP2 as [STEPA | STEPN].
             { left; split; [idtac | apply attacker_pc]; eauto. }
-            { right; eapply cfg_kernel; eauto. }
+            { right; eapply cfg_invisible; eauto. }
          + eapply as_implies_cs; eauto.
      }
   + (* machine1 doesn't step at all*)   
@@ -286,7 +286,7 @@ Proof.
       subst.
       destruct (interm_in2_step INTERM2 IN2).
       - left; erewrite attacker_pc; eauto.
-      - right; eapply cfg_kernel; eauto.
+      - right; eapply cfg_invisible; eauto.
 *)
 
 

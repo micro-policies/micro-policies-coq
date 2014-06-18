@@ -15,70 +15,66 @@ Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}.
 
-Variable machine1 : cfi_machine t.
-Variable machine2 : cfi_machine t.
+Variable amachine : cfi_machine t.
+Variable cmachine : cfi_machine t.
 
-Variable V1 : (@state t machine1) -> (@state t machine1) -> Prop.
-Variable S1 : (list (@state t machine1)) -> Prop.
+Variable AV : (@state t amachine) -> (@state t amachine) -> Prop.
+Variable AS : (list (@state t amachine)) -> Prop.
 
-Variable V2 : (@state t machine2) -> (@state t machine2) -> Prop.
-Variable S2 : (list (@state t machine2)) -> Prop.
+Variable CV : (@state t cmachine) -> (@state t cmachine) -> Prop.
+Variable CS : (list (@state t cmachine)) -> Prop.
 
 (* General notion of refinement between two machines*)
-Class machine_refinement (machine1 : cfi_machine t) (machine2 : cfi_machine t) := {
-  refine_state : ((@state t) machine1) -> ((@state t) machine2) -> Prop;
+Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) := {
+  refine_state : ((@state t) amachine) -> ((@state t) cmachine) -> Prop;
  
-  visible : ((@state t) machine2) -> ((@state t) machine2) -> bool;
-
-(* Q:
-      visible cst cst' = false -> 
-      cfi_step cst cst' ->
-      step cst cst' (or even ~step_a cst cst')
-*)
+  visible : ((@state t) cmachine) -> ((@state t) cmachine) -> bool;
 
   (* a better way to state this is as 3 properties (diagrams): a-a n-0 n-n *)
   backwards_refinement_normal :  
     forall ast cst cst'
       (REF: refine_state ast cst)
       (STEP: step cst cst'),
-      (visible cst cst' = true -> exists ast', step ast ast' /\ refine_state ast' cst')
+      (visible cst cst' = true ->
+       exists ast', step ast ast' /\ refine_state ast' cst')
       /\ (visible cst cst' = false -> refine_state ast cst');
 
   backwards_refinement_attacker :  
     forall ast cst cst'
       (REF: refine_state ast cst)
       (STEP: step_a cst cst'),
-      exists ast', step_a ast ast'  /\ refine_state ast' cst';
+      exists ast', step_a ast ast' /\ refine_state ast' cst';
 
-  step_classic : forall cst cst',
-    (step cst cst') \/ (~step cst cst');
-  (* in a hurry it can be instantiated with classic from  
-     Require Import Classical *)
-
+  (* old, get rid of this *)
   backwards_refinement_single : 
     forall ast cst cst'
       (REF: refine_state ast cst)
-      (STEP: cfi_step machine2 cst cst'),
+      (STEP: cfi_step cmachine cst cst'),
       (visible cst cst' = true /\
-       exists ast', cfi_step machine1 ast ast' (* <- implied by line below *)  /\ refine_state ast' cst' /\ 
+       exists ast', cfi_step amachine ast ast' (* <- implied by line below *)  /\ refine_state ast' cst' /\ 
                     ((step cst cst' /\ step ast ast') \/ (step_a cst cst' /\ step_a ast ast'))) 
       \/
       (visible cst cst' = false /\
        refine_state ast cst')
-                                                
- }.
 
-Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := {
-  initial_refine : forall (cst : @state t machine2),
+}.
+
+Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := {
+
+  step_classic : forall cst cst',
+    (step cst cst') \/ (~step cst cst');
+  (* in a hurry it can be instantiated with classic axiom from Classical *)
+
+  initial_refine : forall (cst : @state t cmachine),
     initial cst ->
-    exists (ast : @state t machine1), initial ast /\ refine_state ast cst;
+    exists (ast : @state t amachine), initial ast /\ refine_state ast cst;
 
-  cfg_kernel : forall csi csj, 
+  cfg_invisible : forall csi csj, 
     step csi csj ->
     visible csi csj = false ->
     succ csi csj = true;
 
-  cfg_equiv1 : forall (asi asj : @state t machine1) csi csj,
+  cfg_equiv : forall (asi asj : @state t amachine) csi csj,
     refine_state asi csi ->
     refine_state asj csj ->
     succ asi asj = true ->
@@ -86,33 +82,47 @@ Class machine_refinement_specs (rf : (machine_refinement machine1 machine2)) := 
 
   (* Why for concrete machine too??? If we could avoid this, we should.
      Try to do proof below without it! *)
-  vio_noattacker : forall (csi csj : @state t machine2),
+  (* No longer used, remove *)
+  vio_noattacker : forall (csi csj : @state t cmachine),
     succ csi csj = false ->
     step csi csj ->
     ~ step_a csi csj;
-
-  av_no_attacker : forall (asi asj : @state t machine1),
-    V1 asi asj ->
+  
+  (* No longer used, remove? *)
+  av_no_attacker : forall (asi asj : @state t amachine),
+    AV asi asj ->
     step asi asj ->
     ~ step_a asi asj;
 
-  av_implies_cv : forall ast ast' cst cst', refine_state ast cst -> refine_state ast' cst' -> V1 ast ast' -> V2 cst cst';
+  av_implies_cv : forall ast ast' cst cst',
+    refine_state ast cst ->
+    refine_state ast' cst' ->
+    AV ast ast' ->
+    CV cst cst';
 
-  as_implies_cs : forall ast cst axs cxs, refine_state ast cst -> S1 (ast::axs) -> S2 (cst::cxs)
+  (* CH: first premise is a bit strange, stopping is a property of
+         whole trace tails not only their first step, still premise
+         only talks about first step ...  backwards_refinement_traces
+         lemma below extends that to whole traces *)
+  as_implies_cs : forall ast cst axs cxs,
+    refine_state ast cst ->
+    AS (ast::axs) ->
+    CS (cst::cxs)
 
 }.
 
-Context (rf : machine_refinement machine1 machine2).
+Context (rf : machine_refinement amachine cmachine).
 Context (rfs : machine_refinement_specs rf).
 
-(* This should follow from from backwards_refinement_normal and
-   backwards_refinement_attacker *)
-Lemma backwards_refinement
-    (ast : @state t machine1) cst cst' cxs :
+(* General advice: split off lemmas with recurring proof goals *)
+
+(* We're still missing the part about violations *)
+Lemma backwards_refinement_traces
+    (ast : @state t amachine) cst cst' cxs :
   refine_state ast cst ->
-  intermstep machine2 cxs cst cst' ->
+  intermstep cmachine cxs cst cst' ->
   exists axs,
-    (exists ast', intermrstep machine1 axs ast ast') /\
+    (exists ast', intermrstep amachine axs ast ast') /\
     (forall csi csj,
        In2 csi csj cxs ->
        step csi csj ->
@@ -136,19 +146,21 @@ Proof.
         assumption. destruct IN as [[H1 H2]| H]. subst. split; now trivial.
         now destruct H.
     + specialize (INVIS eq_refl). clear VIS.
+      (* trivial instantiation *)
       exists [ast]. split. exists ast. now constructor.
       intros csi csj IN STEPij VIS. destruct IN as [[H1 H2]| H]. subst.
       congruence. now destruct H.
-  - exists [ast]. split. exists ast. now constructor.
-    intros ? ? IN HC. destruct IN as [[H1 H2]| H]. subst. tauto. now destruct H.    
+  - (* trivial instantiation *)
+    exists [ast]. split. exists ast. now constructor.
+    intros ? ? IN HC. destruct IN as [[H1 H2]| H]. subst; tauto. now destruct H.    
   }
   { destruct (step_classic cst cst'') as [STEPN | NST].
     - destruct (backwards_refinement_normal _ _ _ INITREF STEPN) as [VIS INVIS].
       destruct (visible cst cst'') eqn:VISIBLE.
       + destruct (VIS eq_refl) as [ast'' [ASTEP AREF]]. clear INVIS VIS.
-        destruct (IHINTERM2' ast'' AREF) as [axs [[ast' INTERMR1] IH]]. 
+        destruct (IHINTERM2' ast'' AREF) as [axs [[ast' INTERMR1] IH]].
         exists (ast :: axs); split.
-        assert (INTERMR1' : intermrstep machine1 (ast :: axs) ast ast').
+        assert (INTERMR1' : intermrstep amachine (ast :: axs) ast ast').
         { eapply intermr_multi. right; eauto. assumption. }
         eexists; now eassumption.
         intros csi csj IN2 STEP VISIBLE'.
@@ -159,39 +171,43 @@ Proof.
           apply intermr_first_step in INTERMR1; subst.
           exists ast; exists ast''. repeat(split;simpl;auto).
         * destruct (IH _ _ IN2 STEP VISIBLE') as [asi [asj [IN2' [STEP' [REFI REFJ]]]]].
-          exists asi; exists asj. split. change (ast :: axs) with ([ast] ++ axs). 
+          exists asi; exists asj. split. change (ast :: axs) with ([ast] ++ axs).
           apply in2_strengthen. now assumption.
-          repeat (split; auto). 
-     + specialize (INVIS eq_refl). clear VIS.
-       destruct (IHINTERM2' ast INVIS) as [axs [[ast' INTERMR1] IH]].
-       exists axs. split. exists ast'; now assumption.
-       intros csi csj IN2 step VIS.
-       destruct cxs'; [destruct IN2 | idtac].
-       apply interm_first_step in INTERM2'; subst.
-       destruct IN2 as [[? ?] | IN2]; subst; [congruence | eapply IH; eauto].
-    - (*this get's a little more complicated than the base case, because we need a refine_state ast cst''
-        in order to apply the IH*)
-      destruct STEP2 as [STEPA | STEPN].
-      { destruct (backwards_refinement_attacker _ _ _ INITREF STEPA) as [ast'' [ASTEPA REF]].
-        destruct (IHINTERM2' ast'' REF) as [axs [[ast' INTERMR1] IH]].
-        exists (ast :: axs). split.  exists ast'. eapply intermr_multi; eauto. left. now assumption.
-        intros csi csj IN2 STEP VISIBLE. destruct cxs'; [inversion INTERM2' | idtac].
+          repeat (split; auto).
+      + specialize (INVIS eq_refl). clear VIS.
+        destruct (IHINTERM2' ast INVIS) as [axs [[ast' INTERMR1] IH]].
+        (* trivial instantiation *)
+        exists axs. split. exists ast'; now assumption.
+        intros csi csj IN2 step VIS.
+        destruct cxs'; [destruct IN2 | idtac].
         apply interm_first_step in INTERM2'; subst.
-        destruct IN2 as [[? ?] | IN2]; subst.
-        * now tauto.
-        * destruct (IH _ _ IN2 STEP VISIBLE) as [asi [asj [IN2' [ASTEP [REFI REFJ]]]]].
-          exists asi; exists asj. split. change (ast :: axs) with ([ast] ++ axs). apply in2_strengthen.
-          assumption. repeat(split;auto).
-      }
-      { tauto. }
+        destruct IN2 as [[? ?] | IN2]; subst; [congruence | eapply IH; eauto].
+    - (* NG: this gets a little more complicated than the base case,
+         because we need a refine_state ast cst'' in order to apply
+         the IH. CH: Indeed, it would have been odd not to use
+         backwards_refinement_attacker at all. *)
+      destruct STEP2 as [STEPA | STEPN]; [| tauto].
+      destruct (backwards_refinement_attacker _ _ _ INITREF STEPA)
+        as [ast'' [ASTEPA REF]].
+      destruct (IHINTERM2' ast'' REF) as [axs [[ast' INTERMR1] IH]].
+      exists (ast :: axs). split.  exists ast'.
+        eapply intermr_multi; eauto. left. now assumption.
+      intros csi csj IN2 STEP VISIBLE. destruct cxs'; [inversion INTERM2' | idtac].
+      apply interm_first_step in INTERM2'; subst.
+      destruct IN2 as [[? ?] | IN2]; subst.
+      * tauto.
+      * destruct (IH _ _ IN2 STEP VISIBLE) as [asi [asj [IN2' [ASTEP [REFI REFJ]]]]].
+        exists asi; exists asj. split.
+        change (ast :: axs) with ([ast] ++ axs). apply in2_strengthen.
+        assumption. repeat(split;auto).
   }
 Qed.
 
-Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
+Lemma backwards_refinement' (ast : @state t amachine) cst cst' cxs :
   refine_state ast cst ->
-  intermstep machine2 cxs cst cst' ->
+  intermstep cmachine cxs cst cst' ->
   exists ast', exists axs,
-    intermrstep machine1 axs ast ast' /\
+    intermrstep amachine axs ast ast' /\
     refine_state ast' cst' /\
     (forall csi csj, In2 csi csj cxs -> exists asi asj, 
                                          (visible csi csj = true /\ In2 asi asj axs /\
@@ -204,7 +220,7 @@ Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
     (* stated in reverse wrt above *)
     (forall asi asj ahs atl, axs = ahs ++ asi :: asj :: atl ->
                              step asi asj ->
-                             V1 asi asj ->
+                             AV asi asj ->
                             exists csi csj chs ctl,
                               refine_state asi csi /\ refine_state asj csj /\
                               cxs = chs ++ csi :: csj :: ctl /\
@@ -219,14 +235,14 @@ Lemma backwards_refinement' (ast : @state t machine1) cst cst' cxs :
                                           \/ visible csi' csj' = false /\ asi' = asj' /\ In asi' (asj :: atl))
                                          /\ refine_state asi' csi'
                                          /\ refine_state asj' csj')).
-Proof. 
+Proof.
  (* intros INITREF INTERM2.
   generalize dependent ast.
   induction INTERM2 as [cst cst' STEP2 | cst cst'' cst' cxs' STEP2 INTERM2']; intros.
   + destruct (backwards_refinement_single ast INITREF STEP2) 
       as [[VISIBLE [ast' [STEP1 [FINALREF [[STEPN2 STEPN1] | [STEPA2 STEPA1]]]]]] 
          | [INVISIBLE FINALREF]].
-    * (* case machine2 takes a visible normal step *)
+    * (* case cmachine takes a visible normal step *)
       exists ast'; exists [ast;ast']; split; [ eapply intermr_multi; eauto; constructor | split].
       assumption.
       split.
@@ -243,7 +259,7 @@ Proof.
           intros csi' csj' CONTRA; destruct CONTRA.
         - repeat (destruct ahs; inversion ALST).
       } 
-    * (* case machine2 takes a visible attacker step *)
+    * (* case cmachine takes a visible attacker step *)
       exists ast'; exists [ast;ast']; split; [ eapply intermr_multi; eauto; constructor | split].
       assumption.
       split.
@@ -262,7 +278,7 @@ Proof.
           intros csi' csj' CONTRA; destruct CONTRA.
         - repeat (destruct ahs; inversion ALST).
       }   
-    * (* case machine2 takes an invisible step *) 
+    * (* case cmachine takes an invisible step *) 
       eexists; eexists; split; [constructor | split].
       assumption.
       split.
@@ -275,7 +291,7 @@ Proof.
    + destruct (backwards_refinement_single ast INITREF STEP2)
        as [[VISIBLE [ast'' [STEP1 [REF'' [[STEPN2 STEPN1] | [STEPA2 STEPA1]]]]]] 
           | [INVISIBLE REF'']].
-       * (* case machine2 takes a visible normal step*)
+       * (* case cmachine takes a visible normal step*)
          destruct (IHINTERM2' ast'' REF'') as [ast' [axs [INTERMR1 [REFFINAL [INTSTATES IHSPLIT]]]]].
          eexists; eexists; split; eauto.
          eapply intermr_multi; eauto.
@@ -365,7 +381,7 @@ Proof.
                destruct (ahs ++ [asi]); [destruct IN | right; auto].
              }
          }
-       * (* case machine2 takes a visible attacker step*)
+       * (* case cmachine takes a visible attacker step*)
          destruct (IHINTERM2' ast'' REF'') as [ast' [axs [INTERMR1 [REFFINAL [INTSTATES IHSPLIT]]]]].
          eexists; eexists; split; eauto.
          eapply intermr_multi; eauto.
@@ -455,7 +471,7 @@ Proof.
                destruct (ahs ++ [asi]); [destruct IN | right; auto].
              }
          }
-        * (* case machine2 takes an invisible step *)
+        * (* case cmachine takes an invisible step *)
           destruct (IHINTERM2' ast REF'') as [ast' [axs [INTERMR1 [REFFINAL [INTSTATES IHSPLIT]]]]].
           eexists; eexists; split; eauto.
           split. assumption.
