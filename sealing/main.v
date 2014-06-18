@@ -96,9 +96,30 @@ Instance ap : Abs.params t := {|
 
 *)
 
-Definition build_concrete_sealing_machine :=
-  fun user_memory : @relocatable_segment t unit atom =>
-  initial_state (* TODO: ... applied to some stuff... ! *).
+Axiom fault_handler : @relocatable_segment t w atom.
+
+Axiom extra_state : @relocatable_segment t w atom.
+(* Should be just a single location initially containing 0@TKernel *)
+
+Axiom mkkey_segment : @relocatable_segment t w atom.
+Axiom seal_segment : @relocatable_segment t w atom.
+Axiom unseal_segment : @relocatable_segment t w atom.
+
+Definition build_concrete_sealing_machine 
+     (user_mem : @relocatable_segment t unit atom) 
+     (initial_pc_tag : w) 
+   : Concrete.state concrete_int_32_t :=
+  let syscalls := 
+    concat_relocatable_segments 
+      mkkey_segment 
+      (concat_relocatable_segments seal_segment unseal_segment) in
+  let handler_and_syscalls := 
+    concat_relocatable_segments fault_handler syscalls in
+  initial_state
+    extra_state
+    handler_and_syscalls 
+    (@relocate_ignore_args t w atom user_mem)
+    initial_pc_tag.
 
 (*
 Definition build_abstract_sealing_machine :=

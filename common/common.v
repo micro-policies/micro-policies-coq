@@ -459,4 +459,12 @@ Definition concat_relocatable_segments
                ++ (gen2 (add_word base (nat_to_word l1)) rest) in
   (l1+l2, gen).
 
+Definition relocate_ignore_args 
+             (Args Cell : Type)
+             (seg : relocatable_segment unit Cell) 
+           : relocatable_segment Args Cell :=
+  let (l,gen) := seg in
+  let gen' := fun (base : word t) (rest : Args) => gen base tt in
+  (l, gen').
+
 End Relocation.
