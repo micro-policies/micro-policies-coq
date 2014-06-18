@@ -25,8 +25,8 @@ Context {rfs : machine_refinement_specs V1 S1 V2 S2 rf}.
 Theorem backwards_refinement_preserves_cfi :
   cfi machine1 V1 S1 ->
   cfi machine2 V2 S2. 
-Proof.
-  intros CFI1 cst cst' cxs INIT2 INTERM2.
+Proof. Admitted.
+ (* intros CFI1 cst cst' cxs INIT2 INTERM2.
   destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
   destruct (backwards_refinement_with_v _ _ INITREF INTERM2) 
     as [axs [[ast' INTERMR1] [INTSTATES HSPLIT]]].
@@ -86,7 +86,7 @@ Proof.
     - (*case the step is invisible*)
       apply (cfg_kernel _ _ STEP2 VIS).
   }
-Qed.
+Qed.*)
 
 (*
 Theorem backwards_refinement_preserves_cfi :

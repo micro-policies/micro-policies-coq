@@ -117,13 +117,15 @@ Context (rfs : machine_refinement_specs rf).
 
 Inductive refine_traces :
   list (@state t amachine) -> list (@state t cmachine) -> Prop :=
-| TRNil : refine_traces [] []
+| TRNil : forall ast cst, 
+            refine_state ast cst -> 
+            refine_traces [ast] [cst]
 | TRNormal0 : forall ast cst cst' axs cxs,
     step cst cst' ->
     visible cst cst' = false ->
     refine_state ast cst ->
     refine_state ast cst' ->
-    refine_traces (ast :: axs) (cst :: cxs) ->
+    refine_traces (ast :: axs) (cst' :: cxs) -> (*slight problem here?, this was cst :: cxs*)
     refine_traces (ast :: axs) (cst :: cst' :: cxs)
 | TRNormal1 : forall ast ast' cst cst' axs cxs,
     step cst cst' ->
@@ -149,8 +151,71 @@ Lemma backwards_refinement_traces_stronger
   exists axs,
     (exists ast', intermrstep amachine axs ast ast') /\
     refine_traces axs cxs.
-Admitted.
-
+Proof.
+  intros INITREF INTERM2.
+  generalize dependent ast.
+  induction INTERM2 as [cst cst' STEP2 | cst cst'' cst' cxs' STEP2 INTERM2']; intros.
+  {
+    destruct (step_classic cst cst') as [STEPN | NST].
+  - destruct (backwards_refinement_normal _ _ _ INITREF STEPN) as [VIS INVIS].
+    destruct (visible cst cst') eqn:VISIBLE.
+    + destruct (VIS eq_refl) as [ast' [ASTEP AREF]]. clear INVIS VIS.
+      exists [ast;ast']. split.
+      * exists ast'. eapply intermr_multi. right. eassumption. now constructor.
+      * apply TRNormal1; auto.
+        constructor(assumption).
+    + specialize (INVIS eq_refl); clear VIS.
+      exists [ast]; split; [exists ast; constructor | apply TRNormal0; auto].
+      now constructor(assumption).
+  - destruct STEP2 as [STEP2A | STEP2N]; [idtac | tauto].
+    destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A) as [ast' [STEPA REF]].
+    exists [ast;ast']; split; [exists ast' | apply TRAttacker; auto; constructor(assumption)].
+    eapply intermr_multi; eauto. left; eassumption. now constructor.
+  }
+  { destruct (step_classic cst cst'') as [STEPN | NST].
+    - destruct (backwards_refinement_normal _ _ _ INITREF STEPN) as [VIS INVIS].
+      destruct (visible cst cst'') eqn:VISIBLE.
+      + destruct (VIS eq_refl) as [ast'' [ASTEP AREF]]. clear INVIS VIS.
+        destruct (IHINTERM2' ast'' AREF) as [axs [[ast' INTERMR1] IH]].
+        exists (ast :: axs); split.
+        assert (INTERMR1' : intermrstep amachine (ast :: axs) ast ast').
+        { eapply intermr_multi. right; eauto. assumption. }
+        eexists; now eassumption.
+        destruct axs; [inversion IH | destruct cxs'].
+        * inversion IH.
+        * apply intermr_first_step in INTERMR1; apply interm_first_step in INTERM2';
+          subst.
+          apply TRNormal1; auto.
+      + (*invisible step case*)
+        specialize (INVIS eq_refl); clear VIS.
+        destruct (IHINTERM2' ast INVIS) as [axs [[ast' INTERMR1] IH]].
+        exists axs. split.
+        exists ast'; now assumption.
+        destruct axs; 
+          [inversion INTERMR1 | apply intermr_first_step in INTERMR1; subst].
+        destruct cxs'; 
+          [inversion INTERM2' | apply interm_first_step in INTERM2'; subst].
+        apply TRNormal0; auto.
+      + destruct STEP2 as [STEP2A | STEP2N]; subst.
+        { (*case it's an attacker step*)
+          destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A) 
+          as [ast'' [ASTEP REF]].
+        destruct (IHINTERM2' _ REF) as [axs [[ast' INTERMR1] IH]].
+        exists (ast::axs).
+        split. exists ast'. eapply intermr_multi; eauto. 
+        left; now assumption.
+        destruct axs; 
+          [inversion INTERMR1 | apply intermr_first_step in INTERMR1; subst].
+        destruct cxs'; 
+          [inversion INTERM2' | apply interm_first_step in INTERM2'; subst].
+        apply TRAttacker; auto.
+        }
+        { (*case it's a normal step*)
+          tauto. 
+        }
+  }
+Qed.
+    
 Lemma refine_traces_weaken_backward : forall axs cxs,
   refine_traces axs cxs ->
     (forall csi csj,
