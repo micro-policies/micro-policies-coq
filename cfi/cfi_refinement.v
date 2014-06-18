@@ -61,8 +61,8 @@ Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) :
 
 Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := {
 
-  step_classic : forall cst cst',
-    (step cst cst') \/ (~step cst cst');
+  step_classic : forall st st',
+    (step st st') \/ (~step st st');
   (* in a hurry it can be instantiated with classic axiom from Classical *)
 
   initial_refine : forall (cst : @state t cmachine),
@@ -169,7 +169,8 @@ Proof.
       now constructor(assumption).
   - destruct STEP2 as [STEP2A | STEP2N]; [idtac | tauto].
     destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A) as [ast' [STEPA REF]].
-    exists [ast;ast']; split; [exists ast' | apply TRAttacker; auto; constructor(assumption)].
+    exists [ast;ast']; split;
+    [exists ast' | apply TRAttacker; auto; constructor(assumption)].
     eapply intermr_multi; eauto. left; eassumption. now constructor.
   }
   { destruct (step_classic cst cst'') as [STEPN | NST].
@@ -235,7 +236,38 @@ Lemma refine_traces_weaken_forward : forall axs cxs,
     exists csi csj,
       In2 csi csj cxs /\ step csi csj
       /\ refine_state asi csi /\ refine_state asj csj.
-Admitted.
+Proof.
+  intros axs cxs RTRACE asi asj IN2 ASTEP.
+  induction RTRACE 
+    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF REF' RTRACE' | 
+        ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
+        ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst.
+  - destruct IN2.
+  - destruct (RTRACE' IN2) as [csi [csj [IN2' [STEP' [REFI REFJ]]]]].
+    exists csi; exists csj. split.
+    change (cst :: cst' :: cxs') with ([cst] ++ (cst' :: cxs')).
+    apply in2_strengthen. now assumption.
+    repeat(split; auto).
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    * exists cst; exists cst'.
+      split. simpl; auto.
+      repeat (split; auto).
+    * destruct (IHRTRACE' IN2) as [csi [csj [IN2' [STEP' [REFI REFJ]]]]].
+      exists csi; exists csj.
+      split. change (cst :: cst' :: cxs) with ([cst] ++ (cst' :: cxs)).
+      apply in2_strengthen. now assumption.
+      repeat (split; auto).
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    * exists cst; exists cst'.
+      split. simpl; auto.
+      repeat (split; auto).
+    * Admitted.
+
+(*destruct (IHRTRACE' IN2) as [csi [csj [IN2' [STEP' [REFI REFJ]]]]].
+      exists csi; exists csj.
+      split. change (cst :: cst' :: cxs) with ([cst] ++ (cst' :: cxs)).
+      apply in2_strengthen. now assumption.
+      repeat (split; auto).*)
 
 Lemma refine_traces_preserves_cfi_trace : forall axs cxs,
   refine_traces axs cxs ->
