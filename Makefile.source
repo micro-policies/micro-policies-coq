@@ -15,7 +15,7 @@ concrete/exec.v
 concrete/int_32.v
 
 symbolic/symbolic.v
-# symbolic/fault_handler.v
+symbolic/fault_handler.v
 # symbolic/initial.v
 symbolic/refinement_common.v
 symbolic/backward.v

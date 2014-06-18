@@ -56,7 +56,13 @@ Class fault_handler_params := {
      result tags in [rtrpc] and [rtr]. *)
   user_handler : code;
 
-  is_entry_tag : reg mt -> reg mt -> code
+  is_entry_tag : reg mt -> reg mt -> code;
+
+  (* Take as input an mvector of high-level tags (in the appropriate
+     registers, as set above), and computes the policy handler on
+     those tags. If the operation is allowed, returns the rvector in
+     the appropriate registers. Otherwise, enters an infinite loop. *)
+  policy_handler : code
 
 }.
 
@@ -94,12 +100,45 @@ Definition load_mvec : code :=
                  mvec_regs
                  ([],Concrete.cache_line_addr ops)).
 
+(* Check whether the operands for a particular opcode are tagged
+   USER. If so, extract the corresponding policy-level tags and call
+   the higher-level handler on them. Otherwise, enter an infinite
+   loop. *)
+
+Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
+  (* Check that [rop] contains a USER tag that does
+     not have a call bit set *)
+  let do_op rop := extract_user_tag rop rb rop ri ++
+                   if_ rb (if_ ri inf_loop []) inf_loop in
+  match Symbolic.nfields op with
+  | Some (0, _) => []
+  | Some (1, _) => do_op rt1
+  | Some (2, _) => do_op rt1 ++ do_op rt2
+  | Some (3, _) => do_op rt1 ++ do_op rt2 ++ do_op rt3
+  | _ => inf_loop
+  end ++
+  policy_handler ++
+  (* Wrap RVec *)
+  load_const (op_to_word JAL) ri ++
+  eq_code ri rop rb ++
+  wrap_user_tag rtrpc rb rtrpc ++
+  [Const _ (bool_to_imm false) rb] ++
+  wrap_user_tag rtr rb rtr.
+
 Definition analyze_operand_tags : code :=
   (* Check whether instruction is tagged USER *)
   extract_user_tag rti rb rti ri ++
   if_ rb
       (* We are in user mode, extract operand tags *)
-      [] (* TODO *)
+      (if_ ri
+           inf_loop (* Sanity check, should never happen *)
+           (fold_right (fun op c =>
+                         load_const (op_to_word op) ri ++
+                         eq_code rop ri rb ++
+                         if_ rb
+                             (analyze_operand_tags_for_opcode op)
+                             c)
+                       [] opcodes))
       (* We hit an invalid point; halt the machine *)
       inf_loop.
 
@@ -109,21 +148,26 @@ Definition handler : code :=
   if_ rb
       (* PC has USER tag *)
       (if_ ri
-           (* We just performed a Jal. Check whether we're an entry point *)
+           (* We just performed a Jal. Check whether we're at an entry point *)
            (is_entry_tag rti ri ++
             if_ ri
-                (* We are in a system call. Put KERNEL tags and return *)
-                (load_const Concrete.TKernel ri ++
-                 load_const (Concrete.Mtrpc ops) raddr ++
-                 [Store _ ri raddr] ++
-                 load_const (Concrete.Mtr ops) raddr ++
-                 [Store _ ri raddr])
+                (* We are in a system call. Put KERNEL tags in rvector *)
+                (load_const Concrete.TKernel rtrpc ++
+                 load_const Concrete.TKernel rtr)
                 (* We are not in a system call. Proceed as normal. *)
                 analyze_operand_tags)
            (* We have executed something else besides Jal. Proceed normally. *)
            analyze_operand_tags)
       (* PC is not tagged USER, halt execution *)
-      inf_loop.
+      inf_loop ++
+  (* Store rvector registers in memory, install rule in cache, and
+     return to user code *)
+  load_const (Concrete.Mtrpc ops) raddr ++
+  [Store _ raddr rtrpc] ++
+  load_const (Concrete.Mtr ops) raddr ++
+  [Store _ raddr rtr] ++
+  [AddRule _] ++
+  [JumpEpc _].
 
 Section invariant.
 
