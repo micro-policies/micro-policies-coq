@@ -41,7 +41,7 @@ Canonical int_eqType := Eval hnf in EqType int int_eqMixin.
 Definition concrete_int_32_t : machine_types := {|
   word := int_eqType;
   reg := int_eqType; (* 5 bits *)
-  imm := int  (* 5 bits; CH: this is extrementy little! *)
+  imm := int  (* 5 bits; CH: this is extremely little! *)
 |}.
 
 (* CH: x2-x5 are assumed to be all 5 bits,

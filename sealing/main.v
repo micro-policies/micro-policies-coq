@@ -6,6 +6,7 @@ Require Import lib.utils lib.partial_maps common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import symbolic.int_32.
+Require Import symbolic.fault_handler.
 Require Import sealing.abstract.
 Require Import Omega.
 
@@ -23,10 +24,7 @@ Definition t := concrete_int_32_t.
 Definition ops := concrete_int_32_ops.
 
 Context {scr : @syscall_regs t}.
-
-Definition admit {T: Type} : T.  Admitted.
-
-(* BCP: The definition of sk really belongs in abstract.v, I think... *)
+Context {fhp : fault_handler.fault_handler_params t}.
 
 Definition keytype := [eqType of nat].
 
@@ -58,6 +56,7 @@ Instance sk : Abs.sealing_key := {|
 (* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
    a different order from Int32PMap.get and Int32PMap.set?? *)
 
+(*
 Instance ap : Abs.params t := {|
   memory    := Int32PMap.t (Abs.value t);
   registers := Int32PMap.t (Abs.value t);
@@ -80,6 +79,7 @@ Instance ap : Abs.params t := {|
                             end
   |}
 |}.
+*)
 
 (* Need to build...
 
@@ -109,12 +109,29 @@ Instance ap : Abs.params t := {|
 
 *)
 
+(* ---------------------------------------------------------------- *)
+(* Code combinators... *)
+
+Definition constant_code (l : list atom) : @relocatable_segment t w atom := 
+  (length l, fun _ _ => l).
+
+(* ---------------------------------------------------------------- *)
+(* Main definitions *)
+
 Axiom fault_handler : @relocatable_segment t w atom.
 
-Axiom extra_state : @relocatable_segment t w atom.
-(* Should be just a single location initially containing 0@TKernel *)
+Definition extra_state : @relocatable_segment t w atom := 
+  constant_code [Atom (nat_to_word 0) Concrete.TKernel].
 
 Axiom mkkey_segment : @relocatable_segment t w atom.
+(*
+Definition mkkey_segment : @relocatable_segment t w atom :=
+  (2, fun _ (extra : w) => [
+          Const t (word_to_imm extra) (ri t);
+          Load t (ri t) (ri t)
+          ]).
+*)
+
 Axiom seal_segment : @relocatable_segment t w atom.
 Axiom unseal_segment : @relocatable_segment t w atom.
 

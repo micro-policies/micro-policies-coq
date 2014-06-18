@@ -1,4 +1,4 @@
-(* Fault handler implementation *)
+(* Fault handler implementation for concrete realization of symbolic machine *)
 
 Require Import ZArith.
 Require Import List.
@@ -54,6 +54,7 @@ Class fault_handler_params := {
      registers given above and runs the user-level fault-handler. If
      the operation is allowed, put a 1 in [rb], and the user-level
      result tags in [rtrpc] and [rtr]. *)
+  (* BCP: Why bother returning at all if the operation is not allowed? *)
   user_handler : code;
 
   is_entry_tag : reg mt -> reg mt -> code;
@@ -62,6 +63,7 @@ Class fault_handler_params := {
      registers, as set above), and computes the policy handler on
      those tags. If the operation is allowed, returns the rvector in
      the appropriate registers. Otherwise, enters an infinite loop. *)
+  (* BCP: What's the difference between user_handler and policy_handler? *)
   policy_handler : code
 
 }.
@@ -75,7 +77,8 @@ Definition kernel_regs := mvec_regs ++ [rb; ri; rtrpc; rtr; raddr].
 Definition bool_to_imm (b : bool) : imm mt :=
   if b then Z_to_imm 1 else Z_to_imm 0.
 
-(* Test value in [r]. If true (i.e., not zero), execute [t]. Otherwise, execute [f]. *)
+(* Test value in [r]. If true (i.e., not zero), execute [t]. Otherwise, 
+   execute [f]. *)
 Definition if_ (r : reg mt) (t f : code) : code :=
   let lt := Z_to_imm (Z.of_nat (length t + 1)) in
   let eend := [Const mt (bool_to_imm true) ri] ++
@@ -183,8 +186,8 @@ Let invariant (mem : Concrete.memory _)
      PartMaps.get mem (add_word (Concrete.fault_handler_start ops) (Z_to_word (Z.of_nat addr))) =
      Some (encode_instr instr)@Concrete.TKernel) /\
   (* FIXME:
-     This really shouldn't be included here, since it doesn't mention the neither the
-     memory nor the register bank. Try to put this somewhere else. *)
+     This really shouldn't be included here, since it doesn't mention 
+     either the memory or the register bank. Try to put this somewhere else. *)
   (forall addr, addr < length handler ->
                 ~ In (add_word (Concrete.fault_handler_start ops) (Z_to_word (Z.of_nat addr)))
                      (Concrete.mvec_and_rvec_fields _)) /\

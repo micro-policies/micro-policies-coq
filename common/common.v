@@ -114,8 +114,14 @@ Class machine_ops (t : machine_types) := {
   decode_instr : word t -> option (instr t);
 
   (* CH: I think it would be nicer to have Z_to_imm be partial *)
+  (* BCP: +1 *)
   Z_to_imm : Z -> imm t;
   imm_to_word : imm t -> word t;
+(*
+  (* BCP: Was tempted to add this -- but will it cause any
+     problems?? (Should probably be partial too, I guess.) *)
+  word_to_imm : word t -> imm t;
+*)
   
   min_word : word t;
   max_word : word t;
