@@ -107,7 +107,17 @@ Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := 
   as_implies_cs : forall ast cst axs cxs,
     refine_state ast cst ->
     AS (ast::axs) ->
-    CS (cst::cxs)
+    CS (cst::cxs);
+
+  (* strange assumption about self loops, it seems to imply "no
+     attacker accessible extra state hidden at the abstract level" though *)
+  new_assumption : forall ast ast' cst cst',
+    step ast ast' ->
+    step_a ast ast' ->
+    refine_state ast cst ->
+    refine_state ast' cst' ->
+    step_a cst cst' ->
+    step cst cst'
 
 }.
 
@@ -233,6 +243,7 @@ Lemma refine_traces_weaken_forward : forall axs cxs,
   forall asi asj,
     In2 asi asj axs ->
     step asi asj ->
+    (* could add AV asi asj *)
     exists csi csj,
       In2 csi csj cxs /\ step csi csj
       /\ refine_state asi csi /\ refine_state asj csj.
@@ -261,7 +272,9 @@ Proof.
     * exists cst; exists cst'.
       split. simpl; auto.
       repeat (split; auto).
-    * Admitted.
+      now eauto using new_assumption.
+    * admit. (* by IH? *)
+Admitted.
 
 (*destruct (IHRTRACE' IN2) as [csi [csj [IN2' [STEP' [REFI REFJ]]]]].
       exists csi; exists csj.
