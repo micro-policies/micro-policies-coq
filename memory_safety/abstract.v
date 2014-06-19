@@ -75,7 +75,7 @@ Class allocator := {
 (* The Coq function representing the allocator. *)
   malloc_fun : memory -> word -> memory * block;
 
-  free_fun : memory -> word -> memory
+  free_fun : memory -> block -> option memory
 
 }.
 
@@ -210,12 +210,12 @@ Inductive step : state -> state -> Prop :=
              forall (ALLOC :    malloc_fun mem sz = (mem', b)),
              forall (UPD :      upd reg syscall_ret (ValPtr (b,Z_to_word 0%Z)) = Some reg'),
              step (mkState mem reg pc) (mkState mem' reg' pc.+1)
-| step_free : forall mem mem' reg pc i r sz,
+| step_free : forall mem mem' reg pc i r b o,
              forall (PC :       getv mem pc = Some (ValInt i)),
              forall (INST :     decode_instr i = Some (Jal _ r)),
              forall (RW :       get reg r = Some (ValInt free_addr)),
-             forall (SIZE :     get reg syscall_arg1 = Some (ValInt sz)),
-             forall (ALLOC :    free_fun mem sz = mem'),
+             forall (PTR :      get reg syscall_arg1 = Some (ValPtr (b,o))),
+             forall (ALLOC :    free_fun mem b = Some mem'),
              step (mkState mem reg pc) (mkState mem' reg pc.+1).
 
 Variable initial_block : block.
