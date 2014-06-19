@@ -231,7 +231,31 @@ Lemma refine_traces_weaken_backward : forall axs cxs,
          exists asi asj,
            In2 asi asj axs /\ step asi asj
            /\ refine_state asi csi /\ refine_state asj csj).
-Admitted.
+Proof.
+  intros axs cxs RTRACE csi csj IN2 CSTEP VISIBLE.
+  induction RTRACE 
+    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF REF' RTRACE' | 
+        ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
+        ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst.
+  - destruct IN2.
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    + congruence.
+    + auto.
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    + exists ast; exists ast'; repeat(split;simpl;auto).
+    + apply IHRTRACE' in IN2.
+      destruct IN2 as [asi [asj [IN2' [ASTEP [REFI REFJ]]]]].
+      exists asi; exists asj.
+      split. simpl. right. auto.
+      repeat(split;auto).
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    + tauto.
+    + apply IHRTRACE' in IN2.
+      destruct IN2 as [asi' [asj' [IN2' [? [? ?]]]]].
+      exists asi'; exists asj'.
+      split. simpl; right; auto.
+      repeat (split; auto).
+Qed.
 
 Lemma refine_traces_weaken_forward : forall axs cxs,
   refine_traces axs cxs ->
@@ -332,7 +356,16 @@ Lemma split_refine_traces : forall axs cxs asi asj csi csj,
     refine_traces asuff csuff /\
     axs = apre ++ asi :: asj :: asuff /\
     cxs = cpre ++ csi :: csj :: csuff.
-Admitted.
+Proof.
+  intros axs cxs asi asj csi csj RTRACE IN2 IN2' REFI REFJ.
+  induction RTRACE
+    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF RTRACE' | 
+        ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
+        ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst.
+  - destruct IN2.
+  - destruct IN2' as [[? ?] | IN2']; subst.
+    + Abort.
+  
 
 (* General advice: split off lemmas with recurring proof goals *)
 
