@@ -1001,7 +1001,7 @@ Proof.
   simpl in H3. inversion H3; subst.
   assert (JMPTG := jump_tagged pc0 mem' FETCH INST). inversion JMPTG; subst.
   congruence.
-  simpl in H3. inversion H3.`
+  simpl in H3. inversion H3.
 Admitted.
   
 
