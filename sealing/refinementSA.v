@@ -409,15 +409,14 @@ Lemma forward_simulation : forall km ast ast' sst,
   \/
   (* ... or the symbolic machine gets stuck on a failed key generation *)
   ((forall sst', ~Sym.step sst sst')
-(* still need to debug type error
+(* still need to debug type error *)
    /\
    (exists (i : word t) (r : reg t) (ti t1 : Sym.stag) (sc : Symbolic.syscall t),
-      (get (Symbolic.mem sst) (Symbolic.pc sst) = Some i@ti) /\
+      (get (Symbolic.mem sst) (val (Symbolic.pc sst)) = Some i@ti) /\
       (decode_instr i = Some (Jal _ r)) /\
-      (get (Symbolic.regs) r = Some mkkey_addr@t1) /\
+      (get (Symbolic.regs sst) r = Some mkkey_addr@t1) /\
       (Symbolic.get_syscall Sym.sealing_syscalls mkkey_addr = Some sc) /\
       (Symbolic.sem sc sst = None))
-*)
   ).
 Admitted.
 
