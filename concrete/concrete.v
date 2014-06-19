@@ -47,6 +47,7 @@ Let rule := rule (word t).
 Let rules := rules (word t).
 Let atom := atom (word t) (word t).
 
+(* BCP/MD: Why is one total and the other partial?? *)
 Class concrete_params := {
   memory : Type;
   mem_class :> PartMaps.partial_map memory (word t) atom;

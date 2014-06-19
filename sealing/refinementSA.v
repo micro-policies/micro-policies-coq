@@ -280,7 +280,7 @@ Proof.
       move => GETCALL; injection GETCALL; move {GETCALL} => ?; subst.
     + {(* mkkey *)
     simpl in CALL; move: CALL.
-    have [//|/eqP neq_skey CALL] := altP (skey =P Sym.max_key).
+    case lt_skey : (skey <? Sym.max_key) => // CALL. 
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     injection CALL; intro H; subst; clear CALL.
 
@@ -320,11 +320,11 @@ Proof.
         + subst. rewrite -> get_set_eq in hsk => //.
           injection hsk => hsk'. clear hsk.
           rewrite hsk'.
-          by rewrite hsk' in neq_skey; apply Sym.ltb_inc; apply /eqP.
+          by rewrite Sym.ltb_inc -?hsk' ?lt_skey //. 
         + rewrite -> get_set_neq in hsk => //.
           destruct rins as [_ [rins2 _]]. eapply ltb_trans. eapply rins2.
           eassumption.
-          apply Sym.ltb_inc. by apply /eqP.
+          by rewrite Sym.ltb_inc ?lt_skey.
       - (* injectivity *)
         apply fresh_set_inj. by destruct rins as [_ [_ rins3]].
         destruct rins as [_ [rins2 _]].

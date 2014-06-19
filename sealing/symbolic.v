@@ -27,7 +27,7 @@ Class sealing_key := {
   max_key : key;
   inc_key : key -> key;
   ord_key :> Ordered key;
-  ltb_inc : forall sk, sk != max_key -> sk <? inc_key sk = true
+  ltb_inc : forall sk, sk <? max_key -> sk <? inc_key sk
 }.
 
 Context {sk : sealing_key}.
@@ -107,11 +107,12 @@ Import DoNotation.
 
 Definition mkkey (s : state t) : option (state t) :=
   let 'State mem reg pc key := s in
-  if key == max_key then None
-  else
+  if key <? max_key then 
     let key' := inc_key key in
     do! reg' <- upd reg syscall_ret (max_word@(KEY key));
-    Some (State mem reg' pc key').
+    Some (State mem reg' pc key')
+  else
+    None.
 
 Definition seal (s : state t) : option (state t) :=
   let 'State mem reg pc next_key := s in

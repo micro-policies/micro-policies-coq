@@ -37,6 +37,8 @@ Class fault_handler_params := {
   rtrpc : reg mt; rtr : reg mt; (* Registers for tag results *)
   raddr : reg mt; (* Addressing register *)
 
+  rra : reg mt; (* Return addr register *)
+
   load_const : word mt -> reg mt -> code
 }.
 
