@@ -212,21 +212,15 @@ Inductive step (st st' : state) : Prop :=
     (PC : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Jal _ r))
     (RW : get reg r = Some w@t1)
-    (NOTCALL : get_syscall w = None)
     (OLD : get reg ra = Some old@told),
      let mvec := mkMVec JAL tpc ti [t1; told] in forall
     (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'), step st st'
-| step_syscall : forall mem reg pc i r w sc tpc ti t1 old told rvec int
+| step_syscall : forall mem reg pc sc tpc int
     (ST : st = State mem reg pc@tpc int)
-    (PC : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Jal _ r))
-    (RW : get reg r = Some w@t1)
-    (GETCALL : get_syscall w = Some sc)
-    (OLD : get reg ra = Some old@told),
-     let mvec := mkMVec JAL tpc ti [t1; told] in forall
-    (ALLOWED : handler mvec = Some rvec)
+    (PC : get mem pc = None)
+    (GETCALL : get_syscall pc = Some sc)
     (CALL : sem sc st = Some st'), step st st'.
-    (* TODO: should use the tpc and tres from rvec instead of plain st! *)
+    (* TODO: Connect this rule to handler somehow *)
 
 End WithClasses.
 

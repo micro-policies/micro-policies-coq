@@ -65,12 +65,13 @@ Ltac analyze_cache :=
     INST   : decode_instr ?i = Some _,
     INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
     CACHE  : cache_correct ?cache |- _ =>
-    unfold in_user, in_kernel in INUSER; simpl in INUSER; rewrite PC in INUSER;
+    unfold in_user in INUSER; simpl in INUSER;
     assert (CACHEHIT := analyze_cache mvec _ CACHE LOOKUP INUSER (erefl _));
     simpl in CACHEHIT;
     repeat match type of CACHEHIT with
     | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
     | _ /\ _ => destruct CACHEHIT as [? CACHEHIT]
+    | _ \/ _ => destruct CACHEHIT as [CACHEHIT | CACHEHIT]
     | False => destruct CACHEHIT
     end;
     subst mvec; simpl in *; subst;
@@ -105,6 +106,8 @@ Proof.
 
   analyze_cache;
 
+  try solve [rewrite /in_user /word_lift /= decodeK //= in INUSER'];
+
   repeat match goal with
   | MEM : PartMaps.get ?cmem ?addr = Some _ |- _ =>
     match goal with
@@ -119,9 +122,9 @@ Proof.
 
   try match goal with
   | OLD : TotalMaps.get ?reg ?r = _
-    |- context[TotalMaps.upd ?reg ?r ?v@(encode (USER ?t false))] =>
+    |- context[TotalMaps.upd ?reg ?r ?v@(encode (USER ?t))] =>
     (destruct (refine_registers_upd _ v _ t REFR OLD) as (? & ? & ?);
-     pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ _ v t false _ KINV OLD))
+     pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ v t _ KINV OLD))
     || let op := current_instr_opcode in fail 3 op
   end;
 
@@ -165,8 +168,15 @@ Ltac simpl_word_lift :=
     simpl in H
   end.
 
+Let at_call (cst : Concrete.state mt) : bool :=
+  match PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) with
+  | Some _@it => it == encode ENTRY
+  | None => false
+  end.
+
 Lemma initial_handler_state cst kst :
   forall (ISUSER : in_user cst = true)
+         (NCALL : ~~ at_call cst)
          (NUSER : word_lift (fun t => is_user t)
                             (common.tag (Concrete.pc kst)) = false)
          (CACHE : cache_correct (Concrete.cache cst))
@@ -187,7 +197,8 @@ Proof.
   match_inv;
   try analyze_cache;
   simpl in *;
-  try solve [repeat simpl_word_lift; simpl in *; discriminate | eauto].
+  solve [repeat simpl_word_lift; simpl in *; discriminate | eauto |
+         rewrite /at_call PC eq_refl // in NCALL ].
 Qed.
 
 Lemma kernel_user_exec_determ k s1 s2 :
@@ -203,8 +214,19 @@ Proof.
   - clear. intros s H1 H2. simpl in *. congruence.
 Qed.
 
+Lemma user_kernel_user_step_determ s s1 s2 :
+  user_kernel_user_step s s1 ->
+  user_kernel_user_step s s2 ->
+  s1 = s2.
+Proof.
+  move => [s' USER1 STEP1 EXEC1] [s'' USER2 STEP2 EXEC2].
+  have E: (s' = s'') by rewrite <- stepP in *; congruence. subst s''.
+  eauto using kernel_user_exec_determ.
+Qed.
+
 Import Vector.VectorNotations.
 
+(*
 Lemma state_on_syscalls st st' :
   forall (ISUSER : in_user st = true)
          (CACHE : cache_correct (Concrete.cache st))
@@ -242,35 +264,59 @@ Proof.
   do 10 eexists.
   repeat (split; eauto).
 Qed.
+*)
 
-Lemma miss_simulation ast cst cst' :
+Lemma user_kernel_user_simulation ast cst cst' :
   refine_state ki table ast cst ->
-  miss_step cst cst' ->
+  user_kernel_user_step cst cst' ->
   refine_state ki table ast cst' \/
   exists ast', Symbolic.step table ast ast' /\
                refine_state ki table ast' cst'.
 Proof.
-  intros REF [kst ISUSER STEP KEXEC].
-  assert (KER : in_kernel kst = true).
-  { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
-  destruct ast as [amem areg [apc tapc] int], cst as [cmem cregs cache [cpc cpct] cepc].
-  assert (REF' := REF).
-  destruct REF' as (_ & ? & Ht & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV).
-  destruct (decode cpct) as [[tpc' ? | | ]|] eqn:TAG; try solve [intuition].
-  subst cpc tpc'.
-  unfold in_kernel in KER.
-  apply orb_true_iff in KER.
-  destruct KER as [FAULT | SYSCALL].
+  intros REF STEP.
+  case ATCALL: (at_call cst).
+  - destruct
+      ast as [amem aregs [apc atpc] int],
+      cst as [cmem cregs cache [pc tpc] epc],
+             REF as (_ & ? & Ht & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV).
+    subst apc.
+    destruct (decode tpc) as [[tpc'| |]|] eqn:DEC => //. subst tpc'.
+    apply encodeK in DEC. subst tpc.
+    rewrite /at_call /= in ATCALL.
+    move/WFENTRYPOINTS: (ATCALL) => [sc GETSC].
+    case SCEXEC: (Symbolic.sem sc (Symbolic.State amem aregs pc@atpc int))
+      => [[amem' aregs' [pc' atpc'] int']|].
+    + exploit syscalls_correct_allowed_case; eauto.
+      intros (cmem' & creg' & cache' & pct' & EXEC' &
+              REFM' & REFR' & CACHE' & MVEC' & RA'' & WFENTRYPOINTS' & KINV').
+      generalize (user_kernel_user_step_determ STEP EXEC'). intros ?. subst.
+      right.
+      { exists (Symbolic.State amem' aregs' pc'@atpc' int'). split.
+        - eapply Symbolic.step_syscall; eauto.
+          case GET: (PartMaps.get amem pc) => [[i it]|] //.
+          move/REFM: GET => GET.
+          rewrite GET eq_tag_eq_word // in ATCALL.
+        - unfold refine_state, in_user, word_lift. simpl.
+          rewrite decodeK. simpl.
+          repeat (split; eauto). }
+    + destruct (syscalls_correct_disallowed_case _ _ KINV REFM REFR CACHE MVEC
+                                                 WFENTRYPOINTS GETSC SCEXEC STEP).
   - left.
+    move: STEP => [kst ISUSER STEP KEXEC].
+    have KER : in_kernel kst = true.
+    { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
+    destruct ast as [amem areg [apc tapc] int], cst as [cmem cregs cache [cpc cpct] cepc].
+    destruct REF as (_ & ? & Ht & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV).
+    destruct (decode cpct) as [[tpc' | | ]|] eqn:TAG; try solve [intuition].
+    subst cpc tpc'.
     assert (NUSER : word_lift (fun t => is_user t) (common.tag (Concrete.pc kst)) = false).
     { destruct (word_lift (fun t => is_user t) (common.tag (Concrete.pc kst))) eqn:EQ; trivial.
+      rewrite /in_kernel in KER.
       apply is_user_pc_tag_is_kernel_tag in EQ; auto. congruence. }
-    destruct (initial_handler_state ISUSER NUSER CACHE STEP)
+    rewrite <- negb_true_iff in ATCALL.
+    destruct (initial_handler_state ISUSER ATCALL NUSER CACHE STEP)
       as (cmem' & mvec & STORE & ?). subst. simpl in *.
-    destruct (match decode_mvec mvec with
-              | Some mvec => handler (fun m => Symbolic.handler m) mvec
-              | None => None
-              end) as [rvec|] eqn:HANDLER.
+    case HANDLER: (handler [eta Symbolic.handler] mvec) => [rvec|].
     + destruct (handler_correct_allowed_case cmem mvec cregs apc@cpct int KINV HANDLER STORE CACHE)
         as (cst'' & KEXEC' & CACHE' & LOOKUP & MVEC' &
             HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
@@ -280,21 +326,7 @@ Proof.
       repeat match goal with
       | |- _ /\ _ => split; eauto using user_regs_unchanged_ra_in_user
       end.
-      * unfold in_user, word_lift in *. simpl in *.
-        rewrite TAG in ISUSER. rewrite TAG.
-        apply andb_true_iff in ISUSER.
-        destruct ISUSER as [H ISUSER]. rewrite H. clear H. simpl.
-        case/orP: ISUSER => ISUSER.
-        { simpl in ISUSER. now rewrite ISUSER. }
-        destruct (PartMaps.get cmem'' apc) as [[i it]|] eqn:GET;
-          [|apply orb_true_r].
-        have [eq_it|neq_it] := altP (it =P (encode ENTRY)); [|apply orb_true_r]; simpl in *; subst.
-        generalize (proj2 (WFENTRYPOINTS' apc)).
-        rewrite GET. rewrite eqxx. intros DEF.
-        specialize (DEF (erefl _)).
-        apply WFENTRYPOINTS in DEF.
-        now rewrite DEF in ISUSER.
-      * now rewrite TAG.
+      * rewrite TAG //.
       * clear - ISUSER MVEC STORE REFM HMEM.
         intros addr w t. unfold user_mem_unchanged in *.
         rewrite <- HMEM. apply REFM.
@@ -312,45 +344,6 @@ Proof.
       { destruct KEXEC. eauto. }
       apply EXEC in KEXEC.
       destruct (handler_correct_disallowed_case cmem mvec int KINV HANDLER STORE ISUSER' KEXEC).
-  - right. case/andP: SYSCALL => S1 S2.
-    destruct (PartMaps.get (Concrete.mem kst) (common.val (Concrete.pc kst)))
-      as [[i it]|] eqn:GET; try discriminate.
-    move/eqP: S2=> S2. subst.
-    exploit state_on_syscalls; eauto. simpl.
-    intros (EM & ER & r & w & tpc & ic & ti & t1 & old & told & trpc & tr &
-            EC & MEM & ? & INST & DEC & PC' & RA' & LOOKUP').
-    rewrite EM in GET. subst.
-    assert (SYSCALL : exists sc, Symbolic.get_syscall table (common.val (Concrete.pc kst)) = Some sc).
-    { unfold wf_entry_points in WFENTRYPOINTS. rewrite WFENTRYPOINTS.
-      rewrite GET. apply eqxx. }
-    destruct SYSCALL as [sc GETSC].
-    assert (HANDLER := fun H => CACHE _ _ H LOOKUP').
-    unfold word_lift in HANDLER. simpl in HANDLER. rewrite decodeK in HANDLER.
-    specialize (HANDLER (erefl _)).
-    destruct HANDLER as (mvec & rvec & E1 & E2 & HANDLER).
-    apply encode_mvec_inj in E1; eauto. apply encode_rvec_inj in E2. subst.
-    unfold handler, rules.handler in HANDLER. simpl in HANDLER.
-    destruct (Symbolic.handler (Symbolic.mkMVec JAL tpc ti [t1; told])) as [[trpc' tr']|] eqn:HANDLER';
-      try discriminate.
-    unfold rvec_of_urvec in HANDLER. simpl in HANDLER. inv HANDLER.
-    destruct kst as [kmem kregs kcache [kpc kpct] kepc]. subst. simpl in *.
-    rewrite decodeK in TAG. simpl in TAG. inv TAG.
-    destruct (Symbolic.sem sc (Symbolic.State amem areg apc@tapc int)) as [ast'|] eqn:SCEXEC.
-    + destruct ast' as [amem' areg' [apc' tapc'] int'].
-      exploit syscalls_correct_allowed_case; eauto.
-      intros (cmem' & creg' & cache' & pct' & EXEC' &
-              REFM' & REFR' & CACHE' & MVEC' & RA'' & WFENTRYPOINTS' & KINV').
-      generalize (kernel_user_exec_determ KEXEC EXEC'). intros ?. subst.
-      { exists (Symbolic.State amem' areg' apc'@tapc' int'). split.
-        - eapply Symbolic.step_syscall; eauto.
-          + apply REFM in INST; eauto.
-          + apply REFR. apply PC'.
-          + apply REFR. eauto.
-        - unfold refine_state, in_user, word_lift. simpl.
-          rewrite decodeK. simpl.
-          repeat (split; eauto). }
-    + destruct (syscalls_correct_disallowed_case _ _ _ _ _ _ _ KINV REFM REFR CACHE MVEC
-                                                 WFENTRYPOINTS GETSC HANDLER' SCEXEC KEXEC).
 Qed.
 
 Lemma user_step_simulation ast cst cst' :
@@ -364,7 +357,7 @@ Proof.
   - exploit hit_simulation; eauto.
     intros (ast' & STEP & REF').
     autounfold; eauto.
-  - exploit miss_simulation; eauto.
+  - exploit user_kernel_user_simulation; eauto.
     intros [H | H]; eauto.
     destruct H as (ast' & H1 & H2).
     eauto using exec_one.
@@ -400,15 +393,11 @@ Proof.
   destruct REF as (INUSER & ? & ? & ? & ? & CACHE & ?).
   assert (PCS := valid_pcs STEP CACHE INUSER).
   unfold word_lift in *.
-  destruct (decode (common.tag (Concrete.pc cst'))) as [[t [|]| |]|] eqn:DEC;
+  destruct (decode (common.tag (Concrete.pc cst'))) as [[t| |]|] eqn:DEC;
   try discriminate; simpl in *;
   apply encodeK in DEC.
-  - rewrite <- DEC in NKERNEL.
-    erewrite eq_tag_eq_word in NKERNEL.
-    simpl in NKERNEL.
-    by rewrite NKERNEL in NUSER.
-  - rewrite DEC in NKERNEL.
-    by rewrite eqxx in NKERNEL.
+  rewrite <- DEC in NKERNEL.
+  rewrite eq_tag_eq_word // in NKERNEL.
 Qed.
 
 Lemma backwards_refinement_aux cst cst' (EXEC : exec (Concrete.step _ masks) cst cst') :
@@ -460,8 +449,8 @@ Proof.
         split; eauto. }
       assert (USER0 : in_user cst0 = true) by (destruct REF; eauto).
       assert (KUEXEC := eu_intro (Q := fun s => in_kernel s = false) KEXEC KERNEL'' STEP).
-      assert (MSTEP := ks_intro USER0 STEP0 KUEXEC).
-      eapply miss_simulation in MSTEP; eauto.
+      assert (MSTEP := ukus_intro USER0 STEP0 KUEXEC).
+      eapply user_kernel_user_simulation in MSTEP; eauto.
       destruct MSTEP as [MSTEP | MSTEP].
       * assert (USER'' : in_user cst'' = true) by now destruct MSTEP.
         destruct IH as [IH _].

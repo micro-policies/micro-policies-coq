@@ -247,42 +247,29 @@ Proof.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (apc + 1)%w). reflexivity.
     eexists. exists km. split.
-    + eapply Abs.step_jal; [reflexivity | | | | eassumption | reflexivity].
+    + eapply Abs.step_jal; [reflexivity | | | eassumption | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
-      simpl in NOTCALL. move : NOTCALL.
-        have [// | /eqP neq_mkkey] := altP (mkkey_addr =P w).
-        have [// | /eqP neq_seal] := altP (seal_addr =P w).
-        have [// | /eqP neq_unseal] := altP (unseal_addr =P w).
-        by move => _ [? | [? | [? | ?]]].
     + split4; now trivial.
-  - (* JAL - system call *)
+  - (* system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_get_pointwise_inv rmem) in PC.
-      destruct PC as [iv [PC riv]].
-    destruct ti; simpl in ALLOWED; try discriminate ALLOWED.
-    (* copy paste (all cases) *)
-    apply refine_val_data in riv. subst.
-    (* new -- useful only for t1, rvec ignored by semantic bug *)
-    destruct t1; try discriminate ALLOWED.
-    injection ALLOWED; intro H; subst; clear ALLOWED.
-    (* same as for normal JAL - reading a register *)
-    destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
-    destruct v; try contradiction rva. simpl in rva. subst.
-    (* done with RW *)
-    clear RW.
-    (* figuring out which system call it was *)
+    have {PC} PC: get amem apc = None by admit. (* Shouldn't be hard *)
     simpl in GETCALL. move : GETCALL.
-      have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P w); [|
-      have [eq_seal | neq_seal] := altP (seal_addr =P w); [|
-      have [eq_unseal | //] := altP (unseal_addr =P w)]];
+      have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
+      have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
+      have [eq_unseal | //] := altP (unseal_addr =P apc)]];
       move => GETCALL; injection GETCALL; move {GETCALL} => ?; subst.
     + {(* mkkey *)
     simpl in CALL; move: CALL.
     case lt_skey : (skey <? Sym.max_key) => // CALL. 
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
+    apply bind_inv in CALL. destruct CALL as [ret [GET CALL]].
+    destruct ret as [ret [| |]]; try done.
     injection CALL; intro H; subst; clear CALL.
+    apply (refine_get_pointwise_inv rreg) in GET.
+    move: GET => [v1 [GET REF]].
+    apply refine_val_data in REF. subst v1.
 
     assert(refine_val_atom (set km (Abs.mkkey_f akeys) skey)
               (Abs.VKey t (Abs.mkkey_f akeys))
@@ -300,10 +287,9 @@ Proof.
     apply refine_reg_set_km; eassumption.
 
     eexists. exists (set km (Abs.mkkey_f akeys) skey). split.
-    + eapply Abs.step_mkkey; [reflexivity | | | | reflexivity].
-      unfold Abs.decode. rewrite PC. now apply INST.
-      assumption.
-      eassumption.
+    + eapply Abs.step_mkkey; [reflexivity | | |eassumption | reflexivity].
+      unfold Abs.decode. now rewrite PC. 
+      eassumption. 
     + split4; trivial; try reflexivity.
         by eauto using refine_mem_set_km.
       split3. (* the interesting part: reestablish refinement on keys *)
@@ -339,7 +325,13 @@ Proof.
     apply bind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
     destruct tk; try discriminate CALL.
     apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
+    apply bind_inv in CALL. 
+    destruct CALL as [[ret [| |]] [GET CALL]]; try discriminate CALL.
     injection CALL; intro H; subst; clear CALL.
+    apply (refine_get_pointwise_inv rreg) in GET.
+    move: GET => [v1 [GET REF]].
+    apply refine_val_data in REF. subst v1.
+    
     (* 2 register lookups *)
     destruct (refine_get_pointwise_inv rreg gp) as [vp [ggp H]].
     destruct vp; try contradiction H. simpl in H. subst.
@@ -349,9 +341,7 @@ Proof.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VSealed p s0). split; now trivial. (* extra split *)
     eexists. exists km. split.
-    + eapply Abs.step_seal; [reflexivity | | | | | | reflexivity].
-      unfold Abs.decode. rewrite PC. now apply INST.
-      eassumption. eassumption. eassumption. eassumption.
+    + eapply Abs.step_seal; try eassumption; [reflexivity | reflexivity].
     + split4; now trivial.
     }
     + {(* unseal -- very similar to seal *)
@@ -365,7 +355,12 @@ Proof.
     (* additional: equality check between keys *)
     have [eq_s CALL|//] := eqP.
     apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
+    apply bind_inv in CALL. 
+    destruct CALL as [[ret [| |]] [GET CALL]]; try discriminate CALL.
     injection CALL; intro H; subst; clear CALL.
+    apply (refine_get_pointwise_inv rreg) in GET.
+    move: GET => [v1 [GET REF]].
+    apply refine_val_data in REF. subst v1.
     (* 2 register lookups *)
     destruct (refine_get_pointwise_inv rreg gp) as [vp [ggp H]].
     destruct vp; try contradiction H. simpl in H.
@@ -376,9 +371,7 @@ Proof.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData p). reflexivity.
     eexists. exists km. split.
-    + eapply Abs.step_unseal; [reflexivity | | | | | | reflexivity].
-      unfold Abs.decode. rewrite PC. now apply INST.
-      eassumption. eassumption.
+    + eapply Abs.step_unseal; try eassumption; [reflexivity | | reflexivity].
       (* here we use injectivity *)
       destruct rins as [_ [_ rins3]].
       repeat match goal with
@@ -386,7 +379,7 @@ Proof.
                  unfold refine_key in H; try rewrite e in H
              end.
       assert(s = s1) by eauto. (* NAMING! *) subst. assumption.
-      eassumption.
+
     + split4; now trivial.
     }
 Admitted.

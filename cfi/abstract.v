@@ -51,7 +51,7 @@ Open Scope word_scope.
 Local Notation word := (word t).
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
-Definition state := 
+Definition state :=
   (imemory * dmemory * registers * word (* pc *) * bool (*jump check*))%type.
 
 Record syscall := Syscall {
@@ -93,7 +93,7 @@ Inductive step : state -> state -> Prop :=
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Load _ r1 r2)),
              forall (R1W : get reg r1 = Some w1),
-             forall (MEM1 : get imem w1 = Some w2 \/ get dmem w1 = Some w2), 
+             forall (MEM1 : get imem w1 = Some w2 \/ get dmem w1 = Some w2),
              forall (UPD : upd reg r2 w2 = Some reg'),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
 | step_store : forall imem dmem dmem' reg pc i r1 r2 w1 w2,
@@ -106,33 +106,29 @@ Inductive step : state -> state -> Prop :=
 | step_jump : forall imem dmem reg pc i r w b,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Jump _ r)),
-             forall (RW : get reg r = Some w), 
-             forall (VALID : valid_jmp pc w = b), 
+             forall (RW : get reg r = Some w),
+             forall (VALID : valid_jmp pc w = b),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg,w,b)
 | step_bnz : forall imem dmem reg pc i r n w,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Bnz _ r n)),
              forall (RW : get reg r = Some w),
-             let pc' := add_word pc (if w == Z_to_word 0 then Z_to_word 1 
+             let pc' := add_word pc (if w == Z_to_word 0 then Z_to_word 1
                                      else imm_to_word n) in
              step (imem,dmem,reg,pc,true) (imem,dmem,reg,pc',true)
 | step_jal : forall imem dmem reg reg' pc i r w b,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Jal _ r)),
              forall (RW : get reg r = Some w),
-             forall (GETCALL : get_syscall w = None),
              forall (UPD : upd reg ra (pc.+1) = Some reg'),
              forall (VALID : valid_jmp pc w = b),
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',w,b)
-| step_syscall : forall imem dmem dmem' reg reg' pc i r w sc b,
-                 forall (FETCH : get imem pc = Some i),
-                 forall (INST : decode_instr i = Some (Jal _ r)),
-                 forall (RW : get reg r = Some w),
-                 forall (GETCALL : get_syscall w = Some sc),
-                 forall (CALL : sem sc (imem,dmem,reg,pc,true) = 
-                                Some (imem,dmem',reg',pc .+1,true)),
-                 forall (VALID : valid_jmp pc w = b), 
-                 step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc .+1,b).
+| step_syscall : forall imem dmem dmem' reg reg' pc pc' sc,
+                 forall (FETCH : get imem pc = None),
+                 forall (GETCALL : get_syscall pc = Some sc),
+                 forall (CALL : sem sc (imem,dmem,reg,pc,true) =
+                                Some (imem,dmem',reg',pc',true)),
+                 step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc',true).
 
 (*unused so far*)
 Hypothesis step_determ : forall s s' s'', step s s' -> step s s'' -> s' = s''.
@@ -142,28 +138,26 @@ Inductive step_a : state -> state -> Prop :=
              (FETCH: get imem pc = Some i)
              (MSAME: same_domain dmem dmem')
              (RSAME: same_domain reg reg'),
-             step_a (imem,dmem,reg,pc,true) (imem,dmem',reg',pc,true). 
+             step_a (imem,dmem,reg,pc,true) (imem,dmem',reg',pc,true).
 
 Definition succ (st : state) (st' : state) : bool :=
   let '(imem,_,reg,pc,_) := st in
   let '(_,_,_,pc',_) := st' in
   match (get imem pc) with
-    | Some i => 
+    | Some i =>
       (*XXX: Review this *)
       match decode_instr i with
         | Some (Jump r) => valid_jmp pc pc'
-        | Some (Jal r) => match get reg r with
-                            | Some w => match get_syscall w with
-                                          | Some sc => valid_jmp pc w
-                                          | None => valid_jmp pc pc'
-                                        end
-                            | None => false
-                          end
+        | Some (Jal r) => valid_jmp pc pc'
         | Some (Bnz r imm) => (pc' == pc .+1) || (pc' == pc + imm_to_word imm)
         | None => false
         | _ => pc' == pc .+1
       end
-    | None => false
+    | None =>
+      match get_syscall pc with
+        | Some sc => true (* Double-check *)
+        | None => false
+      end
   end.
 
 Definition initial (s : state) := True.
@@ -171,18 +165,18 @@ Definition initial (s : state) := True.
 Program Instance abstract_cfi_machine : cfi_machine t := {|
   state := state;
   initial s := initial s;
-  
+
   step := step;
   step_a := step_a;
 
   get_pc s := let '(_,_,_,pc,_) := s in pc;
-  
-  succ := succ      
+
+  succ := succ
  |}.
 Next Obligation.
 Admitted.
 Next Obligation.
-  inversion H; subst. reflexivity. 
+  inversion H; subst. reflexivity.
 Qed.
 
 Definition S (xs : list state) :=
@@ -214,10 +208,12 @@ Lemma step_succ_violation ast ast' :
    b = false.
 Proof.
   intros SUCC STEP.
-  inversion STEP; subst; simpl in SUCC; rewrite FETCH INST in SUCC;
-  try (rewrite eqxx in SUCC; congruence); 
-  try (destruct (w == 0)); try (rewrite eqxx ?orbT in SUCC); 
-  try (rewrite RW GETCALL in SUCC); auto.
+  inversion STEP; subst; simpl in SUCC; rewrite FETCH in SUCC;
+  try rewrite INST in SUCC;
+  try (rewrite eqxx in SUCC; congruence);
+  try (destruct (w == 0)); try (rewrite eqxx ?orbT in SUCC);
+  try (rewrite RW in SUCC);
+  try rewrite GETCALL in SUCC; auto.
 Qed.
 
 Lemma step_a_violation ast ast' :
@@ -226,19 +222,19 @@ Lemma step_a_violation ast ast' :
    b = true.
 Proof.
   intros STEP.
-  inversion STEP; subst. reflexivity. 
-Qed.  
+  inversion STEP; subst. reflexivity.
+Qed.
 
 Theorem cfi : cfi abstract_cfi_machine S.
 Proof.
-  unfold cfi. intros. 
+  unfold cfi. intros.
   apply interm_equiv_intermrev in INTERM.
   induction INTERM as [s s' STEP | s s' s'' xs STEP INTERM ].
-  + destruct (succ s s') eqn:SUCC.  
-    * (*case the step is in the control flow graph*) 
-      left. intros si sj IN2. 
+  + destruct (succ s s') eqn:SUCC.
+    * (*case the step is in the control flow graph*)
+      left. intros si sj IN2.
       destruct IN2 as [[? ?] | CONTRA]; [idtac | destruct CONTRA];
-      subst. auto. 
+      subst. auto.
     * (*case the step is outside the contro flow graph*)
       destruct STEP as [STEPA | STEP].
       - (*case it's an attacker step*)
@@ -249,7 +245,7 @@ Proof.
         inversion STEPA. subst. discriminate.
       - (*case it's a normal step*)
         right; exists s; exists s'; exists []; exists [].
-        simpl; repeat (split;auto). 
+        simpl; repeat (split;auto).
         intros ? ? IN2. destruct IN2.
         intros ? ? IN2. destruct IN2.
         unfold S. exists s'. split; auto.
@@ -267,7 +263,7 @@ Proof.
         { destruct IN2. }
         { clear IHxs.
           rewrite <- app_assoc in IN2.
-          simpl in IN2. 
+          simpl in IN2.
           destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]].
           - apply TSAFE; assumption.
           - subst. apply interm_last_step in INTERM; subst.
@@ -280,14 +276,14 @@ Proof.
         induction xs using rev_ind.
         { destruct IN2. }
         { rewrite <- app_assoc in IN2.
-          simpl in IN2. 
-          destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]]. 
+          simpl in IN2.
+          destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]].
           - apply TSAFE; assumption.
           - subst. apply interm_last_step in INTERM; subst; auto.
             intro STEP. assert (CONTRA := step_succ_violation SUCC STEP).
             inversion STEPA; subst; discriminate. }
       - (*case it's a normal step*)
-        right. induction xs using rev_ind; [inversion INTERM | idtac]. 
+        right. induction xs using rev_ind; [inversion INTERM | idtac].
         apply interm_last_step in INTERM; subst.
         exists s'; exists s''; exists xs; exists [].
         simpl; rewrite <- app_assoc. repeat (split; auto).
@@ -311,11 +307,11 @@ Proof.
      apply interm_last_step in INTERM; subst.
      destruct VIO as [VSTEP SUCC].
      assert (FLAG := step_succ_violation SUCC VSTEP).
-     destruct s' as [[[[imem dmem] aregs] apc] b]; subst. 
+     destruct s' as [[[[imem dmem] aregs] apc] b]; subst.
      destruct STEP as [STEPA | STEP].
      - inversion STEPA.
      - inversion STEP. }
-Qed. 
+Qed.
 
 
 End WithClasses.

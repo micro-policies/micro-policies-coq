@@ -69,7 +69,7 @@ Hint Unfold Concrete.next_state_pc.
 Hint Unfold Concrete.next_state.
 Hint Unfold Concrete.miss_state.
 
-Let in_kernel_user t ic : Concrete.is_kernel_tag _ (encode (USER t ic)) = false.
+Let in_kernel_user t : Concrete.is_kernel_tag _ (encode (USER t)) = false.
 Proof.
   unfold Concrete.is_kernel_tag.
   erewrite encode_kernel_tag.
@@ -106,13 +106,13 @@ Ltac match_data :=
     end;
     apply REFM in H
 
-  | GET : PartMaps.get ?mem1 ?addr = Some ?x@(encode (USER ?t false)),
+  | GET : PartMaps.get ?mem1 ?addr = Some ?x@(encode (USER ?t)),
     USERMEM : user_mem_unchanged ?mem1 ?mem2 |- _ =>
     match goal with
     | _ : PartMaps.get mem2 addr = _ |- _ => fail 1
     | |- _ => idtac
     end;
-    assert (PartMaps.get mem2 addr = Some x@(encode (USER t false)));
+    assert (PartMaps.get mem2 addr = Some x@(encode (USER t)));
     try solve [eapply USERMEM; assumption]
 
   | H : PartMaps.upd ?amem ?addr _ = _,
@@ -141,7 +141,7 @@ Ltac match_data :=
     let old := fresh "old" in
     let Hold := fresh "Hold" in
     let UPD' := fresh "UPD'" in
-    destruct (PartMaps.upd_inv (*Symbolic.reg_axioms (t := mt)*) _ _ _ UPD) as [old Hold];
+    destruct (PartMaps.upd_inv _ _ _ UPD) as [old Hold];
     apply REFR in Hold;
     assert (UPD' := refine_registers_upd' _ _ REFR UPD)
 
@@ -199,13 +199,13 @@ Qed.
 Let kernel_invariant_ra_upd mem regs cache int w t:
   ki mem regs cache int ->
   ra_in_user regs ->
-  ki mem (TotalMaps.upd regs ra w@(encode (USER t false))) cache int.
+  ki mem (TotalMaps.upd regs ra w@(encode (USER t))) cache int.
 Proof.
   intros KINV RA.
   unfold ra_in_user, word_lift in RA.
   destruct (TotalMaps.get regs ra) as [v t'] eqn:E.
   simpl in *.
-  destruct (decode t') as [[t'' [|]| |]|] eqn:DEC; try discriminate.
+  destruct (decode t') as [[t''| |]|] eqn:DEC; try discriminate.
   apply encodeK in DEC. subst.
   eapply kernel_invariant_upd_reg; eauto.
 Qed.
@@ -231,42 +231,41 @@ Ltac destruct_mvec_operands :=
   | ts : Empty_set |- _ => destruct ts
   end.
 
-Let symbolic_handler_concrete_cache cache umvec ic urvec rvec :
+Let symbolic_handler_concrete_cache cache umvec urvec rvec :
   cache_correct cache ->
   Symbolic.handler umvec = Some urvec ->
-  Concrete.cache_lookup _ cache masks (encode_mvec (mvec_of_umvec ic umvec)) = Some rvec ->
-  rvec = encode_rvec (rvec_of_urvec (Symbolic.op umvec) urvec).
+  Concrete.cache_lookup _ cache masks (encode_mvec (mvec_of_umvec umvec)) = Some rvec ->
+  rvec = encode_rvec (rvec_of_urvec urvec).
 Proof.
   intros CACHE HANDLER LOOKUP.
   assert (INUSER : word_lift (fun t => is_user t)
-                             (Concrete.ctpc (encode_mvec (mvec_of_umvec ic umvec))) = true).
+                             (Concrete.ctpc (encode_mvec (mvec_of_umvec umvec))) = true).
   { destruct umvec as [op tpc ti ts].
     simpl.
     unfold word_lift.
     rewrite decodeK.
     reflexivity. }
-  specialize (CACHE _ _ INUSER LOOKUP).
-  destruct CACHE as (mvec & rvec' & E1 & E2 & E3). subst.
-  apply encode_mvec_inj in E1; eauto. subst.
-  unfold handler, rules.handler in E3; eauto.
+  move: (CACHE _ _ INUSER LOOKUP) => [rvec' [E1 E2]]. subst.
   destruct umvec as [op tpc ti ts].
-  simpl in E3.
+  simpl in E2.
+  rewrite op_to_wordK in E2.
   destruct op; simpl in *;
   destruct_mvec_operands; simpl in *;
-  rewrite HANDLER in E3; simpl in E3; congruence.
+  repeat rewrite decodeK in E2; simpl in E2;
+  rewrite HANDLER in E2; simpl in E2; congruence.
 Qed.
 
-Let symbolic_handler_concrete_handler mvec rvec ic :
+Let symbolic_handler_concrete_handler mvec rvec :
   Symbolic.handler mvec = Some rvec ->
-  match decode_mvec (encode_mvec (mvec_of_umvec ic mvec)) with
-  | Some mvec => handler (fun m => Symbolic.handler m) mvec
-  | None => None
-  end = Some (rvec_of_urvec (Symbolic.op mvec) rvec).
+  handler [eta Symbolic.handler] (encode_mvec (mvec_of_umvec mvec))
+  = Some (rvec_of_urvec rvec).
 Proof.
   intros H.
-  rewrite decode_mvecK; eauto.
-  destruct mvec as [op tpc ti ts].
-  unfold handler, rules.handler. simpl.
+  destruct mvec as [op tpc ti ts]. simpl.
+  rewrite op_to_wordK.
+  repeat rewrite decodeK. simpl.
+  repeat rewrite <- surjective_pairing.
+  rewrite decode_fieldsK.
   destruct op; simpl in *;
   destruct_mvec_operands; simpl in *; now rewrite H.
 Qed.
@@ -298,7 +297,9 @@ Ltac analyze_syscall :=
     repeat match goal with
     | H : exists _, _ |- _ => destruct H
     | H : _ /\ _ |- _ => destruct H
-    end
+    end;
+    eexists; split;
+    [apply user_kernel_user_step_weaken; eassumption|solve_refine_state]
   end.
 
 Lemma forward_simulation ast ast' cst :
@@ -312,7 +313,7 @@ Proof.
   unfold refine_state. simpl.
   intros REF STEP.
   destruct REF as (KER & ? & ? & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV).
-  destruct (decode cpct) as [[t ic| |]|] eqn:DEC; try solve [intuition].
+  destruct (decode cpct) as [[t| |]|] eqn:DEC; try solve [intuition].
   apply encodeK in DEC.
   subst cpc tapc cpct.
   inv STEP;
@@ -324,37 +325,35 @@ Proof.
   repeat autounfold in NEXT;
   match_inv;
 
-  try match goal with
+  match goal with
   | HANDLER : Symbolic.handler ?mvec = Some ?rvec |- _ =>
     destruct rvec;
-    let cmvec := constr:(encode_mvec (mvec_of_umvec ic mvec)) in
+    let cmvec := constr:(encode_mvec (mvec_of_umvec mvec)) in
     destruct (Concrete.cache_lookup _ cache masks cmvec) as [rvec' | ] eqn:LOOKUP;
 
     [
       (* Cache hit case *)
-      generalize (symbolic_handler_concrete_cache _ _ CACHE HANDLER LOOKUP);
+      generalize (symbolic_handler_concrete_cache _ CACHE HANDLER LOOKUP);
       intros; subst rvec';
       unfold encode_mvec, encode_rvec, rvec_of_urvec in LOOKUP; simpl in *;
       match_data;
-      try analyze_syscall;
       try solve [eexists; split;
                  [apply exec_one; solve_concrete_step|solve_refine_state]]
 
-        (* || let op := current_instr_opcode in fail 3 "failed hit case" op *)
+          || let op := current_instr_opcode in fail 3 "failed hit case" op
     |
       (* Cache miss case, fault handler will execute *)
       let STORE := fresh "STORE" in
       destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE];
       pose proof (store_mvec_mvec_in_kernel _ _ STORE);
       pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE);
-      let HANDLER' := constr:(symbolic_handler_concrete_handler _ ic HANDLER) in
-      destruct (handler_correct_allowed_case _ cmvec _ pc@(encode (USER tpc ic)) _ KINV HANDLER' STORE CACHE)
+      let HANDLER' := constr:(symbolic_handler_concrete_handler _ HANDLER) in
+      try destruct (handler_correct_allowed_case _ cmvec _ pc@(encode (USER tpc)) _ KINV HANDLER' STORE CACHE)
         as ([? ? ? [? ?] ?] &
             KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
       simpl in PC'; inv PC';
       match_data;
       unfold encode_mvec, encode_rvec, rvec_of_urvec in *; simpl in *;
-      try analyze_syscall;
       try solve [eexists; split;
       [
         eapply re_step; trivial; [solve_concrete_step|];
@@ -364,23 +363,10 @@ Proof.
           try solve [eapply exec_one; solve_concrete_step]
         )
       | solve_refine_state ] ]
-      (* || let op := current_instr_opcode in fail 3 "failed miss case" op *)
+      || let op := current_instr_opcode in fail 3 "failed miss case" op
     ]
+  | _ : Symbolic.sem _ _ = Some _ |- _ => analyze_syscall
   end.
-
-  - eexists. split.
-    + eapply re_step; trivial; [solve_concrete_step|].
-      eapply exec_until_weaken.
-      eassumption.
-    + solve_refine_state.
-
-  - eexists. split.
-    + eapply re_step; trivial; [solve_concrete_step|].
-      eapply restricted_exec_trans.
-      { eapply exec_until_weaken. eassumption. }
-      eapply re_step; trivial; [solve_concrete_step|].
-      eapply exec_until_weaken. eassumption.
-    + solve_refine_state.
 
 Qed.
 

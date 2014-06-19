@@ -46,13 +46,13 @@ Variable tnone : user_tag.
 Open Scope nat_scope.
 
 Inductive tag : Type :=
-| USER (ut : user_tag) (is_call : bool)
+| USER (ut : user_tag)
 | KERNEL
 | ENTRY.
 
 Definition tag_eq u v :=
   match u, v with
-    | USER ut1 b1, USER ut2 b2 => (ut1 == ut2) && (b1 == b2)
+    | USER ut1, USER ut2 => ut1 == ut2
     | KERNEL, KERNEL
     | ENTRY, ENTRY => true
     | _, _ => false
@@ -60,9 +60,9 @@ Definition tag_eq u v :=
 
 Lemma tag_eqP : Equality.axiom tag_eq.
 Proof.
-move=> [ut1 b1||] [ut2 b2||] /=; try by apply: (iffP idP).
-apply: (iffP andP) => [[]|[<- <-]] //.
-by repeat move/eqP->.
+move=> [ut1||] [ut2||] /=; try by apply: (iffP idP).
+apply: (iffP eqP) => [[]|[<-]] //.
+congruence.
 Qed.
 
 Definition tag_eqMixin := EqMixin tag_eqP.
@@ -70,19 +70,7 @@ Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 
 Definition is_user (t : tag) : bool :=
   match t with
-  | USER _ _ => true
-  | _ => false
-  end.
-
-Definition is_user_data (t : tag) : bool :=
-  match t with
-  | USER _ is_call => negb is_call
-  | _ => false
-  end.
-
-Definition is_call (t : tag) : bool :=
-  match t with
-  | USER _ is_call => is_call
+  | USER _ => true
   | _ => false
   end.
 
@@ -339,48 +327,56 @@ Definition ground_rules : Concrete.rules (word t) :=
    (mk PUTTAG, Concrete.mkRVec TCopy TNone)
   ].
 
-Definition mvec_of_umvec (call : bool) (mvec : Symbolic.MVec user_tag) : Symbolic.MVec tag :=
+Definition mvec_of_umvec (mvec : Symbolic.MVec user_tag) : Symbolic.MVec tag :=
   match mvec with
   | Symbolic.mkMVec op tpc ti ts =>
-    Symbolic.mkMVec op (USER tpc call) (USER ti false)
+    Symbolic.mkMVec op (USER tpc) (USER ti)
            (match Symbolic.nfields op as fs return Symbolic.mvec_operands user_tag fs ->
                                           Symbolic.mvec_operands tag fs
             with
-            | Some fs => fun ts => Vector.map (fun t => USER t false) ts
+            | Some fs => fun ts => Vector.map (fun t => USER t) ts
             | None => fun ts => ts
             end ts)
   end.
 
-Definition rvec_of_urvec (op : opcode) (rvec : Symbolic.RVec user_tag) : Symbolic.RVec tag :=
-  let call := match op with JAL => true | _ => false end in
-  {| Symbolic.trpc := USER (Symbolic.trpc rvec) call;
-     Symbolic.tr   := USER (Symbolic.tr rvec) false |}.
+Definition rvec_of_urvec (rvec : Symbolic.RVec user_tag) : Symbolic.RVec tag :=
+  {| Symbolic.trpc := USER (Symbolic.trpc rvec);
+     Symbolic.tr   := USER (Symbolic.tr rvec) |}.
 
 (* This is the handler that should be implemented concretely by the
    fault handler. Notice that this only takes care of the tagging
    behavior on regular user instructions, and doesn't include anything
    about system calls. *)
 
-Definition handler (mvec : Symbolic.MVec tag) : option (Symbolic.RVec tag) :=
+Definition handler (mvec : Concrete.MVec (word t)) : option (Symbolic.RVec tag) :=
   match mvec with
-  | Symbolic.mkMVec op (USER tpc _) (USER ti false) ts =>
-    let process ts :=
-        do! rvec <- uhandler (Symbolic.mkMVec op tpc ti ts);
-        Some (rvec_of_urvec op rvec) in
-    match Symbolic.nfields op as fs return (Symbolic.mvec_operands user_tag fs -> option (Symbolic.RVec tag)) ->
-                                  Symbolic.mvec_operands tag fs -> option (Symbolic.RVec tag) with
-    | Some fs =>
-      fun process ts =>
-        do! ts <- sequence (Vector.map (fun t =>
-                                         match t with
-                                         | USER t false => Some t
-                                         | _ => None
-                                       end)
-                                      ts);
-        process ts
-    | None => fun _ ts => match ts with end
-    end process ts
-  | _ => None
+  | Concrete.mkMVec op tpc ti t1 t2 t3 =>
+    match word_to_op op, decode tpc, decode ti with
+    | Some op, Some (USER tpc), Some (USER ti) =>
+      let process ts :=
+          do! rvec <- uhandler (Symbolic.mkMVec op tpc ti ts);
+            Some (rvec_of_urvec rvec) in
+      match decode_fields (Symbolic.nfields op) (t1, t2, t3) with
+      | Some ts =>
+        match Symbolic.nfields op as fs return (Symbolic.mvec_operands user_tag fs -> option (Symbolic.RVec tag)) ->
+                                               Symbolic.mvec_operands tag fs -> option (Symbolic.RVec tag) with
+        | Some fs =>
+          fun process ts =>
+            do! ts <- sequence (Vector.map (fun t =>
+                                              match t with
+                                              | USER t => Some t
+                                              | _ => None
+                                              end)
+                                           ts);
+            process ts
+        | None => fun _ ts => match ts with end
+        end process ts
+      | None => None
+      end
+    | Some op, Some (USER tpc), Some ENTRY =>
+      Some (Symbolic.mkRVec KERNEL KERNEL)
+    | _, _, _ => None
+    end
   end.
 
 End handler.

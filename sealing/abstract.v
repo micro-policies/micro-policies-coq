@@ -129,31 +129,28 @@ Inductive step (st st' : state) : Prop :=
     (ST   : st = State mem reg pc ks)
     (INST : decode mem pc =? Jal _ r)
     (RW   : get reg r =? VData w)
-    (NOSC : ~In w syscall_addrs)
     (UPD  : upd reg ra (VData (pc.+1)) =? reg')
     (NEXT : st' = State mem reg' w ks),   step st st'
-| step_mkkey : forall mem reg reg' pc r ks
-    (ST   : st = State mem reg pc ks)
-    (INST : decode mem pc =? Jal _ r)
-    (RW   : get reg r =? VData mkkey_addr)
+| step_mkkey : forall mem reg reg' pc ks
+    (ST   : st = State mem reg mkkey_addr ks)
+    (INST : decode mem mkkey_addr = None)
     (UPD  : upd reg syscall_ret (VKey (mkkey_f ks)) =? reg')
-    (NEXT : st' = State mem reg' (pc.+1) ((mkkey_f ks) :: ks)),   step st st'
-| step_seal : forall mem reg reg' pc r ks payload key
-    (ST   : st = State mem reg pc ks)
-    (INST : decode mem pc =? Jal _ r)
-    (RW   : get reg r =? VData seal_addr)
+    (RET  : get reg ra =? VData pc)
+    (NEXT : st' = State mem reg' pc ((mkkey_f ks) :: ks)),   step st st'
+| step_seal : forall mem reg reg' pc ks payload key
+    (ST   : st = State mem reg seal_addr ks)
     (R1   : get reg syscall_arg1 =? VData payload)
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VSealed payload key) =? reg')
-    (NEXT : st' = State mem reg' (pc.+1) ks),   step st st'
-| step_unseal : forall mem reg reg' pc r ks payload key
-    (ST   : st = State mem reg pc ks)
-    (INST : decode mem pc =? Jal _ r)
-    (RW   : get reg r =? VData unseal_addr)
+    (RET  : get reg ra =? VData pc)
+    (NEXT : st' = State mem reg' pc ks),   step st st'
+| step_unseal : forall mem reg reg' pc ks payload key
+    (ST   : st = State mem reg unseal_addr ks)
     (R1   : get reg syscall_arg1 =? VSealed payload key)
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VData payload) =? reg')
-    (NEXT : st' = State mem reg' (pc.+1) ks),   step st st'.
+    (RET  : get reg ra =? VData pc)
+    (NEXT : st' = State mem reg' pc ks),   step st st'.
 
 End WithClasses.
 

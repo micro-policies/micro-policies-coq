@@ -648,7 +648,17 @@ Proof.
          destruct (H W TRUE) as [dst [TI VALID]]; inversion TI; auto
      end. 
     (*more system calls*)
-    { destruct ti.
+Admitted.
+(*
+    { eapply Abstract.step_jal; eauto. }
+    { simpl.
+      split; eauto.
+      split; eauto.
+      split; eauto.
+      split; eauto.
+      split; simpl; eauto.
+      intros i' ti GET.
+ destruct ti.
     + assert (EQ := jal_tagged pc mem PC INST).
       apply REFI; eexists; eauto.
     + simpl in ALLOWED; match_inv.
@@ -658,7 +668,7 @@ Proof.
     repeat(split; auto).
     (*syscall correctness*)
      (*not sure if provable right now*)
-Admitted.   
+*)
     
 Definition untag_atom (a : atom (word t) (@cfi_tag t)) := common.val a.
 
