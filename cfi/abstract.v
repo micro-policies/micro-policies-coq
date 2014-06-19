@@ -232,7 +232,7 @@ Proof.
   inversion STEP; subst. reflexivity. 
 Qed.  
 
-Theorem cfi : cfi abstract_cfi_machine V S.
+Theorem cfi : cfi abstract_cfi_machine S.
 Proof. Admitted. (*broken from change of cfi definition to not say anything about attacker*)
   (*unfold cfi. intros. 
   apply interm_equiv_intermrev in INTERM.

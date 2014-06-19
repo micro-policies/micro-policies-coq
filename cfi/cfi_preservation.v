@@ -13,18 +13,16 @@ Context {mt : machine_types}
 
 Variable machine1 : cfi_machine mt.
 Variable machine2 : cfi_machine mt.
-Variable V1 : (@state mt machine1) -> (@state mt machine1) -> Prop.
 Variable S1 : (list (@state mt machine1)) -> Prop.
 
-Variable V2 : (@state mt machine2) -> (@state mt machine2) -> Prop.
 Variable S2 : (list (@state mt machine2)) -> Prop.
 
 Context {rf : machine_refinement machine1 machine2}.
-Context {rfs : machine_refinement_specs V1 S1 V2 S2 rf}.
+Context {rfs : machine_refinement_specs S1 S2 rf}.
 
 Theorem backwards_refinement_preserves_cfi :
-  cfi machine1 V1 S1 ->
-  cfi machine2 V2 S2. 
+  cfi machine1 S1 ->
+  cfi machine2 S2. 
 Proof. Admitted.
  (* intros CFI1 cst cst' cxs INIT2 INTERM2.
   destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
