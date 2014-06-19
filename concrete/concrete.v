@@ -346,7 +346,7 @@ Inductive step (st st' : state) : Prop :=
     forall (NEXT :
       next_state st mvec (fun rvec =>
         do! cache' <- add_rule cache masks (is_kernel_tag tpc) mem;
-        Some (mkState mem reg cache' epc epc)) = Some st'),
+        Some (mkState mem reg cache' (pc.+1)@(ctrpc rvec) epc)) = Some st'),
       step st st'
 | step_gettag :
     forall mem reg cache pc epc r1 r2 w tpc i ti t1 old told,
