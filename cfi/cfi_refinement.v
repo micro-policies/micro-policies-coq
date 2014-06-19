@@ -264,7 +264,7 @@ Lemma refine_traces_weaken_forward : forall axs cxs,
     step asi asj ->
     succ asi asj = false ->
     exists csi csj,
-      In2 csi csj cxs /\ step csi csj
+      In2 csi csj cxs /\ step csi csj /\ visible csi csj = true
       /\ refine_state asi csi /\ refine_state asj csj.
 Proof.
   intros axs cxs RTRACE asi asj IN2 ASTEP SUCC.
