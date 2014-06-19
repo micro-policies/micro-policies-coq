@@ -303,7 +303,6 @@ Hypothesis jal_target_tagged :
     decode_instr i = Some (Jal _ r) ->
     get reg r = Some w@tr ->
     get mem w = Some i0@ti ->
-    Symbolic.get_syscall stable w = None ->
     ti = INSTR (Some w).
 
 Import Vector.VectorNotations.
@@ -416,6 +415,16 @@ Ltac match_inv :=
   | H : True |- _ => clear H
   end.
 
+Lemma refine_imemory_none aimem smem pc :
+  refine_imemory aimem smem ->
+  get smem pc = None ->
+  get aimem pc = None.
+Proof.
+  intros REF GET.
+  case E: (get aimem pc) => [i|] //.
+  move/(REF _ _): E => [? ?]; congruence.
+Qed.
+
 (*TODO: Syscalls and clean up of this mess*)
 Theorem backwards_simulation ast sst sst' :
   refine_state ast sst ->
@@ -468,8 +477,8 @@ Proof.
         | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
           unfold Symbolic.next_state_reg_and_pc in H
         | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
-          unfold Symbolic.next_state in H; simpl in H; match_inv
-      end); subst;
+          unfold Symbolic.next_state in H; simpl in H
+      end); match_inv; subst;
   (* switch memory updates to abstract*)
   repeat (
       match goal with
@@ -530,14 +539,12 @@ Proof.
           H2: upd _ ?R ?V'@?T' = Some _ |- _] =>
       destruct (refine_registers_upd R V' T' H H1 H2) as [aregs' [? ?]]
     
-         end; auto;   
+         end; auto;
   destruct (refine_syscalls_correct) as [DOMAIN SYSCALLREF];
   (* put into context stuff required for syscalls *)
-    try
       match goal with
-        | [H: decode_instr _ = Some (Jal _ _ ),
-           H1: Symbolic.get_syscall _ ?W = Some _
-           |- _] =>
+        | [H1: Symbolic.get_syscall _ ?W = Some _
+           |- _] => (
           assert (EGETCALL: exists sc, Symbolic.get_syscall stable W = Some sc)
             by (eexists; eauto);
             destruct (DOMAIN W) as [ASDOM SADOM];
@@ -554,6 +561,8 @@ Proof.
             destruct (syscall_sem ac (imem,dmem,aregs,pc,true) CALL') as 
                 [? [? ?]];
             subst
+          ) || fail 4 "Couldn't analyze syscall"
+        | |- _ => idtac
       end;
   (*handle abstract steps*)
   repeat (match goal with 
@@ -575,10 +584,9 @@ Proof.
       eapply Abstract.step_jump; eauto
     | [H: decode_instr _ = Some (Bnz _ _ _) |- Abstract.step _ _ _ _] =>
       eapply Abstract.step_bnz; eauto
-    | [H: decode_instr _ = Some (Jal _ _ ), H1: Symbolic.get_syscall _ _ = None 
-       |- Abstract.step _ _ _ _] =>
+    | [H: decode_instr _ = Some (Jal _ _ ) |- Abstract.step _ _ _ _] =>
       eapply Abstract.step_jal; eauto
-    | [H: decode_instr _ = Some (Jal _ _ ), H1: Symbolic.get_syscall _ _ = Some _
+    | [H1: Symbolic.get_syscall _ _ = Some _
        |- Abstract.step _ _ _ _] =>
       eapply Abstract.step_syscall; eauto
          end);
@@ -587,8 +595,6 @@ Proof.
   repeat (match goal with
     | [H: decode_instr _ = Some (Jump _ _) |- refine_state (_,_,_,_, valid_jmp ?Pc ?W) _] =>
       remember (valid_jmp Pc W) as b; destruct b; [left; unfold refine_normal_state; repeat (split; auto) | idtac]
-    | [H: false = valid_jmp ?Pc ?W |- refine_state (_,_,_,_, false) _] =>
-      idtac
     | [|- _ /\ _] => split; [eauto | idtac]
     | [H: decode_instr _ = Some (Jump _ _) |- Abstract.step _ _ _ (_,_,_,_,false)] =>
       eapply Abstract.step_jump; eauto
@@ -597,7 +603,7 @@ Proof.
         eapply imem_upd_preservation; eauto
     | [|- refine_pc _ _] => unfold refine_pc; simpl; auto
     | [|- INSTR _ = DATA \/ _ ] => right; eexists; eauto
-   end); 
+   end);
   (*handle the correctness part*)
   repeat match goal with
     | [|- forall _, _] => intros
@@ -610,16 +616,9 @@ Proof.
          end; auto;
   (*jump/jal related stuff*)
     (*no syscall*)
-    try 
-      match goal with
-        | [H: Symbolic.get_syscall _ ?W = None 
-           |- Abstract.get_syscall _ ?W = None] =>
-          eapply same_domain_total in DOMAIN; eapply DOMAIN; assumption
-      end;
     repeat (
         match goal with
-          | [H: INSTR ?V = INSTR ?V |- _] => idtac
-          | [H: INSTR _ = INSTR _ |- _] => inversion H; subst
+          | [H: INSTR _ = INSTR _ |- _] => inv H
         end);
     try match goal with
           | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some _)), 
@@ -632,10 +631,9 @@ Proof.
           | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some _)), 
              H1: decode_instr ?I = Some (Jal _ ?R), 
              H2: get ?Reg ?R = Some ?W@_,
-             H3: get ?Mem ?W = Some _,
-             H4: Symbolic.get_syscall stable ?W = None
+             H3: get ?Mem ?W = Some _
              |- _] =>
-               assert (EQ := jal_target_tagged Pc Mem Reg H H1 H2 H3 H4);
+               assert (EQ := jal_target_tagged Pc Mem Reg H H1 H2 H3);
                assert (EQ' := jal_tagged Pc Mem H H1); inversion EQ'; subst
         end;
    try 
@@ -644,31 +642,12 @@ Proof.
          exists W; split; auto
        | [H: forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
                               |- valid_jmp _ _ = true] =>
-         assert (TRUE: INSTR (Some W) = INSTR (Some W)) by reflexivity;
-         destruct (H W TRUE) as [dst [TI VALID]]; inversion TI; auto
-     end. 
-    (*more system calls*)
+         destruct (H W erefl) as [dst [TI VALID]]; inversion TI; auto
+     end;
+   eauto using refine_imemory_none.
+
+(*not sure if provable right now*)
 Admitted.
-(*
-    { eapply Abstract.step_jal; eauto. }
-    { simpl.
-      split; eauto.
-      split; eauto.
-      split; eauto.
-      split; eauto.
-      split; simpl; eauto.
-      intros i' ti GET.
- destruct ti.
-    + assert (EQ := jal_tagged pc mem PC INST).
-      apply REFI; eexists; eauto.
-    + simpl in ALLOWED; match_inv.
-    } 
-    destruct sst' as [mem' reg' [pc' tpc'] int'].
-    destruct FINALREF as [REFI' [REFD' [REFR' [REFPC' CORRECTNESS']]]].
-    repeat(split; auto).
-    (*syscall correctness*)
-     (*not sure if provable right now*)
-*)
     
 Definition untag_atom (a : atom (word t) (@cfi_tag t)) := common.val a.
 
