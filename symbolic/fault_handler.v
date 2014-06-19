@@ -97,8 +97,6 @@ Definition is_entry_tag (rsrc rdst : reg mt) : code :=
   [Const _ (Z_to_imm 2) ri5] ++
   [Binop _ EQ rsrc ri5 rdst].
 
-
-
 Definition inf_loop : code :=
   [Const mt (Z_to_imm 0) rb] ++
   [Bnz mt rb (Z_to_imm 0)].

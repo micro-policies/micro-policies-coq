@@ -250,6 +250,7 @@ Proof.
   - unfold encode_instr,decode_instr,concrete_int_32_ops;
       intros; destruct i; rewrite unpack_pack; try reflexivity.
       apply pack3_unpack3_hideous_Const.
+      apply pack3_unpack3_hideous_Bnz.
   - vm_compute; inversion 1.
   - reflexivity.
   - simpl. apply repr_signed.

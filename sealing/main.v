@@ -118,7 +118,15 @@ Definition constant_code (l : list atom) : @relocatable_segment t w atom :=
 (* ---------------------------------------------------------------- *)
 (* Main definitions *)
 
-Axiom fault_handler : @relocatable_segment t w atom.
+Axiom fault_handler : @relocatable_segment t w atom. 
+
+(*
+Axiom transfer_function : instr list.
+
+Definition fault_handler : @relocatable_segment t w atom :=
+  constant_code (handler transfer_function)
+.
+*)
 
 Definition extra_state : @relocatable_segment t w atom := 
   constant_code [Atom (nat_to_word 0) Concrete.TKernel].
