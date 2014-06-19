@@ -181,9 +181,23 @@ Proof.
 Admitted.
 
 (* BCP: This seems to be what is actually needed... *)
-Lemma pack3_unpack3_hideous : forall i i1 i2 i0,
-  (i1, i2, i0) = unpack3 i ->
-  i = add (shl i1 (repr 10)) (add (shl i2 (repr 5)) (add i0 (repr 0))).
+Lemma pack3_unpack3_hideous_Const : forall i s,
+   Some
+     (Const concrete_int_32_t
+        (add (shl (and (shr i (repr 10)) mask_31) (repr 10))
+           (add (shl (and (shr i (repr 5)) mask_31) (repr 5))
+              (add (and i mask_31) (repr 0)))) s) =
+   Some (Const concrete_int_32_t i s).
+Admitted.
+
+(* BCP: And this... *)
+Lemma pack3_unpack3_hideous_Bnz : forall i s,
+   Some
+     (Bnz concrete_int_32_t s
+        (add (shl (and (shr i (repr 10)) mask_31) (repr 10))
+           (add (shl (and (shr i (repr 5)) mask_31) (repr 5))
+              (add (and i mask_31) (repr 0))))) =
+   Some (Bnz concrete_int_32_t s i).
 Admitted.
 
 (* This belongs in CompCert's integers, but alas. *)
@@ -234,13 +248,8 @@ Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
   constructor.
   - unfold encode_instr,decode_instr,concrete_int_32_ops;
-      intros; destruct i. rewrite unpack_pack. reflexivity.
-      remember (unpack3 i) as u.
-      destruct u. destruct p. rewrite unpack_pack. simpl. 
-      rewrite <- pack3_unpack3_hideous.
-      fold (pack3 (i1,i2,i0)).
-rewrite 
-
+      intros; destruct i; rewrite unpack_pack; try reflexivity.
+      apply pack3_unpack3_hideous_Const.
   - vm_compute; inversion 1.
   - reflexivity.
   - simpl. apply repr_signed.
