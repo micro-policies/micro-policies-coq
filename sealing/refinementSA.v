@@ -14,10 +14,8 @@ Require Import sealing.classes sealing.symbolic sealing.abstract.
 Section RefinementSA.
 
 Set Implicit Arguments.
-(*
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-*)
 
 Context {t : machine_types}
         {ops : machine_ops t}
@@ -397,8 +395,9 @@ Admitted.
    relation as a function from symbolic to abstract, and use
    computation in the direction of forward refinement? *)
 
-(* Here is a weaker form of fwd simulation we can hope to prove *)
-Locate pc.
+(* Here is a weaker form of forward simulation we can hope to prove.
+   It intuitively says that we have forwards simulation for programs
+   that don't run out of keys at the symbolic level. *)
 Lemma forward_simulation : forall km ast ast' sst,
   refine_state km ast sst ->
   Abs.step ast ast' ->
