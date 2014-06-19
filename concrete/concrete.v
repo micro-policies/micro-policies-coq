@@ -58,7 +58,7 @@ Class concrete_params := {
 (* If we were doing good modularization, these would be abstract! *)
 Definition cache_line_addr : word t := Z_to_word 0.
 (* BCP: Call it fault_handler_addr? *)
-Definition fault_handler_start : word t := Z_to_word 7.
+Definition fault_handler_start : word t := Z_to_word 8.
 Definition TNone   : word t := Z_to_word 0.
 Definition TKernel : word t := Z_to_word 1.
 

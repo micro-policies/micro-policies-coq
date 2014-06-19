@@ -1,9 +1,7 @@
 (* Executable formulation of concrete machine semantics *)
 
 Require Import ZArith.
-
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-
 Require Import lib.utils lib.partial_maps lib.Coqlib common.common concrete.concrete.
 
 Import Concrete. Import DoNotation.
@@ -148,5 +146,7 @@ Fixpoint stepn (max_steps : nat) (st : state mt) : option (state mt) :=
     do! st' <- step st;
     stepn max_steps' st'
   end.
+
+Definition run (st : state mt) := stepn 10000.
 
 End Masks.
