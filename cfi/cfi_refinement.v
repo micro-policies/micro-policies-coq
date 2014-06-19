@@ -61,7 +61,39 @@ Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) :
 
 }.
 
-Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := {
+Context (rf : machine_refinement amachine cmachine).
+
+Inductive refine_traces :
+  list (@state t amachine) -> list (@state t cmachine) -> Prop :=
+| TRNil : forall ast cst, 
+            refine_state ast cst -> 
+            refine_traces [ast] [cst]
+| TRNormal0 : forall ast cst cst' axs cxs,
+    step cst cst' ->
+    visible cst cst' = false ->
+    refine_state ast cst ->
+    refine_state ast cst' ->
+    refine_traces (ast :: axs) (cst' :: cxs) ->
+    refine_traces (ast :: axs) (cst :: cst' :: cxs)
+| TRNormal1 : forall ast ast' cst cst' axs cxs,
+    step cst cst' ->
+    visible cst cst' = true ->
+    step ast ast' ->
+    refine_state ast cst ->
+    refine_state ast' cst' ->
+    refine_traces (ast' :: axs) (cst' :: cxs) ->
+    refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs)
+| TRAttacker : forall ast ast' cst cst' axs cxs,
+    ~step cst cst' ->
+    step_a cst cst' ->
+(*    ~step ast ast' -> *)
+    step_a ast ast' ->
+    refine_state ast cst ->
+    refine_state ast' cst' ->
+    refine_traces (ast' :: axs) (cst' :: cxs) ->
+    refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs).
+
+Class machine_refinement_specs := {
 
   step_classic : forall st st',
     (step st st') \/ (~step st st');
@@ -100,52 +132,21 @@ Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := 
     refine_state ast cst ->
     refine_state ast' cst' ->
     succ ast ast' = false ->
+    visible cst cst' = true ->
     succ cst cst' = false;
 
   (* CH: first premise is a bit strange, stopping is a property of
          whole trace tails not only their first step, still premise
          only talks about first step ...  backwards_refinement_traces
          lemma below extends that to whole traces *)
-  as_implies_cs : forall ast cst axs cxs,
-    refine_state ast cst ->
-    AS (ast::axs) ->
-    CS (cst::cxs)
+  as_implies_cs : forall axs cxs,
+    refine_traces axs cxs ->
+    AS axs ->
+    CS cxs
 
 }.
 
-Context (rf : machine_refinement amachine cmachine).
-Context (rfs : machine_refinement_specs rf).
-
-
-Inductive refine_traces :
-  list (@state t amachine) -> list (@state t cmachine) -> Prop :=
-| TRNil : forall ast cst, 
-            refine_state ast cst -> 
-            refine_traces [ast] [cst]
-| TRNormal0 : forall ast cst cst' axs cxs,
-    step cst cst' ->
-    visible cst cst' = false ->
-    refine_state ast cst ->
-    refine_state ast cst' ->
-    refine_traces (ast :: axs) (cst' :: cxs) ->
-    refine_traces (ast :: axs) (cst :: cst' :: cxs)
-| TRNormal1 : forall ast ast' cst cst' axs cxs,
-    step cst cst' ->
-    visible cst cst' = true ->
-    step ast ast' ->
-    refine_state ast cst ->
-    refine_state ast' cst' ->
-    refine_traces (ast' :: axs) (cst' :: cxs) ->
-    refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs)
-| TRAttacker : forall ast ast' cst cst' axs cxs,
-    ~step cst cst' ->
-    step_a cst cst' ->
-(*    ~step ast ast' -> *)
-    step_a ast ast' ->
-    refine_state ast cst ->
-    refine_state ast' cst' ->
-    refine_traces (ast' :: axs) (cst' :: cxs) ->
-    refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs).
+Context (rfs : machine_refinement_specs).
 
 (* nit: the final state is irrelevant for both intermstep and
         intermrstep, can we remove it and get of useless existentials? *)
@@ -345,26 +346,64 @@ Lemma refine_traces_unique_proof : forall axs cxs
   H1 = H2.
 Admitted.
 
-Lemma split_refine_traces : forall axs cxs asi asj csi csj,
+Lemma split_refine_traces cst cst' ast ast' axs ahs atl cxs asi asj csi csj :
+  axs = ahs ++ asi :: asj :: atl ->
   refine_traces axs cxs ->
-  In2 asi asj axs ->
   In2 csi csj cxs ->
+  visible csi csj = true ->
+  intermstep amachine axs ast ast' -> 
+  intermstep cmachine cxs cst cst' ->
+  refine_state ast cst ->
   refine_state asi csi ->
   refine_state asj csj ->
-  exists apre cpre asuff csuff,
-    refine_traces apre cpre /\
-    refine_traces asuff csuff /\
-    axs = apre ++ asi :: asj :: asuff /\
-    cxs = cpre ++ csi :: csj :: csuff.
+  exists chs ctl,
+    refine_traces (ahs ++ [asi]) (chs ++ [csi]) /\
+    refine_traces (asj :: atl) (csj :: ctl) /\
+    cxs = chs ++ csi :: csj :: ctl.
 Proof.
-  intros axs cxs asi asj csi csj RTRACE IN2 IN2' REFI REFJ.
+  (*intros ALST RTRACE IN2 VISIBLE INTERM1 INTERM2 REFI REFJ INITREF FINALREF.
+  (* generalize dependent csi. generalize dependent csj. *)
+  generalize dependent ahs. generalize dependent cst.
   induction RTRACE
-    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF RTRACE' | 
-        ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
-        ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst.
+    as [? ? REF | ? ? ? axs' cxs' STEP VIS ASTEP' REF RTRACE' | 
+        ? ? ? ? axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
+        ? ? ? ? axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst; intros.
   - destruct IN2.
-  - destruct IN2' as [[? ?] | IN2']; subst.
-    + Abort.
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    + congruence.
+    + inversion INTERM2; subst.
+      * destruct IN2.
+      * 
+        assert (EQ :  y = cst'0) by (apply interm_first_step in H4; auto). subst.
+        assert (EQ : ast0 = ast) by (apply interm_first_step in INTERM1; auto); subst.
+        destruct (IHRTRACE' IN2 INTERM1 _ H4 REF _ ALST) as [chs [ctl [HTRACE [TTRACE CLST]]]].
+        exists (cst0 :: chs); exists ctl. split.
+      { (*case trace refinement for head list*)
+        destruct ahs as [|s ahs].
+        - inversion ALST; subst.
+          destruct chs.
+          + simpl. inversion CLST; subst. apply TRNormal0; auto.
+          + inversion CLST; subst. 
+            apply TRNormal0; auto.
+        - simpl in ALST; inversion ALST; subst.
+          destruct chs as [|s' chs]; inversion CLST; subst.
+          + apply TRNormal0; auto.
+          + apply TRNormal0; auto.
+      }
+      split; auto.
+      rewrite CLST. auto.
+  - (*TRNormal1*)
+    assert (EQ : ast0 = ast) by (apply interm_first_step in INTERM1; auto); subst.
+    assert (EQ : cst = cst0) by (apply interm_first_step in INTERM2; auto); subst.
+    destruct IN2 as [[? ?] | IN2]; subst.
+    + 
+      destruct ahs.
+      * exists []; exists cxs. split. constructor(assumption).
+        split. simpl in ALST; inversion ALST; subst.
+        now assumption. 
+        reflexivity.
+      * simpl in ALST; inversion ALST; subst s.*)
+Admitted.    
   
 
 (* General advice: split off lemmas with recurring proof goals *)

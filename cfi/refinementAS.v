@@ -23,10 +23,6 @@ Section Mappable.
 
     map : (V1 -> V2) -> M1 -> M2;
 
-(* silly
-    map_exists : forall (f : V1 -> V2) (m1 : M1),
-                   exists (m2 : M2), map f m1 = m2;
-*)
     map_correctness: forall (f : V1 -> V2) (m1 : M1) (k : K),
                        get (map f m1) k = option_map f (get m1 k)
 
@@ -50,11 +46,6 @@ Section Filter.
   Class filterable (pm : partial_map M K V) := {
 
     filter : (V -> bool) -> M -> M;
-    
-(* silly
-    filter_exists : forall (f : V -> bool) (m : M),
-                      exists (m' : M), filter f m = m';
-*)
 
     filter_correctness: forall (f : V -> bool) (m : M) (k : K),
                        get (filter f m) k = match get m k with 
@@ -967,41 +958,55 @@ Lemma contra : forall si sj,
 Proof.
   intros si sj SUCC STEP STEPA.
   inversion STEPA. subst.
-  inversion STEP.
-  Focus 8. (*bnz case*)
-  unfold Symbolic.next_state_pc in NEXT.
-  unfold Symbolic.next_state in NEXT.
-  simpl in NEXT. match_inv.
-   - destruct (w == 0%w).
-     * inversion ST. 
-     * inversion ST.
-   - destruct (w == 0%w).
-     * simpl in SUCC. unfold SymbolicCFI.ssucc in SUCC.
-       inversion ST. subst mem' reg'.
-       rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
-       simpl in SUCC. rewrite H2 in SUCC. rewrite FETCH in SUCC.
-       rewrite INST in SUCC.
-       apply orb_false_iff in SUCC. destruct SUCC.
-       rewrite H2 in H. rewrite eqxx in H. discriminate.
-     * simpl in SUCC. unfold SymbolicCFI.ssucc in SUCC.
-       inversion ST. subst mem' reg'.
-       rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
-       simpl in SUCC. rewrite H2 in SUCC. rewrite FETCH in SUCC.
-       rewrite INST in SUCC.
-       apply orb_false_iff in SUCC. destruct SUCC.
-       rewrite H2 in H0. rewrite eqxx in H0. discriminate.
-  Focus 7. (*jump case*)
-  unfold Symbolic.next_state_pc in NEXT.
-  unfold Symbolic.next_state in NEXT.
-  simpl in NEXT.
-  simpl in SUCC. unfold SymbolicCFI.ssucc in SUCC.
-  inversion ST. subst.
-  rewrite FETCH in SUCC. rewrite FETCH in PC. inversion PC; subst. rewrite INST in SUCC.
-  simpl in SUCC. match_inv.
-  simpl in H3. inversion H3; subst.
-  assert (JMPTG := jump_tagged pc0 mem' FETCH INST). inversion JMPTG; subst.
+  inversion STEP; 
+   repeat (
+      match goal with
+        | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+          unfold Symbolic.next_state_pc in H
+        | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+          unfold Symbolic.next_state_reg in H
+        | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+          unfold Symbolic.next_state_reg_and_pc in H
+        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          unfold Symbolic.next_state in H; simpl in H; match_inv
+      end); subst;
+   unfold SymbolicCFI.ssucc in SUCC; simpl in SUCC;
+   inversion ST; try subst;
+
+   try match goal with
+     | [H: (?Pc + 1)%w = ?Pc |- _] => 
+       rewrite H in SUCC; try subst mem' reg' int; try subst mem reg
+  end;
+   try rewrite PC in SUCC; try rewrite INST in SUCC;
+   try match goal with 
+     | [H: Some _ = Some _ |- _] => simpl in H; inversion H
+   end;
+   try match goal with
+     | [H: (?Pc + 1)%w = ?Pc |- _] => 
+       rewrite H in SUCC; rewrite eqxx in SUCC; discriminate
+   end. 
+  (*jump case*)
+  rewrite FETCH in PC.  inversion PC; subst.
+  assert (JMPTG := jump_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
   congruence.
-  simpl in H3. inversion H3.
+  (*bnz case*)
+  destruct (w == 0%w).
+  * subst mem' reg'.
+    rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
+    rewrite H2 in SUCC. rewrite FETCH in SUCC.
+    rewrite INST in SUCC.
+    apply orb_false_iff in SUCC. destruct SUCC.
+    rewrite H2 in H. rewrite eqxx in H. discriminate.
+  * subst mem' reg'.
+    rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
+    rewrite H2 in SUCC. rewrite FETCH in SUCC.
+    rewrite INST in SUCC.
+    apply orb_false_iff in SUCC. destruct SUCC.
+    rewrite H2 in H0. rewrite eqxx in H0. discriminate.
+ (*jal case*)
+  rewrite FETCH in PC. inversion PC; subst.
+  assert (JMPTG := jal_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
+  congruence.
 Admitted.
   
 
