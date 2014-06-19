@@ -18,10 +18,8 @@ Context {t : machine_types}
 Variable amachine : cfi_machine t.
 Variable cmachine : cfi_machine t.
 
-Variable AV : (@state t amachine) -> (@state t amachine) -> Prop.
 Variable AS : (list (@state t amachine)) -> Prop.
 
-Variable CV : (@state t cmachine) -> (@state t cmachine) -> Prop.
 Variable CS : (list (@state t cmachine)) -> Prop.
 
 (* General notion of refinement between two machines*)
@@ -39,12 +37,15 @@ Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) :
        exists ast', step ast ast' /\ refine_state ast' cst')
       /\ (visible cst cst' = false -> refine_state ast cst');
 
+  (* The stronger variant in comments might be true and helpful,
+     but doesn't seem trivial to show, so let's try to do without it *)
   backwards_refinement_attacker :  
     forall ast cst cst'
       (REF: refine_state ast cst)
-      (STEPA: step_a cst cst')
-      (NOSTEP: ~step cst cst'),
-      exists ast', step_a ast ast' /\ ~step ast ast' /\ refine_state ast' cst';
+      (STEPA: step_a cst cst'),
+(*      (NOSTEP: ~step cst cst'), *)
+      exists ast', step_a ast ast' /\ refine_state ast' cst'
+        (* /\ ~step ast ast' *);
 
   (* old, get rid of this *)
   backwards_refinement_single : 
@@ -83,23 +84,23 @@ Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := 
 
   (* Why for concrete machine too??? If we could avoid this, we should.
      Try to do proof below without it! *)
-  (* No longer used, remove *)
+  (* No longer used, remove
   vio_noattacker : forall (csi csj : @state t cmachine),
     succ csi csj = false ->
     step csi csj ->
     ~ step_a csi csj;
+  *)
   
-  (* No longer used, remove? *)
   av_no_attacker : forall (asi asj : @state t amachine),
-    AV asi asj ->
+    succ asi asj = false->
     step asi asj ->
     ~ step_a asi asj;
 
   av_implies_cv : forall ast ast' cst cst',
     refine_state ast cst ->
     refine_state ast' cst' ->
-    AV ast ast' ->
-    CV cst cst';
+    succ ast ast' = false ->
+    succ cst cst' = false;
 
   (* CH: first premise is a bit strange, stopping is a property of
          whole trace tails not only their first step, still premise
@@ -126,7 +127,7 @@ Inductive refine_traces :
     visible cst cst' = false ->
     refine_state ast cst ->
     refine_state ast cst' ->
-    refine_traces (ast :: axs) (cst' :: cxs) -> (*slight problem here?, this was cst :: cxs*)
+    refine_traces (ast :: axs) (cst' :: cxs) ->
     refine_traces (ast :: axs) (cst :: cst' :: cxs)
 | TRNormal1 : forall ast ast' cst cst' axs cxs,
     step cst cst' ->
@@ -139,7 +140,7 @@ Inductive refine_traces :
 | TRAttacker : forall ast ast' cst cst' axs cxs,
     ~step cst cst' ->
     step_a cst cst' ->
-    ~step ast ast' ->
+(*    ~step ast ast' -> *)
     step_a ast ast' ->
     refine_state ast cst ->
     refine_state ast' cst' ->
@@ -172,8 +173,7 @@ Proof.
       exists [ast]; split; [exists ast; constructor | apply TRNormal0; auto].
       now constructor(assumption).
   - destruct STEP2 as [STEP2A | STEP2N]; [idtac | tauto].
-    destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A NST)
-      as [ast' [STEPA [NOSTEP REF]]].
+    destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A) as [ast' [STEPA REF]].
     exists [ast;ast']; split;
     [exists ast' | apply TRAttacker; auto; constructor(assumption)].
     eapply intermr_multi; eauto. left; eassumption. now constructor.
@@ -204,8 +204,8 @@ Proof.
         apply TRNormal0; auto.
       + destruct STEP2 as [STEP2A | STEP2N]; subst.
         { (*case it's an attacker step*)
-          destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A NST) 
-          as [ast'' [ASTEP [NOSTEP REF]]].
+          destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A) 
+          as [ast'' [ASTEP REF]].
         destruct (IHINTERM2' _ REF) as [axs [[ast' INTERMR1] IH]].
         exists (ast::axs).
         split. exists ast'. eapply intermr_multi; eauto. 
@@ -267,7 +267,7 @@ Proof.
     * exists cst; exists cst'.
       split. simpl; auto.
       repeat (split; auto).
-      tauto.
+      admit. (* TODO *)
     * admit. (* by IH? *)
 Admitted.
 

@@ -41,9 +41,6 @@ Definition singlestep := single cfi_step.
 
 Hypothesis exists_initial : exists s, initial s.
 
-(* A violation occured *)
-(* TODO: Replace things with succ _ _ = false? *)
-Variable V : state -> state ->  Prop.
 (* Execution will stop *)
 Variable S : list state -> Prop.
 
@@ -67,7 +64,7 @@ Definition cfi :=
       trace_has_cfi xs \/
       (* the next part causes the most complexity in proofs *)
       exists s'' s''' hs tl, xs = hs ++ s'' :: s''' :: tl
-                             /\ (step s'' s''' /\ V s'' s''')
+                             /\ (step s'' s''' /\ succ s'' s''' = false)
                              /\ trace_has_cfi (hs ++ [s''])
                              /\ trace_has_cfi (s''' :: tl)
                              /\ S(s''' :: tl).
