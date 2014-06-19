@@ -198,63 +198,67 @@ Import DoNotation.
 
 Variable uhandler : Symbolic.MVec user_tag -> option (Symbolic.RVec user_tag).
 
-Definition encode_fields (fs : option (nat * nat)) : Symbolic.mvec_operands tag fs -> Vector.t (word t) 3 :=
-  match fs return Symbolic.mvec_operands tag fs -> Vector.t (word t) 3 with
+Definition encode_fields (fs : option (nat * nat)) : Symbolic.mvec_operands tag fs -> word t * word t * word t :=
+  match fs return Symbolic.mvec_operands tag fs -> word t * word t * word t with
   | Some fs => fun v =>
                  let get n :=
                      match nth_error (Vector.to_list v) n with
                      | Some t => encode t
                      | None => Concrete.TNone
                      end in
-                 Vector.of_list [get 0; get 1; get 2]
+                 (get 0, get 1, get 2)
   | None => fun v => match v with end
   end.
 
 Definition encode_mvec (mvec : Symbolic.MVec tag) : Concrete.MVec (word t) :=
-  let f n := Vector.nth (encode_fields (Symbolic.ts mvec)) n in
+  let ts := encode_fields (Symbolic.ts mvec) in
   {|
     Concrete.cop := op_to_word (Symbolic.op mvec);
     Concrete.ctpc := encode (Symbolic.tpc mvec);
     Concrete.cti := encode (Symbolic.ti mvec);
-    Concrete.ct1 := f Fin.F1;
-    Concrete.ct2 := f (Fin.FS Fin.F1);
-    Concrete.ct3 := f (Fin.FS (Fin.FS Fin.F1))
+    Concrete.ct1 := (fst (fst ts));
+    Concrete.ct2 := (snd (fst ts));
+    Concrete.ct3 := snd ts
   |}.
+
+Definition decode_fields (fs : option (nat * nat)) (ts : word t * word t * word t) :
+  option (Symbolic.mvec_operands tag fs) :=
+  match fs return option (Symbolic.mvec_operands tag fs) with
+  | Some fs =>
+    match fst fs as n return option (Vector.t tag n) with
+    | 0 => Some (Vector.nil _)
+    | S n' =>
+      do! t1 <- decode (fst (fst ts));
+      match n' return option (Vector.t tag (S n')) with
+      | 0 => Some (Vector.of_list [t1])
+      | S n'' =>
+        do! t2 <- decode (snd (fst ts));
+        match n'' return option (Vector.t tag (S (S n''))) with
+        | 0 => Some (Vector.of_list [t1; t2])
+        | S n''' =>
+          do! t3 <- decode (snd ts);
+          Some (Vector.cons _ t1 _ (Vector.cons _ t2 _ (Vector.const t3 _)))
+        end
+      end
+    end
+
+  | None => None
+  end.
 
 Definition decode_mvec (cmvec : Concrete.MVec (word t)) : option (Symbolic.MVec tag) :=
   do! op  <- word_to_op (Concrete.cop cmvec);
   do! tpc <- decode (Concrete.ctpc cmvec);
   do! ti  <- decode (Concrete.cti cmvec);
-  do! ts  <- match Symbolic.nfields op as fs return option (Symbolic.mvec_operands tag fs) with
-            | Some fs =>
-              match fst fs as n return option (Vector.t tag n) with
-              | 0 => Some (Vector.nil _)
-              | S n' =>
-                do! t1 <- decode (Concrete.ct1 cmvec);
-                match n' return option (Vector.t tag (S n')) with
-                | 0 => Some (Vector.of_list [t1])
-                | S n'' =>
-                  do! t2 <- decode (Concrete.ct2 cmvec);
-                  match n'' return option (Vector.t tag (S (S n''))) with
-                  | 0 => Some (Vector.of_list [t1; t2])
-                  | S n''' =>
-                    do! t3 <- decode (Concrete.ct3 cmvec);
-                    Some (Vector.cons _ t1 _ (Vector.cons _ t2 _ (Vector.const t3 _)))
-                  end
-                end
-              end
+  do! ts  <- decode_fields (Symbolic.nfields op)
+                           (Concrete.ct1 cmvec,
+                            Concrete.ct2 cmvec,
+                            Concrete.ct3 cmvec);
+  Some (Symbolic.mkMVec op tpc ti ts).
 
-            | None => None
-            end;
-     Some (Symbolic.mkMVec op tpc ti ts).
-
-Lemma decode_mvecK (mvec : Symbolic.MVec tag) :
-  decode_mvec (encode_mvec mvec) = Some mvec.
+Lemma decode_fieldsK (op : opcode) (ts : Symbolic.mvec_operands tag (Symbolic.nfields op)) :
+  decode_fields _ (encode_fields ts) = Some ts.
 Proof.
-  unfold decode_mvec, encode_mvec.
-  destruct mvec as [op tpc ti ts]. simpl.
-  rewrite op_to_wordK. simpl.
-  repeat rewrite decodeK. simpl.
+  unfold decode_fields, encode_fields.
   destruct op; simpl in *;
   repeat (
       match goal with
@@ -264,6 +268,18 @@ Proof.
       | |- context[decode (encode _)] => rewrite decodeK
       end; simpl; eauto
   ).
+Qed.
+
+Lemma decode_mvecK (mvec : Symbolic.MVec tag) :
+  decode_mvec (encode_mvec mvec) = Some mvec.
+Proof.
+  rewrite /decode_mvec /encode_mvec.
+  destruct (encode_fields (Symbolic.ts mvec)) as [[t1 t2] t3] eqn:E.
+  simpl in *.
+  rewrite <- E, op_to_wordK. simpl.
+  do 2 rewrite decodeK. simpl.
+  rewrite decode_fieldsK. simpl.
+  by move: mvec {E} => [].
 Qed.
 
 Lemma encode_mvec_inj mvec1 mvec2 :
