@@ -1,4 +1,4 @@
-(* Instantiate the machine with 32-bit integers *)
+(* Instantiate the concrete machine with 32-bit integers *)
 
 Require Import ZArith.
 Require Import Integers.
@@ -65,6 +65,17 @@ Definition unpack (x : int) : option (opcode * int * int * int * int) :=
         and (shr x (repr 5)) mask_31,
         and x mask_31).
 
+(* BCP: Same nasty *)
+Definition pack3 (i1 i2 i3 : int) : int :=
+  List.fold_right add (repr 0)
+                  [shl i1 (repr 10);
+                   shl i2 (repr 5);
+                   i3].
+Definition unpack3 (x : int) : int * int * int :=
+  (and (shr x (repr 10)) mask_31,
+   and (shr x (repr 5)) mask_31,
+   and x mask_31).
+
 Instance int_ordered : @Ordered (word concrete_int_32_t) (eqType_EqDec (word concrete_int_32_t)) :=
   {| compare := compare;
      compare_refl := compare_refl;
@@ -91,16 +102,19 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     end;
 
   encode_instr i :=
+    let pack_long := fun r im => 
+                       match unpack3 im with (i1,i2,i3) => 
+                         pack (opcode_of i) r i1 i2 i3 end in
     let pack := pack (opcode_of i) in
     match i with
     | Nop => pack zero zero zero zero
-    | Const i r => pack i r zero zero
+    | Const i r => pack_long r i
     | Mov r1 r2 => pack r1 r2 zero zero
     | Binop _ r1 r2 r3 => pack r1 r2 r3 zero
     | Load r1 r2 => pack r1 r2 zero zero
     | Store r1 r2 => pack r1 r2 zero zero
     | Jump r => pack r zero zero zero
-    | Bnz r i => pack r i zero zero
+    | Bnz r i => pack_long r i 
     | Jal r => pack r zero zero zero
     | JumpEpc => pack zero zero zero zero
     | AddRule => pack zero zero zero zero
@@ -113,13 +127,13 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     (* Removing the annotation in the match causes this to fail on 8.4pl3 *)
     Some match t : let int := reg concrete_int_32_t in opcode * int * int * int * int with
          | (NOP, _, _, _, _) => Nop _
-         | (CONST, i, r, _, _) => Const _ (i: imm concrete_int_32_t) r
+         | (CONST, r, i1, i2, i3) => Const _ (pack3 i1 i2 i3: imm concrete_int_32_t) r
          | (MOV, r1, r2, _, _) => Mov _ r1 r2
          | (BINOP op, r1, r2, r3, _) => Binop _ op r1 r2 r3
          | (LOAD, r1, r2, _, _) => Load _ r1 r2
          | (STORE, r1, r2, _, _) => Store _ r1 r2
          | (JUMP, r, _, _, _) => Jump _ r
-         | (BNZ, r, i, _, _) => Bnz _ r i
+         | (BNZ, r, i1, i2, i3) => Bnz _ r (pack3 i1 i2 i3: imm concrete_int_32_t)  
          | (JAL, r, _, _, _) => Jal _ r
          | (JUMPEPC, _, _, _, _) => JumpEpc _
          | (ADDRULE, _, _, _, _) => AddRule _
@@ -150,10 +164,12 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 |}.
 (* Removing Program causes Coq not to find concrete_int_32_t *)
 
+(* BCP: This is surely false (if any of the inputs are 
+   outside the expected range)... *)
 Lemma unpack_pack : forall x1 x2 x3 x4 x5,
   unpack (pack x1 x2 x3 x4 x5) = Some (x1,x2,x3,x4,x5).
 Proof.
-  (* TODO Prove our packing function correct. *)
+  (* TODO Prove our packing functions correct. *)
 Admitted.
 
 (* This belongs in CompCert's integers, but alas. *)
@@ -204,7 +220,7 @@ Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
   constructor.
   - unfold encode_instr,decode_instr,concrete_int_32_ops;
-      intros; destruct i; rewrite unpack_pack; reflexivity.
+      intros; destruct i. rewrite unpack_pack. reflexivity.
   - vm_compute; inversion 1.
   - reflexivity.
   - simpl. apply repr_signed.
