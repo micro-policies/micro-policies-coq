@@ -137,7 +137,7 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode mem pc =? Jal _ r)
     (RW   : get reg r =? VData mkkey_addr)
     (UPD  : upd reg syscall_ret (VKey (mkkey_f ks)) =? reg')
-    (NEXT : st' = State mem reg' pc ((mkkey_f ks) :: ks)),   step st st'
+    (NEXT : st' = State mem reg' (pc.+1) ((mkkey_f ks) :: ks)),   step st st'
 | step_seal : forall mem reg reg' pc r ks payload key
     (ST   : st = State mem reg pc ks)
     (INST : decode mem pc =? Jal _ r)
@@ -145,7 +145,7 @@ Inductive step (st st' : state) : Prop :=
     (R1   : get reg syscall_arg1 =? VData payload)
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VSealed payload key) =? reg')
-    (NEXT : st' = State mem reg' pc ks),   step st st'
+    (NEXT : st' = State mem reg' (pc.+1) ks),   step st st'
 | step_unseal : forall mem reg reg' pc r ks payload key
     (ST   : st = State mem reg pc ks)
     (INST : decode mem pc =? Jal _ r)
@@ -153,7 +153,7 @@ Inductive step (st st' : state) : Prop :=
     (R1   : get reg syscall_arg1 =? VSealed payload key)
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VData payload) =? reg')
-    (NEXT : st' = State mem reg' pc ks),   step st st'.
+    (NEXT : st' = State mem reg' (pc.+1) ks),   step st st'.
 
 End WithClasses.
 

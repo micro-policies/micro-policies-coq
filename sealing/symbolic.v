@@ -106,30 +106,30 @@ Program Instance sym_sealing : (symbolic_params) := {
 Import DoNotation. 
 
 Definition mkkey (s : state t) : option (state t) :=
-  let 'State mem reg pc key := s in
+  let 'State mem reg pc@pct key := s in
   if key <? max_key then 
     let key' := inc_key key in
     do! reg' <- upd reg syscall_ret (max_word@(KEY key));
-    Some (State mem reg' pc key')
+    Some (State mem reg' (pc + 1)%w@pct key')
   else
     None.
 
 Definition seal (s : state t) : option (state t) :=
-  let 'State mem reg pc next_key := s in
+  let 'State mem reg pc@pct next_key := s in
   match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@DATA), Some (_@(KEY key)) =>
     do! reg' <- upd reg syscall_ret (payload@(SEALED key));
-    Some (State mem reg' pc next_key)
+    Some (State mem reg' (pc + 1)%w@pct next_key)
   | _, _ => None
   end.
 
 Definition unseal (s : state t) : option (state t) :=
-  let 'State mem reg pc next_key := s in
+  let 'State mem reg pc@pct next_key := s in
   match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
     if key == key' then
       do! reg' <- upd reg syscall_ret (payload@DATA);
-      Some (State mem reg' pc next_key)
+      Some (State mem reg' (pc + 1)%w@pct next_key)
     else None
   | _, _ => None
   end.
