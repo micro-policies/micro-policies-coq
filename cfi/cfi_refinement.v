@@ -238,12 +238,13 @@ Lemma refine_traces_weaken_forward : forall axs cxs,
   forall asi asj,
     In2 asi asj axs ->
     step asi asj ->
+    ~step_a asi asj ->
     (* could add AV asi asj *)
     exists csi csj,
       In2 csi csj cxs /\ step csi csj
       /\ refine_state asi csi /\ refine_state asj csj.
 Proof.
-  intros axs cxs RTRACE asi asj IN2 ASTEP.
+  intros axs cxs RTRACE asi asj IN2 ASTEP NSTEPA.
   induction RTRACE 
     as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF REF' RTRACE' | 
         ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
@@ -271,11 +272,11 @@ Proof.
     * admit. (* by IH? *)
 Admitted.
 
-(*destruct (IHRTRACE' IN2) as [csi [csj [IN2' [STEP' [REFI REFJ]]]]].
-      exists csi; exists csj.
+      (*exists csi; exists csj.
       split. change (cst :: cst' :: cxs) with ([cst] ++ (cst' :: cxs)).
       apply in2_strengthen. now assumption.
       repeat (split; auto).*)
+Qed.
 
 Lemma refine_traces_preserves_cfi_trace : forall axs cxs,
   refine_traces axs cxs ->

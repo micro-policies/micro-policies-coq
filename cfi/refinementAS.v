@@ -135,7 +135,9 @@ Definition refine_registers (areg : Abstract.registers t)
 Definition refine_pc 
            (apc : word t) 
            (spc : atom (word t) (@Symbolic.tag t sym_params)) :=
-  apc = common.val spc.
+  apc = common.val spc /\ 
+  (common.tag spc = DATA \/ 
+   exists id, common.tag spc = INSTR (Some id)).
 
 (*Some useless lemmas, just for sanity check -- probably to be removed*)
 Lemma xxx : forall tpc ti,
@@ -460,14 +462,14 @@ Proof.
   (*     | [H: DATA = INSTR _ |- _] => inversion H *)
   (*     | [|- exists _, _] => eexists; eauto *)
   (* end; try discriminate. *)
-  (*syscalls stuck*)
+  (* syscalls stuck *)
 (*1st case*)
   - inversion SSTEP; subst;
     destruct REF as [REFI [REFD [REFR [REFPC CORRECTNESS]]]];
   (*unfoldings and case analysis on tags*)
   repeat (
       match goal with
-        | [H: refine_pc _ _ |- _] => unfold refine_pc in H; simpl in H
+        | [H: refine_pc _ _ |- _] => unfold refine_pc in H; simpl in H; destruct H as [? ?]
         | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
           unfold Symbolic.next_state_pc in H
         | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
@@ -603,6 +605,7 @@ Proof.
     | [H: refine_imemory ?Imem ?Mem |- refine_imemory ?Imem ?Mem'] => 
         eapply imem_upd_preservation; eauto
     | [|- refine_pc _ _] => unfold refine_pc; simpl; auto
+    | [|- INSTR _ = DATA \/ _ ] => right; eexists; eauto
    end); 
   (*handle the correctness part*)
   repeat match goal with
@@ -859,7 +862,7 @@ Proof.
   destruct b; inversion SSTEP; subst;
   unfold refine_state in REF; 
   destruct REF as [REFI [REFD [REFR [REFPC CORRECTNESS]]]];
-  unfold refine_pc in REFPC; simpl in REFPC; subst.
+  unfold refine_pc in REFPC; simpl in REFPC; destruct REFPC as [? ?]; subst.
   - destruct (reg_refinement_preserved_by_equiv REFR REQUIV) as [aregs' REFR'];
     assert (REFI' := imem_refinement_preserved_by_equiv REFI MEQUIV);
     destruct (dmem_refinement_preserved_by_equiv REFD MEQUIV) as [dmem' REFD'];
@@ -914,6 +917,46 @@ Proof.
     * congruence.
 Qed.
 
+Lemma arith : forall w, (w+1)%w = w -> False.
+Admitted.
+
+Lemma new_assumption : forall ast ast' cst cst',
+    Abstract.step atable valid_jmp ast ast' ->
+    Abstract.step_a ast ast' ->
+    refine_state ast cst ->
+    refine_state ast' cst' ->
+    SymbolicCFI.step_a cst cst' ->
+    Symbolic.step stable cst cst'.
+Proof.
+  intros ast ast' cst cst' ASTEP ASTEPA REF REF' STEPA.
+  inversion ASTEPA; subst.
+  inversion ASTEP;
+  try match goal with
+    | [H: (pc + 1)%w = pc |- _] => apply arith in H; inversion H
+  end. 
+  (* jump case *)
+  subst.
+  destruct cst as [cmem creg [cpc tpc] int], cst' as [cmem' creg' [cpc' tpc'] int'].
+  (* destruct STEPA; subst. *)
+  destruct REF as [REFI [REFD [REFR [REFPC CORRECTNESS]]]].
+  destruct REF' as [REFI' [REFD' [REFR' [REFPC' ?]]]].
+  unfold refine_pc in REFPC. simpl in REFPC. destruct REFPC as [? TPC]; subst.
+  apply REFR in RW. destruct RW as [ut RW].
+  (*show that it's the same instr*)
+  apply REFI in FETCH0. destruct FETCH0 as [id' FETCH0].
+  eapply Symbolic.step_jump. 
+  - eauto.
+  - eauto.
+  - eauto.
+  - eauto.
+  - unfold Symbolic.next_state_pc. unfold Symbolic.next_state.
+    simpl.
+    (*jump instr will have Some id*)
+    assert (TGID := jump_tagged cpc cmem FETCH0 INST). subst.
+    destruct TPC; subst.
+    { (*case the pc on the tag is DATA*)
+      simpl.
+      Admitted.
 
 (*This is a helper lemma to instantiate CFI refinement*)
 Lemma contra : forall si sj,
@@ -961,6 +1004,10 @@ Proof.
   simpl in H3. inversion H3.
 Admitted.
   
+
+
+
+
 End Refinement.
 
 End RefinementAS.
