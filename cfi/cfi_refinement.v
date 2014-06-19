@@ -377,8 +377,8 @@ Proof.
          the IH. CH: Indeed, it would have been odd not to use
          backwards_refinement_attacker at all. *)
       destruct STEP2 as [STEPA | STEPN]; [| tauto].
-      destruct (backwards_refinement_attacker _ _ _ INITREF STEPA)
-        as [ast'' [ASTEPA REF]].
+      destruct (backwards_refinement_attacker _ _ _ INITREF STEPA NST)
+        as [ast'' [ASTEPA [NOSTEPA REF]]].
       destruct (IHINTERM2' ast'' REF) as [axs [[ast' INTERMR1] IH]].
       exists (ast :: axs). split.  exists ast'.
         eapply intermr_multi; eauto. left. now assumption.
@@ -392,6 +392,5 @@ Proof.
         assumption. repeat(split;auto).
   }
 Qed.
-      
-End Refinement.
 
+End Refinement.
