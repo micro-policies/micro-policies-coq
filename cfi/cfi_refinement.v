@@ -92,7 +92,7 @@ Class machine_refinement_specs (rf : (machine_refinement amachine cmachine)) := 
   *)
   
   av_no_attacker : forall (asi asj : @state t amachine),
-    succ asi asj = false->
+    succ asi asj = false ->
     step asi asj ->
     ~ step_a asi asj;
 
@@ -238,13 +238,12 @@ Lemma refine_traces_weaken_forward : forall axs cxs,
   forall asi asj,
     In2 asi asj axs ->
     step asi asj ->
-    ~step_a asi asj ->
-    (* could add AV asi asj *)
+    succ asi asj = false ->
     exists csi csj,
       In2 csi csj cxs /\ step csi csj
       /\ refine_state asi csi /\ refine_state asj csj.
 Proof.
-  intros axs cxs RTRACE asi asj IN2 ASTEP NSTEPA.
+  intros axs cxs RTRACE asi asj IN2 ASTEP SUCC.
   induction RTRACE 
     as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF REF' RTRACE' | 
         ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
@@ -265,24 +264,54 @@ Proof.
       apply in2_strengthen. now assumption.
       repeat (split; auto).
   - destruct IN2 as [[? ?] | IN2]; subst.
-    * exists cst; exists cst'.
-      split. simpl; auto.
-      repeat (split; auto).
-      admit. (* TODO *)
-    * admit. (* by IH? *)
-Admitted.
-
-      (*exists csi; exists csj.
+    * destruct (av_no_attacker _ _ SUCC ASTEP). now assumption.
+    * apply IHRTRACE' in IN2. 
+      destruct IN2 as [csi [csj [IN2' [STEPN [REFI REFJ]]]]].
+      exists csi; exists csj.
       split. change (cst :: cst' :: cxs) with ([cst] ++ (cst' :: cxs)).
       apply in2_strengthen. now assumption.
-      repeat (split; auto).*)
+      repeat (split; auto).
 Qed.
 
 Lemma refine_traces_preserves_cfi_trace : forall axs cxs,
   refine_traces axs cxs ->
   trace_has_cfi amachine axs ->
   trace_has_cfi cmachine cxs.
-Admitted.
+Proof.
+  intros axs cxs RTRACE TSAFE csi csj IN2 CSTEP.
+  induction RTRACE 
+    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF RTRACE' | 
+        ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
+        ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst.
+  - destruct IN2.
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    * apply (cfg_invisible _ _ CSTEP VIS).
+    * apply IHRTRACE'; assumption.
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    * assert (SUCC: succ ast ast' = true).
+      { apply TSAFE; simpl; auto. }
+      apply (cfg_equiv _ _ _ _ REF REF' SUCC).
+    * apply IHRTRACE'. 
+      destruct axs.
+      + intros ? ? CONTRA; destruct CONTRA.
+      + intros asi asj IN2'. unfold trace_has_cfi in TSAFE.
+        apply in2_strengthen with (ys := [ast]) in IN2'. 
+        change ([ast] ++ ast' :: s :: axs ) 
+        with (ast :: ast' :: s :: axs) in IN2'.
+        apply TSAFE. now assumption.
+        now assumption.
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    * tauto.
+    * apply IHRTRACE'. 
+      destruct axs.
+      + intros ? ? CONTRA; destruct CONTRA.
+      + intros asi asj IN2'. unfold trace_has_cfi in TSAFE.
+        apply in2_strengthen with (ys := [ast]) in IN2'. 
+        change ([ast] ++ ast' :: s :: axs ) 
+        with (ast :: ast' :: s :: axs) in IN2'.
+        apply TSAFE. now assumption.
+        now assumption.
+Qed.
 
 (* Q: Do we have anything like this? Maybe a weaker variant?
    Might be useful for the split_refine_traces? *)

@@ -64,7 +64,7 @@ Definition cfi :=
       trace_has_cfi xs \/
       (* the next part causes the most complexity in proofs *)
       exists s'' s''' hs tl, xs = hs ++ s'' :: s''' :: tl
-                             /\ (step s'' s''' /\ ~step_a s'' s''' /\ succ s'' s''' = false)
+                             /\ (step s'' s''' /\ succ s'' s''' = false)
                              /\ trace_has_cfi (hs ++ [s''])
                              /\ trace_has_cfi (s''' :: tl)
                              /\ S(s''' :: tl).

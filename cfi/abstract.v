@@ -185,9 +185,6 @@ Next Obligation.
   inversion H; subst. reflexivity. 
 Qed.
 
-Definition V (s : state) s' := 
-  (*step s s' /\*) succ s s' = false.
-
 Definition S (xs : list state) :=
   exists s, xs = [s] /\ ~ exists s', step s s'.
 
@@ -231,6 +228,94 @@ Proof.
   intros STEP.
   inversion STEP; subst. reflexivity. 
 Qed.  
+
+Theorem cfi : cfi abstract_cfi_machine S.
+Proof.
+  unfold cfi. intros. 
+  apply interm_equiv_intermrev in INTERM.
+  induction INTERM as [s s' STEP | s s' s'' xs STEP INTERM ].
+  + destruct (succ s s') eqn:SUCC.  
+    * (*case the step is in the control flow graph*) 
+      left. intros si sj IN2. 
+      destruct IN2 as [[? ?] | CONTRA]; [idtac | destruct CONTRA];
+      subst. auto. 
+    * (*case the step is outside the contro flow graph*)
+      destruct STEP as [STEPA | STEP].
+      - (*case it's an attacker step*)
+        left. intros si sj IN2.
+        destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
+        auto.
+        intro STEP. assert (CONTRA := step_succ_violation SUCC STEP).
+        inversion STEPA. subst. discriminate.
+      - (*case it's a normal step*)
+        right; exists s; exists s'; exists []; exists [].
+        simpl; repeat (split;auto). 
+        intros ? ? IN2. destruct IN2.
+        intros ? ? IN2. destruct IN2.
+        unfold S. exists s'. split; auto.
+        intro CONTRA. destruct CONTRA as [s'' CONTRA].
+        assert (FLAG := step_succ_violation SUCC STEP).
+        destruct s' as [[[[imem dmem] aregs] apc] b].
+        subst. inversion CONTRA.
+  + apply interm_equiv_intermrev in INTERM.
+    destruct (IHINTERM INIT) as [TSAFE | [sv1 [sv2 [hs [tl VIOLATION]]]]].
+    { unfold trace_has_cfi in TSAFE.
+      destruct (succ s' s'') eqn:SUCC.
+      * (*case the step is in the control flow graph*)
+        left. intros si sj IN2.
+        induction xs using rev_ind.
+        { destruct IN2. }
+        { clear IHxs.
+          rewrite <- app_assoc in IN2.
+          simpl in IN2. 
+          destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]].
+          - apply TSAFE; assumption.
+          - subst. apply interm_last_step in INTERM; subst.
+            auto.
+        }
+      * (*case the step is not in the control flow graph*)
+        destruct STEP as [STEPA | STEP].
+      - (*case it's an attacker step*)
+        left. intros si sj IN2.
+        induction xs using rev_ind.
+        { destruct IN2. }
+        { rewrite <- app_assoc in IN2.
+          simpl in IN2. 
+          destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]]. 
+          - apply TSAFE; assumption.
+          - subst. apply interm_last_step in INTERM; subst; auto.
+            intro STEP. assert (CONTRA := step_succ_violation SUCC STEP).
+            inversion STEPA; subst; discriminate. }
+      - (*case it's a normal step*)
+        right. induction xs using rev_ind; [inversion INTERM | idtac]. 
+        apply interm_last_step in INTERM; subst.
+        exists s'; exists s''; exists xs; exists [].
+        simpl; rewrite <- app_assoc. repeat (split; auto).
+        intros ? ? IN2.
+        destruct IN2.
+        unfold S. exists s''. split; [reflexivity | idtac].
+        intro CONTRA. destruct CONTRA as [s''' CONTRA].
+        assert (FLAG := step_succ_violation SUCC STEP).
+        destruct s'' as [[[[imem dmem] aregs] apc] b].
+        subst. inversion CONTRA. }
+    { (*Case a violation occurs in the trace*)
+     induction xs using rev_ind; [inversion INTERM | subst; clear IHxs].
+     destruct VIOLATION as [LST [VIO [T1 [T2 STOPS]]]].
+     rewrite LST in INTERM. unfold S in STOPS.
+     destruct STOPS as [sv2' [EQ IRRED]].
+     destruct tl; [simpl; inversion EQ; subst | inversion EQ].
+     change [sv1;sv2'] with ([sv1] ++ [sv2']) in INTERM.
+     remember (hs ++ [sv1]) as hs'.
+     rewrite app_assoc in INTERM.
+     rewrite <- Heqhs' in INTERM.
+     apply interm_last_step in INTERM; subst.
+     destruct VIO as [VSTEP SUCC].
+     assert (FLAG := step_succ_violation SUCC VSTEP).
+     destruct s' as [[[[imem dmem] aregs] apc] b]; subst. 
+     destruct STEP as [STEPA | STEP].
+     - inversion STEPA.
+     - inversion STEP. }
+Qed. 
 
 
 End WithClasses.
