@@ -144,11 +144,7 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
     by rewrite binop_eq_add2l; constructor.
   move: hyp.
   have [eq_nonce hyp|neq_nonce hyp] := altP (nonce1 =P nonce2).
-    rewrite (miIr mi_b1 mi_b2 eq_nonce) in neq_b; congruence.
-  injection hyp as <- <-.
-  eexists; split; try reflexivity.
-by constructor.
-
+    rewrite (miIr mi_b1 mi_b2 eq_nonce) in neq_b; congruence. congruence.
 
 + (* CH: minless copy paste from above *)
   simpl in *.
