@@ -84,6 +84,10 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
                        else repr 0
     | LEQ => fun x y => if Z.leb (unsigned x) (unsigned y) then repr 1
                         else repr 0
+    | AND => and
+    | OR => or
+    | SHRU => shru
+    | SHL => shl
     end;
 
   encode_instr i :=

@@ -14,7 +14,11 @@ Inductive binop :=
 | SUB
 | MUL
 | EQ
-| LEQ.
+| LEQ
+| AND
+| OR
+| SHRU
+| SHL.
 
 Inductive opcode : Set :=
 | NOP
@@ -42,6 +46,10 @@ Definition opcodes :=
    BINOP MUL;
    BINOP EQ;
    BINOP LEQ;
+   BINOP AND;
+   BINOP OR;
+   BINOP SHRU;
+   BINOP SHL;
    LOAD;
    STORE;
    JUMP;
@@ -54,7 +62,12 @@ Definition opcodes :=
 
 (* This should be a proof by reflexion... *)
 Lemma opcodesP : forall op, In op opcodes.
-Proof. intros []; try intros []; vm_compute; auto 20. Qed.
+Proof.
+  intros []; try intros []; vm_compute;
+  repeat match goal with
+  | |- _ \/ _ => (left; reflexivity) || right
+  end.
+Qed.
 
 Record machine_types := {
   word : eqType;
@@ -122,7 +135,7 @@ Class machine_ops (t : machine_types) := {
      problems?? (Should probably be partial too, I guess.) *)
   word_to_imm : word t -> imm t;
 *)
-  
+
   min_word : word t;
   max_word : word t;
   (* CH: I think it would be nicer to have Z_to_imm be partial *)
@@ -169,9 +182,9 @@ Class machine_ops_spec t (ops : machine_ops t) := {
   decodeK : forall i, decode_instr (encode_instr i) = Some i;
 
   min_word_bound : (word_to_Z min_word <= 0)%Z;
-  
-  max_word_bound : (15 < word_to_Z max_word)%Z;
-  
+
+  max_word_bound : (20 < word_to_Z max_word)%Z;
+
   word_to_ZK : forall w, Z_to_word (word_to_Z w) = w;
 
   Z_to_wordK : forall z,
@@ -208,7 +221,7 @@ now rewrite Z.add_assoc.
 Qed.
 
 Lemma addwC : commutative +%w.
-Proof. 
+Proof.
 intros x y.
 now rewrite <-(word_to_ZK x), <-(word_to_ZK y), !addwP, Z.add_comm.
 Qed.
@@ -240,12 +253,12 @@ now intros x y; rewrite addwA addNw add0w.
 Qed.
 
 Lemma addNKw : rev_left_loop -%w +%w.
-Proof. 
+Proof.
 now intros x y; rewrite addwA addwN add0w.
 Qed.
 
 Lemma addwK : right_loop -%w +%w.
-Proof. 
+Proof.
 now intros x y; rewrite <-addwA, addwN, addw0.
 Qed.
 
@@ -353,6 +366,10 @@ Definition Z_to_op (z : Z) : option opcode :=
   | 14 => Some (BINOP MUL)
   | 15 => Some (BINOP EQ)
   | 16 => Some (BINOP LEQ)
+  | 17 => Some (BINOP AND)
+  | 18 => Some (BINOP OR)
+  | 19 => Some (BINOP SHRU)
+  | 20 => Some (BINOP SHL)
   | _  => None
   end.
 
@@ -375,6 +392,10 @@ Definition op_to_Z (o : opcode) : Z :=
   | BINOP MUL  => 14
   | BINOP EQ   => 15
   | BINOP LEQ  => 16
+  | BINOP AND  => 17
+  | BINOP OR   => 18
+  | BINOP SHRU => 19
+  | BINOP SHL  => 20
   end.
 
 Definition word_to_op (w : word t) : option opcode :=
@@ -451,12 +472,12 @@ Context {t : machine_types}
    Is there a better way?  (This seems not too bad: our structured
    code combinators can build these certificates pretty easily.) *)
 
-Definition relocatable_segment := 
+Definition relocatable_segment :=
   fun Args => fun Cell => (nat * (word t -> Args -> list Cell))%type.
 
-Definition concat_relocatable_segments 
+Definition concat_relocatable_segments
              (Args Cell : Type)
-             (seg1 seg2 : relocatable_segment Args Cell) 
+             (seg1 seg2 : relocatable_segment Args Cell)
            : relocatable_segment Args Cell :=
   let (l1,gen1) := seg1 in
   let (l2,gen2) := seg2 in
@@ -465,9 +486,9 @@ Definition concat_relocatable_segments
                ++ (gen2 (add_word base (nat_to_word l1)) rest) in
   (l1+l2, gen).
 
-Definition relocate_ignore_args 
+Definition relocate_ignore_args
              (Args Cell : Type)
-             (seg : relocatable_segment unit Cell) 
+             (seg : relocatable_segment unit Cell)
            : relocatable_segment Args Cell :=
   let (l,gen) := seg in
   let gen' := fun (base : word t) (rest : Args) => gen base tt in
