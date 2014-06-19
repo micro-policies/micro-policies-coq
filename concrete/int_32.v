@@ -66,11 +66,14 @@ Definition unpack (x : int) : option (opcode * int * int * int * int) :=
         and x mask_31).
 
 (* BCP: Same nasty *)
-Definition pack3 (i1 i2 i3 : int) : int :=
-  List.fold_right add (repr 0)
-                  [shl i1 (repr 10);
-                   shl i2 (repr 5);
-                   i3].
+Definition pack3 (im : int * int * int) : int :=
+  match im with (i1,i2,i3) =>
+    List.fold_right add (repr 0)
+                    [shl i1 (repr 10);
+                     shl i2 (repr 5);
+                     i3]
+  end.
+
 Definition unpack3 (x : int) : int * int * int :=
   (and (shr x (repr 10)) mask_31,
    and (shr x (repr 5)) mask_31,
@@ -127,13 +130,13 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     (* Removing the annotation in the match causes this to fail on 8.4pl3 *)
     Some match t : let int := reg concrete_int_32_t in opcode * int * int * int * int with
          | (NOP, _, _, _, _) => Nop _
-         | (CONST, r, i1, i2, i3) => Const _ (pack3 i1 i2 i3: imm concrete_int_32_t) r
+         | (CONST, r, i1, i2, i3) => Const _ (pack3 (i1,i2,i3): imm concrete_int_32_t) r
          | (MOV, r1, r2, _, _) => Mov _ r1 r2
          | (BINOP op, r1, r2, r3, _) => Binop _ op r1 r2 r3
          | (LOAD, r1, r2, _, _) => Load _ r1 r2
          | (STORE, r1, r2, _, _) => Store _ r1 r2
          | (JUMP, r, _, _, _) => Jump _ r
-         | (BNZ, r, i1, i2, i3) => Bnz _ r (pack3 i1 i2 i3: imm concrete_int_32_t)  
+         | (BNZ, r, i1, i2, i3) => Bnz _ r (pack3 (i1,i2,i3): imm concrete_int_32_t)  
          | (JAL, r, _, _, _) => Jal _ r
          | (JUMPEPC, _, _, _, _) => JumpEpc _
          | (ADDRULE, _, _, _, _) => AddRule _
@@ -170,6 +173,17 @@ Lemma unpack_pack : forall x1 x2 x3 x4 x5,
   unpack (pack x1 x2 x3 x4 x5) = Some (x1,x2,x3,x4,x5).
 Proof.
   (* TODO Prove our packing functions correct. *)
+Admitted.
+
+Lemma pack3_unpack3 : forall im,
+  pack3 (unpack3 im) = im.
+Proof.
+Admitted.
+
+(* BCP: This seems to be what is actually needed... *)
+Lemma pack3_unpack3_hideous : forall i i1 i2 i0,
+  (i1, i2, i0) = unpack3 i ->
+  i = add (shl i1 (repr 10)) (add (shl i2 (repr 5)) (add i0 (repr 0))).
 Admitted.
 
 (* This belongs in CompCert's integers, but alas. *)
@@ -221,6 +235,12 @@ Proof.
   constructor.
   - unfold encode_instr,decode_instr,concrete_int_32_ops;
       intros; destruct i. rewrite unpack_pack. reflexivity.
+      remember (unpack3 i) as u.
+      destruct u. destruct p. rewrite unpack_pack. simpl. 
+      rewrite <- pack3_unpack3_hideous.
+      fold (pack3 (i1,i2,i0)).
+rewrite 
+
   - vm_compute; inversion 1.
   - reflexivity.
   - simpl. apply repr_signed.
