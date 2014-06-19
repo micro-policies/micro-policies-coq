@@ -38,6 +38,13 @@ Ltac match_inv :=
   | H : True |- _ => clear H
   end.
 
+Ltac current_instr_opcode :=
+  match goal with
+  | H : decode_instr _ = Some ?instr |- _ =>
+    let op := (eval compute in (opcode_of instr)) in
+    op
+  end.
+
 Section Refinement.
 
 Context {mt : machine_types}
