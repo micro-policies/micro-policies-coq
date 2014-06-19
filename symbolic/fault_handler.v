@@ -37,14 +37,7 @@ Class fault_handler_params := {
   rtrpc : reg mt; rtr : reg mt; (* Registers for tag results *)
   raddr : reg mt; (* Addressing register *)
 
-  load_const : word mt -> reg mt -> code;
-
-  (* Take as input an mvector of high-level tags (in the appropriate
-     registers, as set above), and computes the policy handler on
-     those tags. If the operation is allowed, returns the rvector in
-     the appropriate registers. Otherwise, enters an infinite loop. *)
-  policy_handler : code
-
+  load_const : word mt -> reg mt -> code
 }.
 
 Context (fhp : fault_handler_params).
@@ -119,6 +112,13 @@ Definition load_mvec : code :=
                      addr + Z_to_word 1))%w
                  mvec_regs
                  ([],Concrete.cache_line_addr ops)).
+
+
+(* Take as input an mvector of high-level tags (in the appropriate
+   registers, as set above), and computes the policy handler on
+   those tags. If the operation is allowed, returns the rvector in
+   the appropriate registers. Otherwise, enters an infinite loop. *)
+Variable policy_handler : code.
 
 (* Check whether the operands for a particular opcode are tagged
    USER. If so, extract the corresponding policy-level tags and call
