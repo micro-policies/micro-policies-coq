@@ -5,9 +5,10 @@ Require Import lib.utils lib.ordered lib.partial_maps. Import PartMaps.
 Require Import common.common symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
-(* Give up any hope of forwards refinement?
-     + we could consider a weakened version of forwards refinement
-       that only holds up to a failed symbolic key generation
+(* Give up any hope of forward simulation?
+   + we could consider a weakened version of forwards simulation
+     that only holds up to a failed symbolic key generation
+   + see below how that could look like!
 *)
 
 Section RefinementSA.
@@ -395,5 +396,29 @@ Admitted.
 (* Q: Would we get an easier proof if we defined the refinement
    relation as a function from symbolic to abstract, and use
    computation in the direction of forward refinement? *)
+
+(* Here is a weaker form of fwd simulation we can hope to prove *)
+Locate pc.
+Lemma forward_simulation : forall km ast ast' sst,
+  refine_state km ast sst ->
+  Abs.step ast ast' ->
+  (* each abstract step can be simulated by a corresponding symbolic one *)
+  (exists sst' km',
+    Sym.step sst sst' /\
+    refine_state km' ast' sst')
+  \/
+  (* ... or the symbolic machine gets stuck on a failed key generation *)
+  ((forall sst', ~Sym.step sst sst')
+(* still need to debug type error
+   /\
+   (exists (i : word t) (r : reg t) (ti t1 : Sym.stag) (sc : Symbolic.syscall t),
+      (get (Symbolic.mem sst) (Symbolic.pc sst) = Some i@ti) /\
+      (decode_instr i = Some (Jal _ r)) /\
+      (get (Symbolic.regs) r = Some mkkey_addr@t1) /\
+      (Symbolic.get_syscall Sym.sealing_syscalls mkkey_addr = Some sc) /\
+      (Symbolic.sem sc sst = None))
+*)
+  ).
+Admitted.
 
 End RefinementSA.

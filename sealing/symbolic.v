@@ -7,7 +7,6 @@ Require Import symbolic.symbolic symbolic.rules.
 Require Import sealing.classes.
 
 Import Symbolic.
-(* TODO: For good hygiene, we should remove Symbolic. everywhere it occurs below *)
 
 Set Implicit Arguments.
 
@@ -34,7 +33,7 @@ Class sealing_key := {
 Context {sk : sealing_key}.
 
 Inductive stag :=
-| DATA   :            stag
+| DATA   :        stag
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
@@ -106,40 +105,40 @@ Program Instance sym_sealing : (symbolic_params) := {
 
 Import DoNotation. 
 
-Definition mkkey (s : Symbolic.state t) : option (Symbolic.state t) :=
-  let 'Symbolic.State mem reg pc key := s in
+Definition mkkey (s : state t) : option (state t) :=
+  let 'State mem reg pc key := s in
   if key == max_key then None
   else
     let key' := inc_key key in
     do! reg' <- upd reg syscall_ret (max_word@(KEY key));
-    Some (Symbolic.State mem reg' pc key').
+    Some (State mem reg' pc key').
 
-Definition seal (s : Symbolic.state t) : option (Symbolic.state t) :=
-  let 'Symbolic.State mem reg pc next_key := s in
+Definition seal (s : state t) : option (state t) :=
+  let 'State mem reg pc next_key := s in
   match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@DATA), Some (_@(KEY key)) =>
     do! reg' <- upd reg syscall_ret (payload@(SEALED key));
-    Some (Symbolic.State mem reg' pc next_key)
+    Some (State mem reg' pc next_key)
   | _, _ => None
   end.
 
-Definition unseal (s : Symbolic.state t) : option (Symbolic.state t) :=
-  let 'Symbolic.State mem reg pc next_key := s in
+Definition unseal (s : state t) : option (state t) :=
+  let 'State mem reg pc next_key := s in
   match get reg syscall_arg1, get reg syscall_arg2 with
   | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
     if key == key' then
       do! reg' <- upd reg syscall_ret (payload@DATA);
-      Some (Symbolic.State mem reg' pc next_key)
+      Some (State mem reg' pc next_key)
     else None
   | _, _ => None
   end.
 
-Definition sealing_syscalls : list (Symbolic.syscall t) :=
-  [Symbolic.Syscall mkkey_addr mkkey;
-   Symbolic.Syscall seal_addr seal;
-   Symbolic.Syscall unseal_addr unseal].
+Definition sealing_syscalls : list (syscall t) :=
+  [Syscall mkkey_addr mkkey;
+   Syscall seal_addr seal;
+   Syscall unseal_addr unseal].
 
-Definition step := Symbolic.step sealing_syscalls.
+Definition step := step sealing_syscalls.
 
 End WithClasses.
 

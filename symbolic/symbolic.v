@@ -81,8 +81,6 @@ Class symbolic_params := {
      all tag types are instantiated with the same type we would
      basically get the current behavior. *)
   tag : eqType;
-  (* BCP: Maxime was wondering why we are using setoids... do we need
-     that?  Apparently they tickle quite a few bugs in tactics... *)
 
   handler : MVec tag -> option (RVec tag);
 
