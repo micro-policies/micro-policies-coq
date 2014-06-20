@@ -118,6 +118,7 @@ Definition masks : Masks :=
         | ADDRULE => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
         | GETTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
         | PUTTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
+        | HALT => mk_mask (false,false,false,false,false) (None,None)
       end
     else
       match opcode with
@@ -134,6 +135,7 @@ Definition masks : Masks :=
         | ADDRULE => mk_mask (false,false,true,true,true) (None,None)
         | GETTAG => mk_mask (false,false,false,false,true) (None,None)
         | PUTTAG => mk_mask (false,false,false,false,false) (None,None)
+        | HALT => mk_mask (false,false,false,false,false) (None,None)
       end.
 
 Section handler.

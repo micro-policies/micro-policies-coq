@@ -93,6 +93,7 @@ Definition step (st : state mt) : option (state mt) :=
     next_state _ masks st mvec (fun rvec =>
       let reg' := TotalMaps.upd reg r3 (val v1)@(val v2) in
       Some (mkState mem reg' cache (pc.+1)@(ctrpc rvec) epc))
+  | Halt => None
 end.
 
 Lemma atom_eta {V T} : forall a : atom V T, a = (val a)@(tag a).

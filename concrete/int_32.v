@@ -123,6 +123,7 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     | AddRule => pack zero zero zero zero
     | GetTag r1 r2 => pack r1 r2 zero zero
     | PutTag r1 r2 r3 => pack r1 r2 r3 zero
+    | Halt => pack zero zero zero zero
     end;
 
   decode_instr i :=
@@ -142,6 +143,7 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
          | (ADDRULE, _, _, _, _) => AddRule _
          | (GETTAG, r1, r2, _, _) => GetTag _ r1 r2
          | (PUTTAG, r1, r2, r3, _) => PutTag _ r1 r2 r3
+         | (HALT, _, _, _, _) => Halt _
          end;
 
   Z_to_imm := repr;

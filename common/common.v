@@ -34,7 +34,8 @@ Inductive opcode : Set :=
 | JUMPEPC
 | ADDRULE
 | GETTAG
-| PUTTAG.
+| PUTTAG
+| HALT.
 
 Scheme Equality for opcode.
 
@@ -59,7 +60,8 @@ Definition opcodes :=
    JUMPEPC;
    ADDRULE;
    GETTAG;
-   PUTTAG].
+   PUTTAG;
+   HALT].
 
 (* This should be a proof by reflexion... *)
 Lemma opcodesP : forall op, In op opcodes.
@@ -94,7 +96,8 @@ Inductive instr : Type :=
 | JumpEpc : instr
 | AddRule : instr
 | GetTag : reg t -> reg t -> instr
-| PutTag : reg t -> reg t -> reg t -> instr.
+| PutTag : reg t -> reg t -> reg t -> instr
+| Halt : instr.
 
 Definition opcode_of (i : instr) : opcode :=
   match i with
@@ -111,6 +114,7 @@ Definition opcode_of (i : instr) : opcode :=
   | AddRule => ADDRULE
   | GetTag _ _ => GETTAG
   | PutTag _ _ _ => PUTTAG
+  | Halt => HALT
   end.
 
 End instr.
@@ -184,7 +188,7 @@ Class machine_ops_spec t (ops : machine_ops t) := {
 
   min_word_bound : (word_to_Z min_word <= 0)%Z;
 
-  max_word_bound : (20 < word_to_Z max_word)%Z;
+  max_word_bound : (31 < word_to_Z max_word)%Z;
 
   word_to_ZK : forall w, Z_to_word (word_to_Z w) = w;
 
@@ -374,6 +378,7 @@ Definition Z_to_op (z : Z) : option opcode :=
   | 19 => Some (BINOP OR)
   | 20 => Some (BINOP SHRU)
   | 21 => Some (BINOP SHL)
+  | 22 => Some HALT
   | _  => None
   end.
 
@@ -400,6 +405,7 @@ Definition op_to_Z (o : opcode) : Z :=
   | BINOP OR   => 19
   | BINOP SHRU => 20
   | BINOP SHL  => 21
+  | HALT       => 22
   end.
 
 Definition word_to_op (w : word t) : option opcode :=
