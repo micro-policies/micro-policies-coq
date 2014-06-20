@@ -126,9 +126,17 @@ Inductive step : state -> state -> Prop :=
 | step_syscall : forall imem dmem dmem' reg reg' pc pc' sc,
                  forall (FETCH : get imem pc = None),
                  forall (GETCALL : get_syscall pc = Some sc),
+                 forall (VALID : valid_jmp pc (address sc) = true), 
                  forall (CALL : sem sc (imem,dmem,reg,pc,true) =
                                 Some (imem,dmem',reg',pc',true)),
-                 step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc',true).
+                 step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc',true)
+| step_syscall_fail : 
+    forall imem dmem reg pc sc,
+    forall (FETCH : get imem pc = None),
+    forall (GETCALL : get_syscall pc = Some sc),
+    forall (VALID : valid_jmp pc (address sc) = false), 
+    (* forall (CALL : sem sc (imem,dmem,reg,pc,true) = None), *)
+      step (imem,dmem,reg,pc,true) (imem,dmem,reg,(address sc),false).
 
 (*unused so far*)
 Hypothesis step_determ : forall s s' s'', step s s' -> step s s'' -> s' = s''.
@@ -155,7 +163,7 @@ Definition succ (st : state) (st' : state) : bool :=
       end
     | None =>
       match get_syscall pc with
-        | Some sc => true (* Double-check *)
+        | Some sc => valid_jmp pc (address sc)
         | None => false
       end
   end.
@@ -213,7 +221,8 @@ Proof.
   try (rewrite eqxx in SUCC; congruence);
   try (destruct (w == 0)); try (rewrite eqxx ?orbT in SUCC);
   try (rewrite RW in SUCC);
-  try rewrite GETCALL in SUCC; auto.
+  try rewrite GETCALL in SUCC; 
+  try congruence; auto.
 Qed.
 
 Lemma step_a_violation ast ast' :

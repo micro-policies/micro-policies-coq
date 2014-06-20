@@ -188,7 +188,7 @@ Definition refine_state (ast : Abstract.state t)
   refine_imemory imem smem /\
   refine_dmemory dmem smem /\
   refine_registers aregs sregs /\
-  refine_pc apc (spc@tpc) /\ (* not requiring anything about tpc? *)
+  refine_pc apc (spc@tpc) /\
   forall i ti,
     get smem spc = Some i@ti ->
     (cont = true <->
