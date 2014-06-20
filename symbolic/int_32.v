@@ -73,17 +73,23 @@ Fixpoint constants_from {A : Type} (i : int) (n : nat) (x : A)
 
 Definition w := word concrete_int_32_t.
 
+Definition kernelize (seg : @relocatable_segment concrete_int_32_t w w) 
+                   : relocatable_segment w atom :=
+  let (l,gen) := seg in
+  (l, fun b rest => map (fun x => Atom x Concrete.TKernel) (gen b rest)).
+
 Definition initial_memory 
-      (extra_state : relocatable_segment _ atom)
-      (handler_and_syscalls : relocatable_segment w atom)
+      (extra_state : relocatable_segment _ w)
+      (handler_and_syscalls : relocatable_segment w w)
       (user_mem : relocatable_segment w atom) 
     : Concrete.memory concrete_int_32_t * w :=
   let cacheCell := Atom zero Concrete.TKernel in
   let (_,gen) := concat_relocatable_segments 
-                    handler_and_syscalls
-                    (concat_relocatable_segments
-                       extra_state
-                       user_mem) in
+                    (kernelize
+                       (concat_relocatable_segments 
+                          handler_and_syscalls
+                          extra_state))
+                    user_mem in
   let extra_state_addr := add_word (fault_handler_start concrete_int_32_ops)
                                    (nat_to_word (fst handler_and_syscalls)) in
   let user_code_addr := add_word extra_state_addr
@@ -100,8 +106,8 @@ Program Definition initial_regs : Concrete.registers concrete_int_32_t :=
   Int32TMap.init zero@zero.
 
 Program Definition initial_state 
-      (extra_state : relocatable_segment _ atom)
-      (handler_and_syscalls : relocatable_segment w atom)
+      (extra_state : relocatable_segment _ w)
+      (handler_and_syscalls : relocatable_segment w w)
       (user_mem : relocatable_segment w atom) 
       (initial_pc_tag : w) 
     : Concrete.state concrete_int_32_t := 

@@ -158,14 +158,17 @@ Instance cp : Concrete.concrete_params t := {|
 (* ---------------------------------------------------------------- *)
 (* Code combinators... *)
 
-Definition constant_data l : @relocatable_segment t w atom := 
-  (length l, fun _ _ => map (fun x => Atom x Concrete.TKernel) l).
+Definition kernel_data {X} l : @relocatable_segment t X w := 
+  (length l, fun _ _ => l).
 
-Definition make_code l :=
-  map (fun x => Atom (encode_instr x) Concrete.TKernel) l.
+Definition kernel_code {X} l : @relocatable_segment t X w := 
+  (length l, 
+   fun _ _ => map encode_instr l).
 
-Definition constant_code {X} l : @relocatable_segment t X atom := 
-  (length l, fun _ _ => make_code l).
+Definition user_code {X} l : @relocatable_segment t X atom := 
+  (length l, 
+   fun _ _ => 
+     map (fun x => Atom (encode_instr x) Concrete.TKernel)  l).
 
 (* ---------------------------------------------------------------- *)
 (* Main definitions *)
@@ -176,11 +179,11 @@ Definition transfer_function : list (instr t) :=
   [].
 (* TODO *)
 
-Definition fault_handler : @relocatable_segment t w atom :=
-  constant_code (handler t ops fhp transfer_function).
+Definition fault_handler : @relocatable_segment t w w :=
+  kernel_code (handler t ops fhp transfer_function).
 
-Definition extra_state : @relocatable_segment t w atom := 
-  constant_data [nat_to_word 0].
+Definition extra_state : @relocatable_segment t w w := 
+  kernel_data [nat_to_word 0].
 
 Instance sk_defs : Sym.sealing_key := {|
   key := int_eqType;
@@ -197,32 +200,30 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
   | Sym.SEALED k => Z_to_word 2
   end.
 
-Definition gen_syscall_code gen : @relocatable_segment t w atom :=
-  (length (gen (Int32.repr 0) (Int32.repr 0)), gen).
+Definition gen_syscall_code gen : @relocatable_segment t w w :=
+  (length (gen (Int32.repr 0) (Int32.repr 0)), 
+   fun b w => map encode_instr (gen b w)).
 
-Definition mkkey_segment : @relocatable_segment t w atom :=
-  let gen := fun _ (extra : w) => make_code [
+Definition mkkey_segment : @relocatable_segment t w w :=
+  gen_syscall_code (fun _ (extra : w) => [
           (* TODO: too many numeric types! *)
           Const _ (Z_to_imm (word_to_Z extra)) (ri1 t);
           Load _ (ri1 t) (ri2 t);
           (* TODO: More here! *)
           Jump _ (rra t)
-          ] in
-  gen_syscall_code gen.
+          ]).
 
-Definition seal_segment : @relocatable_segment t w atom :=
-  let gen := fun _ (extra : w) => make_code [
+Definition seal_segment : @relocatable_segment t w w :=
+  gen_syscall_code (fun _ (extra : w) => [
           (* TODO: More here! *)
           Jump _ (rra t)
-          ] in
-  gen_syscall_code gen.
+          ]).
 
-Definition unseal_segment : @relocatable_segment t w atom :=
-  let gen := fun _ (extra : w) => make_code [
+Definition unseal_segment : @relocatable_segment t w w :=
+  gen_syscall_code (fun _ (extra : w) => [
           (* TODO: More here! *)
           Jump _ (rra t)
-          ] in
-  gen_syscall_code gen.
+          ]).
 
 Definition build_concrete_sealing_machine 
      (user_mem : @relocatable_segment t unit atom) 
@@ -240,13 +241,13 @@ Definition build_concrete_sealing_machine
     (encode_sealing_tag Sym.DATA).
 
 Definition hello_world : @relocatable_segment t unit atom :=
-  constant_code [
+  user_code [
     Const t (Z_to_imm 2) (Int32.repr 25);
     Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
   ].
 
 Definition hello_world2 : @relocatable_segment t unit atom :=
-  constant_code [
+  user_code [
     Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
   ].
 
