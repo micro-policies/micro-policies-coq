@@ -253,6 +253,7 @@ Definition hello_world2 : @relocatable_segment t unit atom :=
 
 Import Concrete.
 
+(* BCP: Maybe these should come from rules.v? *)
 Definition less_trivial_masks : Concrete.Masks :=
   let mk_mask dcm cm :=
       let '(dcm_tcp,dcm_ti,dcm_t1,dcm_t2,dcm_t3) := dcm in

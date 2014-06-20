@@ -134,8 +134,7 @@ Definition masks : Masks :=
         | ADDRULE => mk_mask (false,false,true,true,true) (None,None)
         | GETTAG => mk_mask (false,false,false,false,true) (None,None)
         | PUTTAG => mk_mask (false,false,false,false,false) (None,None)
-      end
-.
+      end.
 
 Section handler.
 

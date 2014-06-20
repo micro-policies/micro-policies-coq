@@ -1,4 +1,4 @@
-(* Specializing protected kernel to 32-bit machine *)
+(* Specializing protected kernel for symbolic machine to 32 bits *)
 
 Require Import ZArith.
 Require Import Integers.
@@ -78,6 +78,16 @@ Definition kernelize (seg : @relocatable_segment concrete_int_32_t w w)
   let (l,gen) := seg in
   (l, fun b rest => map (fun x => Atom x Concrete.TKernel) (gen b rest)).
 
+Definition kernelize_tags (seg : @relocatable_segment concrete_int_32_t w atom) 
+                   : relocatable_segment w atom :=
+  let (l,gen) := seg in
+  (* BCP: This has to correspond with the tag encoding used in 
+     fault_handler.v -- probably better to write it there rather than here *)
+  let kern := fun t => add (shl t (repr 2)) (repr 1) in
+  (l, 
+   fun b rest => 
+     map (fun x => Atom (common.val x) (kern (common.tag x))) (gen b rest)).
+
 Definition initial_memory 
       (extra_state : relocatable_segment _ w)
       (handler_and_syscalls : relocatable_segment w w)
@@ -89,7 +99,7 @@ Definition initial_memory
                        (concat_relocatable_segments 
                           handler_and_syscalls
                           extra_state))
-                    user_mem in
+                    (kernelize_tags user_mem) in
   let extra_state_addr := add_word (fault_handler_start concrete_int_32_ops)
                                    (nat_to_word (fst handler_and_syscalls)) in
   let user_code_addr := add_word extra_state_addr

@@ -80,7 +80,7 @@ Definition extract_user_tag (rsrc rsucc rut ric : reg mt) : code :=
       ([Mov _ ri2 rsucc] ++
        [Const _ (Z_to_imm 2) ri2] ++
        [Binop _ AND rsrc ri2 ric] ++
-       [Const _ (Z_to_imm 2) ri2] ++
+       [Const _ (Z_to_imm 2) ri2] ++  (* BCP: Why do we need this one? *)
        [Binop _ SHRU rsrc ri2 rut])
       [].
 
@@ -98,6 +98,7 @@ Definition is_entry_tag (rsrc rdst : reg mt) : code :=
   [Const _ (Z_to_imm 2) ri5] ++
   [Binop _ EQ rsrc ri5 rdst].
 
+(* BCP: Maybe better just to halt? *)
 Definition inf_loop : code :=
   [Const mt (Z_to_imm 0) rb] ++
   [Bnz mt rb (Z_to_imm 0)].
