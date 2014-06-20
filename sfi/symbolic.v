@@ -6,6 +6,8 @@ Require Import lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import sfi.classes sfi.list_utils sfi.set_utils sfi.isolate_sets.
 
+Set Bullet Behavior "Strict Subproofs".
+
 Module Sym.
 
 Section WithClasses.

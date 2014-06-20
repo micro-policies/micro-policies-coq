@@ -3,6 +3,8 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import common.common.
 Require Import sfi.classes sfi.abstract.
 
+Set Bullet Behavior "Strict Subproofs".
+
 Module AbsSlow.
 
 Section WithClasses.

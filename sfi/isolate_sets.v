@@ -6,6 +6,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.utils lib.partial_maps common.common.
 Require Import sfi.ranges sfi.set_utils.
 
+Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.
 Import PartMaps.
 

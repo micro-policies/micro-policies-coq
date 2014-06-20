@@ -8,6 +8,7 @@ Require Import sfi.haskell_notation.
 Require Import sfi.classes sfi.list_utils sfi.set_utils sfi.isolate_sets.
 Require Import sfi.abstract sfi.abstract_slow sfi.symbolic.
 
+Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.
 
 Section RefinementSA.

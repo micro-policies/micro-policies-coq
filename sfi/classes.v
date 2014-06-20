@@ -1,5 +1,6 @@
 Require Import eqtype.
 Require Import lib.utils lib.partial_maps lib.ordered common.common.
+Set Bullet Behavior "Strict Subproofs".
 
 Section WithClasses.
 
