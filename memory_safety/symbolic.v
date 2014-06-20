@@ -1,7 +1,7 @@
 Require Import List Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
 Require Import lib.utils lib.ordered lib.partial_maps common.common.
-Require Import symbolic.symbolic.
+Require Import symbolic.symbolic memory_safety.classes.
 
 Import Symbolic.
 
@@ -15,7 +15,7 @@ the symbolic machine. *)
 Import DoNotation.
 Import ListNotations.
 
-Module SymbolicMemory.
+Module Sym.
 
 Open Scope bool_scope.
 Open Scope Z_scope.
@@ -25,6 +25,7 @@ Section WithClasses.
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 
+(* CH: This should be called color *)
 Definition block := word t.
 
 Inductive type :=
@@ -54,14 +55,13 @@ Class abstract_params := {
 }.
 
 Class params_spec (ap : abstract_params) := {
-
   mem_axioms :> PartMaps.axioms (@mem_class ap);
-
   reg_axioms :> PartMaps.axioms (@reg_class ap)
-
 }.
 
-Context `{ap : abstract_params, syscall_regs t}.
+Context `{ap : abstract_params}
+        `{syscall_regs t}
+        {msa : @memory_syscall_addrs t}.
 
 Open Scope word_scope.
 
@@ -75,10 +75,6 @@ Record block_info := mkBlockInfo {
 }.
 
 Section BlockInfoEq.
-
-(*
-Variable info1 info2 : block_info.
-*)
 
 Definition block_info_eq :=
   [rel u v : block_info | [&& block_base u == block_base v,
@@ -96,112 +92,7 @@ Canonical block_info_eqType := Eval hnf in EqType block_info block_info_eqMixin.
 
 End BlockInfoEq.
 
-Record state := mkState {
-  mem : memory;
-  regs : registers;
-  internal : word * list block_info;
-  pc : atom
-}.
-
-Record syscall := Syscall {
-  address : word;
-  sem : state -> option state
-}.
-
-Class allocator := {
-
-(* "Address" of the malloc system call. *)
-  alloc_addr : word;
-
-(* The register used to read the size of the block to be allocated
-   and return the pointer to that block. May change if we have a
-   calling convention for system calls. *)
-  alloc_reg : reg t;
-
-(* The Coq function representing the allocator. *)
-  alloc_fun : state -> option (state * block)
-
-}.
-
-(*
-Class allocator_spec (alloc : allocator) := {
-
-  alloc_get_fresh : forall s s' b,
-    alloc_fun s = Some (s',b) -> get (mem s) b = None;
-
-  alloc_get : forall s s' b,
-    alloc_fun s = Some (s',b) -> exists fr, get (mem s') b = Some fr
-
-(* Similar requirements on upd are not necessary because they follow from
-   the above and PartMaps.axioms. *)
-
-}.
-
-Context `{allocator}.
-*)
-
-Definition malloc_fun st : option state :=
-  let: pcv@pcl := pc st in
-  let: (color,info) := internal st in
-  do! sz <- get (regs st) syscall_arg1;
-  match sz with
-    | sz@V(INT) =>
-      match compare 0 sz with
-        | Lt =>
-          if ohead [seq x <- info | ((sz <=? block_size x) && ~~ is_some (block_color x))%ordered] is Some x then
-          let i := index x info in
-          let block1 := mkBlockInfo (block_base x) sz (Some color) in
-          let pre := take i info in
-          let post := drop (i+1) info in
-          let info' :=
-              if sz == block_size x then
-                pre ++ [block1] ++ post
-              else
-                let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
-                pre ++ [block1;block2] ++ post
-          in
-          let P := fun n => memory in
-          let upd_fun := fun n acc =>
-            if @upd memory _ _ (@mem_class _) acc (block_base x + (Z_to_word (Z.of_nat n))) (0@M(color,INT)) is Some mem then mem else acc
-          in
-          let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z sz)) in
-          let regs' := if @upd registers _ _ (@reg_class _) (regs st) syscall_ret ((block_base x)@V(PTR color)) is Some regs' then regs' else regs st in
-          let color' := color + 1 in
-          Some (mkState mem' regs' (color',info') (pcv.+1@pcl))
-          else None
-        | _ => None
-      end
-    | _ => None
-  end.
-
-Definition def_info : block_info :=
-  mkBlockInfo 0 0 None.
-
-(* TODO: avoid memory fragmentation *)
-Definition free_fun st : option state :=
-  let: pcv@pcl := pc st in
-  let: (color,info) := internal st in
-  do! ptr <- get (regs st) syscall_arg1;
-    (* Removing the return clause makes Coq loop... *)
-  match ptr return option state with
-  | ptr@V(PTR color) =>
-    if ohead [seq x <- info | block_color x == Some color] is Some x then
-      let i := index x info in
-      if (block_base x <=? ptr <? block_base x + block_size x) then
-        let P := fun n => memory in
-        let upd_fun := fun n acc =>
-          if upd acc (block_base x + Z_to_word (Z.of_nat n)) (0@FREE) is Some mem then mem else acc
-        in
-        let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z (block_size x))) in
-        let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
-        in
-        Some (mkState mem' (regs st) (color,info') pcv.+1@pcl)
-        else None
-    else None
-  | _ => None
-  end.
-
-
+Section WithVectorNotations.
 Import Vector.VectorNotations.
 
 (* Convient wrapper for making writing rules easier. Move somewhere else *)
@@ -344,6 +235,7 @@ Definition rules (mvec : MVec label) : option (RVec label) :=
     else None
   | _ => None
   end.
+End WithVectorNotations.
 
 Variable initial_block : block.
 
@@ -356,6 +248,128 @@ Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial
 
 Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_block)).
 
+(* CH: This is already defined in symbolic/symbolic.v ... WTF?
+Record state := mkState {
+  mem : memory;
+  regs : registers;
+  internal : word * list block_info;
+  pc : atom
+}.
+*)
+Set Printing All.
+
+Definition type_eq t1 t2 :=
+  match t1, t2 with
+    | TypeInt, TypeInt => true
+    | TypePointer b1, TypePointer b2 => b1 == b2
+    | _, _ => false
+  end.
+
+Lemma type_eqP : Equality.axiom type_eq.
+Admitted.
+
+Definition type_eqMixin := EqMixin type_eqP.
+Canonical type_eqType := Eval hnf in EqType type type_eqMixin.
+
+Definition label_eq l1 l2 :=
+  match l1, l2 with
+    | LabelValue t1, LabelValue t2 => t1 == t2
+    | LabelMemory b1 t1, LabelMemory b2 t2 => (b1 == b2) && (t1 == t2)
+    | LabelFree, LabelFree => true
+    | _, _ => false
+  end.
+
+Lemma label_eqP : Equality.axiom label_eq.
+Admitted.
+
+Definition label_eqMixin := EqMixin label_eqP.
+Canonical label_eqType := Eval hnf in EqType label label_eqMixin.
+
+Program Instance sym_memory_safety : (symbolic_params) := {
+  tag := label_eqType;
+
+  handler := rules;
+
+  internal_state := (word * list block_info)%type;
+
+  memory := memory;
+  sm := mem_class;
+
+  registers := registers;
+  sr := reg_class
+}.
+
+
+Definition malloc_fun st : option (state t) :=
+  let: pcv@pcl := pc st in
+  let: (color,info) := internal st in
+  do! sz <- get (regs st) syscall_arg1;
+  match sz with
+    | sz@V(INT) =>
+      match compare 0 sz with
+        | Lt =>
+          if ohead [seq x <- info | ((sz <=? block_size x) && ~~ is_some (block_color x))%ordered] is Some x then
+          let i := index x info in
+          let block1 := mkBlockInfo (block_base x) sz (Some color) in
+          let pre := take i info in
+          let post := drop (i+1) info in
+          let info' :=
+              if sz == block_size x then
+                pre ++ [block1] ++ post
+              else
+                let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
+                pre ++ [block1;block2] ++ post
+          in
+          let P := fun n => memory in
+          let upd_fun := fun n acc =>
+            if @upd memory _ _ (@mem_class _) acc (block_base x + (Z_to_word (Z.of_nat n))) (0@M(color,INT)) is Some mem then mem else acc
+          in
+          let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z sz)) in
+          let regs' := if @upd registers _ _ (@reg_class _) (regs st) syscall_ret ((block_base x)@V(PTR color)) is Some regs' then regs' else regs st in
+          let color' := color + 1 in
+          Some (State mem' regs' (pcv.+1@pcl) (color',info'))
+          else None
+        | _ => None
+      end
+    | _ => None
+  end.
+
+Definition def_info : block_info :=
+  mkBlockInfo 0 0 None.
+
+(* TODO: avoid memory fragmentation *)
+Definition free_fun (st : state t) : option (state t) :=
+None.
+(* TODO: this just loops ... WTF?
+  let: pcv@pcl := pc st in
+  let: (color,info) := internal st in
+  do! ptr <- get (regs st) syscall_arg1;
+    (* Removing the return clause makes Coq loop... *)
+  match ptr return option (state t) with
+  | ptr@V(PTR color) =>
+    if ohead [seq x <- info | block_color x == Some color] is Some x then
+      let i := index x info in
+      if (block_base x <=? ptr <? block_base x + block_size x) then
+        let P := fun n => memory in
+        let upd_fun := fun n acc =>
+          if upd acc (block_base x + Z_to_word (Z.of_nat n)) (0@FREE) is Some mem then mem else acc
+        in
+        let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z (block_size x))) in
+        let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
+        in
+        Some (State mem' (regs st) pcv.+1@pcl (color,info'))
+        else None
+    else None
+  | _ => None
+  end.
+*)
+
+Definition memsafe_syscalls : list (syscall t) :=
+  [Syscall malloc_addr malloc_fun;
+   Syscall free_addr free_fun].
+
+Definition step := step memsafe_syscalls.
+
 End WithClasses.
 
 Module Notations.
@@ -367,9 +381,4 @@ Notation "M( n , ty )" := (LabelMemory n ty) (at level 4).
 
 End Notations.
 
-End SymbolicMemory.
-
-Arguments SymbolicMemory.state t {_}.
-Arguments SymbolicMemory.memory t {_}.
-Arguments SymbolicMemory.registers t {_}.
-Arguments SymbolicMemory.syscall t {_}.
+End Sym.
