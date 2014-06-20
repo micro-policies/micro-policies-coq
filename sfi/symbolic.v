@@ -32,6 +32,18 @@ Inductive stag :=
 | DATA   : forall (c : word t) (I W : list (word t)), stag
 | REG    : stag.
 
+Definition stag_compartment (L : stag) : option (word t) :=
+  match L with PC _ c | DATA c _ _ => Some c | _ => None end.
+
+Definition stag_source (L : stag) : option where_from :=
+  match L with PC S _ => Some S | _ => None end.
+
+Definition stag_incoming (L : stag) : option (list (word t)) :=
+  match L with DATA _ I _ => Some I | _ => None end.
+
+Definition stag_writers (L : stag) : option (list (word t)) :=
+  match L with DATA _ _ W => Some W | _ => None end.
+
 Definition where_from_eq (S1 S2 : where_from) : bool :=
   match S1, S2 with
     | INTERNAL , INTERNAL | JUMPED , JUMPED => true

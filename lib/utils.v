@@ -1144,6 +1144,13 @@ Notation "'do!' 'guard' cond ; rest" :=
   (if cond then rest else None)
   (at level 200, cond at level 100, rest at level 200).
 
+Notation "'do!' 'guard?' ocond ; rest" :=
+  match ocond with
+    | Some true         => rest
+    | Some false | None => None
+  end
+  (at level 200, cond at level 100, rest at level 200).
+
 End DoNotation.
 
 Definition error {A} : option A := None.

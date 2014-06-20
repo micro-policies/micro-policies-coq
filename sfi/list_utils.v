@@ -40,6 +40,21 @@ Fixpoint cat_somes (xs : list (option A)) : list A :=
     | None   :: xs => cat_somes xs
   end.
 
+Import DoNotation.
+Fixpoint map_options {B} (f : A -> option B) (xs : list A) : option (list B) :=
+  match xs with
+    | []       => Some []
+    | x :: xs' => do! y  <- f x;
+                  do! ys <- map_options f xs';
+                  Some (y :: ys)
+  end.
+
+Definition the (xs : list A) : option A :=
+  match xs with
+    | []       => None
+    | x :: xs' => if forallb (equiv_dec x) xs' then Some x else None
+  end.
+
 Fixpoint iterate (f : A -> A) (x : A) (n : nat) : list A :=
   match n with
     | O    => []
@@ -399,6 +414,84 @@ Proof.
   intro IN; apply NOT_IN, in_cat_somes, IN.
 Qed.
 Hint Resolve NoDup_cat_somes.
+
+Theorem map_options_somes : forall {A B} (f : A -> option B) xs,
+  is_some (map_options f xs) = true <->
+  (forall x, In x xs -> is_some (f x) = true).
+Proof.
+  induction xs as [|x xs]; simpl;
+    [tauto | unfold bind; split; [intros SOME x' IN | intros ALL]].
+  - destruct IN as [<- | IN]; (destruct (f x); [auto | discriminate]).
+    apply IHxs in IN; auto.
+    destruct (map_options f xs); [reflexivity | discriminate].
+  - destruct (f x) eqn:fx.
+    + destruct (map_options f xs); [simpl | apply IHxs]; auto.
+    + lapply (ALL x); [rewrite fx; discriminate | auto].
+Qed.
+
+Theorem map_options_none : forall {A B} (f : A -> option B) xs,
+  map_options f xs = None <-> (exists x, In x xs /\ f x = None).
+Proof.
+  induction xs as [|x xs]; simpl;
+    [split; [discriminate | intros []; tauto] | unfold bind; split].
+  - intros SOME. destruct (f x) eqn:fx.
+    + destruct (map_options f xs); [discriminate | apply IHxs in SOME].
+      destruct SOME as [x' [IN fx']]; eauto.
+    + eauto.
+  - intros [x' [[-> | IN] fx']].
+    + rewrite fx'; reflexivity.
+    + destruct IHxs as [_ IHxs].
+      specialize (IHxs (ex_intro _ x' (conj IN fx'))); rewrite IHxs.
+      destruct (f x); reflexivity.
+Qed.
+
+Theorem map_options_in : forall {A B} (f : A -> option B) xs ys y,
+  map_options f xs = Some ys ->
+  (In y ys <-> (exists x, f x = Some y /\ In x xs)).
+Proof.
+  induction xs as [|x xs]; simpl; unfold bind; intros until 0; intros SOME.
+  - inversion_clear SOME; simpl; split; [|intros []]; tauto.
+  - destruct (f x) as [y'|] eqn:fx; [|congruence].
+    destruct (map_options f xs) as [ys'|]; [|congruence].
+    inversion SOME; subst; clear SOME; simpl.
+    split.
+    + intros [<- | IN]; [eauto|].
+      apply IHxs in IN; [destruct IN as [x' IHxs'] | reflexivity].
+      exists x'; tauto.
+    + intros [x' [fx' [-> | IN']]].
+      * left; congruence.
+      * right; apply IHxs; eauto.
+Qed.
+
+Theorem the_in : forall `{eqdec : ! EqDec (eq_setoid A)} (xs : list A) x,
+  the xs = Some x -> In x xs.
+Proof.
+  destruct xs as [|x' xs']; [discriminate | simpl; intros x SOME].
+  destruct (forallb _ _) eqn:ALL;
+    [inversion SOME; subst x'; clear SOME | discriminate].
+  auto.
+Qed.
+Hint Resolve the_in.
+
+Theorem the_spec : forall `{eqdec : ! EqDec (eq_setoid A)} (xs : list A) x,
+  the xs = Some x <-> nonempty xs = true /\ forall x', In x' xs -> x' == x.
+Proof.
+  destruct xs as [|x' xs']; simpl; [split; [|intros []]; discriminate|].
+  split.
+  - destruct (forallb _ _) eqn:ALL; [|discriminate].
+    intros EQ; inversion EQ; subst; clear EQ.
+    split; auto.
+    rewrite forallb_forall in ALL.
+    intros x' [<- | IN]; [reflexivity|].
+    apply ALL in IN. destruct (x == x'); [ssubst; reflexivity | discriminate].
+  - intros [_ ALL].
+    assert (ALL' : forall y, In y xs' -> proj_sumbool (x == y) = true) by
+      (intros y IN; specialize (ALL y (or_intror IN));
+       ssubst; destruct (_ == _); [reflexivity | congruence]).
+    rewrite <-forallb_forall in ALL'.
+    specialize (ALL x' (or_introl eq_refl)); ssubst.
+    rewrite ALL'; reflexivity.
+Qed.
 
 Theorem dup_in : forall {A} (a : A) xs,
   Dup a xs -> In a xs.

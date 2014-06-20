@@ -15,7 +15,7 @@ Set Implicit Arguments.
 
 Import ListNotations.
 
-Module Abstract.
+Module Abs.
 
 Open Scope bool_scope.
 
@@ -1448,4 +1448,4 @@ Qed.
 
 End WithClasses.
 
-End Abstract.
+End Abs.
