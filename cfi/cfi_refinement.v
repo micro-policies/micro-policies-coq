@@ -317,21 +317,8 @@ Proof.
         now assumption.
 Qed.
 
-(* Lemma weak_preserves_cfi_trace : forall axs cxs, *)
-(*     (forall csi csj, *)
-(*        In2 csi csj cxs -> *)
-(*        step csi csj -> *)
-(*        visible csi csj = true -> *)
-(*          exists asi asj, *)
-(*            In2 asi asj axs /\ step asi asj *)
-(*            /\ refine_state asi csi /\ refine_state asj csj) -> *)
-(*     trace_has_cfi amachine axs -> *)
-(*     trace_has_cfi cmachine cxs. *)
-(* Proof. *)
-(*   intros axs cxs H TSAFE. *)
-(*   intros csi csj IN2. *)
-  
-  
+
+    
 
 (* Q: Do we have anything like this? Maybe a weaker variant?
    Might be useful for the split_refine_traces? *)
@@ -351,6 +338,7 @@ The term "H2" has type "refine_traces axs2 cxs2"
  while it is expected to have type "refine_traces axs1 cxs1".
 *)
 
+
 (* Lemma split_refine_traces' axs ahs atl cxs asi asj csi csj : *)
 (*   axs = ahs ++ asi :: asj :: atl -> *)
 (*   refine_traces axs cxs -> *)
@@ -366,6 +354,73 @@ The term "H2" has type "refine_traces axs2 cxs2"
 (*   intros ALST RTRACE IN2 IN2' VIS REFI REFJ. *)
   
 
+(*
+Lemma split_refine_traces_aux axs cxs ahs atl asi :
+  axs = ahs ++ asi :: atl ->
+  refine_traces axs cxs ->
+  exists csi,
+    refine_state asi csi /\
+    In csi cxs /\
+    exists chs, refine_traces (ahs ++ [asi]) (chs ++ [csi]).
+Proof.
+  intros ALST RTRACE.
+  induction RTRACE.*)
+
+
+Lemma split_refine_traces' axs ahs atl cxs asi asj csi csj :
+  axs = ahs ++ asi :: asj :: atl ->
+  refine_traces axs cxs ->
+  In2 csi csj cxs ->
+  visible csi csj = true ->
+  step asi asj ->
+  step csi csj ->
+  refine_state asi csi ->
+  refine_state asj csj ->
+  exists chs ctl,
+    refine_traces (ahs ++ [asi]) (chs ++ [csi]) /\
+    refine_traces (asj :: atl) (csj :: ctl) /\
+    cxs = chs ++ csi :: csj :: ctl.
+Proof.
+  intros ALST RTRACE IN2 VIS ASTEP CSTEP REFI REFJ.
+  (* generalize dependent asi. generalize dependent asj.
+     maybe generalize over all ahs, asi, asj, atl?*)
+    induction RTRACE
+    as [ast cst REF | ast cst cst' axs' cxs' CSTEP' VIS' REF REF' RTRACE' | 
+        ast ast' cst cst' axs cxs STEP VIS' ASTEP' REF REF' RTRACE'|
+        ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst; intros.
+  - destruct IN2.
+  - destruct IN2 as [[? ?] | IN2]; subst.
+    + congruence.
+    + destruct (IHRTRACE' ALST IN2) as [chs [ctl [RHEAD [RTAIL CLST]]]].
+      exists (cst :: chs); exists ctl.
+      split. 
+      { destruct chs.
+        { simpl in CLST; inversion CLST; subst. 
+          inversion RHEAD. subst.
+          destruct ahs.
+          { inversion H; subst.
+            inversion ALST; subst.
+            apply TRNormal0; auto. 
+          }
+          { destruct ahs; inversion H. }
+        }
+        { inversion CLST; subst.
+          destruct ahs.
+          { inversion ALST; subst.
+            simpl.
+            apply TRNormal0; auto.
+          }
+          { inversion ALST; subst.
+            apply TRNormal0; auto.
+          }
+        }
+      }
+      { split; auto. rewrite CLST. reflexivity. }
+   - (*case TRNormal1*)
+     destruct IN2 as [[? ?] | IN2]; subst.
+     { 
+Admitted.
+ 
 Lemma split_refine_traces cst cst' ast ast' axs ahs atl cxs asi asj csi csj :
   axs = ahs ++ asi :: asj :: atl ->
   refine_traces axs cxs ->
