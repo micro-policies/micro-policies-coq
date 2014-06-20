@@ -113,8 +113,9 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
   let pc_s := common.val (Symbolic.pc st) in
   let pc_s' := common.val (Symbolic.pc st') in
   match (get (Symbolic.mem st) pc_s) with
-    | Some i =>
-      match decode_instr (common.val i) with
+    | Some i@DATA => false
+    | Some i@(INSTR _) =>
+      match decode_instr i with
         | Some (Jump r) => valid_jmp pc_s pc_s'
         | Some (Jal r) => valid_jmp pc_s pc_s'
         | Some (Bnz r imm) => 
@@ -133,7 +134,7 @@ Program Instance symbolic_cfi_machine : cfi_machine t := {|
   
   step := Symbolic.step table;
   step_a := step_a;
-
+  
   get_pc s := common.val (Symbolic.pc s);
   
   succ := ssucc      
@@ -148,7 +149,7 @@ Definition V s s' :=
   ssucc s s' = false.
 
 Definition S xs :=
-  exists s, xs = [s] /\ ~ exists s', cfi_step symbolic_cfi_machine s s'.
+  exists s, xs = [s] /\ ~ exists s', Symbolic.step table s s'.
 
 
 End WithClasses.

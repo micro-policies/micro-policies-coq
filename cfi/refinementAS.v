@@ -897,49 +897,10 @@ Proof.
     * congruence.
 Qed.
 
-Lemma arith : forall w, (w+1)%w = w -> False.
-Admitted.
-
-Lemma new_assumption : forall ast ast' cst cst',
-    Abstract.step atable valid_jmp ast ast' ->
-    Abstract.step_a ast ast' ->
-    refine_state ast cst ->
-    refine_state ast' cst' ->
-    SymbolicCFI.step_a cst cst' ->
-    Symbolic.step stable cst cst'.
-Proof.
-  intros ast ast' cst cst' ASTEP ASTEPA REF REF' STEPA.
-  inversion ASTEPA; subst.
-  inversion ASTEP;
-  try match goal with
-    | [H: (pc + 1)%w = pc |- _] => apply arith in H; inversion H
-  end. 
-  (* jump case *)
-  subst.
-  destruct cst as [cmem creg [cpc tpc] int], cst' as [cmem' creg' [cpc' tpc'] int'].
-  (* destruct STEPA; subst. *)
-  destruct REF as [REFI [REFD [REFR [REFPC CORRECTNESS]]]].
-  destruct REF' as [REFI' [REFD' [REFR' [REFPC' ?]]]].
-  unfold refine_pc in REFPC. simpl in REFPC. destruct REFPC as [? TPC]; subst.
-  apply REFR in RW. destruct RW as [ut RW].
-  (*show that it's the same instr*)
-  apply REFI in FETCH0. destruct FETCH0 as [id' FETCH0].
-  eapply Symbolic.step_jump. 
-  - eauto.
-  - eauto.
-  - eauto.
-  - eauto.
-  - unfold Symbolic.next_state_pc. unfold Symbolic.next_state.
-    simpl.
-    (*jump instr will have Some id*)
-    assert (TGID := jump_tagged cpc cmem FETCH0 INST). subst.
-    destruct TPC; subst.
-    { (*case the pc on the tag is DATA*)
-      simpl.
-      Admitted.
-
-(*This is a helper lemma to instantiate CFI refinement*)
-Lemma contra : forall si sj,
+(* NOTE: Do not remove*)
+(*This is a helper lemma to instantiate CFI refinement between 
+  symbolic and concrete*)
+(*Lemma attacker_no_v : forall si sj,
                  SymbolicCFI.ssucc si sj = false ->
                  Symbolic.step stable si sj ->
                  SymbolicCFI.step_a si sj ->
@@ -996,10 +957,7 @@ Proof.
   rewrite FETCH in PC. inversion PC; subst.
   assert (JMPTG := jal_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
   congruence.
-Admitted.
-  
-
-
+Admitted. *)
 
 
 End Refinement.
