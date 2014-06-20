@@ -1,6 +1,6 @@
 Require Import Coq.Lists.List Coq.Bool.Bool.
 Require Import common.common. 
-Require Import lib.utils.
+Require Import lib.utils lib.Coqlib.
 Require Import cfi.cfi.
 
 Set Implicit Arguments.
@@ -79,6 +79,19 @@ Inductive refine_traces :
     refine_state ast' cst' ->
     refine_traces (ast' :: axs) (cst' :: cxs) ->
     refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs).
+
+(* Hint Constructors refine_traces. *)
+
+Inductive refine_traces_eq : forall ast1 ast2 cst1 cst2
+  (H1 : refine_traces ast1 cst1) (H2 : refine_traces ast2 cst2), Prop :=
+  | EqNil : forall ast cst H1 H1',
+      refine_traces_eq (TRNil ast cst H1) (TRNil ast cst H1')
+  | EqNormal0 : forall ast cst cst' axs cxs H1 H2 H3 H4 H5 H1' H2' H3' H4' H5',
+      refine_traces_eq H5 H5' ->
+      refine_traces_eq (@TRNormal0 ast cst cst' axs cxs H1 H2 H3 H4 H5)
+                       (@TRNormal0 ast cst cst' axs cxs H1' H2' H3' H4' H5')
+  (* ... *)
+.
 
 Class machine_refinement_specs := {
 
@@ -327,31 +340,114 @@ Lemma refine_traces_unique_proof : forall axs cxs
   (H2 : refine_traces axs cxs),
   H1 = H2.
 Admitted.
-(* Trying to add explicit equalities doesn't work either
-Lemma refine_traces_unique_proof : forall axs1 cxs1 axs2 cxs2
-  (H1 : refine_traces axs1 cxs1)
-  (H2 : refine_traces axs2 cxs2),
-  axs1 = axs2 ->
-  cxs1 = cxs2 ->
-  H1 = H2.
+
+(* If adding explicit equalities we need to use JMeq, otherwise
 The term "H2" has type "refine_traces axs2 cxs2"
  while it is expected to have type "refine_traces axs1 cxs1".
 *)
+Require Import JMeq.
+Lemma refine_traces_unique_proof' : forall axs1 cxs1 axs2 cxs2
+  (H1 : refine_traces axs1 cxs1)
+  (H2 : refine_traces axs2 cxs2)
+  (eqa : axs1 = axs2)
+  (eqc : cxs1 = cxs2),
+  JMeq H1 H2.
+Proof.
+  intros. destruct H1; destruct H2; try congruence;
+          inversion eqa; inversion eqc; subst; clear eqa eqc.
+  - admit. (* requires uniqueness of refine_state proofs, do we have it? *)
+Admitted. (* doesn't seem this is going to work *)
 
+Lemma refine_traces_unique_proof'' : forall axs1 cxs1 axs2 cxs2
+  (H1 : refine_traces axs1 cxs1)
+  (H2 : refine_traces axs2 cxs2)
+  (eqa : axs1 = axs2)
+  (eqc : cxs1 = cxs2),
+  refine_traces_eq H1 H2.
+Proof.
+  intros. destruct H1; destruct H2; try congruence;
+          inversion eqa; inversion eqc; subst; clear eqa eqc.
+  - by apply EqNil.
+  - apply EqNormal0. admit. (* needs IH *)
+Admitted.
 
-(* Lemma split_refine_traces' axs ahs atl cxs asi asj csi csj : *)
-(*   axs = ahs ++ asi :: asj :: atl -> *)
-(*   refine_traces axs cxs -> *)
-(*   In2 csi csj cxs -> *)
-(*   visible csi csj = true -> *)
-(*   refine_state asi csi -> *)
-(*   refine_state asj csj -> *)
-(*   exists chs ctl, *)
-(*     refine_traces (ahs ++ [asi]) (chs ++ [csi]) /\ *)
-(*     refine_traces (asj :: atl) (csj :: ctl) /\ *)
-(*     cxs = chs ++ csi :: csj :: ctl. *)
-(* Proof. *)
-(*   intros ALST RTRACE IN2 IN2' VIS REFI REFJ. *)
+Lemma new_lemma axs ahd atl asi asj cxs :
+  axs = ahd ++ asi :: asj :: atl ->
+  refine_traces axs cxs ->
+  step asi asj ->
+  succ asi asj = false ->
+  exists chd csi csj ctl,
+    step csi csj /\
+    refine_state asi csi /\
+    refine_state asj csj /\
+    refine_traces (ahd ++ [asi]) (chd ++ [csi]) /\
+    refine_traces (asj :: atl) (csj :: ctl) /\
+    cxs = chd ++ csi :: csj :: ctl.
+Proof.
+  intros eqaxs ref astep viol.
+  gdep viol. gdep astep. gdep ahd. gdep asi. gdep asj. gdep atl.
+  induction ref; intros.
+  - by repeat (destruct ahd; inversion eqaxs).
+  - edestruct IHref as [chd [csi [csj [ctl [? [? [? [? [? ?]]]]]]]]]; eauto.
+    exists (cst :: chd); repeat eexists; eauto. simpl.
+    destruct chd; destruct ahd; simpl in *; inv H8; inv eqaxs;
+      apply TRNormal0; eauto.
+    rewrite H8. reflexivity.
+  - destruct ahd; simpl in *.
+    + inv eqaxs. clear IHref.
+      exists []. exists cst. exists cst'. exists cxs.
+      repeat split; eauto. by constructor(assumption).
+    + inv eqaxs.
+      edestruct IHref as [chd [csi [csj [ctl [? [? [? [? [? ?]]]]]]]]]; eauto.
+      clear IHref.
+      exists (cst :: chd). exists csi. exists csj. exists ctl.
+      repeat split; eauto. 
+      * destruct chd; destruct ahd; simpl in *; inv H10; inv H6;
+         apply TRNormal1; eauto.
+      rewrite H10. reflexivity.
+  - destruct ahd; simpl in *; inv eqaxs.
+    apply False_ind. by eapply av_no_attacker; eauto.
+    edestruct IHref as [chd [csi [csj [ctl [? [? [? [? [? ?]]]]]]]]]; eauto.
+    exists (cst :: chd); repeat eexists; eauto. simpl.
+    destruct chd; destruct ahd; simpl in *; inv H10; inv H6;
+      apply TRAttacker; eauto.
+    rewrite H10. reflexivity.
+Qed.      
+
+(* Attempt with Arthur
+Lemma split_refine_traces_aux apre aprel apost cpre cprel cpost asi asj csi csj :
+  refine_traces (apre ++ [aprel]) (cpre ++ [cprel]) ->
+  refine_traces (aprel :: apost) (cprel :: cpost) ->
+  In2 asi asj apost ->
+  In2 csi csj cpost ->
+  visible csi csj = true ->
+  refine_state asi csi ->
+  refine_state asj csj ->
+  exists chs ctl ahs atl,
+    refine_traces (apre ++ aprel :: ahs ++ [asi]) 
+                  (cpre ++ cprel :: chs ++ [csi]) /\
+    refine_traces (asj :: atl) (csj :: ctl) /\
+    cpost = chs ++ csi :: csj :: ctl.
+Admitted.
+
+Lemma split_refine_traces' ahs atl cxs asi asj csi csj :
+  refine_traces (ahs ++ asi :: asj :: atl) cxs ->
+  In2 csi csj cxs ->
+  visible csi csj = true ->
+  refine_state asi csi ->
+  refine_state asj csj ->
+  exists chs ctl,
+    refine_traces (ahs ++ [asi]) (chs ++ [csi]) /\
+    refine_traces (asj :: atl) (csj :: ctl) /\
+    cxs = chs ++ csi :: csj :: ctl.
+Proof.
+  intros reft in2 vis refsi refsj.
+  remember (ahs ++ asi :: asj :: atl) as axs.
+  destruct reft. destruct in2.
+  destruct ahs.
+  - simpl in Heqaxs. inversion Heqaxs. subst.
+    inversion reft; subst; clear reft.
+*)
   
 
 (*
