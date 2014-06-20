@@ -1,3 +1,9 @@
+(*
+    write a less silly transfer function
+    write better testing stuff
+    fill in the syscall implementations
+*)
+
 Require Import List. Import ListNotations.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
