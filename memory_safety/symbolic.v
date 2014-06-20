@@ -248,16 +248,6 @@ Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial
 
 Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_block)).
 
-(* CH: This is already defined in symbolic/symbolic.v ... WTF?
-Record state := mkState {
-  mem : memory;
-  regs : registers;
-  internal : word * list block_info;
-  pc : atom
-}.
-*)
-Set Printing All.
-
 Definition type_eq t1 t2 :=
   match t1, t2 with
     | TypeInt, TypeInt => true
@@ -339,47 +329,38 @@ Definition def_info : block_info :=
 
 (* TODO: avoid memory fragmentation *)
 Definition free_fun (st : state t) : option (state t) :=
-None.
-(* TODO: this just loops ... WTF?
   let: pcv@pcl := pc st in
   let: (next_color,info) := internal st in
   do! ptr <- get (regs st) syscall_arg1;
     (* Removing the return clause makes Coq loop... *)
   match ptr return option (state t) with
   | ptr@V(PTR color) =>
-    if ohead [seq x <- info | block_color x == Some color] is Some x then
-      let i := index x info in
-      if (block_base x <=? ptr <? block_base x + block_size x) then
-        let P := fun n => memory in
-        let upd_fun := fun n acc =>
-          if upd acc (block_base x + Z_to_word (Z.of_nat n)) (0@FREE) is Some mem then mem else acc
-        in
-        let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z (block_size x))) in
-        let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
-        in
-        Some (State mem' (regs st) pcv.+1@pcl (next_color,info'))
-        else None
+    do! x <- ohead [seq x <- info | block_color x == Some color];
+    let i := index x info in
+    if (block_base x <=? ptr <? block_base x + block_size x) then
+      let P := fun n => Symbolic.memory t in
+      let upd_fun := fun n acc =>
+        if upd acc (block_base x + Z_to_word (Z.of_nat n)) (0@FREE) is Some mem then mem else acc
+      in
+      let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z (block_size x))) in
+      let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
+      in 
+      Some (State mem' (regs st) pcv.+1@pcl (next_color,info'))
     else None
   | _ => None
   end.
-*)
 
 Definition sizeof_fun (st : state t) : option (state t) :=
-None.
-(* TODO: this just loops ... WTF?
   let: pcv@pcl := pc st in
   let: (next_color,inf) := internal st in
   do! ptr <- get (regs st) syscall_arg1;
   match ptr return option (state t) with
   | ptr@V(PTR color) =>
-    if ohead [seq x <- inf | block_color x == Some color] is Some x then
-      let size := Z_to_word (Z_of_nat (block_size x)) in
-      let regs' := upd (reg st) syscall_ret size@INT in
-      Some (State mem regs' pcv.+1@pcl (next_color,inf))
-    else None
+    do! x <- ohead [seq x <- inf | block_color x == Some color];
+    do! regs' <- upd (regs st) syscall_ret ((block_size x)@V(INT));
+    Some (State (mem st) regs' pcv.+1@pcl (next_color,inf))
   | _ => None
   end.
-*)
 
 Definition basep_fun (st : state t) : option (state t) :=
 None.
