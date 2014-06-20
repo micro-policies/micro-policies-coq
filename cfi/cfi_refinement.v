@@ -45,19 +45,7 @@ Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) :
       (STEPA: step_a cst cst'),
 (*      (NOSTEP: ~step cst cst'), *)
       exists ast', step_a ast ast' /\ refine_state ast' cst'
-        (* /\ ~step ast ast' *);
-
-  (* old, get rid of this *)
-  backwards_refinement_single : 
-    forall ast cst cst'
-      (REF: refine_state ast cst)
-      (STEP: cfi_step cmachine cst cst'),
-      (visible cst cst' = true /\
-       exists ast', cfi_step amachine ast ast' (* <- implied by line below *)  /\ refine_state ast' cst' /\ 
-                    ((step cst cst' /\ step ast ast') \/ (step_a cst cst' /\ step_a ast ast'))) 
-      \/
-      (visible cst cst' = false /\
-       refine_state ast cst')
+        (* /\ ~step ast ast' *)
 
 }.
 
@@ -114,14 +102,6 @@ Class machine_refinement_specs := {
     succ asi asj = true ->
     succ csi csj = true;
 
-  (* Why for concrete machine too??? If we could avoid this, we should.
-     Try to do proof below without it! *)
-  (* No longer used, remove
-  vio_noattacker : forall (csi csj : @state t cmachine),
-    succ csi csj = false ->
-    step csi csj ->
-    ~ step_a csi csj;
-  *)
   
   av_no_attacker : forall (asi asj : @state t amachine),
     succ asi asj = false ->
@@ -338,6 +318,22 @@ Proof.
         now assumption.
 Qed.
 
+(* Lemma weak_preserves_cfi_trace : forall axs cxs, *)
+(*     (forall csi csj, *)
+(*        In2 csi csj cxs -> *)
+(*        step csi csj -> *)
+(*        visible csi csj = true -> *)
+(*          exists asi asj, *)
+(*            In2 asi asj axs /\ step asi asj *)
+(*            /\ refine_state asi csi /\ refine_state asj csj) -> *)
+(*     trace_has_cfi amachine axs -> *)
+(*     trace_has_cfi cmachine cxs. *)
+(* Proof. *)
+(*   intros axs cxs H TSAFE. *)
+(*   intros csi csj IN2. *)
+  
+  
+
 (* Q: Do we have anything like this? Maybe a weaker variant?
    Might be useful for the split_refine_traces? *)
 Lemma refine_traces_unique_proof : forall axs cxs
@@ -345,6 +341,22 @@ Lemma refine_traces_unique_proof : forall axs cxs
   (H2 : refine_traces axs cxs),
   H1 = H2.
 Admitted.
+
+(* Lemma split_refine_traces' axs ahs atl cxs asi asj csi csj : *)
+(*   axs = ahs ++ asi :: asj :: atl -> *)
+(*   refine_traces axs cxs -> *)
+(*   In2 asi asj axs -> *)
+(*   In2 csi csj cxs -> *)
+(*   visible csi csj = true -> *)
+(*   refine_state asi csi -> *)
+(*   refine_state asj csj -> *)
+(*   exists chs ctl, *)
+(*     refine_traces (ahs ++ [asi]) (chs ++ [csi]) /\ *)
+(*     refine_traces (asj :: atl) (csj :: ctl) /\ *)
+(*     cxs = chs ++ csi :: csj :: ctl. *)
+(* Proof. *)
+(*   intros ALST RTRACE IN2 IN2' VIS REFI REFJ. *)
+  
 
 Lemma split_refine_traces cst cst' ast ast' axs ahs atl cxs asi asj csi csj :
   axs = ahs ++ asi :: asj :: atl ->
