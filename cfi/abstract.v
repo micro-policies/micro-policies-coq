@@ -125,18 +125,10 @@ Inductive step : state -> state -> Prop :=
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',w,b)
 | step_syscall : forall imem dmem dmem' reg reg' pc pc' sc,
                  forall (FETCH : get imem pc = None),
-                 forall (GETCALL : get_syscall pc = Some sc),
-                 forall (VALID : valid_jmp pc (address sc) = true), 
+                 forall (GETCALL : get_syscall pc = Some sc), 
                  forall (CALL : sem sc (imem,dmem,reg,pc,true) =
                                 Some (imem,dmem',reg',pc',true)),
-                 step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc',true)
-| step_syscall_fail : 
-    forall imem dmem reg pc sc,
-    forall (FETCH : get imem pc = None),
-    forall (GETCALL : get_syscall pc = Some sc),
-    forall (VALID : valid_jmp pc (address sc) = false), 
-    (* forall (CALL : sem sc (imem,dmem,reg,pc,true) = None), *)
-      step (imem,dmem,reg,pc,true) (imem,dmem,reg,(address sc),false).
+                 step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc',true).
 
 (*unused so far*)
 Hypothesis step_determ : forall s s' s'', step s s' -> step s s'' -> s' = s''.
@@ -161,9 +153,9 @@ Definition succ (st : state) (st' : state) : bool :=
         | None => false
         | _ => pc' == pc .+1
       end
-    | None =>
+    | None => 
       match get_syscall pc with
-        | Some sc => valid_jmp pc (address sc)
+        | Some sc => true (* Double-check *)
         | None => false
       end
   end.
@@ -321,7 +313,6 @@ Proof.
      - inversion STEPA.
      - inversion STEP. }
 Qed.
-
 
 End WithClasses.
 

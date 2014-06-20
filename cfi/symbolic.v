@@ -123,7 +123,11 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
         | None => false
         | _ => pc_s' == pc_s .+1
       end
-    | None => false
+    | None =>
+      match Symbolic.get_syscall table pc_s with
+        | Some sc => true
+        | None => false
+      end
   end.
 
 Definition initial (s : Symbolic.state t) := True.
