@@ -126,21 +126,30 @@ Definition lift_binop (f : binop) (x y : value) :=
          | ValInt w1, ValInt w2 => Some (ValInt (binop_denote f w1 w2))
          | ValPtr(b1,w1), ValPtr (b2,w2)=>
            if b1 == b2 then Some (ValInt (binop_denote f w1 w2))
-           else Some (ValInt (Z_to_word (0%Z))) (* 0 for false *)
+           else None
           | _, _ => None
          end
   | LEQ => match x, y with
          | ValInt w1, ValInt w2 => Some (ValInt (binop_denote f w1 w2))
          | ValPtr(b1,w1), ValPtr (b2,w2)=>
            if b1 == b2 then Some (ValInt (binop_denote f w1 w2))
-           else None (* comparing pointers to different regions dissallowed
-                        as it would expose too much about allocation *)
+           else None
           | _, _ => None
          end
   | _ => match x, y with
          | ValInt w1, ValInt w2 => Some (ValInt (binop_denote f w1 w2))
          | _, _ => None
          end
+  end.
+
+Definition bool_to_word (b : bool) : word :=
+  Z_to_word (if b then 1%Z else 0%Z).
+
+Definition total_eq (x y : value) : bool :=
+  match x, y with
+    | ValInt w1, ValInt w2 => w1 == w2
+    | ValPtr(b1,o1), ValPtr (b2,o2) => (b1 == b2) && (o1 == o2)
+    | _, _ => false
   end.
 
 Inductive step : state -> state -> Prop :=
@@ -217,40 +226,31 @@ Inductive step : state -> state -> Prop :=
              forall (PTR :      get reg syscall_arg1 = Some (ValPtr (b,o))),
              forall (ALLOC :    free_fun mem b = Some mem'),
              step (mkState mem reg pc) (mkState mem' reg pc.+1)
-| step_sizeof : forall mem reg reg' pc i r b o fr,
+| step_size : forall mem reg reg' pc i r b o fr,
     forall (PC   : getv mem pc = Some (ValInt i)),
     forall (INST : decode_instr i = Some (Jal _ r)),
-    forall (RW   : get reg r = Some (ValInt sizeof_addr)),
+    forall (RW   : get reg r = Some (ValInt size_addr)),
     forall (PTR  : get reg syscall_arg1 = Some (ValPtr (b,o))),
     forall (MEM  : get mem b = Some fr),
     let size := ValInt (Z_to_word (Z_of_nat (List.length fr))) in
     forall (UPD  : upd reg syscall_ret size = Some reg'),
     step (mkState mem reg pc) (mkState mem reg' pc.+1)
-| step_basep : forall mem reg reg' pc i r b o,
+| step_base : forall mem reg reg' pc i r b o,
     forall (PC   : getv mem pc = Some (ValInt i)),
     forall (INST : decode_instr i = Some (Jal _ r)),
-    forall (RW   : get reg r = Some (ValInt basep_addr)),
+    forall (RW   : get reg r = Some (ValInt base_addr)),
     forall (PTR  : get reg syscall_arg1 = Some (ValPtr (b,o))),
     forall (UPD  : upd reg syscall_ret (ValPtr (b,Z_to_word 0%Z)) = Some reg'),
     step (mkState mem reg pc) (mkState mem reg' pc.+1)
-| step_offp : forall mem reg reg' pc i r b o,
+| step_eq : forall mem reg reg' pc i r v1 v2,
     forall (PC   : getv mem pc = Some (ValInt i)),
     forall (INST : decode_instr i = Some (Jal _ r)),
-    forall (RW   : get reg r = Some (ValInt offp_addr)),
-    forall (PTR  : get reg syscall_arg1 = Some (ValPtr (b,o))),
-    forall (UPD  : upd reg syscall_ret (ValInt o) = Some reg'),
-    step (mkState mem reg pc) (mkState mem reg' pc.+1)
-| step_eqp : forall mem reg reg' pc i r b1 o1 b2 o2,
-    forall (PC   : getv mem pc = Some (ValInt i)),
-    forall (INST : decode_instr i = Some (Jal _ r)),
-    forall (RW   : get reg r = Some (ValInt offp_addr)),
-    forall (PTR1 : get reg syscall_arg1 = Some (ValPtr (b1,o1))),
-    forall (PTR2 : get reg syscall_arg2 = Some (ValPtr (b2,o2))),
-    let x := if (b1 == b2) && (o1 == o2) then Z_to_word 1%Z
-             else Z_to_word 0%Z in
-    forall (UPD  : upd reg syscall_ret (ValInt x) = Some reg'),
-    step (mkState mem reg pc) (mkState mem reg' pc.+1)
-.
+    forall (RW   : get reg r = Some (ValInt eq_addr)),
+    forall (V1   : get reg syscall_arg1 = Some v1),
+    forall (V2   : get reg syscall_arg2 = Some v2),
+    let v := ValInt (bool_to_word (total_eq v1 v2)) in
+    forall (UPD  : upd reg syscall_ret v = Some reg'),
+    step (mkState mem reg pc) (mkState mem reg' pc.+1).
 
 Variable initial_block : block.
 

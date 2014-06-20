@@ -350,34 +350,46 @@ Definition free_fun (st : state t) : option (state t) :=
   | _ => None
   end.
 
-Definition sizeof_fun (st : state t) : option (state t) :=
+(* This factors out the common part of sizeof, basep, and offp *)
+Definition ptr_fun (st : state t)
+    (f : block_info -> word -> atom) : option (state t) :=
   let: pcv@pcl := pc st in
   let: (next_color,inf) := internal st in
   do! ptr <- get (regs st) syscall_arg1;
   match ptr return option (state t) with
   | ptr@V(PTR color) =>
     do! x <- ohead [seq x <- inf | block_color x == Some color];
-    do! regs' <- upd (regs st) syscall_ret ((block_size x)@V(INT));
+    do! regs' <- upd (regs st) syscall_ret (f x color);
     Some (State (mem st) regs' pcv.+1@pcl (next_color,inf))
   | _ => None
   end.
 
-Definition basep_fun (st : state t) : option (state t) :=
-None.
+Definition sizeof_fun (st : state t) : option (state t) :=
+  ptr_fun st (fun x _ => (block_size x)@V(INT)).
 
-Definition offp_fun (st : state t) : option (state t) :=
-None.
+Definition basep_fun (st : state t) : option (state t) :=
+  ptr_fun st (fun x color => (block_base x)@V(PTR color)).
 
 Definition eqp_fun (st : state t) : option (state t) :=
-None.
+  let: pcv@pcl := pc st in
+  let: (next_color,inf) := internal st in
+  do! ptr1 <- get (regs st) syscall_arg1;
+  do! ptr2 <- get (regs st) syscall_arg2;
+  match ptr1, ptr2 return option (state t) with
+  | ptr1@V(PTR color1), ptr2@V(PTR color2) =>
+    let b := if (color1 == color2) && (ptr1 == ptr2) then Z_to_word 1%Z
+             else Z_to_word 0%Z in
+    do! regs' <- upd (regs st) syscall_ret b@V(INT);
+    Some (State (mem st) regs' pcv.+1@pcl (next_color,inf))
+  | _, _ => None
+  end.
 
 Definition memsafe_syscalls : list (syscall t) :=
   [Syscall malloc_addr malloc_fun;
    Syscall free_addr free_fun;
-   Syscall sizeof_addr sizeof_fun;
-   Syscall basep_addr basep_fun;
-   Syscall offp_addr malloc_fun;
-   Syscall eqp_addr malloc_fun].
+   Syscall size_addr sizeof_fun;
+   Syscall base_addr basep_fun;
+   Syscall eq_addr malloc_fun].
 
 Definition step := step memsafe_syscalls.
 
