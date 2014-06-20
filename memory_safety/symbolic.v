@@ -342,7 +342,7 @@ Definition free_fun (st : state t) : option (state t) :=
 None.
 (* TODO: this just loops ... WTF?
   let: pcv@pcl := pc st in
-  let: (color,info) := internal st in
+  let: (next_color,info) := internal st in
   do! ptr <- get (regs st) syscall_arg1;
     (* Removing the return clause makes Coq loop... *)
   match ptr return option (state t) with
@@ -357,16 +357,46 @@ None.
         let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z (block_size x))) in
         let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
         in
-        Some (State mem' (regs st) pcv.+1@pcl (color,info'))
+        Some (State mem' (regs st) pcv.+1@pcl (next_color,info'))
         else None
     else None
   | _ => None
   end.
 *)
 
+Definition sizeof_fun (st : state t) : option (state t) :=
+None.
+(* TODO: this just loops ... WTF?
+  let: pcv@pcl := pc st in
+  let: (next_color,inf) := internal st in
+  do! ptr <- get (regs st) syscall_arg1;
+  match ptr return option (state t) with
+  | ptr@V(PTR color) =>
+    if ohead [seq x <- inf | block_color x == Some color] is Some x then
+      let size := Z_to_word (Z_of_nat (block_size x)) in
+      let regs' := upd (reg st) syscall_ret size@INT in
+      Some (State mem regs' pcv.+1@pcl (next_color,inf))
+    else None
+  | _ => None
+  end.
+*)
+
+Definition basep_fun (st : state t) : option (state t) :=
+None.
+
+Definition offp_fun (st : state t) : option (state t) :=
+None.
+
+Definition eqp_fun (st : state t) : option (state t) :=
+None.
+
 Definition memsafe_syscalls : list (syscall t) :=
   [Syscall malloc_addr malloc_fun;
-   Syscall free_addr free_fun].
+   Syscall free_addr free_fun;
+   Syscall sizeof_addr sizeof_fun;
+   Syscall basep_addr basep_fun;
+   Syscall offp_addr malloc_fun;
+   Syscall eqp_addr malloc_fun].
 
 Definition step := step memsafe_syscalls.
 

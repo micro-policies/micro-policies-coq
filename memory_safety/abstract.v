@@ -216,7 +216,41 @@ Inductive step : state -> state -> Prop :=
              forall (RW :       get reg r = Some (ValInt free_addr)),
              forall (PTR :      get reg syscall_arg1 = Some (ValPtr (b,o))),
              forall (ALLOC :    free_fun mem b = Some mem'),
-             step (mkState mem reg pc) (mkState mem' reg pc.+1).
+             step (mkState mem reg pc) (mkState mem' reg pc.+1)
+| step_sizeof : forall mem reg reg' pc i r b o fr,
+    forall (PC   : getv mem pc = Some (ValInt i)),
+    forall (INST : decode_instr i = Some (Jal _ r)),
+    forall (RW   : get reg r = Some (ValInt sizeof_addr)),
+    forall (PTR  : get reg syscall_arg1 = Some (ValPtr (b,o))),
+    forall (MEM  : get mem b = Some fr),
+    let size := ValInt (Z_to_word (Z_of_nat (List.length fr))) in
+    forall (UPD  : upd reg syscall_ret size = Some reg'),
+    step (mkState mem reg pc) (mkState mem reg' pc.+1)
+| step_basep : forall mem reg reg' pc i r b o,
+    forall (PC   : getv mem pc = Some (ValInt i)),
+    forall (INST : decode_instr i = Some (Jal _ r)),
+    forall (RW   : get reg r = Some (ValInt basep_addr)),
+    forall (PTR  : get reg syscall_arg1 = Some (ValPtr (b,o))),
+    forall (UPD  : upd reg syscall_ret (ValPtr (b,Z_to_word 0%Z)) = Some reg'),
+    step (mkState mem reg pc) (mkState mem reg' pc.+1)
+| step_offp : forall mem reg reg' pc i r b o,
+    forall (PC   : getv mem pc = Some (ValInt i)),
+    forall (INST : decode_instr i = Some (Jal _ r)),
+    forall (RW   : get reg r = Some (ValInt offp_addr)),
+    forall (PTR  : get reg syscall_arg1 = Some (ValPtr (b,o))),
+    forall (UPD  : upd reg syscall_ret (ValInt o) = Some reg'),
+    step (mkState mem reg pc) (mkState mem reg' pc.+1)
+| step_eqp : forall mem reg reg' pc i r b1 o1 b2 o2,
+    forall (PC   : getv mem pc = Some (ValInt i)),
+    forall (INST : decode_instr i = Some (Jal _ r)),
+    forall (RW   : get reg r = Some (ValInt offp_addr)),
+    forall (PTR1 : get reg syscall_arg1 = Some (ValPtr (b1,o1))),
+    forall (PTR2 : get reg syscall_arg2 = Some (ValPtr (b2,o2))),
+    let x := if (b1 == b2) && (o1 == o2) then Z_to_word 1%Z
+             else Z_to_word 0%Z in
+    forall (UPD  : upd reg syscall_ret (ValInt x) = Some reg'),
+    step (mkState mem reg pc) (mkState mem reg' pc.+1)
+.
 
 Variable initial_block : block.
 
