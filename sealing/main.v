@@ -1,4 +1,5 @@
 (*
+    why is the run with the current transfer function succeeding??
     write a less silly transfer function
     write better testing stuff
     fill in the syscall implementations
