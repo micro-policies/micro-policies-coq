@@ -97,6 +97,13 @@ Fixpoint set_difference (xs ys : list A) : list A :=
                                 end
      end) ys.
 
+Definition disjoint (xs ys : list A) : bool :=
+  match set_intersection xs ys, xs, ys with
+    | [] , [] , [] => false
+    | [] , _  , _  => true
+    | _  , _  , _  => false
+  end.
+
 End functions.
 
 (*** Theorems ***)
@@ -798,6 +805,44 @@ Theorem set_difference_intersection_distrib : forall xs ys zs,
 Proof. by_set_extensionality. Qed.
 (*Global*) Hint Resolve @set_difference_intersection_distrib.
 
+Theorem disjoint_irrefl : forall xs,
+  disjoint xs xs = false.
+Proof.
+  now intros; unfold disjoint; rewrite set_intersection_self_id; destruct xs.
+Qed.
+(*Global*) Hint Resolve @disjoint_irrefl.
+
+Theorem disjoint_comm : forall xs ys,
+  is_set xs = true -> is_set ys = true ->
+  disjoint xs ys = disjoint ys xs.
+Proof.
+  now intros; unfold disjoint; rewrite set_intersection_comm; destruct xs,ys.
+Qed.
+(*Global*) Hint Resolve @disjoint_comm.
+
+Theorem disjoint_subset : forall xs ys zs,
+  is_set xs = true ->
+  is_set ys = true ->
+  is_set zs = true ->
+  nonempty xs = true ->
+  (forall e, In e xs -> In e ys) ->
+  disjoint ys zs = true ->
+  disjoint xs zs = true.
+Proof.
+  intros xs ys zs GOOD1 GOOD2 GOOD3 NONEMPTY SUBSET DISJOINT;
+    unfold disjoint in *; simpl in *.
+  assert (SUBSET' : forall e, In e (set_intersection xs zs) ->
+                              In e (set_intersection ys zs)) by
+    (intros e; specialize SUBSET with e;
+     repeat rewrite set_intersection_spec; solve [eauto 2 | tauto]).
+  destruct (set_intersection ys zs).
+  - destruct (set_intersection xs zs).
+    + destruct xs; [inversion NONEMPTY | reflexivity].
+    + not_subset_cons_nil.
+  - inversion DISJOINT.
+Qed.
+(*Global*) Hint Resolve @disjoint_subset.
+
 Theorem iterate_set : forall f x n,
   (forall y, y < f y) ->
   is_set (iterate f x n) = true.
@@ -864,5 +909,8 @@ Hint Resolve @set_difference_union_distrib.
 Hint Resolve @set_difference_union_collapse.
 Hint Resolve @set_intersection_difference_distrib.
 Hint Resolve @set_difference_intersection_distrib.
+Hint Resolve @disjoint_irrefl.
+Hint Resolve @disjoint_comm.
+Hint Resolve @disjoint_subset.
 Hint Resolve @iterate_set.
 (* End globalized hint section *)

@@ -32,6 +32,15 @@ Inductive stag :=
 | DATA   : forall (c : word t) (I W : list (word t)), stag
 | REG    : stag.
 
+Definition stag_is_PC (L : stag) : bool :=
+  match L with PC _ _ => true | _ => false end.
+
+Definition stag_is_DATA (L : stag) : bool :=
+  match L with DATA _ _ _ => true | _ => false end.
+
+Definition stag_is_REG (L : stag) : bool :=
+  match L with REG => true | _ => false end.
+
 Definition stag_compartment (L : stag) : option (word t) :=
   match L with PC _ c | DATA c _ _ => Some c | _ => None end.
 
@@ -257,7 +266,7 @@ Definition add_to_jump_targets (s : Symbolic.state t)
   end.
 
 Definition add_to_shared_memory (s : Symbolic.state t)
-                               : option (Symbolic.state t) :=
+                                : option (Symbolic.state t) :=
   match s with
     | Symbolic.State M R (pc @ (PC _ c)) si =>
       do! p @ _           <- get R rAdd;
@@ -275,6 +284,32 @@ Definition syscalls : list (Symbolic.syscall t) :=
    Symbolic.Syscall add_to_shared_memory_addr REG add_to_shared_memory].
 
 Definition step := Symbolic.step syscalls.
+
+Definition good_internal (si : sfi_internal) : bool :=
+  let: Internal next ids := si in
+  forallb (fun set_id => let: (set,id) := set_id in
+                         is_set set && (id <? next))
+          ids.
+
+Definition interned_tag (ids : list (list (word t) * word t))
+                        (L : stag) : bool :=
+  match L with
+    | DATA _ I W => is_some (assoc_list_lookup ids (eq_op I)) &&
+                    is_some (assoc_list_lookup ids (eq_op W))
+    | _ => true (* or false *)
+  end.
+
+(* good_internal & interned_tag -> all lists are sets *)
+
+Definition good_tags (s : Symbolic.state t) : Prop :=
+  let: Symbolic.State M R pc si := s in
+  (forall p v, get M p = Some v -> stag_is_DATA (common.tag v) &&
+                                   interned_tag (set_ids si) (common.tag v)) /\
+  (forall r v, get R r = Some v -> stag_is_REG  (common.tag v)) /\
+  stag_is_PC (common.tag pc).
+
+Definition good_state (s : Symbolic.state t) : Prop :=
+  good_tags s /\ good_internal (Symbolic.internal s).  
 
 End WithClasses.
 
