@@ -120,6 +120,12 @@ Variable table : list syscall.
 Definition get_syscall (addr : word) : option syscall :=
   find (fun sc => address sc == addr) table.
 
+Definition run_syscall (sc : syscall) (st : state) : option state :=
+  match handler (mkMVec SERVICE (common.tag (pc st)) (entry_tag sc) (Vector.nil _)) with
+  | Some _ => sem sc st
+  | None => None
+  end.
+
 Definition next_state (st : state) (mvec : MVec tag)
                       (k : RVec tag -> option state) : option state :=
   do! rvec <- handler mvec;
@@ -221,7 +227,7 @@ Inductive step (st st' : state) : Prop :=
     (ST : st = State mem reg pc@tpc int)
     (PC : get mem pc = None)
     (GETCALL : get_syscall pc = Some sc)
-    (CALL : sem sc st = Some st'), step st st'.
+    (CALL : run_syscall sc st = Some st'), step st st'.
 
 End WithClasses.
 

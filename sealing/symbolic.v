@@ -68,6 +68,7 @@ Definition sealing_handler (mv : MVec stag) : option (RVec stag) :=
   | mkMVec JUMP      _ DATA [DATA]          => Some (mkRVec none none)
   | mkMVec BNZ       _ DATA [DATA]          => Some (mkRVec none none)
   | mkMVec JAL       _ DATA [DATA; _]       => Some (mkRVec none DATA)
+  | mkMVec SERVICE   _ _    []              => Some (mkRVec none none)
   | mkMVec _         _ _ _                  => None
   end.
 

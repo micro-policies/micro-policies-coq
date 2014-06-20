@@ -58,6 +58,7 @@ Definition cfi_handler (umvec : Symbolic.MVec cfi_tag) : option (Symbolic.RVec c
     if valid_jmp n m then Some (mkRVec DATA DATA) else None
   | mkMVec    _    DATA  (INSTR None)  _  => 
     Some (mkRVec DATA DATA)
+  | mkMVec   SERVICE _ _ _ => Some (mkRVec DATA DATA) (* Always allow syscalls for now *)
   | mkMVec _ _ _ _ => None
   end.
 

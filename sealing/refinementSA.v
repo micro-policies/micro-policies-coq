@@ -261,6 +261,7 @@ Proof.
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];
       move => GETCALL; injection GETCALL; move {GETCALL} => ?; subst.
     + {(* mkkey *)
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL; move: CALL.
     case lt_skey : (skey <? Sym.max_key) => // CALL. 
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
@@ -319,6 +320,7 @@ Proof.
     }
     + {(* seal *)
     (* break up the effects of the system call *)
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL.
     apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
     destruct tp; try discriminate CALL.
@@ -346,6 +348,7 @@ Proof.
     }
     + {(* unseal -- very similar to seal *)
     (* break up the effects of the system call *)
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL.
     apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
     destruct tp; try discriminate CALL.

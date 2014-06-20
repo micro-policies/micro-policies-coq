@@ -226,46 +226,6 @@ Qed.
 
 Import Vector.VectorNotations.
 
-(*
-Lemma state_on_syscalls st st' :
-  forall (ISUSER : in_user st = true)
-         (CACHE : cache_correct (Concrete.cache st))
-         (ISCALL : word_lift (fun t => is_call t) (common.tag (Concrete.pc st')) = true)
-         (STEP : Concrete.step _ masks st st'),
-    Concrete.mem st' = Concrete.mem st /\
-    Concrete.cache st' = Concrete.cache st /\
-    exists r i tpc ic ti t1 old told trpc tr,
-      Concrete.regs st' =
-      TotalMaps.upd (Concrete.regs st) ra
-                       (common.val (Concrete.pc st) + Z_to_word 1)%w@(encode (USER tr false)) /\
-      common.tag (Concrete.pc st') = encode (USER trpc true) /\
-      common.tag (Concrete.pc st) = encode (USER tpc ic) /\
-      PartMaps.get (Concrete.mem st) (common.val (Concrete.pc st)) =
-      Some i@(encode (USER ti false)) /\
-      decode_instr i = Some (Jal _ r) /\
-      TotalMaps.get (Concrete.regs st) r = (common.val (Concrete.pc st'))@(encode (USER t1 false)) /\
-      TotalMaps.get (Concrete.regs st) ra = old@(encode (USER told false)) /\
-      Concrete.cache_lookup _ (Concrete.cache st) masks
-                            (encode_mvec (mvec_of_umvec ic (Symbolic.mkMVec JAL tpc ti [t1; told]))) =
-      Some (encode_rvec (rvec_of_urvec JAL (Symbolic.mkRVec trpc tr))).
-Proof.
-  intros.
-  inv STEP;
-  unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
-         Concrete.next_state_pc, Concrete.next_state,
-         Concrete.miss_state in *;
-  match_inv;
-  try analyze_cache;
-  simpl in *;
-  try erewrite encode_kernel_tag in *;
-  try solve [repeat simpl_word_lift; simpl in *; discriminate].
-  repeat (split; eauto).
-  unfold encode_mvec, encode_rvec, mvec_of_umvec, rvec_of_urvec. simpl.
-  do 10 eexists.
-  repeat (split; eauto).
-Qed.
-*)
-
 Lemma user_kernel_user_simulation ast cst cst' :
   refine_state ki table ast cst ->
   user_kernel_user_step cst cst' ->
@@ -291,7 +251,7 @@ Proof.
                          Symbolic.entry_tag sc = t.
     { apply/WFENTRYPOINTS. rewrite GET eq_tag_eq_word eqxx //. }
     move: SC => [sc [GETSC ?]].
-    case SCEXEC: (Symbolic.sem sc (Symbolic.State amem aregs pc@atpc int))
+    case SCEXEC: (Symbolic.run_syscall sc (Symbolic.State amem aregs pc@atpc int))
       => [[amem' aregs' [pc' atpc'] int']|].
     + exploit syscalls_correct_allowed_case; eauto.
       intros (cmem' & creg' & cache' & pct' & EXEC' &

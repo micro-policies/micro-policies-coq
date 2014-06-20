@@ -246,7 +246,7 @@ Definition refine_syscalls
     Abstract.get_syscall atbl addr = Some acall ->
     Symbolic.get_syscall stbl addr = Some scall ->
     refine_syscall (@Abstract.sem t ap acall)
-                   (@Symbolic.sem t sym_params scall).
+                   (@Symbolic.run_syscall t sym_params scall).
 
 Hypothesis refine_syscalls_correct : refine_syscalls atable stable.
 
@@ -255,7 +255,7 @@ Hypothesis syscalls_backwards_simulation :
     refine_syscalls atable stable ->
     Symbolic.get_syscall stable addr = Some sc ->
     refine_state ast sst ->
-    Symbolic.sem sc sst = Some sst' ->
+    Symbolic.run_syscall sc sst = Some sst' ->
     exists ac ast',
       Abstract.get_syscall atable addr = Some ac /\
       Abstract.sem ac ast = Some ast' /\

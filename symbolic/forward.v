@@ -290,7 +290,7 @@ Ltac solve_refine_state :=
 
 Ltac analyze_syscall :=
   match goal with
-  | H : Symbolic.sem _ _ = Some ?ast' |- _ =>
+  | H : Symbolic.run_syscall _ _ = Some ?ast' |- _ =>
     destruct ast' as [amem' aregs' [apc' tapc'] int'];
     exploit syscalls_correct_allowed_case; eauto;
     intros;
@@ -365,7 +365,7 @@ Proof.
       | solve_refine_state ] ]
       || let op := current_instr_opcode in fail 3 "failed miss case" op
     ]
-  | _ : Symbolic.sem _ _ = Some _ |- _ => analyze_syscall
+  | _ : Symbolic.run_syscall _ _ = Some _ |- _ => analyze_syscall
   end.
 
 Qed.

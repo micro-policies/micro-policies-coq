@@ -691,10 +691,11 @@ Class kernel_code_correctness : Prop := {
     Symbolic.get_syscall table apc = Some sc ->
     (* and running sc on the current abstract machine state reaches a
        new state with primes on everything... *)
-    Symbolic.sem sc (Symbolic.State amem areg apc@tpc int) = Some (Symbolic.State amem' areg' apc'@tpc' int') ->
+    Symbolic.run_syscall sc (Symbolic.State amem areg apc@tpc int) = Some (Symbolic.State amem' areg' apc'@tpc' int') ->
     (* THEN if we start the concrete machine in kernel mode at the
        beginning of the corresponding system call code and let it run
        until it reaches a user-mode state with primes on everything... *)
+
     exists cmem' creg' cache' epc',
       (* CH: this doesn't quite agree with what's happening in symbolic.v;
              should bring the step_syscall rule back in sync *)
@@ -726,7 +727,7 @@ Class kernel_code_correctness : Prop := {
     mvec_in_kernel cmem ->
     wf_entry_points cmem ->
     Symbolic.get_syscall table apc = Some sc ->
-    Symbolic.sem sc (Symbolic.State amem areg apc@tpc int) = None ->
+    Symbolic.run_syscall sc (Symbolic.State amem areg apc@tpc int) = None ->
     (* CH: could write handler_correct_disallowed_case in the same way *)
     ~ user_kernel_user_step (Concrete.mkState cmem
                                               creg
