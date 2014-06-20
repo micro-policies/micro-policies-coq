@@ -170,7 +170,7 @@ Ltac simpl_word_lift :=
 
 Let at_call (cst : Concrete.state mt) : bool :=
   match PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) with
-  | Some _@it => it == encode ENTRY
+  | Some _@it => word_lift [eta @is_entry_tag _] it
   | None => false
   end.
 
@@ -197,8 +197,8 @@ Proof.
   match_inv;
   try analyze_cache;
   simpl in *;
-  solve [repeat simpl_word_lift; simpl in *; discriminate | eauto |
-         rewrite /at_call PC eq_refl // in NCALL ].
+  try solve [repeat simpl_word_lift; simpl in *; discriminate | eauto |
+             rewrite /at_call PC /word_lift decodeK // in NCALL ].
 Qed.
 
 Lemma kernel_user_exec_determ k s1 s2 :
@@ -283,7 +283,14 @@ Proof.
     destruct (decode tpc) as [[tpc'| |]|] eqn:DEC => //. subst tpc'.
     apply encodeK in DEC. subst tpc.
     rewrite /at_call /= in ATCALL.
-    move/WFENTRYPOINTS: (ATCALL) => [sc GETSC].
+    case GET: (PartMaps.get cmem pc) => [[? it]|];
+    rewrite GET /word_lift /is_entry_tag // in ATCALL.
+    case DEC: (decode it) => [[ | | t]|];
+    rewrite DEC // in ATCALL. apply encodeK in DEC. subst it.
+    have SC : exists sc, Symbolic.get_syscall table pc = Some sc /\
+                         Symbolic.entry_tag sc = t.
+    { apply/WFENTRYPOINTS. rewrite GET eq_tag_eq_word eqxx //. }
+    move: SC => [sc [GETSC ?]].
     case SCEXEC: (Symbolic.sem sc (Symbolic.State amem aregs pc@atpc int))
       => [[amem' aregs' [pc' atpc'] int']|].
     + exploit syscalls_correct_allowed_case; eauto.
@@ -293,9 +300,11 @@ Proof.
       right.
       { exists (Symbolic.State amem' aregs' pc'@atpc' int'). split.
         - eapply Symbolic.step_syscall; eauto.
-          case GET: (PartMaps.get amem pc) => [[i it]|] //.
-          move/REFM: GET => GET.
-          rewrite GET eq_tag_eq_word // in ATCALL.
+          case GET': (PartMaps.get amem pc) => [[? ?]|] //.
+          move/REFM: GET' => GET'.
+          rewrite GET in GET'.
+          move: GET' => [[? H]].
+          by apply encode_inj in H.
         - unfold refine_state, in_user, word_lift. simpl.
           rewrite decodeK. simpl.
           repeat (split; eauto). }

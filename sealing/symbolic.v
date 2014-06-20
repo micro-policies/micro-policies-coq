@@ -147,9 +147,9 @@ Definition unseal (s : state t) : option (state t) :=
   end.
 
 Definition sealing_syscalls : list (syscall t) :=
-  [Syscall mkkey_addr mkkey;
-   Syscall seal_addr seal;
-   Syscall unseal_addr unseal].
+  [Syscall mkkey_addr DATA mkkey;
+   Syscall seal_addr DATA seal;
+   Syscall unseal_addr DATA unseal].
 
 Definition step := step sealing_syscalls.
 

@@ -178,21 +178,21 @@ Ltac user_data_unchanged :=
     rewrite <- (USERREGS r); eauto
   end.
 
-Lemma no_syscall_no_entry_point mem addr :
+Lemma no_syscall_no_entry_point mem addr t :
   wf_entry_points table mem ->
   Symbolic.get_syscall table addr = None ->
-  negb match PartMaps.get mem addr with
-       | Some _@it => it == encode ENTRY
-       | None => false
-       end = true.
+  ~~ match PartMaps.get mem addr with
+     | Some _@it => it == encode (ENTRY t)
+     | None => false
+     end.
 Proof.
   intros WF GETSC.
   destruct (match PartMaps.get mem addr with
-            | Some _@it => it == encode ENTRY
+            | Some _@it => it == encode (ENTRY t)
             | None => false
             end) eqn:E; trivial.
   apply WF in E.
-  destruct E. congruence.
+  destruct E as [? [? ?]]. congruence.
 Qed.
 
 (* Just for automation *)

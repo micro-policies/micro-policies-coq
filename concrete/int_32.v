@@ -129,22 +129,23 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   decode_instr i :=
     do! t <- unpack i;
     (* Removing the annotation in the match causes this to fail on 8.4pl3 *)
-    Some match t : let int := reg concrete_int_32_t in opcode * int * int * int * int with
-         | (NOP, _, _, _, _) => Nop _
-         | (CONST, r, i1, i2, i3) => Const _ (pack3 (i1,i2,i3): imm concrete_int_32_t) r
-         | (MOV, r1, r2, _, _) => Mov _ r1 r2
-         | (BINOP op, r1, r2, r3, _) => Binop _ op r1 r2 r3
-         | (LOAD, r1, r2, _, _) => Load _ r1 r2
-         | (STORE, r1, r2, _, _) => Store _ r1 r2
-         | (JUMP, r, _, _, _) => Jump _ r
-         | (BNZ, r, i1, i2, i3) => Bnz _ r (pack3 (i1,i2,i3): imm concrete_int_32_t)  
-         | (JAL, r, _, _, _) => Jal _ r
-         | (JUMPEPC, _, _, _, _) => JumpEpc _
-         | (ADDRULE, _, _, _, _) => AddRule _
-         | (GETTAG, r1, r2, _, _) => GetTag _ r1 r2
-         | (PUTTAG, r1, r2, r3, _) => PutTag _ r1 r2 r3
-         | (HALT, _, _, _, _) => Halt _
-         end;
+    match t : let int := reg concrete_int_32_t in opcode * int * int * int * int with
+    | (NOP, _, _, _, _) => Some (Nop _)
+    | (CONST, r, i1, i2, i3) => Some (Const _ (pack3 (i1,i2,i3): imm concrete_int_32_t) r)
+    | (MOV, r1, r2, _, _) => Some (Mov _ r1 r2)
+    | (BINOP op, r1, r2, r3, _) => Some (Binop _ op r1 r2 r3)
+    | (LOAD, r1, r2, _, _) => Some (Load _ r1 r2)
+    | (STORE, r1, r2, _, _) => Some (Store _ r1 r2)
+    | (JUMP, r, _, _, _) => Some (Jump _ r)
+    | (BNZ, r, i1, i2, i3) => Some (Bnz _ r (pack3 (i1,i2,i3): imm concrete_int_32_t)  )
+    | (JAL, r, _, _, _) => Some (Jal _ r)
+    | (JUMPEPC, _, _, _, _) => Some (JumpEpc _)
+    | (ADDRULE, _, _, _, _) => Some (AddRule _)
+    | (GETTAG, r1, r2, _, _) => Some (GetTag _ r1 r2)
+    | (PUTTAG, r1, r2, r3, _) => Some (PutTag _ r1 r2 r3)
+    | (HALT, _, _, _, _) => Some (Halt _)
+    | (SERVICE, _, _, _, _) => None (* Not a real instruction *)
+    end;
 
   Z_to_imm := repr;
 

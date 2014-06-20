@@ -48,20 +48,21 @@ Open Scope nat_scope.
 Inductive tag : Type :=
 | USER (ut : user_tag)
 | KERNEL
-| ENTRY.
+| ENTRY (sct : user_tag).
 
 Definition tag_eq u v :=
   match u, v with
     | USER ut1, USER ut2 => ut1 == ut2
-    | KERNEL, KERNEL
-    | ENTRY, ENTRY => true
+    | KERNEL, KERNEL => true
+    | ENTRY sct1, ENTRY sct2 => sct1 == sct2
     | _, _ => false
   end.
 
 Lemma tag_eqP : Equality.axiom tag_eq.
 Proof.
-move=> [ut1||] [ut2||] /=; try by apply: (iffP idP).
-apply: (iffP eqP) => [[]|[<-]] //.
+move=> [ut1| |sct1] [ut2| |sct2] /=;
+try (by apply: (iffP idP));
+apply: (iffP eqP) => [[]|[<-]] //;
 congruence.
 Qed.
 
@@ -71,6 +72,12 @@ Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 Definition is_user (t : tag) : bool :=
   match t with
   | USER _ => true
+  | _ => false
+  end.
+
+Definition is_entry_tag (t : tag) : bool :=
+  match t with
+  | ENTRY _ => true
   | _ => false
   end.
 
@@ -119,6 +126,7 @@ Definition masks : Masks :=
         | GETTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
         | PUTTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
         | HALT => mk_mask (false,false,false,false,false) (None,None)
+        | SERVICE => mk_mask (false,false,false,false,false) (None,None)
       end
     else
       match opcode with
@@ -136,6 +144,7 @@ Definition masks : Masks :=
         | GETTAG => mk_mask (false,false,false,false,true) (None,None)
         | PUTTAG => mk_mask (false,false,false,false,false) (None,None)
         | HALT => mk_mask (false,false,false,false,false) (None,None)
+        | SERVICE => mk_mask (false,false,false,false,false) (None,None)
       end.
 
 Section handler.
@@ -379,8 +388,11 @@ Definition handler (mvec : Concrete.MVec (word t)) : option (Symbolic.RVec tag) 
         end process ts
       | None => None
       end
-    | Some op, Some (USER tpc), Some ENTRY =>
-      Some (Symbolic.mkRVec KERNEL KERNEL)
+    | Some op, Some (USER tpc), Some (ENTRY ti) =>
+      match uhandler (Symbolic.mkMVec SERVICE tpc ti (Vector.nil _)) with
+      | Some _ =>  Some (Symbolic.mkRVec KERNEL KERNEL)
+      | None => None
+      end
     | _, _, _ => None
     end
   end.
@@ -389,5 +401,5 @@ End handler.
 
 End rules.
 
-Arguments ENTRY {user_tag}.
+Arguments ENTRY {user_tag} _.
 Arguments KERNEL {user_tag}.

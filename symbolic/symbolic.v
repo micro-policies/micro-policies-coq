@@ -25,6 +25,7 @@ Definition nfields (op : opcode) : option (nat * nat) :=
   | JUMP => Some (1, 0)
   | BNZ => Some (1, 0)
   | JAL => Some (2, 1)
+  | SERVICE => Some (0, 0)
   | _ => None
   end.
 
@@ -110,6 +111,7 @@ Record state := State {
 
 Record syscall := Syscall {
   address : word;
+  entry_tag : tag;
   sem : state -> option state
 }.
 
@@ -220,7 +222,6 @@ Inductive step (st st' : state) : Prop :=
     (PC : get mem pc = None)
     (GETCALL : get_syscall pc = Some sc)
     (CALL : sem sc st = Some st'), step st st'.
-    (* TODO: Connect this rule to handler somehow *)
 
 End WithClasses.
 

@@ -291,6 +291,7 @@ Definition less_trivial_masks : Concrete.Masks :=
         | GETTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
         | PUTTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
         | HALT => mk_mask (false,false,false,false,false) (None,None)
+        | SERVICE => mk_mask (false,false,false,false,false) (None,None)
       end
     else
       match opcode with
@@ -308,6 +309,7 @@ Definition less_trivial_masks : Concrete.Masks :=
         | GETTAG => mk_mask (false,false,false,false,true) (None,None)
         | PUTTAG => mk_mask (false,false,false,false,false) (None,None)
         | HALT => mk_mask (false,false,false,false,false) (None,None)
+        | SERVICE => mk_mask (false,false,false,false,false) (None,None)
       end
 .
 End WithClasses.

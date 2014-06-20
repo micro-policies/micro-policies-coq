@@ -35,7 +35,9 @@ Inductive opcode : Set :=
 | ADDRULE
 | GETTAG
 | PUTTAG
-| HALT.
+| HALT
+(* "Virtual" opcode used for describing handlers for system services *)
+| SERVICE.
 
 Scheme Equality for opcode.
 
@@ -61,7 +63,8 @@ Definition opcodes :=
    ADDRULE;
    GETTAG;
    PUTTAG;
-   HALT].
+   HALT;
+   SERVICE].
 
 (* This should be a proof by reflexion... *)
 Lemma opcodesP : forall op, In op opcodes.
@@ -379,6 +382,7 @@ Definition Z_to_op (z : Z) : option opcode :=
   | 20 => Some (BINOP SHRU)
   | 21 => Some (BINOP SHL)
   | 22 => Some HALT
+  | 23 => Some SERVICE
   | _  => None
   end.
 
@@ -406,6 +410,7 @@ Definition op_to_Z (o : opcode) : Z :=
   | BINOP SHRU => 20
   | BINOP SHL  => 21
   | HALT       => 22
+  | SERVICE    => 23
   end.
 
 Definition word_to_op (w : word t) : option opcode :=

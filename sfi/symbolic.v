@@ -258,9 +258,9 @@ Definition add_to_shared_memory (s : Symbolic.state t)
   end.
 
 Definition syscalls : list (Symbolic.syscall t) :=
-  [Symbolic.Syscall isolate_addr              isolate;
-   Symbolic.Syscall add_to_jump_targets_addr  add_to_jump_targets;
-   Symbolic.Syscall add_to_shared_memory_addr add_to_shared_memory].
+  [Symbolic.Syscall isolate_addr              REG isolate;
+   Symbolic.Syscall add_to_jump_targets_addr  REG add_to_jump_targets;
+   Symbolic.Syscall add_to_shared_memory_addr REG add_to_shared_memory].
 
 Definition step := Symbolic.step syscalls.
 

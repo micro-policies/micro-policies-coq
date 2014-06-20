@@ -200,10 +200,11 @@ Qed.
 Variable table : list (Symbolic.syscall mt).
 
 Definition wf_entry_points cmem :=
-  forall addr,
-    (exists sc, Symbolic.get_syscall table addr = Some sc) <->
+  forall addr t,
+    (exists sc, Symbolic.get_syscall table addr = Some sc /\
+                Symbolic.entry_tag sc = t) <->
     match PartMaps.get cmem addr with
-    | Some _@it => it == encode ENTRY
+    | Some _@it => it == encode (ENTRY t)
     | None => false
     end = true.
 
@@ -459,8 +460,9 @@ Lemma analyze_cache cache cmvec crvec op :
      end ts
    | None => fun _ => False
    end (Symbolic.mkMVec op) \/
-   Concrete.cti cmvec = encode ENTRY /\
-   crvec = Concrete.mkRVec (encode KERNEL) (encode KERNEL)).
+   exists t,
+     Concrete.cti cmvec = encode (ENTRY t) /\
+     crvec = Concrete.mkRVec (encode KERNEL) (encode KERNEL)).
 Proof.
   intros CACHE LOOKUP INUSER EQ.
   destruct cmvec as [op' tpc ti t1 t2 t3].
@@ -575,26 +577,6 @@ Ltac current_instr_opcode :=
     let op := (eval compute in (opcode_of instr)) in
     op
   end.
-
-(*
-Lemma in_user_no_system_call st t :
-  in_user st = true ->
-  common.tag (Concrete.pc st) = encode (USER t true) ->
-  wf_entry_points (Concrete.mem st) ->
-  Symbolic.get_syscall table (common.val (Concrete.pc st)) = None.
-Proof.
-  unfold in_user, word_lift.
-  intros INUSER ISCALL WF.
-  rewrite ISCALL in INUSER.
-  rewrite decodeK in INUSER. simpl in *.
-  destruct (Symbolic.get_syscall table (common.val (Concrete.pc st)))
-    as [sc|] eqn:EQ; trivial.
-  assert (H := proj1 (WF (common.val (Concrete.pc st))) (ex_intro _ _ EQ)).
-  destruct (PartMaps.get (Concrete.mem st) (val (Concrete.pc st)))
-    as [[v t']|] eqn:EQ'; try discriminate.
-  by rewrite H in INUSER.
-Qed.
-*)
 
 Ltac simpl_word_lift :=
   match goal with

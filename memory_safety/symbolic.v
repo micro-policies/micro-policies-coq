@@ -385,11 +385,11 @@ Definition eqp_fun (st : state t) : option (state t) :=
   end.
 
 Definition memsafe_syscalls : list (syscall t) :=
-  [Syscall malloc_addr malloc_fun;
-   Syscall free_addr free_fun;
-   Syscall size_addr sizeof_fun;
-   Syscall base_addr basep_fun;
-   Syscall eq_addr malloc_fun].
+  [Syscall malloc_addr V(INT) malloc_fun;
+   Syscall free_addr V(INT) free_fun;
+   Syscall size_addr V(INT) sizeof_fun;
+   Syscall base_addr V(INT) basep_fun;
+   Syscall eq_addr V(INT) malloc_fun].
 
 Definition step := step memsafe_syscalls.
 
