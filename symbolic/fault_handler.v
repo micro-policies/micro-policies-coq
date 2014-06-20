@@ -94,11 +94,6 @@ Definition is_entry_tag (rsrc rdst : reg mt) : code :=
   [Const _ (Z_to_imm 2) ri5] ++
   [Binop _ EQ rsrc ri5 rdst].
 
-(* BCP: Maybe better just to halt? *)
-Definition inf_loop : code :=
-  [Const mt (Z_to_imm 0) rb] ++
-  [Bnz mt rb (Z_to_imm 0)].
-
 Definition load_mvec : code :=
   fst (fold_left (fun acc r =>
                     let '(c,addr) := acc in
@@ -124,13 +119,13 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   (* Check that [rop] contains a USER tag that does
      not have a call bit set *)
   let do_op rop := extract_user_tag rop rb rop ++
-                   if_ rb [] inf_loop in
+                   if_ rb [] [Halt _] in
   match Symbolic.nfields op with
   | Some (0, _) => []
   | Some (1, _) => do_op rt1
   | Some (2, _) => do_op rt1 ++ do_op rt2
   | Some (3, _) => do_op rt1 ++ do_op rt2 ++ do_op rt3
-  | _ => inf_loop
+  | _ => [Halt _]
   end ++
   policy_handler ++
   (* Wrap RVec *)
@@ -162,9 +157,9 @@ Definition handler : code :=
                                           c)
                             [] opcodes)
                 (* We hit an invalid point; halt the machine *)
-                inf_loop))
+                [Halt _]))
       (* PC is not tagged USER, halt execution *)
-      inf_loop ++
+      [Halt _] ++
   (* Store rvector registers in memory, install rule in cache, and
      return to user code *)
   load_const (Concrete.Mtrpc ops) raddr ++
