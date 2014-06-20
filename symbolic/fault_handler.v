@@ -46,9 +46,9 @@ Context (fhp : fault_handler_params).
 
 (* Encoding:
 
-   USER ut ic -> | ut   | ic | 1 |
-   KERNEL     -> | 0..0 | 0  | 0 |
-   ENTRY      -> | 0..0 | 1  | 0 | *)
+   USER ut ic -> | ut   | 0 | 1 |
+   KERNEL     -> | 0..0 | 0 | 0 |
+   ENTRY      -> | 0..0 | 1 | 0 | *)
 
 Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 
@@ -69,29 +69,25 @@ Definition if_ (r : reg mt) (t f : code) : code :=
   eend ++
   t.
 
-(* Try to find whether tag in first register has the form [USER t
-   ic]. If so, puts 1 in second register, [t] in third register, and
-   [ic] in fourth register. Otherwise, puts 0 in second register.
-   Warning: overwrites ri2.*)
-Definition extract_user_tag (rsrc rsucc rut ric : reg mt) : code :=
+(* Try to find whether tag in first register has the form [USER t]. If
+   so, puts 1 in second register and [t] in third register. Otherwise,
+   puts 0 in second register.  Warning: overwrites ri2.*)
+
+Definition extract_user_tag (rsrc rsucc rut : reg mt) : code :=
   [Const _ (Z_to_imm 1) ri2] ++
-  [Binop _ AND rsrc ri2 ri2] ++
-  if_ ri2
-      ([Mov _ ri2 rsucc] ++
-       [Const _ (Z_to_imm 2) ri2] ++
-       [Binop _ AND rsrc ri2 ric] ++
-       [Const _ (Z_to_imm 2) ri2] ++  (* BCP: Why do we need this one? *)
+  [Binop _ AND rsrc ri2 rsucc] ++
+  if_ rsucc
+      ([Const _ (Z_to_imm 2) ri2] ++
        [Binop _ SHRU rsrc ri2 rut])
       [].
 
-(* The inverse operation. Take a tag [t] in first register and a
-   boolean [ic] in the second register, and return the encoding of
-   [USER t ic] in the third register. Warning: overwrites ri2. *)
-Definition wrap_user_tag (rut ric rdst : reg mt) : code :=
-  [Const _ (Z_to_imm 1) rdst] ++
+(* The inverse operation. Take a tag [t] in first register and return
+   the encoding of [USER t] in the second register. Warning:
+   overwrites ri2. *)
+Definition wrap_user_tag (rut rdst : reg mt) : code :=
   [Const _ (Z_to_imm 2) ri2] ++
-  if_ ric [Binop _ OR rdst ri2 rdst] [] ++
   [Binop _ SHL rut ri2 ri2] ++
+  [Const _ (Z_to_imm 1) rdst] ++
   [Binop _ OR rdst ri2 rdst].
 
 Definition is_entry_tag (rsrc rdst : reg mt) : code :=
@@ -127,8 +123,8 @@ Variable policy_handler : code.
 Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   (* Check that [rop] contains a USER tag that does
      not have a call bit set *)
-  let do_op rop := extract_user_tag rop rb rop ri3 ++
-                   if_ rb (if_ ri3 inf_loop []) inf_loop in
+  let do_op rop := extract_user_tag rop rb rop ++
+                   if_ rb [] inf_loop in
   match Symbolic.nfields op with
   | Some (0, _) => []
   | Some (1, _) => do_op rt1
@@ -138,50 +134,35 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   end ++
   policy_handler ++
   (* Wrap RVec *)
-  load_const (op_to_word JAL) ri3 ++
-  [Binop _ EQ ri3 rop rb] ++
-  wrap_user_tag rtrpc rb rtrpc ++
-  [Const _ (bool_to_imm false) rb] ++
-  wrap_user_tag rtr rb rtr.
-
-(* Ensure that tags are allowed by policy-level fault handler,
-   assuming that current instruction is tagged USER. Warning:
-   overwrites ri4. *)
-Definition analyze_operand_tags : code :=
-  (* Check whether instruction is tagged USER *)
-  extract_user_tag rti rb rti ri4 ++
-  if_ rb
-      (* We are in user mode, extract operand tags *)
-      (if_ ri4
-           inf_loop (* Sanity check, should never happen *)
-           (fold_right (fun op c =>
-                         load_const (op_to_word op) ri4 ++
-                         [Binop _ EQ rop ri4 rb] ++
-                         if_ rb
-                             (analyze_operand_tags_for_opcode op)
-                             c)
-                       [] opcodes))
-      (* We hit an invalid point; halt the machine *)
-      inf_loop.
+  wrap_user_tag rtrpc rtrpc ++
+  wrap_user_tag rtr rtr.
 
 (* The entire code for the generic fault handler.
    Warning: overwrites ri4. *)
 Definition handler : code :=
   load_mvec ++
-  extract_user_tag rtpc rb rtpc ri4 ++
+  extract_user_tag rtpc rb rtpc ++
   if_ rb
       (* PC has USER tag *)
-      (if_ ri4
-           (* We just performed a Jal. Check whether we're at an entry point *)
-           (is_entry_tag rti ri4 ++
-            if_ ri4
-                (* We are in a system call. Put KERNEL tags in rvector *)
-                (load_const Concrete.TKernel rtrpc ++
-                 load_const Concrete.TKernel rtr)
-                (* We are not in a system call. Proceed as normal. *)
-                analyze_operand_tags)
-           (* We have executed something else besides Jal. Proceed normally. *)
-           analyze_operand_tags)
+      (* Check whether we're at an entry point *)
+      (is_entry_tag rti ri4 ++
+       if_ ri4
+           (* We are in a system call. Put KERNEL tags in rvector *)
+           (load_const Concrete.TKernel rtrpc ++
+            load_const Concrete.TKernel rtr)
+           (* We are not in a system call. Proceed as normal. *)
+           (extract_user_tag rti rb rti ++
+            if_ rb
+                (* We are in user mode, extract operand tags *)
+                (fold_right (fun op c =>
+                               load_const (op_to_word op) ri4 ++
+                                          [Binop _ EQ rop ri4 rb] ++
+                                          if_ rb
+                                          (analyze_operand_tags_for_opcode op)
+                                          c)
+                            [] opcodes)
+                (* We hit an invalid point; halt the machine *)
+                inf_loop))
       (* PC is not tagged USER, halt execution *)
       inf_loop ++
   (* Store rvector registers in memory, install rule in cache, and
@@ -307,4 +288,3 @@ Definition fault_handler_invariant : kernel_invariant := {|
 End invariant.
 
 End fault_handler.
-
