@@ -50,7 +50,6 @@ Context (fhp : fault_handler_params).
    KERNEL     -> | 0..0 | 0  | 0 |
    ENTRY      -> | 0..0 | 1  | 0 | *)
 
-
 Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 
 Definition kernel_regs := mvec_regs ++ [rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
