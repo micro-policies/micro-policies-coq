@@ -2,7 +2,7 @@ Require Import List Arith ZArith Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.ordered.
-Require Import String.
+(* Require Import String. *)
 
 Require Import utils.
 
