@@ -1,6 +1,7 @@
 Require Import List Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
 Require Import lib.utils lib.ordered lib.partial_maps common.common.
+Require Import memory_safety.classes.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -81,7 +82,7 @@ Class params_spec (ap : abstract_params) := {
 
 }.
 
-Context `{ap : abstract_params, syscall_regs t}.
+Context `{ap : abstract_params, syscall_regs t, memory_syscall_addrs t}.
 
 Open Scope word_scope.
 
@@ -221,23 +222,20 @@ Definition free_fun st : option state :=
   | _ => None
   end.
 
-(*
 Definition malloc : syscall :=
-{| address := alloc_addr;
-   sem := fun s => do r <- alloc_fun s;
-                   let '(s',b) := r in
-                   do regs' <- upd (regs s') alloc_reg (Z_to_word 0)@V(PTR b);
-                   Some (mkState (mem s') regs' (pc s'))
-|}.
+  {| address := malloc_addr;
+     sem := malloc_fun
+  |}.
 
-Variable othercalls : list syscall.
+Definition free : syscall :=
+  {| address := free_addr;
+     sem := free_fun
+  |}.
 
-Let table := malloc :: othercalls.
-
+Let syscalls := [malloc;free].
 
 Definition get_syscall (addr : word) : option syscall :=
-  find (fun sc => address sc ==b addr) table.
-*)
+  List.find (fun sc => address sc == addr) syscalls.
 
 Definition lift_binop (f : binop) (x y : atom) :=
   match f with
@@ -339,7 +337,7 @@ Inductive step : state -> state -> Prop :=
                  forall (PC :      get mem pc = Some i@M(b,INT)),
                  forall (INST :    decode_instr i = Some (Jal _ r)),
                  forall (RW :      get reg r = Some w@V(INT)),
-(*                 forall (GETCALL:  get_syscall w = Some sc), *)
+                 forall (GETCALL:  get_syscall w = Some sc),
                  forall (CALL :    sem sc (mkState mem reg ist pc@V(PTR b)) = Some st'),
                  step (mkState mem reg ist pc@V(PTR b)) st'.
 

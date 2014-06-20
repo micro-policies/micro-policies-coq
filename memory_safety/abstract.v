@@ -79,21 +79,25 @@ Class allocator := {
 
 }.
 
-(*
 Class allocator_spec (alloc : allocator) := {
 
-  alloc_get_fresh : forall s s' b,
-    alloc_fun s = Some (s',b) -> get (mem s) b = None;
+  malloc_get_fresh : forall mem sz mem' b,
+    malloc_fun mem sz = (mem',b) -> get mem b = None;
 
-  alloc_get : forall s s' b,
-    alloc_fun s = Some (s',b) -> exists fr, get (mem s') b = Some fr
+  malloc_get : forall mem sz mem' b,
+    malloc_fun mem sz = (mem',b) -> exists fr, get mem' b = Some fr;
 
 (* Similar requirements on upd_mem are not necessary because they follow from
    the above and PartMaps.axioms. *)
 
-}.
-*)
+  free_get_fail : forall mem mem' b,
+    free_fun mem b = Some mem' -> get mem' b = None;
 
+  free_get : forall mem mem' b b',
+    free_fun mem b = Some mem' ->
+    b != b' -> get mem' b' = get mem b'
+
+}.
 
 Context `{syscall_regs t} `{allocator} `{memory_syscall_addrs t}.
 
@@ -219,12 +223,12 @@ Inductive step : state -> state -> Prop :=
              forall (ALLOC :    malloc_fun mem sz = (mem', b)),
              forall (UPD :      upd reg syscall_ret (ValPtr (b,Z_to_word 0%Z)) = Some reg'),
              step (mkState mem reg pc) (mkState mem' reg' pc.+1)
-| step_free : forall mem mem' reg pc i r b o,
+| step_free : forall mem mem' reg pc i r ptr,
              forall (PC :       getv mem pc = Some (ValInt i)),
              forall (INST :     decode_instr i = Some (Jal _ r)),
              forall (RW :       get reg r = Some (ValInt free_addr)),
-             forall (PTR :      get reg syscall_arg1 = Some (ValPtr (b,o))),
-             forall (ALLOC :    free_fun mem b = Some mem'),
+             forall (PTR :      get reg syscall_arg1 = Some (ValPtr ptr)),
+             forall (ALLOC :    free_fun mem ptr.1 = Some mem'),
              step (mkState mem reg pc) (mkState mem' reg pc.+1)
 | step_size : forall mem reg reg' pc i r b o fr,
     forall (PC   : getv mem pc = Some (ValInt i)),
