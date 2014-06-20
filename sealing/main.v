@@ -1,7 +1,7 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
-Require Import ssreflect eqtype ssrnat ssrbool.
+Require Import ssreflect ssrfun eqtype ssrnat ssrbool.
 Require Import lib.utils lib.partial_maps common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
@@ -26,8 +26,30 @@ Section WithClasses.
 Definition t := concrete_int_32_t.
 Definition ops := concrete_int_32_ops.
 
-Context {scr : @syscall_regs t}.
-Context {fhp : fault_handler.fault_handler_params t}.
+Instance scr : @syscall_regs t := {|
+  syscall_ret  := Int32.repr 20;
+  syscall_arg1 := Int32.repr 21;
+  syscall_arg2 := Int32.repr 22
+|}.
+
+(* BCP/MD: There should be some proof obligations about -- at least --
+   these being pairwise distinct.  Some axioms must be false
+   somewhere! *)
+Instance fhp : fault_handler.fault_handler_params t := {|
+  rop := Int32.repr 1; 
+  rtpc := Int32.repr 2; 
+  rti := Int32.repr 3; rt1 := Int32.repr 4; rt2 := Int32.repr 5; 
+  rt3 := Int32.repr 6; 
+  rb := Int32.repr 7; 
+  ri1 := Int32.repr 8; ri2 := Int32.repr 9; ri3 := Int32.repr 10; 
+  ri4 := Int32.repr 11; ri5 := Int32.repr 12; 
+  rtrpc := Int32.repr 13; rtr := Int32.repr 14; 
+  raddr := Int32.repr 15; 
+  rra := Int32.repr 16;
+
+  load_const := fun (x : word t) (r : reg t) =>
+    [Const _ (Z_to_imm (word_to_Z x)) r]
+|}.
 
 Definition keytype := [eqType of nat].
 
@@ -175,26 +197,32 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
   | Sym.SEALED k => Z_to_word 2
   end.
 
+Definition gen_syscall_code gen : @relocatable_segment t w atom :=
+  (length (gen (Int32.repr 0) (Int32.repr 0)), gen).
+
 Definition mkkey_segment : @relocatable_segment t w atom :=
-  (2, fun _ (extra : w) => make_code [
+  let gen := fun _ (extra : w) => make_code [
           (* TODO: too many numeric types! *)
           Const _ (Z_to_imm (word_to_Z extra)) (ri1 t);
           Load _ (ri1 t) (ri2 t);
           (* TODO: More here! *)
           Jump _ (rra t)
-          ]).
+          ] in
+  gen_syscall_code gen.
 
 Definition seal_segment : @relocatable_segment t w atom :=
-  (2, fun _ (extra : w) => make_code [
+  let gen := fun _ (extra : w) => make_code [
           (* TODO: More here! *)
           Jump _ (rra t)
-          ]).
+          ] in
+  gen_syscall_code gen.
 
 Definition unseal_segment : @relocatable_segment t w atom :=
-  (2, fun _ (extra : w) => make_code [
+  let gen := fun _ (extra : w) => make_code [
           (* TODO: More here! *)
           Jump _ (rra t)
-          ]).
+          ] in
+  gen_syscall_code gen.
 
 Definition build_concrete_sealing_machine 
      (user_mem : @relocatable_segment t unit atom) 
@@ -213,46 +241,109 @@ Definition build_concrete_sealing_machine
 
 Definition hello_world : @relocatable_segment t unit atom :=
   constant_code [
-    Const _ (Z_to_imm 2) (ri1 t);
-    Binop _ ADD (ri2 t) (ri2 t) (ri3 t)
+    Const t (Z_to_imm 2) (Int32.repr 25);
+    Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
   ].
 
-Definition trivial_masks : Concrete.Masks :=
-  fun _ _ => {|
-    Concrete.dc := fun _ => false;
-    Concrete.ct := {| Concrete.ct_trpc := None; 
-                      Concrete.ct_tr := None |}
-  |}.
+Definition hello_world2 : @relocatable_segment t unit atom :=
+  constant_code [
+    Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
+  ].
 
+Import Concrete.
+
+Definition less_trivial_masks : Concrete.Masks :=
+  let mk_mask dcm cm :=
+      let '(dcm_tcp,dcm_ti,dcm_t1,dcm_t2,dcm_t3) := dcm in
+      let '(cm_trpc,cm_tr) := cm in
+      Concrete.Build_Mask
+        (fun mvp =>
+           match mvp with
+             | mvp_tpc => dcm_tcp
+             | mvp_ti => dcm_ti
+             | mvp_t1 => dcm_t1
+             | mvp_t2 => dcm_t2
+             | mvp_t3 => dcm_t3
+           end)
+         (Concrete.mkCTMask cm_trpc cm_tr) in
+  fun kernel opcode =>
+    if kernel then
+      match opcode with
+        | NOP => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
+        | CONST =>  mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
+        | MOV => mk_mask (false,false,true,true,true) (Some mvp_tpc,Some mvp_t1)
+        | BINOP _ => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
+        | LOAD =>  mk_mask (false,false,true,true,true) (Some mvp_tpc,Some mvp_t2)  (* unclear whether copy-through is useful, but seems harmless enough *)
+        | STORE => mk_mask (false,false,true,true,true) (Some mvp_tpc,Some mvp_t2)
+        | JUMP => mk_mask (false,false,true,true,true) (Some mvp_t1,None)
+        | BNZ => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
+        | JAL => mk_mask (false,false,true,true,true) (Some mvp_t1,Some mvp_tpc)
+        | JUMPEPC => mk_mask (false,false,true,true,true) (Some mvp_t1,None)
+        | ADDRULE => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
+        | GETTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
+        | PUTTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
+      end
+    else
+      match opcode with
+        | NOP => mk_mask (false,false,true,true,true) (None,None)
+        | CONST =>  mk_mask (false,false,false,true,true) (None,None)
+        | MOV => mk_mask (false,false,false,false,true) (None,None)
+        | BINOP _ => mk_mask (false,false,false,false,false) (None,None)
+        | LOAD =>  mk_mask (false,false,false,false,false) (None,None)
+        | STORE => mk_mask (false,false,false,false,false) (None,None)
+        | JUMP => mk_mask (false,false,false,true,true) (None,None)
+        | BNZ => mk_mask (false,false,false,true,true) (None,None)
+        | JAL => mk_mask (false,false,false,false,true) (None,None)
+        | JUMPEPC => mk_mask (false,false,true,true,true) (None,None)
+        | ADDRULE => mk_mask (false,false,true,true,true) (None,None)
+        | GETTAG => mk_mask (false,false,false,false,true) (None,None)
+        | PUTTAG => mk_mask (false,false,false,false,false) (None,None)
+      end
+.
 End WithClasses.
 
-Instance scr : @syscall_regs t := {|
-  syscall_ret  := Int32.repr 20;
-  syscall_arg1 := Int32.repr 21;
-  syscall_arg2 := Int32.repr 22
-|}.
+Definition eval_reg n (r : reg t) init :=
+  match exec.stepn less_trivial_masks t n init with
+  | Some st => Some (TotalMaps.get (Concrete.regs st) r)
+  | None => None
+  end.
 
-(* BCP/MD: There should be some proof obligations about -- at least --
-   these being pairwise distinct.  Some axioms must be false
-   somewhere! *)
-Instance fhp : fault_handler.fault_handler_params t := {|
-  rop := Int32.repr 1; 
-  rtpc := Int32.repr 2; 
-  rti := Int32.repr 3; rt1 := Int32.repr 4; rt2 := Int32.repr 5; 
-  rt3 := Int32.repr 6; 
-  rb := Int32.repr 7; 
-  ri1 := Int32.repr 8; ri2 := Int32.repr 9; ri3 := Int32.repr 10; 
-  ri4 := Int32.repr 11; ri5 := Int32.repr 12; 
-  rtrpc := Int32.repr 13; rtr := Int32.repr 14; 
-  raddr := Int32.repr 15; 
-  rra := Int32.repr 16;
+Open Scope Z_scope.
 
-  load_const := fun (x : word t) (r : reg t) =>
-    [Const _ (Z_to_imm (word_to_Z x)) r]
-|}.
+Definition init := build_concrete_sealing_machine hello_world2.
+
+Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) (n : nat) (i : Int32.int) :=
+  match n with
+  | O => []
+  | S p => (Int32.intval i, f (get map i)) :: enum map get f p (Int32.add i (Int32.repr 1))
+  end.
 
 (*
-Goal exec.step trivial_masks t (build_concrete_sealing_machine hello_world) = None.
+Compute (Concrete.memory concrete_int_32_t).
+*)
+
+Definition print_instr atom :=
+  let: w1@w2 := atom in (Int32.intval w1, decode_instr w1, Int32.intval w2).
+
+Definition print_atom atom :=
+  let: w1@w2 := atom in (Int32.intval w1, Int32.intval w2).
+
+Definition print_state (mem_start mem_end max_reg : nat) st :=
+  (print_atom (Concrete.pc st),
+  @enum _ _ _ (Concrete.mem st) (@PartMaps.get _ Int32.int _ _) (omap print_instr) mem_end (nat_to_word mem_start),
+   Concrete.cache st).
+
+Definition print_res_state n init :=
+  omap (print_state 2720 2730 0) (exec.stepn less_trivial_masks t n init).
+
+(*
+Compute (print_res_state 60 (build_concrete_sealing_machine hello_world)).
+Compute (eval_reg 60 (Int32.repr 26) (build_concrete_sealing_machine hello_world)).
+
+Compute (print_state 20 30 0 (build_concrete_sealing_machine hello_world2)).
+
+Compute (PartMaps.get (Concrete.mem init) (Int32.repr 2721)).
+Compute (decode_instr (Int32.repr 2850818)).
 *)
 
 (* BCP: One nontrivial issue here.  How do we find out the system call

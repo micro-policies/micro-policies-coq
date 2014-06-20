@@ -316,6 +316,11 @@ Definition ground_rules : Concrete.rules (word t) :=
    (mk (BINOP SUB), Concrete.mkRVec TCopy TKernel);
    (mk (BINOP MUL), Concrete.mkRVec TCopy TKernel);
    (mk (BINOP EQ),  Concrete.mkRVec TCopy TKernel);
+   (mk (BINOP LEQ),  Concrete.mkRVec TCopy TKernel);
+   (mk (BINOP AND),  Concrete.mkRVec TCopy TKernel);
+   (mk (BINOP OR),  Concrete.mkRVec TCopy TKernel);
+   (mk (BINOP SHRU),  Concrete.mkRVec TCopy TKernel);
+   (mk (BINOP SHL),  Concrete.mkRVec TCopy TKernel);
    (mk LOAD, Concrete.mkRVec TCopy TCopy);
    (mk STORE, Concrete.mkRVec TCopy TCopy);
    (mk JUMP, Concrete.mkRVec TCopy TNone);

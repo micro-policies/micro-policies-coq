@@ -9,6 +9,7 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
+(* Warning: extending binop here requires to add corresponding ground rules *)
 Inductive binop :=
 | ADD
 | SUB
@@ -346,56 +347,59 @@ Context {t : machine_types}
 
 Local Open Scope Z.
 
+(* If you change opcodes below, please update this accordingly *)
+Definition max_opcode := 21.
+
 (* this is similar to (but simpler than) decode *)
 Definition Z_to_op (z : Z) : option opcode :=
   match z with
-  |  0 => Some NOP
-  |  1 => Some CONST
-  |  2 => Some MOV
-  |  3 => Some LOAD
-  |  4 => Some STORE
-  |  5 => Some JUMP
-  |  6 => Some BNZ
-  |  7 => Some JAL
-  |  8 => Some JUMPEPC
-  |  9 => Some ADDRULE
-  | 10 => Some GETTAG
-  | 11 => Some PUTTAG
-  | 12 => Some (BINOP ADD)
-  | 13 => Some (BINOP SUB)
-  | 14 => Some (BINOP MUL)
-  | 15 => Some (BINOP EQ)
-  | 16 => Some (BINOP LEQ)
-  | 17 => Some (BINOP AND)
-  | 18 => Some (BINOP OR)
-  | 19 => Some (BINOP SHRU)
-  | 20 => Some (BINOP SHL)
+  |  1 => Some NOP
+  |  2 => Some CONST
+  |  3 => Some MOV
+  |  4 => Some LOAD
+  |  5 => Some STORE
+  |  6 => Some JUMP
+  |  7 => Some BNZ
+  |  8 => Some JAL
+  |  9 => Some JUMPEPC
+  | 10 => Some ADDRULE
+  | 11 => Some GETTAG
+  | 12 => Some PUTTAG
+  | 13 => Some (BINOP ADD)
+  | 14 => Some (BINOP SUB)
+  | 15 => Some (BINOP MUL)
+  | 16 => Some (BINOP EQ)
+  | 17 => Some (BINOP LEQ)
+  | 18 => Some (BINOP AND)
+  | 19 => Some (BINOP OR)
+  | 20 => Some (BINOP SHRU)
+  | 21 => Some (BINOP SHL)
   | _  => None
   end.
 
 Definition op_to_Z (o : opcode) : Z :=
   match o with
-  | NOP        =>  0
-  | CONST      =>  1
-  | MOV        =>  2
-  | LOAD       =>  3
-  | STORE      =>  4
-  | JUMP       =>  5
-  | BNZ        =>  6
-  | JAL        =>  7
-  | JUMPEPC    =>  8
-  | ADDRULE    =>  9
-  | GETTAG     => 10
-  | PUTTAG     => 11
-  | BINOP ADD  => 12
-  | BINOP SUB  => 13
-  | BINOP MUL  => 14
-  | BINOP EQ   => 15
-  | BINOP LEQ  => 16
-  | BINOP AND  => 17
-  | BINOP OR   => 18
-  | BINOP SHRU => 19
-  | BINOP SHL  => 20
+  | NOP        =>  1
+  | CONST      =>  2
+  | MOV        =>  3
+  | LOAD       =>  4
+  | STORE      =>  5
+  | JUMP       =>  6
+  | BNZ        =>  7
+  | JAL        =>  8
+  | JUMPEPC    =>  9
+  | ADDRULE    => 10
+  | GETTAG     => 11
+  | PUTTAG     => 12
+  | BINOP ADD  => 13
+  | BINOP SUB  => 14
+  | BINOP MUL  => 15
+  | BINOP EQ   => 16
+  | BINOP LEQ  => 17
+  | BINOP AND  => 18
+  | BINOP OR   => 19
+  | BINOP SHRU => 20
+  | BINOP SHL  => 21
   end.
 
 Definition word_to_op (w : word t) : option opcode :=

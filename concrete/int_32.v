@@ -165,6 +165,7 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 
   ra := repr 0
 |}.
+
 (* Removing Program causes Coq not to find concrete_int_32_t *)
 
 (* BCP: This is surely false (if any of the inputs are 

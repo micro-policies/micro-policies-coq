@@ -91,7 +91,7 @@ Definition initial_memory
   let contents := 
     gen (fault_handler_start concrete_int_32_ops) extra_state_addr in
   let mem := 
-     ( constants_from zero 7 cacheCell
+     ( constants_from zero 8 cacheCell
      ∘ insert_from (fault_handler_start concrete_int_32_ops) contents )
      (Int32PMap.empty _) in
    (mem, user_code_addr).
@@ -109,7 +109,7 @@ Program Definition initial_state
   {|  
     Concrete.mem := mem;
     Concrete.regs := initial_regs;
-    Concrete.cache := [];  (* BCP: Fix: (KERNEL: tag unit) ... *)
+    Concrete.cache := ground_rules;
     Concrete.pc := start@initial_pc_tag; 
     Concrete.epc := zero@zero
   |}.

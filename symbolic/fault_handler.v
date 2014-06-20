@@ -191,7 +191,8 @@ Definition handler : code :=
   load_const (Concrete.Mtr ops) raddr ++
   [Store _ raddr rtr] ++
   [AddRule _] ++
-  [JumpEpc _].
+  [JumpEpc _]
+.
 
 Section invariant.
 
@@ -306,3 +307,4 @@ Definition fault_handler_invariant : kernel_invariant := {|
 End invariant.
 
 End fault_handler.
+
