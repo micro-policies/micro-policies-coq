@@ -28,7 +28,6 @@ Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) :
  
   visible : ((@state t) cmachine) -> ((@state t) cmachine) -> bool;
 
-  (* a better way to state this is as 3 properties (diagrams): a-a n-0 n-n *)
   backwards_refinement_normal :  
     forall ast cst cst'
       (REF: refine_state ast cst)
@@ -202,7 +201,7 @@ Proof.
         }
   }
 Qed.
-    
+  
 Lemma refine_traces_weaken_backward : forall axs cxs,
   refine_traces axs cxs ->
     (forall csi csj,
@@ -341,11 +340,20 @@ Lemma refine_traces_unique_proof : forall axs cxs
   (H2 : refine_traces axs cxs),
   H1 = H2.
 Admitted.
+(* Trying to add explicit equalities doesn't work either
+Lemma refine_traces_unique_proof : forall axs1 cxs1 axs2 cxs2
+  (H1 : refine_traces axs1 cxs1)
+  (H2 : refine_traces axs2 cxs2),
+  axs1 = axs2 ->
+  cxs1 = cxs2 ->
+  H1 = H2.
+The term "H2" has type "refine_traces axs2 cxs2"
+ while it is expected to have type "refine_traces axs1 cxs1".
+*)
 
 (* Lemma split_refine_traces' axs ahs atl cxs asi asj csi csj : *)
 (*   axs = ahs ++ asi :: asj :: atl -> *)
 (*   refine_traces axs cxs -> *)
-(*   In2 asi asj axs -> *)
 (*   In2 csi csj cxs -> *)
 (*   visible csi csj = true -> *)
 (*   refine_state asi csi -> *)
