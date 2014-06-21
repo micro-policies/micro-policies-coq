@@ -404,14 +404,13 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
   "Cache: ... ", format_cache (Concrete.cache st)).
 
 Definition print_res_state n init :=
-  omap (print_state 0 50 15) (exec.stepn less_trivial_masks t n init).
+  omap (print_state 0 30 15) (exec.stepn less_trivial_masks t n init).
 
 Definition run n := 
   (ConcreteSealing.print_res_state n (ConcreteSealing.build_concrete_sealing_machine ConcreteSealing.hello_world)).
 
-(*
-Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)). 
-*)
+Compute (print_res_state 17
+ (build_concrete_sealing_machine hello_world)). 
 
 (*
 Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).

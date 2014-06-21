@@ -78,15 +78,18 @@ Definition kernelize (seg : @relocatable_segment concrete_int_32_t w w)
   let (l,gen) := seg in
   (l, fun b rest => map (fun x => Atom x Concrete.TKernel) (gen b rest)).
 
+Definition kernelize_user_tag t :=
+  add (shl t (repr 2)) (repr 1).
+
 Definition kernelize_tags (seg : @relocatable_segment concrete_int_32_t w atom) 
                    : relocatable_segment w atom :=
   let (l,gen) := seg in
   (* BCP: This has to correspond with the tag encoding used in 
      fault_handler.v -- probably better to write it there rather than here *)
-  let kern := fun t => add (shl t (repr 2)) (repr 1) in
   (l, 
    fun b rest => 
-     map (fun x => Atom (common.val x) (kern (common.tag x))) (gen b rest)).
+     map (fun x => Atom (common.val x) 
+                        (kernelize_user_tag (common.tag x))) (gen b rest)).
 
 Definition initial_memory 
       (extra_state : relocatable_segment _ w)
@@ -126,6 +129,6 @@ Program Definition initial_state
     Concrete.mem := mem;
     Concrete.regs := initial_regs;
     Concrete.cache := ground_rules;
-    Concrete.pc := start@initial_pc_tag; 
+    Concrete.pc := start@(kernelize_user_tag initial_pc_tag); 
     Concrete.epc := zero@zero
   |}.
