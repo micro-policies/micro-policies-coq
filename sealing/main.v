@@ -139,8 +139,8 @@ Instance cp : Concrete.concrete_params t := {|
    - encoding of tags
 
        DATA      --> 0
-       KEY(k)    --> k*2+1
-       SEALED(k) --> k*2+2
+       KEY(k)    --> k*4+1
+       SEALED(k) --> k*4+3
 
    - concrete transfer function (with combinators)
 
@@ -183,8 +183,7 @@ Definition user_code {X} l : @relocatable_segment t X atom :=
 (* Axiom fault_handler : @relocatable_segment t w atom.  *)
 
 Definition transfer_function : list (instr t) :=
-  [].
-(* TODO *)
+  []. (* TODO *)
 
 Definition fault_handler : @relocatable_segment t w w :=
   kernel_code (handler t ops fhp transfer_function).
@@ -200,12 +199,18 @@ Instance sk_defs : Sym.sealing_key := {|
 |}.
 Admitted.
 
+(* BCP: HELP needed here too!  Can't figure out how to coerce a
+   Sym.key into a nat...  :-(
+
 Definition encode_sealing_tag (t : Sym.stag) : w := 
   match t with
     Sym.DATA => Z_to_word 0
-  | Sym.KEY k => Z_to_word 1     (* TODO FIX *)
-  | Sym.SEALED k => Z_to_word 2
+  | Sym.KEY k => add_word (Int32.repr 1) (Int32.shl (Int32.repr (word_to_Z (nat_to_word k)) (Int32.repr 2)))
+  | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl (Int32.repr (word_to_Z (nat_to_word k)) (Int32.repr 2)))
   end.
+*)
+Definition encode_sealing_tag (t : Sym.stag) : w := 
+    Z_to_word 42.
 
 Definition gen_syscall_code gen : @relocatable_segment t w w :=
   (length (gen (Int32.repr 0) (Int32.repr 0)), 
