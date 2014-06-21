@@ -197,18 +197,16 @@ Instance sk_defs : Sym.sealing_key := {|
   inc_key := fun x => Int32.add x (Int32.repr 1);
   ord_key := int_ordered
 |}.
-Admitted.
-
-(* BCP: HELP needed here too!  Can't figure out how to coerce a
-   Sym.key into a nat...  :-(
+admit.
+Defined.
 
 Definition encode_sealing_tag (t : Sym.stag) : w := 
   match t with
     Sym.DATA => Z_to_word 0
-  | Sym.KEY k => add_word (Int32.repr 1) (Int32.shl (Int32.repr (word_to_Z (nat_to_word k)) (Int32.repr 2)))
-  | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl (Int32.repr (word_to_Z (nat_to_word k)) (Int32.repr 2)))
+  | Sym.KEY k => add_word (Int32.repr 1) (Int32.shl k (Int32.repr 2))
+  | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
   end.
-*)
+
 Definition encode_sealing_tag (t : Sym.stag) : w := 
     Z_to_word 42.
 
