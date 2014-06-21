@@ -132,6 +132,9 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   wrap_user_tag rtrpc rtrpc ++
   wrap_user_tag rtr rtr.
 
+(* For debugging -- put a telltale marker in the code *)
+Definition got_here : code := [Const _ (Z_to_imm 99) ri5; Halt _].
+
 (* The entire code for the generic fault handler.
    Warning: overwrites ri4. *)
 Definition handler : code :=
@@ -140,7 +143,7 @@ Definition handler : code :=
   if_ rb
       (* PC has USER tag *)
       (* Check whether we're at an entry point *)
-      (is_entry_tag rti ri4 ++
+      ((* got_here ++ *)is_entry_tag rti ri4 ++
        if_ ri4
            (* We are in a system call. Put KERNEL tags in rvector *)
            (load_const Concrete.TKernel rtrpc ++
