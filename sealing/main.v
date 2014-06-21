@@ -207,8 +207,10 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
   | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
   end.
 
+(*
 Definition encode_sealing_tag (t : Sym.stag) : w := 
     Z_to_word 42.
+*)
 
 Definition gen_syscall_code gen : @relocatable_segment t w w :=
   (length (gen (Int32.repr 0) (Int32.repr 0)), 
