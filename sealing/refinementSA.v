@@ -131,7 +131,7 @@ Definition refine_upd_mem (amem : Abs.memory t) (smem : Sym.memory) :=
 
 End WithFixedKeyMap.
 
-Tactic Notation "unfold_next_state_in" ident(H) :=
+Ltac unfold_next_state_in H :=
   try unfold Symbolic.next_state_reg in H;
   try unfold Symbolic.next_state_pc in H;
   try unfold Symbolic.next_state_reg_and_pc in H;
@@ -191,28 +191,22 @@ Proof.
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
     intros [rmem [rreg [rpc rins]]].
   - (* NOP *)
-    apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_get_pointwise_inv rmem) in PC.
-      destruct PC as [iv [PC riv]].
-    destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
+Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
+    (apply refine_pc_inv in rpc; symmetry in rpc; subst;
+    apply (refine_get_pointwise_inv rmem) in PC;
+      destruct PC as [iv [PC riv]];
+    destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT;
+    apply refine_val_data in riv; subst).
+    REFINE_INSTR PC ti rmem rpc NEXT.
     injection NEXT; intro H; subst; clear NEXT.
-    apply refine_val_data in riv. subst.
     eexists. exists km. split.
     + eapply Abs.step_nop; [reflexivity | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
     + split4; now trivial.
   - (* CONST *)
-    (* copy paste *)
-    apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_get_pointwise_inv rmem) in PC.
-      destruct PC as [iv [PC riv]].
-    destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
-    (* new *)
+    REFINE_INSTR PC ti rmem rpc NEXT. 
     apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
-    (* copy paste from above *)
     injection NEXT; intro H; subst; clear NEXT.
-    apply refine_val_data in riv. subst.
-    (* the rest is quite different *)
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (imm_to_word n)). reflexivity.
     eexists. exists km. split.
@@ -220,8 +214,39 @@ Proof.
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
     + split4; now trivial.
-  - admit. (* MOV *)
-  - admit. (* BINOP *)
+  - (* MOV *)
+    REFINE_INSTR PC ti rmem rpc NEXT.  
+    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
+    injection NEXT; intro H; subst; clear NEXT.
+    destruct (refine_get_pointwise_inv rreg R1W) as [v [g rva]].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    eauto.
+    eexists. exists km. split.
+    + eapply Abs.step_mov; [reflexivity | | | | reflexivity]. (* two extra goals *)
+      unfold Abs.decode. rewrite PC. now apply INST.
+      eassumption.
+      eassumption.
+    + split4; now trivial.
+  - (* BINOP *)
+    REFINE_INSTR PC ti rmem rpc NEXT.
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply bind_inv in NEXT; destruct NEXT as [sregs' [upd NEXT]].
+    injection NEXT; intro H; subst; clear NEXT.
+    destruct t1; destruct t2; try discriminate stag. 
+       injection stag; intro H; subst; clear stag. simpl in *.  
+    destruct (refine_get_pointwise_inv rreg R1W) as [v1 [g1 rva1]].        
+    apply refine_val_data in rva1; subst.
+    destruct (refine_get_pointwise_inv rreg R2W) as [v2 [g2 rva2]].        
+    apply refine_val_data in rva2; subst. 
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption|]. 
+    instantiate (1:= Abs.VData (binop_denote op w1 w2)); reflexivity. 
+    eexists. exists km. split.
+    + eapply Abs.step_binop; [reflexivity | | | | | reflexivity]. 
+      unfold Abs.decode. rewrite PC. now apply INST.
+      eassumption.
+      eassumption.
+      eassumption.
+    + split4; now trivial.
   - admit. (* LOAD *)
   - admit. (* STORE *)
   - admit. (* JUMP *)
