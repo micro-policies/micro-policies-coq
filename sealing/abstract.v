@@ -122,7 +122,7 @@ Inductive step (st st' : state) : Prop :=
     (ST   : st = State mem reg pc ks)
     (INST : decode mem pc =? Bnz _ r n)
     (RW   : get reg r =? VData w),
-    let pc' := add_word pc (if w ==b Z_to_word 0
+    let pc' := add_word pc (if w == Z_to_word 0
                             then Z_to_word 1 else imm_to_word n) in forall
     (NEXT : st' = State mem reg pc' ks),   step st st'
 | step_jal : forall mem reg reg' pc r w ks

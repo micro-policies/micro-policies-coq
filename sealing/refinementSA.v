@@ -188,7 +188,7 @@ Lemma backward_simulation : forall km ast sst sst',
     refine_state km' ast' sst'.
 Proof.
 Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
-    (apply refine_pc_inv in rpc; symmetry in rpc; subst;
+    (apply refine_pc_inv in rpc; (* symmetry in rpc; *) subst;
     apply (refine_get_pointwise_inv rmem) in PC;
       destruct PC as [iv [PC riv]];
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT;
@@ -267,9 +267,51 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
       eassumption.
       eassumption.
     + split4; now trivial. 
-  - admit. (* STORE *)
-  - admit. (* JUMP *)
-  - admit. (* BNZ *)
+  - (* STORE *)
+    REFINE_INSTR PC ti rmem rpc NEXT.
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]]. 
+    apply bind_inv in NEXT. destruct NEXT as [smem' [upd NEXT]]. 
+    injection NEXT; intro H; subst; clear NEXT.
+    destruct t1; try discriminate stag.
+       injection stag; intro H; subst; clear stag; simpl in *. 
+    destruct (refine_get_pointwise_inv rreg R1W) as [v1 [g1 rva1]].        
+    apply refine_val_data in rva1; subst.
+    destruct (refine_get_pointwise_inv rreg R2W) as [v2 [g2 rva2]].        
+    edestruct refine_upd_mem as [amem' [? ?]]; [eassumption | | eassumption|].
+    eassumption.
+    eexists. exists km. split. 
+    + eapply Abs.step_store; [reflexivity | | | | | reflexivity]. 
+      unfold Abs.decode. rewrite PC. now apply INST.
+      eassumption.
+      eassumption.
+      eassumption.
+    + split4; now trivial. 
+  - (* JUMP *)
+    REFINE_INSTR PC ti rmem rpc NEXT. 
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]]. 
+    injection NEXT; intro H; subst; clear NEXT.
+    destruct t1; try discriminate stag.
+       injection stag; intro H; subst; clear stag; simpl in *. 
+    destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
+    apply refine_val_data in rva; subst; simpl.
+    eexists. exists km. split.
+    + eapply Abs.step_jump; [reflexivity | | | reflexivity].
+      unfold Abs.decode. rewrite PC. now apply INST.
+      eassumption.
+    + split4; now trivial.
+  - (* BNZ *)
+    REFINE_INSTR PC ti rmem rpc NEXT. 
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]]. 
+    injection NEXT; intro H; subst; clear NEXT.
+    destruct t1; try discriminate stag.
+       injection stag; intro H; subst; clear stag; simpl in *. 
+    destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
+    apply refine_val_data in rva; subst; simpl.
+    eexists. exists km. split.
+    + eapply Abs.step_bnz; [reflexivity | | | reflexivity].
+      unfold Abs.decode. rewrite PC. now apply INST.
+      eassumption.
+    + split4; now trivial.
   - (* JAL - not system call *)
     (* copy paste (all cases) *)
     REFINE_INSTR PC ti rmem rpc NEXT.  
@@ -283,7 +325,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     apply refine_val_data in rva; subst; simpl.
     (* the rest similar to CONST *)
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= Abs.VData (apc + 1)%w). reflexivity.
+    instantiate (1:= Abs.VData (pc + 1)%w). reflexivity.
     eexists. exists km. split.
     + eapply Abs.step_jal; [reflexivity | | | eassumption | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
@@ -291,9 +333,9 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
-(*     have {PC} PC: get amem apc = None by admit. (* Shouldn't be hard *) *)
-    erewrite (@pointwise_none _ _ _ _ _ _ _ _ amem smem pc rmem) in PC.  
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
+    (*  WAS: have {PC} PC: get amem apc = None by admit. (* Shouldn't be hard *) *)
+    erewrite (@pointwise_none _ _ _ _ _ _ _ _ amem smem apc rmem) in PC.  
     simpl in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
       have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
@@ -424,7 +466,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
 
     + split4; now trivial.
     }
-Admitted.
+Qed.
 
 (* Q: Would we get an easier proof if we defined the refinement
    relation as a function from symbolic to abstract, and use
