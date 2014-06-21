@@ -424,7 +424,6 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
 
     + split4; now trivial.
     }
-Qed.
 Admitted.
 
 (* Q: Would we get an easier proof if we defined the refinement
