@@ -142,9 +142,9 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
   end.
 
 Inductive refine_val : Abstract.value mt block -> word mt -> QuasiAbstract.type mt -> Prop :=
-  | RefineInt : forall w, refine_val (Abstract.ValInt _ w) w INT
+  | RefineInt : forall w, refine_val (Abstract.VData _ w) w INT
   | RefinePtr : forall b base nonce off, mi b = Some (base,nonce) ->
-                refine_val (Abstract.ValPtr (b,off)) (base + off) (PTR nonce).
+                refine_val (Abstract.VPtr (b,off)) (base + off) (PTR nonce).
 
 Lemma refine_binop f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
   meminj_spec amem mi ->
@@ -209,7 +209,7 @@ by constructor.
 Qed.
 
 Lemma refine_ptr_inv w n b off base nonce :
-  refine_val (Abstract.ValPtr (b,off)) w (PTR n) ->
+  refine_val (Abstract.VPtr (b,off)) w (PTR n) ->
   mi b = Some (base, nonce) ->
   w = (base + off)%w.
 Proof.
@@ -228,9 +228,9 @@ Definition refine_memory amem (qamem : QuasiAbstract.memory mt) :=
  end.
 
 Lemma refine_memory_get_int qamem (w1 w2 w3 : word mt) pt :
-         refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
+         refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR w2) ->
          PartMaps.get qamem w1 = Some w3@M(w2,INT) ->
-         Abstract.getv amem pt = Some (Abstract.ValInt _ w3).
+         Abstract.getv amem pt = Some (Abstract.VData _ w3).
 Proof.
 intros [miP rmem] rpt get_w.
 unfold refine_memory in rmem.
@@ -263,7 +263,7 @@ by simpl; rewrite get_base.
 Qed.
 
 Lemma refine_memory_get qamem (w1 w2 w3 w4 : word mt) pt ty :
-         refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR w2) ->
+         refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR w2) ->
          PartMaps.get qamem w1 = Some (w3@M(w4,ty)) ->
          exists fr x, PartMaps.get amem (fst pt) = Some fr
          /\ index_list_Z (word_to_Z (snd pt)) fr = Some x
@@ -330,7 +330,7 @@ Qed.
 
 Lemma refine_memory_upd qamem qamem'
                         w1 w2 pt ty n fr fr' x :
-         refine_memory amem qamem -> refine_val (Abstract.ValPtr pt) w1 (PTR n) ->
+         refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR n) ->
          PartMaps.upd qamem w1 w2@M(n, ty) = Some qamem' ->
          PartMaps.get amem (fst pt) = Some fr ->
          update_list_Z (word_to_Z (snd pt)) x fr = Some fr' ->
@@ -439,7 +439,7 @@ Qed.
 Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
   refine_registers aregs qaregs ->
   PartMaps.get qaregs n = Some w@V(INT) ->
-  PartMaps.get aregs n = Some (Abstract.ValInt _ w).
+  PartMaps.get aregs n = Some (Abstract.VData _ w).
 Proof.
 intros rregs get_n.
 specialize (rregs n).
@@ -451,8 +451,8 @@ Qed.
 Lemma refine_registers_get_ptr aregs qaregs (n : common.reg mt) w b :
   refine_registers aregs qaregs ->
   PartMaps.get qaregs n = Some w@V(PTR b) ->
-  exists pt, refine_val (Abstract.ValPtr pt) w (PTR b) /\
-    PartMaps.get aregs n = Some (Abstract.ValPtr pt).
+  exists pt, refine_val (Abstract.VPtr pt) w (PTR b) /\
+    PartMaps.get aregs n = Some (Abstract.VPtr pt).
 Proof.
 intros rregs qa_get.
 generalize (rregs n).
@@ -494,7 +494,7 @@ Definition refine_state (ast : Abstract.state mt) (qast : QuasiAbstract.state mt
   | QuasiAbstract.mkState qamem qaregs ist w@V(ty) =>
     refine_memory amem qamem
       /\ refine_registers aregs qaregs
-      /\ refine_val (Abstract.ValPtr apc) w ty
+      /\ refine_val (Abstract.VPtr apc) w ty
   | _ => False
   end.
 
@@ -553,7 +553,7 @@ Hint Resolve meminj_update.
 Hint Resolve mi_freeP.
 
 Lemma refine_pc_inv mi nonce apcb apci pc :
-  refine_val mi (Abstract.ValPtr (apcb, apci)) pc (PTR nonce) ->
+  refine_val mi (Abstract.VPtr (apcb, apci)) pc (PTR nonce) ->
   exists base, mi apcb = Some (base, nonce) /\ (base + apci)%w = pc.
 Proof.
 intros rpc; inversion rpc.

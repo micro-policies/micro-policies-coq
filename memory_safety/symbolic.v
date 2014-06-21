@@ -225,18 +225,18 @@ Definition rules (mvec : MVec label) : option (RVec label) :=
                    | V(INT) => retv V(INT)
                    | _ => None
                    end
-                   (* this is too restrictive now, doesn't allow system calls *)
                  | JAL => fun t _ =>
                    match t with
-                   | V(PTR b') => ret V(PTR b') V(PTR b)
+                   | V(ty) => ret V(ty) V(PTR b)
                    | _ => None
                    end
-                 (* need special rule for SERVICE opcode? *)
                  | op => mvec_const_dest op None
-                        (* this fallthrough case seems suspicious,
+                        (* this fallthrough case seems highly suspicious,
                            why not just return None? *)
                  end
     else None
+(* CH: Would like to add this but I can't because of dependent types
+  | mkMVec SERVICE V(INT) _ ts => Some (mkRVec V(INT) V(INT))*)
   | _ => None
   end.
 End WithVectorNotations.

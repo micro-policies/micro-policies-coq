@@ -326,21 +326,16 @@ Inductive step : state -> state -> Prop :=
                                                    then Z_to_word 1
                                                    else imm_to_word n) in
              step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg ist pc'@V(PTR b))
-| step_jal : forall mem reg reg' ist pc b b' i r w,
-             forall (PC :       get mem pc = Some i@M(b,INT)),
-             forall (INST :     decode_instr i = Some (Jal _ r)),
-             forall (RW :       get reg r = Some w@V(PTR b')),
-(*             forall (NOTCALL :  get_syscall w = None), *)
-             forall (UPD :      upd reg ra (pc.+1)@V(PTR b) = Some reg'),
-             step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg' ist w@V(PTR b'))
-| step_syscall : forall mem reg ist pc b i r w st' sc,
-                 (* XXX: completely off compared to current model of system calls *)
-                 forall (PC :      get mem pc = Some i@M(b,INT)),
-                 forall (INST :    decode_instr i = Some (Jal _ r)),
-                 forall (RW :      get reg r = Some w@V(INT)),
-                 forall (GETCALL:  get_syscall w = Some sc),
-                 forall (CALL :    sem sc (mkState mem reg ist pc@V(PTR b)) = Some st'),
-                 step (mkState mem reg ist pc@V(PTR b)) st'.
+| step_jal : forall mem reg reg' ist pc b ty i r w
+    (PC :       get mem pc = Some i@M(b,INT))
+    (INST :     decode_instr i = Some (Jal _ r))
+    (RW :       get reg r = Some w@V(ty))
+    (UPD :      upd reg ra (pc.+1)@V(PTR b) = Some reg'),
+    step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg' ist w@V(ty))
+| step_syscall : forall mem reg ist pc b st' sc
+    (GETCALL:  get_syscall pc = Some sc)
+    (CALL :    sem sc (mkState mem reg ist pc@V(PTR b)) = Some st'),
+    step (mkState mem reg ist pc@V(INT)) st'.
 
 Variable initial_block : block.
 
