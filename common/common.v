@@ -2,7 +2,6 @@ Require Import List Arith ZArith Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.ordered.
-(* Require Import String. *)
 
 Require Import utils.
 
@@ -21,21 +20,6 @@ Inductive binop :=
 | OR
 | SHRU
 | SHL.
-
-(*
-Definition format_binop (b : binop) :=
-  match b with
-   | ADD => "ADD"
-   | SUB => "SUB"
-   | MUL => "MUL"
-   | EQ => "EQ"
-   | LEQ => "LEQ"
-   | AND => "AND"
-   | OR => "OR"
-   | SHRU => "SHRU"
-   | SHL => "SHL"
-  end.
-*)
 
 Inductive opcode : Set :=
 | NOP
@@ -82,27 +66,6 @@ Definition opcodes :=
    HALT;
    SERVICE].
 
-(*
-Definition format_opcode (o : opcode) :=
-  match b with
-   | NOP => "NOP"
-   | CONST => "CONST"
-   | MOV => "MOV"
-   | BINOP b => format_binop b
-   | LOAD => "LOAD"
-   | STORE => "STORE"
-   | JUMP => "JUMP"
-   | BNZ => "BNZ"
-   | JAL => "JAL"
-   | JUMPEPC => "JUMPEPC"
-   | ADDRULE => "ADDRULE"
-   | GETTAG => "GETTAG"
-   | PUTTAG => "PUTTAG"
-   | HALT => "HALT"
-   | SERVICE => "SERVICE"
-  end.
-*)
-
 (* This should be a proof by reflection... *)
 Lemma opcodesP : forall op, In op opcodes.
 Proof.
@@ -138,30 +101,6 @@ Inductive instr : Type :=
 | GetTag : reg t -> reg t -> instr
 | PutTag : reg t -> reg t -> reg t -> instr
 | Halt : instr.
-
-(*
-Definition format_reg r := "r" ++ format_int r
-
-Definition format_imm im := format_int im
-
-Definition format_instr i :=
-  match i with
-  | Nop => "Nop" 
-  | Const im => "Const " ++ format_imm im
-  | Mov r1 r2 => "Mov " ++ format_reg r1 ++ " " format_reg r2
-  | Binop r1 r2 r3 => "Binop " ++ format_reg r1 ++ " " format_reg r2 ++ " " format_reg r3
-  | Load r1 => "Load " ++ format_reg r1
-  | Store r1 r2 => "Store " ++ format_reg r1 ++ " " format_reg r2
-  | Jump r1 => "Jump " ++ format_reg r1
-  | Bnz r im => "Bnz " ++ format_reg r ++ " " ++ format_imm i 
-  | Jal r1 => "Jal " ++ format_reg r1
-  | JumpEpc => "JumpEpc" 
-  | AddRule => "AddRule" 
-  | GetTag r1 r2 => "GetTag " ++ format_reg r1 ++ " " format_reg r2
-  | PutTag r1 r2 r3 => "PutTag  " ++ format_reg r1 ++ " " format_reg r2 ++ " " format_reg r3
-  | Halt => "Halt"  
-  end.
-*)
 
 Definition opcode_of (i : instr) : opcode :=
   match i with

@@ -9,6 +9,7 @@ lib/ordered.v
 lib/partial_maps.v
 
 common/common.v
+common/printing.v
 
 concrete/concrete.v
 concrete/exec.v

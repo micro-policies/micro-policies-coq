@@ -14,7 +14,7 @@ Require Import lib.FiniteMaps.
 Require Import lib.utils.
 Require Import lib.partial_maps.
 Require Import lib.ordered.
-Require Import common.common.
+Require Import common.common common.printing.
 Require Import concrete.concrete.
 
 Import DoNotation.
@@ -333,3 +333,15 @@ Next Obligation.
   - intros mem i i' x Hneq. simpl in *.
     apply Int32TMap.gso; assumption.
 Qed.
+
+Open Scope string_scope.
+Import printing.
+
+Instance p : printing concrete_int_32_t := {|
+  format_word := fun i => format_nat (nat_of_Z (word_to_Z i));
+  format_reg := fun i => format_nat (nat_of_Z (word_to_Z i));
+  format_imm := fun i => format_nat (nat_of_Z (word_to_Z i))
+|}.
+
+Definition format_instr := printing.format_instr.
+

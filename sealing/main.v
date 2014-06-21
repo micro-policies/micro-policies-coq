@@ -335,19 +335,47 @@ Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) 
 Compute (Concrete.memory concrete_int_32_t).
 *)
 
+Require Import String.
+Import printing.
+
+Definition format_atom atom : string :=
+  let: w1@w2 := atom in 
+    format_word w1 ++ "@" ++ format_word w2 ++
+    match decode_instr w1 with
+      Some i => "= " ++ format_instr i
+    | None => ""
+    end.
+
 Definition print_instr atom :=
   let: w1@w2 := atom in (Int32.intval w1, decode_instr w1, Int32.intval w2).
 
 Definition print_atom atom :=
   let: w1@w2 := atom in (Int32.intval w1, Int32.intval w2).
 
+Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
+  match l with
+    [] => []
+  | (_, None) :: l' => filter_Somes l'
+  | (x, Some y) :: l' => (x,y) :: filter_Somes l'
+  end.
+
+(*
 Definition print_state (mem_start mem_end max_reg : nat) st :=
-  (print_atom (Concrete.pc st),
-  @enum _ _ _ (Concrete.mem st) (@PartMaps.get _ Int32.int _ _) (omap print_instr) mem_end (nat_to_word mem_start),
-   Concrete.cache st).
+  let mem := filter_Somes 
+               (@enum _ _ _ 
+                 (@Concrete.mem t cp st) 
+                 (@PartMaps.get _ Int32.int _ _)  (* BCP: Help *)
+                 (@omap (instr t) string format_instr) 
+                 mem_end 
+                 (* BCP: Surely this is not the right way to do this... *)
+                 (Int32.repr (word_to_Z (nat_to_word mem_start)))) in 
+  ("PC: ", format_atom (Concrete.pc st),
+  "Mem: ", mem,
+  "Cache: ", Concrete.cache st).
 
 Definition print_res_state n init :=
   omap (print_state 2720 2730 0) (exec.stepn less_trivial_masks t n init).
+*)
 
 (*
 Compute (print_res_state 60 (build_concrete_sealing_machine hello_world)).
