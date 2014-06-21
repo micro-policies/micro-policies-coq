@@ -404,7 +404,12 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
 Definition print_res_state n init :=
   omap (print_state 0 30 30) (exec.stepn less_trivial_masks t n init).
 
+Definition run n := 
+  (ConcreteSealing.print_res_state n (ConcreteSealing.build_concrete_sealing_machine ConcreteSealing.hello_world)).
+
+(*
 Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).
+*)
 
 (*
 Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).
@@ -424,3 +429,10 @@ Definition build_abstract_sealing_machine :=
 (* TODO: Refinement proof from concrete to abstract instances *)
 
 End ConcreteSealing.
+
+Definition main := ConcreteSealing.run 10.
+
+(*
+Extraction Language Ocaml.
+Extraction "temp.ml" main.
+*)
