@@ -1,5 +1,5 @@
 (*
-    why is the run with the current transfer function succeeding??
+    check that current behavior makes sense
     write a less silly transfer function
     write better testing stuff
     fill in the syscall implementations
