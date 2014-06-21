@@ -207,11 +207,6 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
   | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
   end.
 
-(*
-Definition encode_sealing_tag (t : Sym.stag) : w := 
-    Z_to_word 42.
-*)
-
 Definition gen_syscall_code gen : @relocatable_segment t w w :=
   (length (gen (Int32.repr 0) (Int32.repr 0)), 
    fun b w => map encode_instr (gen b w)).
@@ -336,10 +331,6 @@ Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) 
   | S p => (Int32.intval i, f (get map i)) :: enum map get f p (Int32.add i (Int32.repr 1))
   end.
 
-(*
-Compute (Concrete.memory concrete_int_32_t).
-*)
-
 Require Import String.
 Import printing.
 
@@ -347,7 +338,7 @@ Definition format_atom atom : string :=
   let: w1@w2 := atom in 
     format_word w1 ++ "@" ++ format_word w2 ++
     match decode_instr w1 with
-      Some i => "= " ++ format_instr i
+      Some i => " (" ++ format_instr i ++ ")"
     | None => ""
     end.
 
@@ -357,6 +348,31 @@ Definition print_instr atom :=
 Definition print_atom atom :=
   let: w1@w2 := atom in (Int32.intval w1, Int32.intval w2).
 
+Definition format_mvec l := 
+  let os := match (Z_to_op (word_to_Z (@Concrete.cop (word t) l))) with
+              Some o => format_opcode o
+            | None => "<BAD OPCODE>"
+            end in
+   os 
+   ++ " " ++
+   format_word (@Concrete.ctpc (word t) l)
+   ++ " " ++
+   format_word (@Concrete.cti (word t) l)
+   ++ " " ++
+   format_word (@Concrete.ct1 (word t) l)
+   ++ " " ++
+   format_word (@Concrete.ct2 (word t) l)
+   ++ " " ++
+   format_word (@Concrete.ct3 (word t) l).
+
+Definition format_rvec l := 
+   format_word (@Concrete.ctrpc (word t) l)
+   ++ " " ++
+   format_word (@Concrete.ctr (word t) l).
+
+Definition format_cache (c : Concrete.rules (word t)) :=
+  map (fun l => let: (m,r) := l in (format_mvec m ++ " => " ++ format_rvec r)) c.
+
 Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
   match l with
     [] => []
@@ -364,32 +380,32 @@ Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
   | (x, Some y) :: l' => (x,y) :: filter_Somes l'
   end.
 
-(*
 Definition print_state (mem_start mem_end max_reg : nat) st :=
   let mem := filter_Somes 
                (@enum _ _ _ 
                  (@Concrete.mem t cp st) 
-                 (@PartMaps.get _ Int32.int _ _)  (* BCP: Help *)
-                 (@omap (instr t) string format_instr) 
+                 (@PartMaps.get _ Int32.int _ _) 
+                 (@omap atom string format_atom) 
                  mem_end 
                  (* BCP: Surely this is not the right way to do this... *)
                  (Int32.repr (word_to_Z (nat_to_word mem_start)))) in 
-  ("PC: ", format_atom (Concrete.pc st),
-  "Mem: ", mem,
-  "Cache: ", Concrete.cache st).
+  let regs := @enum _ _ _ 
+                 (@Concrete.regs t cp st) 
+                 (@TotalMaps.get _ Int32.int _ _) 
+                 format_atom
+                 max_reg 
+                 (* BCP: or this... *)
+                 (Int32.repr (word_to_Z (nat_to_word 0))) in 
+  ("PC = " ++ format_atom (Concrete.pc st),
+  "Registers = ", regs,
+  "Memory = ", mem,
+  "Cache: ", format_cache (Concrete.cache st)).
 
 Definition print_res_state n init :=
-  omap (print_state 2720 2730 0) (exec.stepn less_trivial_masks t n init).
-*)
+  omap (print_state 0 30 30) (exec.stepn less_trivial_masks t n init).
 
 (*
-Compute (print_res_state 60 (build_concrete_sealing_machine hello_world)).
-Compute (eval_reg 60 (Int32.repr 26) (build_concrete_sealing_machine hello_world)).
-
-Compute (print_state 20 30 0 (build_concrete_sealing_machine hello_world2)).
-
-Compute (PartMaps.get (Concrete.mem init) (Int32.repr 2721)).
-Compute (decode_instr (Int32.repr 2850818)).
+Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).
 *)
 
 (* BCP: One nontrivial issue here.  How do we find out the system call

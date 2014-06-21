@@ -113,8 +113,8 @@ Variable policy_handler : code.
 
 (* Check whether the operands for a particular opcode are tagged
    USER. If so, extract the corresponding policy-level tags and call
-   the higher-level handler on them. Otherwise, enter an infinite
-   loop. Warning: overwrites ri3. *)
+   the higher-level handler on them. Otherwise, halt. Warning: overwrites 
+   ri3. *)
 Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   (* Check that [rop] contains a USER tag that does
      not have a call bit set *)

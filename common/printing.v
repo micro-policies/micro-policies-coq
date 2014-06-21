@@ -90,7 +90,8 @@ Definition format_instr (i : instr t) :=
   | Nop => "Nop" 
   | Const im r => "Const " ++ format_imm im ++ " " ++ format_reg_r r
   | Mov r1 r2 => "Mov " ++ format_reg_r r1 ++ " " ++ format_reg_r r2
-  | Binop b r1 r2 r3 => format_binop b ++ format_reg_r r1 ++ " " ++ format_reg_r r2 ++ " " ++ format_reg_r r3
+  | Binop b r1 r2 r3 => format_binop b ++ " " ++ format_reg_r r1 ++ " " 
+                        ++ format_reg_r r2 ++ " " ++ format_reg_r r3
   | Load r1 r2 => "Load " ++ format_reg_r r1 ++ " " ++ format_reg_r r2
   | Store r1 r2 => "Store " ++ format_reg_r r1 ++ " " ++ format_reg_r r2
   | Jump r1 => "Jump " ++ format_reg_r r1
