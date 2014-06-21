@@ -334,12 +334,12 @@ Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) 
 Require Import String.
 Import printing.
 
-Definition format_atom atom : string :=
+Definition format_atom atom :=
   let: w1@w2 := atom in 
-    format_word w1 ++ "@" ++ format_word w2 ++
+    format_word w1 +++ ss "@" +++ format_word w2 +++
     match decode_instr w1 with
-      Some i => " (" ++ format_instr i ++ ")"
-    | None => ""
+      Some i => ss " (" +++ format_instr i +++ ss ")"
+    | None => sempty
     end.
 
 Definition print_instr atom :=
@@ -351,27 +351,27 @@ Definition print_atom atom :=
 Definition format_mvec l := 
   let os := match (Z_to_op (word_to_Z (@Concrete.cop (word t) l))) with
               Some o => format_opcode o
-            | None => "<BAD OPCODE>"
+            | None => ss "<BAD OPCODE>"
             end in
    os 
-   ++ " " ++
+   +++ ss " " +++
    format_word (@Concrete.ctpc (word t) l)
-   ++ " " ++
+   +++ ss " " +++
    format_word (@Concrete.cti (word t) l)
-   ++ " " ++
+   +++ ss " " +++
    format_word (@Concrete.ct1 (word t) l)
-   ++ " " ++
+   +++ ss " " +++
    format_word (@Concrete.ct2 (word t) l)
-   ++ " " ++
+   +++ ss " " +++
    format_word (@Concrete.ct3 (word t) l).
 
 Definition format_rvec l := 
    format_word (@Concrete.ctrpc (word t) l)
-   ++ " " ++
+   +++ ss " " +++
    format_word (@Concrete.ctr (word t) l).
 
 Definition format_cache (c : Concrete.rules (word t)) :=
-  map (fun l => let: (m,r) := l in (format_mvec m ++ " => " ++ format_rvec r)) c.
+  map (fun l => let: (m,r) := l in to_string (format_mvec m +++ ss " => " +++ format_rvec r)) c.
 
 Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
   match l with
@@ -385,24 +385,26 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
                (@enum _ _ _ 
                  (@Concrete.mem t cp st) 
                  (@PartMaps.get _ Int32.int _ _) 
-                 (@omap atom string format_atom) 
+                 (@omap atom string (fun a => to_string (format_atom a)))
                  mem_end 
                  (* BCP: Surely this is not the right way to do this... *)
                  (Int32.repr (word_to_Z (nat_to_word mem_start)))) in 
   let regs := @enum _ _ _ 
                  (@Concrete.regs t cp st) 
                  (@TotalMaps.get _ Int32.int _ _) 
-                 format_atom
+                 (fun a => to_string (format_atom a))
                  max_reg 
                  (* BCP: or this... *)
                  (Int32.repr (word_to_Z (nat_to_word 0))) in 
-  ("PC = " ++ format_atom (Concrete.pc st),
+  (to_string (ss "PC = " +++ format_atom (Concrete.pc st)),
   "Registers = ", regs,
   "Memory = ", mem,
   "Cache: ", format_cache (Concrete.cache st)).
 
 Definition print_res_state n init :=
   omap (print_state 0 30 30) (exec.stepn less_trivial_masks t n init).
+
+Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).
 
 (*
 Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).

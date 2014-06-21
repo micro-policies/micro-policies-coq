@@ -9,6 +9,30 @@ Import String.
 
 Set Implicit Arguments.
 
+(* ------------------------------------------------------------------- *)
+(* Append-list strings *)
+
+Open Scope string_scope.
+
+Definition sstring := string -> string.
+
+Definition sempty : sstring := fun s => s.
+
+Definition ss (s : string) : sstring := 
+  fun s' => s ++ s'.
+
+Definition schar (c : ascii) : sstring := 
+  fun s => String c s.
+
+Definition sappend (s1 s2 : sstring) : sstring := 
+  fun s => s1 (s2 s).
+
+Notation "x +++ y" := (sappend x y) (right associativity, at level 60).
+
+Definition to_string (s : sstring) : string := s "".
+
+(* ------------------------------------------------------------------- *)
+
 Open Scope char_scope.
 Definition natToDigit (n : nat) : ascii :=
   match n with
@@ -24,8 +48,8 @@ Definition natToDigit (n : nat) : ascii :=
     | _ => "9"
   end.
 
-Fixpoint writeNatAux (time n : nat) (acc : string) : string :=
-  let acc' := String (natToDigit (n mod 10)) acc in
+Fixpoint writeNatAux (time n : nat) (acc : sstring) : sstring :=
+  let acc' := schar (natToDigit (n mod 10)) +++ acc in
   match time with
     | 0 => acc'
     | S time' =>
@@ -35,47 +59,47 @@ Fixpoint writeNatAux (time n : nat) (acc : string) : string :=
       end
   end.
 
-Definition format_nat (n : nat) : string :=
-  writeNatAux n n "".
+Definition format_nat (n : nat) : sstring :=
+  writeNatAux n n sempty.
 
 Open Scope string_scope.
 
 Definition format_binop (b : binop) :=
   match b with
-   | ADD => "ADD"
-   | SUB => "SUB"
-   | MUL => "MUL"
-   | EQ => "EQ"
-   | LEQ => "LEQ"
-   | AND => "AND"
-   | OR => "OR"
-   | SHRU => "SHRU"
-   | SHL => "SHL"
+   | ADD => ss "ADD"
+   | SUB => ss "SUB"
+   | MUL => ss "MUL"
+   | EQ => ss "EQ"
+   | LEQ => ss "LEQ"
+   | AND => ss "AND"
+   | OR => ss "OR"
+   | SHRU => ss "SHRU"
+   | SHL => ss "SHL"
   end.
 
 Definition format_opcode (o : opcode) :=
   match o with
-   | NOP => "NOP"
-   | CONST => "CONST"
-   | MOV => "MOV"
+   | NOP => ss "NOP"
+   | CONST => ss "CONST"
+   | MOV => ss "MOV"
    | BINOP b => format_binop b
-   | LOAD => "LOAD"
-   | STORE => "STORE"
-   | JUMP => "JUMP"
-   | BNZ => "BNZ"
-   | JAL => "JAL"
-   | JUMPEPC => "JUMPEPC"
-   | ADDRULE => "ADDRULE"
-   | GETTAG => "GETTAG"
-   | PUTTAG => "PUTTAG"
-   | HALT => "HALT"
-   | SERVICE => "SERVICE"
+   | LOAD => ss "LOAD"
+   | STORE => ss "STORE"
+   | JUMP => ss "JUMP"
+   | BNZ => ss "BNZ"
+   | JAL => ss "JAL"
+   | JUMPEPC => ss "JUMPEPC"
+   | ADDRULE => ss "ADDRULE"
+   | GETTAG => ss "GETTAG"
+   | PUTTAG => ss "PUTTAG"
+   | HALT => ss "HALT"
+   | SERVICE => ss "SERVICE"
   end.
 
 Class printing (t : machine_types) := {
-  format_word : word t -> string;
-  format_reg : reg t -> string;
-  format_imm : imm t -> string
+  format_word : word t -> sstring;
+  format_reg : reg t -> sstring;
+  format_imm : imm t -> sstring
 }.
 
 Section Printing.
@@ -83,25 +107,25 @@ Section Printing.
 Context {t : machine_types}
         {p : printing t}.
 
-Definition format_reg_r (r : reg t) := "r" ++ format_reg r.
+Definition format_reg_r (r : reg t) := ss "r" +++ format_reg r.
 
 Definition format_instr (i : instr t) :=
   match i with
-  | Nop => "Nop" 
-  | Const im r => "Const " ++ format_imm im ++ " " ++ format_reg_r r
-  | Mov r1 r2 => "Mov " ++ format_reg_r r1 ++ " " ++ format_reg_r r2
-  | Binop b r1 r2 r3 => format_binop b ++ " " ++ format_reg_r r1 ++ " " 
-                        ++ format_reg_r r2 ++ " " ++ format_reg_r r3
-  | Load r1 r2 => "Load " ++ format_reg_r r1 ++ " " ++ format_reg_r r2
-  | Store r1 r2 => "Store " ++ format_reg_r r1 ++ " " ++ format_reg_r r2
-  | Jump r1 => "Jump " ++ format_reg_r r1
-  | Bnz r im => "Bnz " ++ format_reg_r r ++ " " ++ format_imm im 
-  | Jal r1 => "Jal " ++ format_reg_r r1
-  | JumpEpc => "JumpEpc" 
-  | AddRule => "AddRule" 
-  | GetTag r1 r2 => "GetTag " ++ format_reg_r r1 ++ " " ++ format_reg_r r2
-  | PutTag r1 r2 r3 => "PutTag  " ++ format_reg_r r1 ++ " " ++ format_reg_r r2 ++ " " ++ format_reg_r r3
-  | Halt => "Halt"  
+  | Nop => ss "Nop" 
+  | Const im r => ss "Const " +++ format_imm im +++ ss " " +++ format_reg_r r
+  | Mov r1 r2 => ss "Mov " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2
+  | Binop b r1 r2 r3 => format_binop b +++ ss " " +++ format_reg_r r1 +++ ss " " 
+                        +++ format_reg_r r2 +++ ss " " +++ format_reg_r r3
+  | Load r1 r2 => ss "Load " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2
+  | Store r1 r2 => ss "Store " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2
+  | Jump r1 => ss "Jump " +++ format_reg_r r1
+  | Bnz r im => ss "Bnz " +++ format_reg_r r +++ ss " " +++ format_imm im 
+  | Jal r1 => ss "Jal " +++ format_reg_r r1
+  | JumpEpc => ss "JumpEpc" 
+  | AddRule => ss "AddRule" 
+  | GetTag r1 r2 => ss "GetTag " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2
+  | PutTag r1 r2 r3 => ss "PutTag  " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2 +++ ss " " +++ format_reg_r r3
+  | Halt => ss "Halt"  
   end.
 
 End Printing.
