@@ -179,6 +179,7 @@ Proof.
   intros. by apply refine_val_atom_set_km.
 Qed.
 
+
 Lemma backward_simulation : forall km ast sst sst',
   refine_state km ast sst ->
   Sym.step sst sst' ->
@@ -186,17 +187,17 @@ Lemma backward_simulation : forall km ast sst sst',
     Abs.step ast ast' /\
     refine_state km' ast' sst'.
 Proof.
-  intros km [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
-  destruct sstep; destruct sst as [smem sregs spc skey];
-    injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
-    intros [rmem [rreg [rpc rins]]].
-  - (* NOP *)
 Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     (apply refine_pc_inv in rpc; symmetry in rpc; subst;
     apply (refine_get_pointwise_inv rmem) in PC;
       destruct PC as [iv [PC riv]];
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT;
     apply refine_val_data in riv; subst).
+  intros km [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
+  destruct sstep; destruct sst as [smem sregs spc skey];
+    injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
+    intros [rmem [rreg [rpc rins]]].
+  - (* NOP *)
     REFINE_INSTR PC ti rmem rpc NEXT.
     injection NEXT; intro H; subst; clear NEXT.
     eexists. exists km. split.
@@ -247,27 +248,39 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
       eassumption.
       eassumption.
     + split4; now trivial.
-  - admit. (* LOAD *)
+  - (* LOAD *)
+    REFINE_INSTR PC ti rmem rpc NEXT.
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]]. 
+    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]]. 
+    injection NEXT; intro H; subst; clear NEXT.
+    destruct t1; try discriminate stag.
+       injection stag; intro H; subst; clear stag; simpl in *. 
+    destruct (refine_get_pointwise_inv rreg R1W) as [v [g rva]].        
+    apply refine_val_data in rva; subst.
+    destruct (refine_get_pointwise_inv rmem MEM1) as [vm [gm rvam]].
+    edestruct refine_upd_reg as [args' [H1 H2]]; [eassumption | | eassumption|]. 
+    eassumption.
+    eexists. exists km. split.
+    + eapply Abs.step_load; [reflexivity | | | | | reflexivity]. 
+      unfold Abs.decode. rewrite PC. now apply INST.
+      eassumption.
+      eassumption.
+      eassumption.
+    + split4; now trivial. 
   - admit. (* STORE *)
   - admit. (* JUMP *)
   - admit. (* BNZ *)
   - (* JAL - not system call *)
     (* copy paste (all cases) *)
-    apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    apply (refine_get_pointwise_inv rmem) in PC.
-      destruct PC as [iv [PC riv]].
-    destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT.
-    (* copy paste, twice (CONST) *)
+    REFINE_INSTR PC ti rmem rpc NEXT.  
     apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
     apply bind_inv in NEXT. destruct NEXT as [sregs' [upd' NEXT]].
-    (* copy paste (all cases) *)
     injection NEXT; intro H; subst; clear NEXT.
-    apply refine_val_data in riv. subst.
     (* new *)
     destruct t1; try discriminate stag. injection stag; intro; subst; clear stag.
     (* new - reading a register *)
     destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
-    destruct v; try contradiction rva. simpl in rva. subst.
+    apply refine_val_data in rva; subst; simpl.
     (* the rest similar to CONST *)
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (apc + 1)%w). reflexivity.
@@ -278,15 +291,16 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
+(*     have {PC} PC: get amem apc = None by admit. (* Shouldn't be hard *) *)
+    erewrite (@pointwise_none _ _ _ _ _ _ _ _ amem smem pc rmem) in PC.  
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    have {PC} PC: get amem apc = None by admit. (* Shouldn't be hard *)
     simpl in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
       have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];
-      move => GETCALL; injection GETCALL; move {GETCALL} => ?; subst.
+      move => GETCALL ; injection GETCALL; move {GETCALL} => ?; subst.
     + {(* mkkey *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]]. 
     simpl in CALL; move: CALL.
     case lt_skey : (skey <? Sym.max_key) => // CALL. 
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
@@ -345,7 +359,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     }
     + {(* seal *)
     (* break up the effects of the system call *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]]. 
     simpl in CALL.
     apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
     destruct tp; try discriminate CALL.
@@ -373,7 +387,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     }
     + {(* unseal -- very similar to seal *)
     (* break up the effects of the system call *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]]. 
     simpl in CALL.
     apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
     destruct tp; try discriminate CALL.
@@ -410,6 +424,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
 
     + split4; now trivial.
     }
+Qed.
 Admitted.
 
 (* Q: Would we get an easier proof if we defined the refinement

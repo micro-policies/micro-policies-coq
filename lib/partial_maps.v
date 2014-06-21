@@ -187,6 +187,16 @@ Proof.
   + contradiction ref.
 Qed.
 
+Lemma pointwise_none : forall P m1 m2 k,
+  (pointwise P) m1 m2 ->
+  (get m2 k = None <-> get m1 k = None).
+Proof.
+  intros P m1 m2 k ref. 
+  pose proof (ref k). 
+  destruct (get m1 k) eqn:?; destruct (get m2 k) eqn:?; try tauto.  
+  split; intro X; discriminate X. 
+Qed. 
+
 End PartMapPointwise.
 
 Section PartMapPointwiseUpd.
