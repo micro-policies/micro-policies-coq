@@ -225,12 +225,16 @@ Definition rules (mvec : MVec label) : option (RVec label) :=
                    | V(INT) => retv V(INT)
                    | _ => None
                    end
+                   (* this is too restrictive now, doesn't allow system calls *)
                  | JAL => fun t _ =>
                    match t with
                    | V(PTR b') => ret V(PTR b') V(PTR b)
                    | _ => None
                    end
+                 (* need special rule for SERVICE opcode? *)
                  | op => mvec_const_dest op None
+                        (* this fallthrough case seems suspicious,
+                           why not just return None? *)
                  end
     else None
   | _ => None

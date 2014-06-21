@@ -216,6 +216,7 @@ Inductive step : state -> state -> Prop :=
              forall (UPD :      upd reg ra (ValPtr (pc.+1)) = Some reg'),
              step (mkState mem reg pc) (mkState mem reg' pt)
 | step_malloc : forall mem mem' reg reg' pc i r sz b,
+(* this is completely off wrt current system call model *)
              forall (PC :       getv mem pc = Some (ValInt i)),
              forall (INST :     decode_instr i = Some (Jal _ r)),
              forall (RW :       get reg r = Some (ValInt malloc_addr)),
@@ -224,6 +225,7 @@ Inductive step : state -> state -> Prop :=
              forall (UPD :      upd reg syscall_ret (ValPtr (b,Z_to_word 0%Z)) = Some reg'),
              step (mkState mem reg pc) (mkState mem' reg' pc.+1)
 | step_free : forall mem mem' reg pc i r ptr,
+(* this is completely off wrt current system call model *)
              forall (PC :       getv mem pc = Some (ValInt i)),
              forall (INST :     decode_instr i = Some (Jal _ r)),
              forall (RW :       get reg r = Some (ValInt free_addr)),
@@ -231,6 +233,7 @@ Inductive step : state -> state -> Prop :=
              forall (ALLOC :    free_fun mem ptr.1 = Some mem'),
              step (mkState mem reg pc) (mkState mem' reg pc.+1)
 | step_size : forall mem reg reg' pc i r b o fr,
+(* this is completely off wrt current system call model *)
     forall (PC   : getv mem pc = Some (ValInt i)),
     forall (INST : decode_instr i = Some (Jal _ r)),
     forall (RW   : get reg r = Some (ValInt size_addr)),
@@ -240,6 +243,7 @@ Inductive step : state -> state -> Prop :=
     forall (UPD  : upd reg syscall_ret size = Some reg'),
     step (mkState mem reg pc) (mkState mem reg' pc.+1)
 | step_base : forall mem reg reg' pc i r b o,
+(* this is completely off wrt current system call model *)
     forall (PC   : getv mem pc = Some (ValInt i)),
     forall (INST : decode_instr i = Some (Jal _ r)),
     forall (RW   : get reg r = Some (ValInt base_addr)),
@@ -247,6 +251,7 @@ Inductive step : state -> state -> Prop :=
     forall (UPD  : upd reg syscall_ret (ValPtr (b,Z_to_word 0%Z)) = Some reg'),
     step (mkState mem reg pc) (mkState mem reg' pc.+1)
 | step_eq : forall mem reg reg' pc i r v1 v2,
+(* this is completely off wrt current system call model *)
     forall (PC   : getv mem pc = Some (ValInt i)),
     forall (INST : decode_instr i = Some (Jal _ r)),
     forall (RW   : get reg r = Some (ValInt eq_addr)),

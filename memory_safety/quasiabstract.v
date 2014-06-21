@@ -334,6 +334,7 @@ Inductive step : state -> state -> Prop :=
              forall (UPD :      upd reg ra (pc.+1)@V(PTR b) = Some reg'),
              step (mkState mem reg ist pc@V(PTR b)) (mkState mem reg' ist w@V(PTR b'))
 | step_syscall : forall mem reg ist pc b i r w st' sc,
+                 (* XXX: completely off compared to current model of system calls *)
                  forall (PC :      get mem pc = Some i@M(b,INT)),
                  forall (INST :    decode_instr i = Some (Jal _ r)),
                  forall (RW :      get reg r = Some w@V(INT)),
