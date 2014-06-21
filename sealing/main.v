@@ -336,10 +336,9 @@ Import printing.
 
 Definition format_atom atom :=
   let: w1@w2 := atom in 
-    format_word w1 +++ ss "@" +++ format_word w2 +++
     match decode_instr w1 with
-      Some i => ss " (" +++ format_instr i +++ ss ")"
-    | None => sempty
+      Some i => ss "(" +++ format_instr i +++ ss ")@" +++ format_word w2
+    | None => format_word w1 +++ ss "@" +++ format_word w2
     end.
 
 Definition print_instr atom :=
@@ -370,8 +369,11 @@ Definition format_rvec l :=
    +++ ss " " +++
    format_word (@Concrete.ctr (word t) l).
 
-Definition format_cache (c : Concrete.rules (word t)) :=
+Definition format_whole_cache (c : Concrete.rules (word t)) :=
   map (fun l => let: (m,r) := l in to_string (format_mvec m +++ ss " => " +++ format_rvec r)) c.
+
+Definition format_cache (c : Concrete.rules (word t)) :=
+  format_whole_cache (List.rev (take 3 (List.rev c))).
 
 Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
   match l with
@@ -399,13 +401,17 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
   (to_string (ss "PC = " +++ format_atom (Concrete.pc st)),
   "Registers = ", regs,
   "Memory = ", mem,
-  "Cache: ", format_cache (Concrete.cache st)).
+  "Cache: ... ", format_cache (Concrete.cache st)).
 
 Definition print_res_state n init :=
-  omap (print_state 0 30 30) (exec.stepn less_trivial_masks t n init).
+  omap (print_state 0 50 15) (exec.stepn less_trivial_masks t n init).
 
 Definition run n := 
   (ConcreteSealing.print_res_state n (ConcreteSealing.build_concrete_sealing_machine ConcreteSealing.hello_world)).
+
+(*
+Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)). 
+*)
 
 (*
 Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).

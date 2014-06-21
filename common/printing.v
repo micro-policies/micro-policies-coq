@@ -60,7 +60,7 @@ Fixpoint writeNatAux (time n : nat) (acc : sstring) : sstring :=
   end.
 
 Definition format_nat (n : nat) : sstring :=
-  writeNatAux n n sempty.
+  writeNatAux n n sempty. 
 
 Open Scope string_scope.
 
