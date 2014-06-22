@@ -26,7 +26,7 @@ Definition nfields (op : opcode) : option (nat * nat) :=
   | BNZ => Some (1, 0)
   | JAL => Some (2, 1)
   | SERVICE => Some (0, 0)
-  | _ => None
+  | JUMPEPC | ADDRULE | GETTAG | PUTTAG | HALT => None
   end.
 
 Definition mvec_operands T (fs : option (nat * nat)) : Type :=
