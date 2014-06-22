@@ -8,3 +8,4 @@ temp
 *.v.d
 *.vo
 Makefile.coq
+temp.*
