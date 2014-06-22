@@ -41,6 +41,12 @@ Inductive opcode : Set :=
 
 Scheme Equality for opcode.
 
+Lemma opcode_eqP : Equality.axiom opcode_beq.
+Proof. by do !case; constructor. Qed.
+
+Definition opcode_eqMixin := EqMixin opcode_eqP.
+Canonical opcode_eqType := Eval hnf in EqType opcode opcode_eqMixin.
+
 Definition opcodes :=
   [NOP;
    CONST;
