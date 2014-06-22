@@ -246,17 +246,26 @@ Inductive step : state -> state -> Prop :=
     (RA   : get reg ra = Some (VPtr pc')),
     step (mkState mem reg (VData eq_addr)) (mkState mem reg' (VPtr pc')).
 
-Variable initial_block : block.
+(* CH: Is the next part only a way of exposing mkState? *)
 
-(* Hypothesis: alloc never returns initial_block. *)
+(* Not used anywhere
+Variable initial_block : block.
+*)
+
+(* Hypothesis: alloc never returns initial_block.
+   CH: Isn't this simply a consequence of alloc never returning
+       something that is already allocated, and that the initial block
+       is already allocated from the start?
+   Q: Can the initial block be freed?
+*)
 
 Variable initial_pc : pointer.
 Variable initial_mem  : memory.
-Variable initial_registers : registers.
-Hypothesis initial_ra : get initial_registers ra = Some (VPtr initial_pc).
+Variable initial_regs : registers.
+Hypothesis initial_ra : get initial_regs ra = Some (VPtr initial_pc).
 
 Definition initial_state : state :=
-  mkState initial_mem initial_registers (VPtr initial_pc).
+  mkState initial_mem initial_regs (VPtr initial_pc).
 
 End WithClasses.
 
