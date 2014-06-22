@@ -26,7 +26,7 @@ symbolic/int_32.v
 symbolic/rules.v
 
 cfi/abstract.v
-cfi/cfi_preservation.v
+#cfi/cfi_preservation.v
 cfi/cfi_refinement.v
 cfi/cfi.v
 #cfi/concrete_cfi.v

@@ -142,7 +142,7 @@ Inductive step_a : state -> state -> Prop :=
              step_a (imem,dmem,reg,pc,true) (imem,dmem',reg',pc,true).
 
 Definition succ (st : state) (st' : state) : bool :=
-  let '(imem,_,reg,pc,_) := st in
+  let '(imem,dmem,reg,pc,_) := st in
   let '(_,_,_,pc',_) := st' in
   match (get imem pc) with
     | Some i =>
@@ -155,9 +155,13 @@ Definition succ (st : state) (st' : state) : bool :=
         | _ => pc' == pc .+1
       end
     | None => 
-      match get_syscall pc with
-        | Some sc => true (* Double-check *)
-        | None => false
+      match get dmem pc with
+        | Some _ => false
+        | None =>
+          match get_syscall pc with
+            | Some sc => true (* Double-check *)
+            | None => false
+          end
       end
   end.
 
@@ -214,7 +218,7 @@ Proof.
   try (rewrite eqxx in SUCC; congruence);
   try (destruct (w == 0)); try (rewrite eqxx ?orbT in SUCC);
   try (rewrite RW in SUCC);
-  try rewrite GETCALL in SUCC; 
+  try rewrite GETCALL NOUSERM in SUCC; 
   try congruence; auto.
 Qed.
 
