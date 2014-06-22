@@ -24,12 +24,8 @@ Section Mappable.
     map : (V1 -> V2) -> M1 -> M2;
 
     map_correctness: forall (f : V1 -> V2) (m1 : M1) (k : K),
-                       get (map f m1) k = option_map f (get m1 k);
+                       get (map f m1) k = option_map f (get m1 k)
 
-
-    map_domains: forall (f : V1 -> V2) (m1 : M1) (k : K) (v : V2),
-                   get (map f m1) k = Some v ->
-                   exists (v' : V1), get m1 k = Some v'
 
     }.
 End Mappable. 
