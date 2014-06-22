@@ -125,6 +125,7 @@ Inductive step : state -> state -> Prop :=
              step (imem,dmem,reg,pc,true) (imem,dmem,reg',w,b)
 | step_syscall : forall imem dmem dmem' reg reg' pc pc' sc,
                  forall (FETCH : get imem pc = None),
+                 forall (NOUSERM : get dmem pc = None),
                  forall (GETCALL : get_syscall pc = Some sc), 
                  forall (CALL : sem sc (imem,dmem,reg,pc,true) =
                                 Some (imem,dmem',reg',pc',true)),
