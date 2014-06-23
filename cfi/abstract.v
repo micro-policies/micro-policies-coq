@@ -168,7 +168,8 @@ Definition succ (st : state) (st' : state) : bool :=
         | Some _ => false
         | None =>
           match get_syscall pc with
-            | Some sc => true (* Double-check *)
+            | Some sc => true
+              (* This allows monitor service to return anywhere *)
               (* An alternative would be restricting this to the value
                  in the ra register (which should be the same at the end
                  of the system call to what it was before it) *)
@@ -178,7 +179,8 @@ Definition succ (st : state) (st' : state) : bool :=
   end.
 
 (* CH: TODO: I'm expecting the cont bit to be initially true *)
-Definition initial (s : state) := True.
+Definition initial (s : state) := 
+  let '(_,_,_,_,cont) := s in cont = true.
 
 Program Instance abstract_cfi_machine : cfi_machine t := {|
   state := state;

@@ -172,12 +172,14 @@ Ltac match_inv :=
 
 Import ListNotations.
 
+Require Import Classical.
+
 Program Instance cfi_refinementAS_specs :
   machine_refinement_specs astop sstop cfi_refinementAS.
 Next Obligation. (*step or no step*)
-  Admitted.
+  by apply classic. Qed.
 Next Obligation. (*initial state*)
-  Admitted.
+  Admitted. (* TODO: using map/filter mechanism now used for attacker *)
 Next Obligation.
   destruct asi as [[[[imem dmem] aregs] apc] b], 
            asj as [[[[imem' dmem'] aregs'] apc'] b'].

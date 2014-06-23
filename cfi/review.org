@@ -1,6 +1,3 @@
-* Deadling with system calls
-symbolic.v
-
 * Initial states: Did we sort that out? Doesn't seem so!
 - defined wrongly as true for abstract machine
 - defined as true for symbolic machine too
@@ -8,6 +5,13 @@ symbolic.v
 * Assumptions and Admits
 
 These need to be carefully scrutinized
+- looked through all Addmitted things
+
+** [TODO] Special shape for symbolic/concrete states
+- assume it initially
+- prove they are preserved by taking symb/concrete steps
+  - turn Hypotheses in refinementAS into invariant
+- make it part of the refinement relation
 
 ** Where is determinism actually used? [Nowhere, removed]
 Defined TWICE (abstract.v and cfi.v)
@@ -25,13 +29,4 @@ Not used at all
 ** Stick to Abadi's notations when possible
 step -> step_n
 step_cfi -> step
-
-* Why are there things excluded from build?
-
-#cfi/cfi_preservation.v -- file removed
-
-concrete stuff:
-#cfi/concrete_cfi.v
-#cfi/concrete_kernel.v
-#cfi/fault_handler_spec.v
 

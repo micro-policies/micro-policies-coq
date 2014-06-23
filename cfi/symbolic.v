@@ -125,7 +125,11 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
   end.
 
 (* CH: I'm a bit skeptical about this; I thought we require quite a
-   lot about how things are initially tagged *)
+   lot about how things are initially tagged
+   TODO: What should this contain?
+   - no violation
+   - instructions tagged "the right way"
+*)
 Definition initial (s : Symbolic.state t) := True.
 
 Program Instance symbolic_cfi_machine : cfi_machine t := {|

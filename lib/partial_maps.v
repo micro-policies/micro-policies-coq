@@ -195,7 +195,15 @@ Proof.
   pose proof (ref k). 
   destruct (get m1 k) eqn:?; destruct (get m2 k) eqn:?; try tauto.  
   split; intro X; discriminate X. 
-Qed. 
+Qed.
+
+Lemma pointwise_same_domain : forall P m1 m2,
+  (pointwise P) m1 m2 ->
+  same_domain m1 m2.
+Proof.
+  unfold same_domain, pointwise. intros. specialize (H k).
+  destruct (get m1 k) eqn:?; destruct (get m2 k) eqn:?; tauto.  
+Qed.   
 
 End PartMapPointwise.
 

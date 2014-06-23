@@ -228,11 +228,13 @@ Definition refine_state (ast : Abs.state t)
        exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ valid_jmp src dst))).
 
 Definition refine_syscall acall scall :=
-  forall ast sst ares sres,
+  forall ast sst,
     refine_state ast sst ->
-    acall ast = Some ares ->
-    scall sst = Some sres ->
-    refine_state ares sres.
+    match acall ast, scall sst with
+    | Some ares, Some sres => refine_state ares sres
+    | None, None => True
+    | _, _ => False
+    end.
 
 Definition syscall_domains
            (atbl : list (Abs.syscall t))
@@ -270,20 +272,27 @@ Proof.
 Qed.
 
 (* Might need absence of duplicates in these maps? *)
+(* Could use pointwise, and pointwise -> same_domains *)
 Definition refine_syscalls 
            (atbl : list (Abs.syscall t))
            (stbl : list (@Symbolic.syscall t sym_params)) : Prop :=
-  syscall_domains atbl stbl /\
-  forall addr acall scall,
-    Abs.get_syscall atbl addr = Some acall ->
-    Symbolic.get_syscall stbl addr = Some scall ->
-    refine_syscall (@Abs.sem t ap acall)
-                   (@Symbolic.run_syscall t sym_params scall).
+  forall addr,
+    match Abs.get_syscall atbl addr, Symbolic.get_syscall stbl addr with
+    | Some acall, Some scall =>
+      refine_syscall (@Abs.sem t ap acall)
+                     (@Symbolic.run_syscall t sym_params scall)
+    | None, None => True
+    | _, _ => False
+    end.
+
+Lemma refine_syscalls_domains : forall atbl stbl,
+  refine_syscalls atbl stbl ->
+  syscall_domains atbl stbl.
+Admitted.
 
 Hypothesis refine_syscalls_correct : refine_syscalls atable stable.
 
-Hypothesis syscalls_backwards_simulation :
-  forall ast sst addr sc sst',
+Lemma syscalls_backwards_simulation ast sst addr sc sst' :
     refine_syscalls atable stable ->
     Symbolic.get_syscall stable addr = Some sc ->
     refine_state ast sst ->
@@ -292,6 +301,13 @@ Hypothesis syscalls_backwards_simulation :
       Abs.get_syscall atable addr = Some ac /\
       Abs.sem ac ast = Some ast' /\
       refine_state ast' sst'.
+Proof.
+  intros. unfold refine_syscalls in *. specialize (H addr).
+  rewrite H0 in H. destruct (Abs.get_syscall atable addr); [| contradiction H].
+  specialize (H _ _ H1). rewrite H2 in H.
+  destruct (Abs.sem s ast) eqn:?; [| contradiction H].
+  do 2 eexists. split. reflexivity. split. eassumption. assumption.
+Qed.
 
 Hypothesis syscall_sem :
   forall ac ast ast',
@@ -301,6 +317,9 @@ Hypothesis syscall_sem :
          imem = imem' /\ b' = b.
 
 (*Various hypothesis on how instructions are tagged*)
+
+(* TODO: Turn these into definitions and move to symbolic.v,
+   use them in initial state and make them part of refinement *)
 
 Hypothesis jump_tagged :
   forall pc i (mem : @Symbolic.memory t sym_params) r itg,
@@ -314,6 +333,17 @@ Hypothesis jal_tagged :
     decode_instr i = Some (Jal _ r) ->
     itg = Some pc.
 
+(* How about this hypothesis/invariant:
+   all things tagged INSTR Some x are tagged with
+   their address *)
+Hypothesis addresses_as_tags :
+  forall pc i (mem : @Symbolic.memory t sym_params) id,
+    get mem pc = Some i@(INSTR (Some id)) ->
+    id = pc.
+
+(* The following ones should be replaced with
+   conditions on sources and targets of valid_jump??
+   Do we even need these hypotheses?? *)
 Hypothesis jump_target_tagged :
   forall pc w (mem : @Symbolic.memory t sym_params) i i0 id r reg 
          (tr ti : @Symbolic.tag t sym_params),
@@ -342,6 +372,7 @@ Hypothesis jump_entry_tagged :
     Symbolic.get_syscall stable w = Some sc ->
     (Symbolic.entry_tag sc) = INSTR (Some w).
 
+(* Keep this, after some tweaking *)
 Hypothesis jal_entry_tagged :
   forall pc w (mem : @Symbolic.memory t sym_params) i id r reg sc
          (tr : @Symbolic.tag t sym_params),
@@ -561,7 +592,7 @@ Proof.
                destruct (refine_registers_upd R V' T' H H1 H2) as [aregs' [? ?]]
                                                                     
            end; auto;
-    destruct (refine_syscalls_correct) as [DOMAIN SYSCALLREF]; 
+    pose proof (refine_syscalls_domains refine_syscalls_correct) as DOMAIN.
     (* put into context stuff required for syscalls *)
     match goal with
       | [H1: Symbolic.get_syscall _ ?W = Some _
@@ -684,6 +715,7 @@ Proof.
             inv TI'; auto
         end; eauto.
     (*these should somehow become 1, but I am not sure what's wrong*)
+Admitted.
       match goal with
         | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
           exists W; split; auto
