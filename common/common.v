@@ -149,6 +149,9 @@ Class machine_ops (t : machine_types) := {
        problems?? (Should probably be partial too, I guess.) *)
     (* AAA: Can't we just define it using word_to_Z and Z_to_imm? *)
     word_to_imm : word t -> imm t;
+    (* I guess so.  But it means that word has a kind of privileged
+       place among the three machine types, and I don't have a clear
+       intuition of why that is. *)
   *)
 
   min_word : word t;
