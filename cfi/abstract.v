@@ -131,9 +131,6 @@ Inductive step : state -> state -> Prop :=
                                 Some (imem,dmem',reg',pc',true)),
                  step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc',true).
 
-(*unused so far*)
-Hypothesis step_determ : forall s s' s'', step s s' -> step s s'' -> s' = s''.
-
 Inductive step_a : state -> state -> Prop :=
 | step_attack : forall imem dmem dmem' reg reg' pc i
              (FETCH: get imem pc = Some i)
@@ -178,8 +175,6 @@ Program Instance abstract_cfi_machine : cfi_machine t := {|
 
   succ := succ
  |}.
-Next Obligation.
-Admitted.
 Next Obligation.
   inversion H; subst. reflexivity.
 Qed.

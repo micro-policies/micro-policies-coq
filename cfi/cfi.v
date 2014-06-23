@@ -12,7 +12,6 @@ Context (t : machine_types).
 Context {ops : machine_ops t}.
 
 Local Notation word := (word t).
-Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
 Class cfi_machine := {
   state : Type;
@@ -20,7 +19,6 @@ Class cfi_machine := {
   
   step : state -> state -> Prop;
   step_a : state -> state -> Prop;
-  step_determ : forall s s' s'', step s s' -> step s s'' -> s' = s'';
 
   get_pc : state -> word;
   attacker_pc : forall s s', step_a s s' -> get_pc s = get_pc s';

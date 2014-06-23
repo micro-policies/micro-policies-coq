@@ -144,8 +144,6 @@ Program Instance symbolic_cfi_machine : cfi_machine t := {|
   succ := ssucc      
  |}.
 Next Obligation.
-Admitted.
-Next Obligation.
   inversion H. reflexivity.
 Qed.
 
