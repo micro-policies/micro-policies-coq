@@ -24,8 +24,9 @@ Context {opss : machine_ops_spec ops}.
 
 Import PartMaps.
 
-Context {memory : Type}.
-Context {sm : partial_map memory (word t) (atom (word t) (@cfi_tag t))}.
+Context {memory : Type}
+        {sm : partial_map memory (word t) (atom (word t) (@cfi_tag t))}
+        {smems : axioms sm}.
 
 Context {registers : Type}.
 Context {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
@@ -52,11 +53,17 @@ Variable table : list (Symbolic.syscall t).
 
 Definition no_violation (sst : Symbolic.state t) :=
   let '(Symbolic.State mem _ pc@tpc _) := sst in
-  forall i ti src,
+  (forall i ti src,
     get mem pc = Some i@ti ->
     tpc = INSTR (Some src) ->
     exists dst, 
-        ti = INSTR (Some dst) /\ valid_jmp src dst = true.
+        ti = INSTR (Some dst) /\ valid_jmp src dst = true) /\
+  (forall sc, 
+     get mem pc = None -> 
+     Symbolic.get_syscall table pc = Some sc ->
+     forall src, 
+       tpc = INSTR (Some src) ->
+       exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ valid_jmp src dst).
 
 Inductive atom_equiv : atom (word t) (@cfi_tag t) -> atom (word t) (@cfi_tag t) 
                        -> Prop :=
@@ -124,13 +131,92 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
       end
   end.
 
+(*This should be enough for backwards refinement?*)
+Definition instructions_tagged (mem : @Symbolic.memory t sym_cfi) :=
+  forall addr i (id : word t), 
+    get mem addr = Some i@(INSTR (Some id)) ->
+    id = addr.
+
+(* These may be needed for forwards simulation, I will leave them out until
+   I actually use them*)
+Definition jumps_tagged (mem : @Symbolic.memory t sym_cfi) := True.
+  (* forall addr i cfi_tg r, *)
+  (*   get mem addr = Some i@(INSTR cfi_tg) -> *)
+  (*   decode_instr i = Some (Jump _ r) -> *)
+  (*   cfi_tg = Some addr. *)
+
+Definition jals_tagged (mem : @Symbolic.memory t sym_cfi) := True.
+  (* forall addr i cfi_tg r, *)
+  (*   get mem addr = Some i@(INSTR cfi_tg) -> *)
+  (*   decode_instr i = Some (Jal _ r) -> *)
+  (*   cfi_tg = Some addr. *)
+
+Definition target_tagged (mem : @Symbolic.memory t sym_cfi) := True.
+  (* forall src dst i i' sc, *)
+  (*   valid_jmp src dst -> *)
+  (*   get mem src = Some i@(INSTR (Some src)) /\ *)
+  (*   (get mem dst = Some i'@(INSTR (Some dst)) \/ *)
+  (*    get mem dst = None /\ Symbolic.get_syscall table dst = Some sc -> *)
+  (*    (Symbolic.entry_tag sc) = INSTR (Some dst)). *)
+
+(*We will need stronger assumption on symbolic system calls for fwd simulation?*)
+Hypothesis syscall_preserves_instruction_tags :
+  forall sc st st',
+    instructions_tagged (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    instructions_tagged (Symbolic.mem st').
+
+Lemma itags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
+  instructions_tagged (Symbolic.mem st) ->
+  Symbolic.step table st st' ->
+  instructions_tagged (Symbolic.mem st').
+Proof.
+  intros INVARIANT STEP.
+  inversion STEP;
+  (*unfoldings and case analysis on tags*)
+    repeat (
+        match goal with
+          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_pc in H
+          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_reg in H
+          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_reg_and_pc in H
+          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+            unfold Symbolic.next_state in H; simpl in H
+        end); match_inv; subst; try (simpl; assumption).
+  + simpl in E. simpl. unfold instructions_tagged.
+    intros addr i0 id GET.
+    have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
+    - intros. subst.
+      apply PartMaps.get_upd_eq in E.
+      rewrite GET in E. congruence. auto.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E. 
+      rewrite E in GET.
+      specialize (INVARIANT _ _ _ GET); assumption.
+      assumption. assumption.
+  + simpl in E. simpl. unfold instructions_tagged.
+    intros addr i0 id GET.
+    have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
+    - intros. subst.
+      apply PartMaps.get_upd_eq in E.
+      rewrite GET in E. congruence. auto.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E. 
+      rewrite E in GET.
+      specialize (INVARIANT _ _ _ GET); assumption.
+      assumption. assumption.
+   + unfold Symbolic.run_syscall in CALL. simpl in CALL. 
+     match_inv;  eapply syscall_preserves_instruction_tags; eauto.
+Qed.
+    
 (* CH: I'm a bit skeptical about this; I thought we require quite a
    lot about how things are initially tagged
    TODO: What should this contain?
    - no violation
    - instructions tagged "the right way"
 *)
-Definition initial (s : Symbolic.state t) := True.
+Definition initial (s : Symbolic.state t) := 
+  no_violation s /\ instructions_tagged (Symbolic.mem s).  
 
 Program Instance symbolic_cfi_machine : cfi_machine t := {|
   state := Symbolic.state t;
