@@ -147,6 +147,7 @@ Class machine_ops (t : machine_types) := {
   (*
     (* BCP: Was tempted to add this -- but will it cause any
        problems?? (Should probably be partial too, I guess.) *)
+    (* AAA: Can't we just define it using word_to_Z and Z_to_imm? *)
     word_to_imm : word t -> imm t;
   *)
 
