@@ -590,8 +590,17 @@ Proof.
     exists w. rewrite GET in PC. inversion PC; subst.
     split; auto.
     rewrite GET' in H2. congruence.
-    destruct (H3 _ erefl) as [dst [TI VALID]].
-    subst.
+    destruct (H3 _ erefl) as [dst [TI VALID]]. clear H3.
+    subst. 
+    try match goal with
+          | [H: Sym.valid_jmp_tagged _ _,
+             H' : valid_jmp _ _ = true |- _] => 
+            unfold Sym.valid_jmp_tagged in H;
+            destruct (H _ _ H') as [? ?] [[? ?] | [? ?]]]
+         end;
+     try match goal with
+           | [H: get ?Mem ?Pc
+
     Focus 2. simpl in SSTEP. 
     destruct (CORRECTNESS w 
     try match goal with
