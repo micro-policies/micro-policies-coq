@@ -424,20 +424,63 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
                to_string (ss "r" +++ format_nat (nat_of_Z x) 
                           +++ ss ": " +++ a)) regs' in
   (to_string (ss "PC: " +++ format_atom (Concrete.pc st)),
-  "REGISTERS: ", regs
-,
+  "REGISTERS: ", regs,
   "MEMORY: ", mem,
   "CACHE: ... ", format_cache (Concrete.cache st)).
 
+(*
+Definition summarize_state st :=
+  let mem := filter_Somes 
+               (@enum _ _ _ 
+                 (@Concrete.mem t cp st) 
+                 (@PartMaps.get _ Int32.int _ _) 
+                 (@omap atom string (fun a => to_string (format_atom a)))
+                 8
+                 (Int32.repr 0)) in 
+  let regs' := @enum _ _ _ 
+                 (@Concrete.regs t cp st) 
+                 (@TotalMaps.get _ Int32.int _ _) 
+                 (fun a => format_atom a)
+                 32
+                 (* BCP: or this... *)
+                 (Int32.repr (word_to_Z (nat_to_word 0))) in 
+  let regs := map (fun r => 
+                     let: (x,a) := r in 
+                     ss "r" +++ format_nat (nat_of_Z x) +++ ss ": " +++ a) 
+               regs' in
+  let current_instr := 
+    let: addr@_ := Concrete.pc st in
+    match @PartMaps.get _ Int32.int _ _ 
+                    (@Concrete.mem t cp st)
+                    addr with
+      None => ss "(BAD ADDR)"
+    | Some i => format_instr i 
+    end in
+ in
+  (to_string (ss "PC: " +++ format_atom (Concrete.pc st) 
+              +++ current_instr
+              +++ (ss " ") +++ ssconcat (ss " ") regs),
+  "  ", mem,
+  "  ", format_whole_cache (take 1 (Concrete.cache st))).
+
+Definition trace p := 
+  let init := build_concrete_sealing_machine p in
+  let tr := exec.trace less_trivial_masks t init in
+  (
+   print_state 0 1000 32 init,
+   map summarize_state tr
+  ).
+
+Compute (trace hello_world). 
+*)
+
+(*
 Definition print_res_state n init :=
-  omap (print_state 801 807 27) (exec.stepn less_trivial_masks t n init).
+  omap (print_state 801 807 27) init.
 
-Definition run n := 
-  (ConcreteSealing.print_res_state n (ConcreteSealing.build_concrete_sealing_machine ConcreteSealing.hello_world)).
-
-(* Why didn't we trap on instruction 33? *)
-Compute (print_res_state 2
+Compute (print_res_state 140
  (build_concrete_sealing_machine hello_world)). 
+*)
 
 (*
 Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).

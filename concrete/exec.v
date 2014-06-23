@@ -3,7 +3,9 @@
 Require Import ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.utils lib.partial_maps lib.Coqlib common.common concrete.concrete.
+Require Import List.
 
+Import ListNotations.
 Import Concrete. Import DoNotation.
 
 Open Scope Z_scope.
@@ -148,6 +150,16 @@ Fixpoint stepn (max_steps : nat) (st : state mt) : option (state mt) :=
     stepn max_steps' st'
   end.
 
-Definition run (st : state mt) := stepn 10000.
+Fixpoint tracen (max_steps : nat) (st : state mt) : list (state mt) :=
+  match max_steps with
+  | O => []
+  | S max_steps' =>
+    match step st with
+    | None => []
+    | Some st' => st' :: tracen max_steps' st'
+    end
+  end.
+
+Definition trace (st : state mt) := tracen 10000 st.
 
 End Masks.

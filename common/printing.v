@@ -3,6 +3,7 @@ Require Import String.
 Require Import Ascii.
 Require Import NPeano.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import List. Import ListNotations.
 
 Import common.
 Import String.
@@ -16,7 +17,7 @@ Open Scope string_scope.
 
 Definition sstring := string -> string.
 
-Definition sempty : sstring := fun s => s.
+Definition ssempty : sstring := fun s => s.
 
 Definition ss (s : string) : sstring := 
   fun s' => s ++ s'.
@@ -24,12 +25,15 @@ Definition ss (s : string) : sstring :=
 Definition schar (c : ascii) : sstring := 
   fun s => String c s.
 
-Definition sappend (s1 s2 : sstring) : sstring := 
+Definition ssappend (s1 s2 : sstring) : sstring := 
   fun s => s1 (s2 s).
 
-Notation "x +++ y" := (sappend x y) (right associativity, at level 60).
+Notation "x +++ y" := (ssappend x y) (right associativity, at level 60).
 
 Definition to_string (s : sstring) : string := s "".
+
+Definition ssconcat (sep : sstring) (s : list sstring) : sstring :=
+  List.fold_right (fun rest x => rest +++ sep +++ x) ssempty s.
 
 (* ------------------------------------------------------------------- *)
 
@@ -60,7 +64,7 @@ Fixpoint writeNatAux (time n : nat) (acc : sstring) : sstring :=
   end.
 
 Definition format_nat (n : nat) : sstring :=
-  writeNatAux n n sempty. 
+  writeNatAux n n ssempty. 
 
 Open Scope string_scope.
 
