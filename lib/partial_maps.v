@@ -15,8 +15,7 @@ Variables M K V : Type.
 
 Class partial_map := {
   get : M -> K -> option V;
-  set : M -> K -> V -> M;
-  upd : M -> K -> V -> option M (* Could be defined as get + set? *)
+  set : M -> K -> V -> M
 }.
 
 Class axioms (pm : partial_map) := mkAxioms {
@@ -25,28 +24,7 @@ Class axioms (pm : partial_map) := mkAxioms {
 
   get_set_neq : forall km ak ak' sk,
                   ak' <> ak  ->
-                  get (set km ak sk) ak' = get km ak';
-
-(* These could all be proved as properties from axioms about get and set
-   -- the proofs are already done in concrete/int_32.v *)
-  upd_defined : forall m key val val',
-                  get m key = Some val ->
-                  exists m',
-                    upd m key val' = Some m';
-
-  upd_inv : forall m key val' m',
-              upd m key val' = Some m' ->
-              exists val,
-                get m key = Some val;
-
-  get_upd_eq : forall m m' key val,
-                 upd m key val = Some m' ->
-                 get m' key = Some val;
-
-  get_upd_neq : forall m m' key key' val,
-                  key' <> key ->
-                  upd m key val = Some m' ->
-                  get m' key' = get m key'
+                  get (set km ak sk) ak' = get km ak'
 
 }.
 
@@ -55,6 +33,47 @@ Section with_classes.
 Context {pm : partial_map}
         {a : axioms pm}
         {eqk : EqDec (eq_setoid K)}.
+
+Definition upd (m : M) (k : K) (v : V) : option M :=
+  match get m k with
+  | Some _ => Some (set m k v)
+  | None => None
+  end.
+
+Lemma upd_defined m key val val' :
+  get m key = Some val ->
+  exists m',
+    upd m key val' = Some m'.
+Proof. rewrite /upd. move => ->. by eauto. Qed.
+
+Lemma upd_inv m key val' m' :
+  upd m key val' = Some m' ->
+  exists val,
+    get m key = Some val.
+Proof.
+  rewrite /upd.
+  case: (get m key) => [val _|//].
+  by eauto.
+Qed.
+
+Lemma get_upd_eq m m' key val :
+  upd m key val = Some m' ->
+  get m' key = Some val.
+Proof.
+  rewrite /upd.
+  case: (get m key) => [val' [<-]|//].
+  by apply get_set_eq.
+Qed.
+
+Lemma get_upd_neq m m' key key' val :
+  key' <> key ->
+  upd m key val = Some m' ->
+  get m' key' = get m key'.
+Proof.
+  rewrite /upd => NEQ.
+  case: (get m key) => [val' [<-]|//].
+  by apply get_set_neq.
+Qed.
 
 Fixpoint upd_list (m : M) (ps : list (K * V)) : option M :=
   match ps with
@@ -227,7 +246,7 @@ Proof.
   intros m1 m2 m2' k v1 v2 ref pv1v2 up. pose proof up as up'.
   destruct (upd_inv up) as [v2' ge].
   destruct (refine_get_pointwise_inv ref ge) as [v1' [ge' _]].
-  eapply (@upd_defined _ _ _ _ pm1s) in ge'. destruct ge' as [m1' up''].
+  destruct (upd_defined v1 ge') as [m1' up''].
   exists m1'. exact up''.
 Qed.
 
@@ -235,7 +254,7 @@ Lemma refine_upd_pointwise2 : forall m1 m1' m2 m2' k v1 v2,
   (pointwise P) m1 m2 ->
   P v1 v2 ->
   upd m1 k v1 = Some m1' ->
-  upd m2 k v2 = Some m2' -> 
+  upd m2 k v2 = Some m2' ->
   (pointwise P) m1' m2'.
 Proof.
   intros m1 m1' m2 m2' k v1 v2 ref pv1v2 u1 u2.
@@ -252,7 +271,7 @@ Qed.
 Lemma refine_upd_pointwise : forall m1 m2 m2' k v1 v2,
   (pointwise P) m1 m2 ->
   P v1 v2 ->
-  upd m2 k v2 = Some m2' -> 
+  upd m2 k v2 = Some m2' ->
   exists m1', upd m1 k v1 = Some m1' /\
               (pointwise P) m1' m2'.
 Proof.
@@ -316,7 +335,7 @@ Lemma same_domain_trans (m : M) (m' : M') (m'' : M'') :
   same_domain m m''.
 Proof.
   intros SAME1 SAME2.
-  intro k. 
+  intro k.
   assert (SAME1k := SAME1 k); clear SAME1.
   assert (SAME2k := SAME2 k); clear SAME2.
   destruct (get m k), (get m' k), (get m'' k); auto.
@@ -330,9 +349,9 @@ Proof.
   assert (SAMEk := SAME k);
   destruct (get m' k) eqn:GET;
   destruct (get m k) eqn:GET';
-  auto. 
+  auto.
 Qed.
-  
+
 End PartMapDomains.
 
 End PartMaps.

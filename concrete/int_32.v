@@ -289,11 +289,7 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
 
   mem_class := {|
     PartMaps.get mem i := Int32PMap.get i mem;
-    PartMaps.set mem i x := Int32PMap.set i x mem;
-    PartMaps.upd mem i x := match Int32PMap.get i mem with
-                              | Some _ => Some (Int32PMap.set i x mem)
-                              | None   => None
-                            end
+    PartMaps.set mem i x := Int32PMap.set i x mem
   |};
 
   reg_class := {|
@@ -310,20 +306,6 @@ Next Obligation.
     intros mem i x. by apply Int32PMap.gss.
   - (* get_set_neq *)
     intros mem i i' x y. by apply Int32PMap.gso.
-  - (* upd_defined *)
-    intros mem i x x' Hget. simpl in *.
-    rewrite Hget; eauto.
-  - (* upd_inv *)
-    intros mem i x' mem' Hset. simpl in *.
-    destruct (Int32PMap.get i mem); [eauto | discriminate].
-  - (* get_upd_eq *)
-    intros mem mem' i x Hset. simpl in *.
-    destruct (Int32PMap.get i mem); [|discriminate].
-    inversion_clear Hset. apply Int32PMap.gss.
-  - (* get_upd_neq *)
-    intros mem mem' i i' x Hneq Hset. simpl in *.
-    destruct (Int32PMap.get i mem); [|discriminate].
-    inversion_clear Hset. apply Int32PMap.gso; assumption.
 Qed.
 Next Obligation.
   constructor.
