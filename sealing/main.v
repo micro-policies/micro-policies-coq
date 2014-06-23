@@ -1,4 +1,6 @@
 (*
+    make sure user registers are tagged USER at the beginning!
+
     check that current behavior makes sense
     write a less silly transfer function
     write better testing stuff
@@ -53,6 +55,9 @@ Instance fhp : fault_handler.fault_handler_params t := {|
   rtrpc := Int32.repr 13; rtr := Int32.repr 14; 
   raddr := Int32.repr 15; 
   rra := Int32.repr 16;
+
+  user_reg_min := Int32.repr 17;
+  user_reg_max := Int32.repr 31;
 
   load_const := fun (x : word t) (r : reg t) =>
     [Const _ (Z_to_imm (word_to_Z x)) r]
@@ -131,13 +136,19 @@ Instance cp : Concrete.concrete_params t := {|
 |}.
 
 
-(* Need to build...
+(* Notes:
 
    - encoding of tags
 
        DATA      --> 0
        KEY(k)    --> k*4+1
        SEALED(k) --> k*4+3
+
+  Questions:
+
+   - How should we really deal with user-code registers
+
+  Need to build...
 
    - concrete transfer function (with combinators)
 
@@ -153,9 +164,6 @@ Instance cp : Concrete.concrete_params t := {|
 
        UNSEAL: check that the tag of one arg is KEY(k) and the other
        is SEAL(k) and then change the latter to DATA.
-
-   - fixpoint implementation of concrete step function
-     (with proof of correctness)
 
 *)
 
@@ -379,6 +387,7 @@ Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
   | (x, Some y) :: l' => (x,y) :: filter_Somes l'
   end.
 
+Require Import Coqlib.
 Definition print_state (mem_start mem_end max_reg : nat) st :=
   let mem := filter_Somes 
                (@enum _ _ _ 
@@ -388,25 +397,31 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
                  mem_end 
                  (* BCP: Surely this is not the right way to do this... *)
                  (Int32.repr (word_to_Z (nat_to_word mem_start)))) in 
-  let regs := @enum _ _ _ 
+  let regs' := @enum _ _ _ 
                  (@Concrete.regs t cp st) 
                  (@TotalMaps.get _ Int32.int _ _) 
-                 (fun a => to_string (format_atom a))
+                 (fun a => format_atom a)
                  max_reg 
                  (* BCP: or this... *)
                  (Int32.repr (word_to_Z (nat_to_word 0))) in 
-  (to_string (ss "PC = " +++ format_atom (Concrete.pc st)),
-  "Registers = ", regs,
-  "Memory = ", mem,
-  "Cache: ... ", format_cache (Concrete.cache st)).
+  let regs := map (fun r => 
+               let: (x,a) := r in 
+               to_string (ss "r" +++ format_nat (nat_of_Z x) 
+                          +++ ss ": " +++ a)) regs' in
+  (to_string (ss "PC: " +++ format_atom (Concrete.pc st)),
+  "REGISTERS: ", regs
+,
+  "MEMORY: ", mem,
+  "CACHE: ... ", format_cache (Concrete.cache st)).
 
 Definition print_res_state n init :=
-  omap (print_state 0 30 15) (exec.stepn less_trivial_masks t n init).
+  omap (print_state 801 807 15) (exec.stepn less_trivial_masks t n init).
 
 Definition run n := 
   (ConcreteSealing.print_res_state n (ConcreteSealing.build_concrete_sealing_machine ConcreteSealing.hello_world)).
 
-Compute (print_res_state 17
+(* Why didn't we trap on instruction 33? *)
+Compute (print_res_state 0
  (build_concrete_sealing_machine hello_world)). 
 
 (*
@@ -432,9 +447,3 @@ Definition build_abstract_sealing_machine :=
 
 End ConcreteSealing.
 
-Definition main := ConcreteSealing.run 10.
-
-(*
-Extraction Language Ocaml.
-Extraction "temp.ml" main.
-*)

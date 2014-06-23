@@ -39,6 +39,9 @@ Class fault_handler_params := {
 
   rra : reg mt; (* Return addr register *)
 
+  user_reg_min : reg mt; (* First user register *)
+  user_reg_max : reg mt; (* Last user register *)
+
   load_const : word mt -> reg mt -> code
 }.
 
@@ -104,12 +107,14 @@ Definition load_mvec : code :=
                  mvec_regs
                  ([],Concrete.cache_line_addr ops)).
 
-
 (* Take as input an mvector of high-level tags (in the appropriate
    registers, as set above), and computes the policy handler on
    those tags. If the operation is allowed, returns the rvector in
    the appropriate registers. Otherwise, enters an infinite loop. *)
 Variable policy_handler : code.
+
+(* BCP: Hmmm... the policy handler seems to be copied once for each
+   opcode!!!  That can't be optimal... *)
 
 (* Check whether the operands for a particular opcode are tagged
    USER. If so, extract the corresponding policy-level tags and call
@@ -133,7 +138,7 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   wrap_user_tag rtr rtr.
 
 (* For debugging -- put a telltale marker in the code *)
-Definition got_here : code := [Const _ (Z_to_imm 99) ri5; Halt _].
+Definition got_here : code := [Const _ (Z_to_imm 99) ri5].
 
 (* The entire code for the generic fault handler.
    Warning: overwrites ri4. *)
@@ -143,35 +148,35 @@ Definition handler : code :=
   if_ rb
       (* PC has USER tag *)
       (* Check whether we're at an entry point *)
-      ((* got_here ++ *)is_entry_tag rti ri4 ++
+      (is_entry_tag rti ri4 ++
        if_ ri4
-           (* We are in a system call. Put KERNEL tags in rvector *)
+           (* THEN: We are entering a system call routine. 
+                    Put KERNEL tags in rvector. *)
            (load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
-           (* We are not in a system call. Proceed as normal. *)
+           (* ELSE: We are not in a system call. *)
            (extract_user_tag rti rb rti ++
             if_ rb
-                (* We are in user mode, extract operand tags *)
+                (* THEN: We are in user mode: extract operand tags *)
                 (fold_right (fun op c =>
                                load_const (op_to_word op) ri4 ++
-                                          [Binop _ EQ rop ri4 rb] ++
-                                          if_ rb
-                                          (analyze_operand_tags_for_opcode op)
-                                          c)
+                               [Binop _ EQ rop ri4 rb] ++
+                               if_ rb
+                                  (analyze_operand_tags_for_opcode op)
+                                  c)
                             [] opcodes)
-                (* We hit an invalid point; halt the machine *)
+                (* ELSE: The instruction is not tagged USER: halt the machine *)
                 [Halt _]))
       (* PC is not tagged USER, halt execution *)
       [Halt _] ++
   (* Store rvector registers in memory, install rule in cache, and
-     return to user code *)
+     return from trap *)
   load_const (Concrete.Mtrpc ops) raddr ++
   [Store _ raddr rtrpc] ++
   load_const (Concrete.Mtr ops) raddr ++
   [Store _ raddr rtr] ++
   [AddRule _] ++
-  [JumpEpc _]
-.
+  [JumpEpc _].
 
 Section invariant.
 

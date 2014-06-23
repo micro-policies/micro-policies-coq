@@ -115,7 +115,24 @@ Definition initial_memory
      (Int32PMap.empty _) in
    (mem, user_code_addr).
 
+(* BCP: The time argument should surely not be needed -- I got tangled
+   up in numeric conversions...  If we ever try to prove something
+   about this function, we need to rewrite it first! *)
+Fixpoint initialize_registers 
+             (min max : reg concrete_int_32_t)
+             (tag : word concrete_int_32_t)
+             (regs : Concrete.registers concrete_int_32_t)
+             (time : nat)
+           : Concrete.registers concrete_int_32_t :=
+  match time with
+    0%nat => regs
+  | S time' =>
+      if Z.leb (word_to_Z max) (word_to_Z min) then regs else 
+      initialize_registers (add_word min (Z_to_word 1)) max tag (Int32TMap.set min zero@tag regs) time'
+  end.
+
 Program Definition initial_regs : Concrete.registers concrete_int_32_t :=
+  initialize_registers user_reg_min user_reg_max 
   Int32TMap.init zero@zero.
 
 Program Definition initial_state 

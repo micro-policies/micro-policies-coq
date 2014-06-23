@@ -58,3 +58,4 @@ sealing/abstract.v
 sealing/symbolic.v
 sealing/refinementSA.v
 sealing/main.v
+sealing/extraction.v
