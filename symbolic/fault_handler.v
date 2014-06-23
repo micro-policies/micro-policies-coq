@@ -46,9 +46,9 @@ Context (fhp : fault_handler_params).
 
 (* Encoding:
 
-   USER ut ic -> | ut   | 0 | 1 |
-   KERNEL     -> | 0..0 | 0 | 0 |
-   ENTRY      -> | 0..0 | 1 | 0 | *)
+   USER ut -> | ut   | 0 | 1 |
+   KERNEL  -> | 0..0 | 0 | 0 |
+   ENTRY   -> | 0..0 | 1 | 0 | *)
 
 Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 
