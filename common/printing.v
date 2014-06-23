@@ -1,12 +1,53 @@
 Require Import common.common.
 Require Import String.
 Require Import Ascii.
+Require Import ZArith.
 Require Import NPeano.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import List. Import ListNotations.
 
 Import common.
 Import String.
+
+
+Open Scope char_scope.
+Open Scope Z_scope.
+
+Definition ascii_of_Z (z : Z) : Ascii.ascii :=
+  match z with
+  | 0 => "0"
+  | 1 => "1"
+  | 2 => "2"
+  | 3 => "3"
+  | 4 => "4"
+  | 5 => "5"
+  | 6 => "6"
+  | 7 => "7"
+  | 8 => "8"
+  | _ => "9"
+  end.
+
+Open Scope string_scope.
+
+Fixpoint printZ_aux (fuel : nat) (z : Z) (acc : String.string) : String.string :=
+  match fuel with
+  | O => acc
+  | S fuel' =>
+    match Z.div_eucl z 10 with
+    | (q, r) =>
+      match q with
+      | Z0 => String.String (ascii_of_Z r) acc
+      | _ => printZ_aux fuel' q (String.String (ascii_of_Z r) acc)
+      end
+    end
+  end.
+
+Definition printZ z :=
+  match z with
+  | Z0 => "0"
+  | Zpos _ => printZ_aux (S (Z.to_nat (Z.log2 z))) z String.EmptyString
+  | Zneg _ => String.append "-" (printZ_aux (S (Z.to_nat (Z.log2 z))) (Z.abs z) String.EmptyString)
+  end.
 
 Set Implicit Arguments.
 
@@ -38,6 +79,7 @@ Definition ssconcat (sep : sstring) (s : list sstring) : sstring :=
 (* ------------------------------------------------------------------- *)
 
 Open Scope char_scope.
+Open Scope nat_scope.
 Definition natToDigit (n : nat) : ascii :=
   match n with
     | 0 => "0"
