@@ -135,7 +135,17 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
 Definition instructions_tagged (mem : @Symbolic.memory t sym_cfi) :=
   forall addr i (id : word t), 
     get mem addr = Some i@(INSTR (Some id)) ->
-    id = addr.
+    id = addr. (*this seems redundant when we have the one below*)
+
+Definition valid_jmp_tagged (mem : @Symbolic.memory t sym_cfi) := 
+  forall src dst,
+    valid_jmp src dst = true ->
+    (exists i, get mem src = Some i@(INSTR (Some src))) /\
+    ((exists i', get mem dst = Some i'@(INSTR (Some dst))) \/
+     get mem dst = None /\
+     exists sc, Symbolic.get_syscall table dst = Some sc /\
+                (Symbolic.entry_tag sc) = INSTR (Some dst)).
+
 
 (* These may be needed for forwards simulation, I will leave them out until
    I actually use them*)
@@ -151,20 +161,18 @@ Definition jals_tagged (mem : @Symbolic.memory t sym_cfi) := True.
   (*   decode_instr i = Some (Jal _ r) -> *)
   (*   cfi_tg = Some addr. *)
 
-Definition target_tagged (mem : @Symbolic.memory t sym_cfi) := True.
-  (* forall src dst i i' sc, *)
-  (*   valid_jmp src dst -> *)
-  (*   get mem src = Some i@(INSTR (Some src)) /\ *)
-  (*   (get mem dst = Some i'@(INSTR (Some dst)) \/ *)
-  (*    get mem dst = None /\ Symbolic.get_syscall table dst = Some sc -> *)
-  (*    (Symbolic.entry_tag sc) = INSTR (Some dst)). *)
-
 (*We will need stronger assumption on symbolic system calls for fwd simulation?*)
 Hypothesis syscall_preserves_instruction_tags :
   forall sc st st',
     instructions_tagged (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
     instructions_tagged (Symbolic.mem st').
+
+Hypothesis syscall_preserves_valid_jmp_tags :
+  forall sc st st',
+    valid_jmp_tagged (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    valid_jmp_tagged (Symbolic.mem st').
 
 Lemma itags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
   instructions_tagged (Symbolic.mem st) ->
@@ -208,7 +216,93 @@ Proof.
    + unfold Symbolic.run_syscall in CALL. simpl in CALL. 
      match_inv;  eapply syscall_preserves_instruction_tags; eauto.
 Qed.
-    
+
+Lemma valid_jmp_tagged_preserved_by_step 
+      (st : Symbolic.state t) (st' : Symbolic.state t) :
+  valid_jmp_tagged (Symbolic.mem st) ->
+  Symbolic.step table st st' ->
+  valid_jmp_tagged (Symbolic.mem st').
+Proof.
+  intros INVARIANT STEP.
+  inversion STEP;
+    (*unfoldings and case analysis on tags*)
+    repeat (
+        match goal with
+          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_pc in H
+          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_reg in H
+          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_reg_and_pc in H
+          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+            unfold Symbolic.next_state in H; simpl in H
+        end); match_inv; subst; try (simpl; assumption).
+  + simpl in E. simpl. unfold valid_jmp_tagged.
+    intros src dst VALID.
+    unfold valid_jmp_tagged in INVARIANT. simpl in INVARIANT.
+    specialize (INVARIANT _ _ VALID). 
+    destruct INVARIANT as [[isrc GET] [[idst GET'] | [GET' [sc TAG]]]].
+    { have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
+      - rewrite GET in OLD. congruence.
+      - have [EQ'|/eqP NEQ'] := altP (dst =P w1); [simpl in EQ' | simpl in NEQ']; subst.
+        * rewrite OLD in GET'. congruence.
+        * split.
+          { apply PartMaps.get_upd_neq with (key' := src) in E; auto.
+            rewrite <- E in GET. eexists; eauto. }
+          { left.
+            apply PartMaps.get_upd_neq with (key' := dst) in E; auto.
+            rewrite <- E in GET'. eexists; eauto. }
+    }
+    { split.
+      * have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
+        - rewrite GET in OLD. congruence.
+        - exists isrc.
+          eapply PartMaps.get_upd_neq in E; eauto.
+          rewrite <- E in GET. assumption.
+      * right. 
+        split.
+        - have [EQ|/eqP NEQ] := altP (dst =P w1); [simpl in EQ | simpl in NEQ]; subst.
+          + apply PartMaps.upd_inv in E. destruct E as [? E].
+            rewrite E in GET'. congruence.
+          + eapply PartMaps.get_upd_neq in E; eauto.
+            rewrite E. assumption.
+        - exists sc. assumption.
+    }
+  + simpl in E. simpl. unfold valid_jmp_tagged.
+    intros src dst VALID.
+    unfold valid_jmp_tagged in INVARIANT. simpl in INVARIANT.
+    specialize (INVARIANT _ _ VALID). 
+    destruct INVARIANT as [[isrc GET] [[idst GET'] | [GET' [sc TAG]]]].
+    { have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
+      - rewrite GET in OLD. congruence.
+      - have [EQ'|/eqP NEQ'] := altP (dst =P w1); [simpl in EQ' | simpl in NEQ']; subst.
+        * rewrite OLD in GET'. congruence.
+        * split.
+          { apply PartMaps.get_upd_neq with (key' := src) in E; auto.
+            rewrite <- E in GET. eexists; eauto. }
+          { left.
+            apply PartMaps.get_upd_neq with (key' := dst) in E; auto.
+            rewrite <- E in GET'. eexists; eauto. }
+    }
+    { split.
+      * have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
+        - rewrite GET in OLD. congruence.
+        - exists isrc.
+          eapply PartMaps.get_upd_neq in E; eauto.
+          rewrite <- E in GET. assumption.
+      * right. 
+        split.
+        - have [EQ|/eqP NEQ] := altP (dst =P w1); [simpl in EQ | simpl in NEQ]; subst.
+          + apply PartMaps.upd_inv in E. destruct E as [? E].
+            rewrite E in GET'. congruence.
+          + eapply PartMaps.get_upd_neq in E; eauto.
+            rewrite E. assumption.
+        - exists sc. assumption.
+    }
+  +  unfold Symbolic.run_syscall in CALL. simpl in CALL. 
+     match_inv;  eapply syscall_preserves_valid_jmp_tags; eauto.
+Qed.
+
 (* CH: I'm a bit skeptical about this; I thought we require quite a
    lot about how things are initially tagged
    TODO: What should this contain?
@@ -216,7 +310,8 @@ Qed.
    - instructions tagged "the right way"
 *)
 Definition initial (s : Symbolic.state t) := 
-  no_violation s /\ instructions_tagged (Symbolic.mem s).  
+  no_violation s /\ instructions_tagged (Symbolic.mem s) /\
+  valid_jmp_tagged (Symbolic.mem s).
 
 Program Instance symbolic_cfi_machine : cfi_machine t := {|
   state := Symbolic.state t;

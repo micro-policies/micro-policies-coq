@@ -48,7 +48,6 @@ Context {t : machine_types}
         {sm : partial_map smemory (word t) (atom (word t) (@cfi_tag t))}
         {smems : axioms sm}
         {smemory_map : Map.mappable sm (@Abs.dmem_class t ap)}
-        {smemory_filter : Filter.filterable sm}
 
         {sregisters : Type}
         {sr : partial_map sregisters (reg t) (atom (word t) (@cfi_tag t))}
@@ -174,6 +173,10 @@ Proof.
     * auto.
 Qed.
 
+Definition symbolic_invariants (mem : Symbolic.memory t) := 
+  Sym.instructions_tagged valid_jmp mem /\
+  Sym.valid_jmp_tagged stable mem.
+
 Definition refine_state (ast : Abs.state t)
                         (sst : @Symbolic.state t sym_params) :=
   let '(imem, dmem, aregs, apc, cont) := ast in
@@ -192,7 +195,9 @@ Definition refine_state (ast : Abs.state t)
    (cont = true <->
     (forall src, 
        tpc = INSTR (Some src) ->
-       exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ valid_jmp src dst))).
+       exists dst, 
+         (Symbolic.entry_tag sc) = INSTR (Some dst) /\ valid_jmp src dst))) /\
+  symbolic_invariants smem.
 
 Definition refine_syscall acall scall :=
   forall ast sst,
@@ -283,72 +288,18 @@ Hypothesis syscall_sem :
        let '(imem',dmem',aregs',pc',b') := ast' in
          imem = imem' /\ b' = b.
 
-(*Various hypothesis on how instructions are tagged*)
+(*We will need stronger assumption on symbolic system calls for fwd simulation?*)
+Hypothesis syscall_preserves_instruction_tags :
+  forall sc st st',
+    Sym.instructions_tagged valid_jmp (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.instructions_tagged valid_jmp (Symbolic.mem st').
 
-(* TODO: Turn these into definitions and move to symbolic.v,
-   use them in initial state and make them part of refinement *)
-
-Hypothesis jump_tagged :
-  forall pc i (mem : @Symbolic.memory t sym_params) r itg,
-    get mem pc = Some i@(INSTR itg) ->
-    decode_instr i = Some (Jump _ r) ->
-    itg = Some pc.
-
-Hypothesis jal_tagged :
-  forall pc i (mem : @Symbolic.memory t sym_params) r itg,
-    get mem pc = Some i@(INSTR itg) ->
-    decode_instr i = Some (Jal _ r) ->
-    itg = Some pc.
-
-(* How about this hypothesis/invariant:
-   all things tagged INSTR Some x are tagged with
-   their address *)
-Hypothesis addresses_as_tags :
-  forall pc i (mem : @Symbolic.memory t sym_params) id,
-    get mem pc = Some i@(INSTR (Some id)) ->
-    id = pc.
-
-(* The following ones should be replaced with
-   conditions on sources and targets of valid_jump??
-   Do we even need these hypotheses?? *)
-Hypothesis jump_target_tagged :
-  forall pc w (mem : @Symbolic.memory t sym_params) i i0 id r reg 
-         (tr ti : @Symbolic.tag t sym_params),
-    get mem pc = Some i@(INSTR (Some id)) ->
-    decode_instr i = Some (Jump _ r) ->
-    get reg r = Some w@tr ->
-    get mem w = Some i0@ti ->
-    ti = INSTR (Some w).
-
-Hypothesis jal_target_tagged :
-  forall pc w (mem : @Symbolic.memory t sym_params) i i0 id r reg 
-         (tr ti : @Symbolic.tag t sym_params),
-    get mem pc = Some i@(INSTR (Some id)) ->
-    decode_instr i = Some (Jal _ r) ->
-    get reg r = Some w@tr ->
-    get mem w = Some i0@ti ->
-    ti = INSTR (Some w).
-
-Hypothesis jump_entry_tagged :
-  forall pc w (mem : @Symbolic.memory t sym_params) i id r reg sc
-         (tr : @Symbolic.tag t sym_params),
-    get mem pc = Some i@(INSTR (Some id)) ->
-    decode_instr i = Some (Jump _ r) ->
-    get reg r = Some w@tr ->
-    get mem w = None ->
-    Symbolic.get_syscall stable w = Some sc ->
-    (Symbolic.entry_tag sc) = INSTR (Some w).
-
-(* Keep this, after some tweaking *)
-Hypothesis jal_entry_tagged :
-  forall pc w (mem : @Symbolic.memory t sym_params) i id r reg sc
-         (tr : @Symbolic.tag t sym_params),
-    get mem pc = Some i@(INSTR (Some id)) ->
-    decode_instr i = Some (Jal _ r) ->
-    get reg r = Some w@tr ->
-    get mem w = None ->
-    Symbolic.get_syscall stable w = Some sc ->
-    (Symbolic.entry_tag sc) = INSTR (Some w).
+Hypothesis syscall_preserves_valid_jmp_tags :
+  forall sc st st',
+    Sym.valid_jmp_tagged stable (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.valid_jmp_tagged stable (Symbolic.mem st').
 
 Import Vector.VectorNotations.
 
@@ -452,6 +403,7 @@ Proof.
   move/(REF _ _): E => [? ?]; congruence.
 Qed.
 
+
 (*TODO: Syscalls and clean up of this mess*)
 Theorem backwards_simulation ast sst sst' :
   refine_state ast sst ->
@@ -465,7 +417,8 @@ Proof.
   destruct b.
   { (*1st case*)
     inversion SSTEP; subst;
-    destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS SYSCORRECT]]]]];
+    destruct REF 
+      as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG VALIDTGS]]]]]]];
     (*unfoldings and case analysis on tags*)
     repeat (
         match goal with
@@ -550,7 +503,8 @@ Proof.
           by (eexists; eauto);
           destruct (DOMAIN W) as [ASDOM SADOM];
           apply SADOM in EGETCALL; destruct EGETCALL;
-          assert (REF: refine_state (imem,dmem,aregs,pc,true) (Symbolic.State mem reg pc@tpc int))
+          assert (REF: refine_state (imem,dmem,aregs,pc,true) 
+                                    (Symbolic.State mem reg pc@tpc int))
             by (repeat (split; auto));
           destruct (syscalls_backwards_simulation (imem,dmem,aregs,pc,true) 
                                                   (Symbolic.State mem reg pc@tpc int)
@@ -564,7 +518,10 @@ Proof.
           subst
         ) || fail 4 "Couldn't analyze syscall"
       | |- _ => idtac
-    end;
+    end. Focus 14. eexists; split.
+    eapply Abs.step_jump. eauto. eauto. eauto. eauto.
+    
+    
     (*handle abstract steps*)
     repeat (match goal with 
               | [|- exists _,  _ /\ _] => eexists; split
@@ -592,8 +549,8 @@ Proof.
                   destruct (NOMEM H)
               | [H1: Symbolic.get_syscall _ _ = Some _ |- Abs.step _ _ _ _] =>
                 eapply Abs.step_syscall; eauto 
-            end); 
-    unfold refine_state;
+            end);
+    unfold refine_state; 
     (*handle final state refinement*)
     repeat (match goal with
               | [H: decode_instr _ = Some (Jump _ _) 
@@ -601,7 +558,8 @@ Proof.
                 remember (valid_jmp Pc W) as b; destruct b; 
                 [left; unfold refine_normal_state; repeat (split; auto) | idtac]
               | [|- _ /\ _] => split; [eauto | idtac]
-              | [H: decode_instr _ = Some (Jump _ _) |- Abs.step _ _ _ (_,_,_,_,false)] =>
+              | [H: decode_instr _ = Some (Jump _ _) |- 
+                 Abs.step _ _ _ (_,_,_,_,false)] =>
                   eapply Abs.step_jump; eauto
               | [H: refine_imemory ?Imem ?Mem |- refine_imemory ?Imem ?Mem] => 
                 assumption
@@ -625,7 +583,17 @@ Proof.
     repeat (
         match goal with
           | [H: INSTR _ = INSTR _ |- _] => inv H
-        end);
+        end).
+    unfold Sym.valid_jmp_tagged in VALIDTGS. 
+    destruct (VALIDTGS _ _ H3) as [[? GET] [[I' GET'] | [GET' SCTG]]].
+    rewrite H2 in GET'. inversion GET'. subst.
+    exists w. rewrite GET in PC. inversion PC; subst.
+    split; auto.
+    rewrite GET' in H2. congruence.
+    destruct (H3 _ erefl) as [dst [TI VALID]].
+    subst.
+    Focus 2. simpl in SSTEP. 
+    destruct (CORRECTNESS w 
     try match goal with
           | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some _)), 
               H1: decode_instr ?I = Some (Jump _ ?R), 
