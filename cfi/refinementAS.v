@@ -44,19 +44,27 @@ Section Filter.
     filter : (V -> bool) -> M -> M;
 
     filter_correctness: forall (f : V -> bool) (m : M) (k : K),
-                       get (filter f m) k = option_filter f (get m k);
-
-    filter_domains : forall (f : V -> bool) (m : M) (m' : M) (k : K),
-                       same_domain(*s*) m m' ->
-                       match get m k, get m' k with 
-                         | Some v, Some v' => f v = f v'
-                         | None, None => True
-                         | _, _ => False
-                       end ->
-                       same_domain (filter f m) (filter f m')
-                                              
+                       get (filter f m) k = option_filter f (get m k)
 
     }.
+
+  Lemma filter_domains {pm} {fil : filterable pm} (f : V -> bool) (m : M) (m' : M) :
+    same_domain(*s*) m m' ->
+    (forall k, match get m k, get m' k with
+    | Some v, Some v' => f v = f v'
+    | None, None => True
+    | _, _ => False
+    end) ->
+    same_domain (filter f m) (filter f m').
+  Proof.
+    move => SAME E k.
+    do! rewrite filter_correctness.
+    case GET: (get m k) (E k) => [v|] {E} E;
+    case GET': (get m' k) E => [v'|] E //=.
+    rewrite E.
+    by case: (f v').
+  Qed.
+
 End Filter. 
 
 End Filter.
