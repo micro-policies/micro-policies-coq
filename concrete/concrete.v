@@ -59,8 +59,8 @@ Class concrete_params := {
 Definition cache_line_addr : word t := Z_to_word 0.
 (* BCP: Call it fault_handler_addr? *)
 Definition fault_handler_start : word t := Z_to_word 8.
-Definition TNone   : word t := Z_to_word 0.
-Definition TKernel : word t := Z_to_word 1.
+Definition TNone   : word t := Z_to_word 1.
+Definition TKernel : word t := Z_to_word 0.
 
 Class params_spec (cp : concrete_params) := {
   mem_axioms :> PartMaps.axioms (@mem_class cp);
