@@ -48,7 +48,7 @@ Context (fhp : fault_handler_params).
 
    USER ut -> | ut   | 0 | 1 |
    KERNEL  -> | 0..0 | 0 | 0 |
-   ENTRY   -> | 0..0 | 1 | 0 | *)
+   ENTRY   -> | ut   | 1 | 0 | *)
 
 Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 
@@ -90,9 +90,16 @@ Definition wrap_user_tag (rut rdst : reg mt) : code :=
   [Const _ (Z_to_imm 1) rdst] ++
   [Binop _ OR rdst ri2 rdst].
 
-Definition is_entry_tag (rsrc rdst : reg mt) : code :=
-  [Const _ (Z_to_imm 2) ri5] ++
-  [Binop _ EQ rsrc ri5 rdst].
+(* Similar to [extract_user_tag], but for kernel entry-point tags. *)
+Definition extract_entry_tag (rsrc rsucc rut : reg mt) : code :=
+  [Const _ (Z_to_imm 3) ri2] ++
+  [Binop _ AND rsrc ri2 rsucc] ++
+  [Const _ (Z_to_imm 2) ri2] ++
+  [Binop _ EQ rsucc ri2 rsucc] ++
+  if_ rsucc
+      ([Const _ (Z_to_imm 2) ri2] ++
+       [Binop _ SHRU rsrc ri2 rut])
+      [].
 
 Definition load_mvec : code :=
   fst (fold_left (fun acc r =>
@@ -115,8 +122,7 @@ Variable policy_handler : code.
    the higher-level handler on them. Otherwise, halt. Warning: overwrites
    ri3. *)
 Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
-  (* Check that [rop] contains a USER tag that does
-     not have a call bit set *)
+  (* Check that [rop] contains a USER tag *)
   let do_op rop := extract_user_tag rop rb rop ++
                    if_ rb [] [Halt _] in
   match Symbolic.nfields op with
@@ -138,11 +144,15 @@ Definition handler : code :=
   if_ rb
       (* PC has USER tag *)
       (* Check whether we're at an entry point *)
-      (is_entry_tag rti ri4 ++
+      (extract_entry_tag rti ri4 rti ++
        if_ ri4
            (* THEN: We are entering a system call routine.
-                    Put KERNEL tags in rvector. *)
-           (load_const Concrete.TKernel rtrpc ++
+                    Change opcode to SERVICE and invoke policy
+                    fault handler. If call is allowed, put KERNEL
+                    tags in rvector. *)
+           ([Const _ (Z_to_imm (op_to_Z SERVICE)) rop] ++
+            policy_handler ++
+            load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
            (* ELSE: We are not in a system call. *)
            (extract_user_tag rti rb rti ++
