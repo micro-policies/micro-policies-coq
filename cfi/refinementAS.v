@@ -44,11 +44,7 @@ Section Filter.
     filter : (V -> bool) -> M -> M;
 
     filter_correctness: forall (f : V -> bool) (m : M) (k : K),
-                       get (filter f m) k = match get m k with 
-                                              | Some v => 
-                                                if f v then Some v else None
-                                              | None => None
-                                            end;
+                       get (filter f m) k = option_filter f (get m k);
 
     filter_domains : forall (f : V -> bool) (m : M) (m' : M) (k : K),
                        same_domain(*s*) m m' ->

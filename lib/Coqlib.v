@@ -656,6 +656,14 @@ Definition option_map (A B: Type) (f: A -> B) (x: option A) : option B :=
   | Some y => Some (f y)
   end.
 
+(** Filtering an option. *)
+
+Definition option_filter (A: Type) (p: A -> bool) (x: option A) : option A :=
+  match x with
+  | Some x => if p x then Some x else None
+  | None => None
+  end.
+
 (** Mapping a function over a sum type. *)
 
 Definition sum_left_map (A B C: Type) (f: A -> B) (x: A + C) : B + C :=
