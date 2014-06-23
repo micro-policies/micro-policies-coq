@@ -147,11 +147,16 @@ Fixpoint initialize_registers
              (regs : Concrete.registers concrete_int_32_t)
              (time : nat)
            : Concrete.registers concrete_int_32_t :=
+  let regs := Int32TMap.set ra zero@tag regs in
   match time with
-    0%nat => regs
+    0%nat => 
+      (* Last thing to do is to set ra, which is also a user register 
+         when the program starts *)
+      regs
   | S time' =>
       if Z.leb (word_to_Z max) (word_to_Z min) then regs else 
-      initialize_registers (add_word min (Z_to_word 1)) max tag (Int32TMap.set min zero@tag regs) time'
+      initialize_registers (add_word min (Z_to_word 1)) max tag 
+        (Int32TMap.set min zero@tag regs) time'
   end.
 
 (* BCP: This may need to be generalized at some point.  Right now, it

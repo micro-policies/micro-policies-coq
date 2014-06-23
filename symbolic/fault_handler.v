@@ -55,6 +55,9 @@ Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 
 Definition kernel_regs := mvec_regs ++ [rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
 
+(* For debugging -- put a telltale marker in the code *)
+Definition got_here : code := [Const _ (Z_to_imm 999) ri5].
+
 Definition bool_to_imm (b : bool) : imm mt :=
   if b then Z_to_imm 1 else Z_to_imm 0.
 
@@ -97,6 +100,7 @@ Definition extract_entry_tag (rsrc rsucc rut : reg mt) : code :=
   [Binop _ AND rsrc ri2 rsucc] ++
   [Const _ (Z_to_imm 2) ri2] ++
   [Binop _ EQ rsucc ri2 rsucc] ++
+  got_here ++
   if_ rsucc
       ([Const _ (Z_to_imm 2) ri2] ++
        [Binop _ SHRU rsrc ri2 rut])
@@ -133,9 +137,6 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   | Some (3, _) => do_op rt1 ++ do_op rt2 ++ do_op rt3
   | _ => [Halt _]
   end.
-
-(* For debugging -- put a telltale marker in the code *)
-Definition got_here : code := [Const _ (Z_to_imm 999) ri5].
 
 (* The entire code for the generic fault handler.
    Warning: overwrites ri4. *)

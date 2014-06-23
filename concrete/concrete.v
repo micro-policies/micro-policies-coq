@@ -59,7 +59,7 @@ Class concrete_params := {
 Definition cache_line_addr : word t := Z_to_word 0.
 (* BCP: Call it fault_handler_addr? *)
 Definition fault_handler_start : word t := Z_to_word 8.
-Definition TNone   : word t := Z_to_word 1.
+Definition TNone   : word t := Z_to_word 42.  (* Recognizable enough? *)
 Definition TKernel : word t := Z_to_word 0.
 
 Class params_spec (cp : concrete_params) := {
@@ -346,7 +346,11 @@ Inductive step (st st' : state) : Prop :=
         mkMVec (op_to_word ADDRULE) tpc ti TNone TNone TNone in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        do! cache' <- add_rule cache masks (is_kernel_tag tpc) mem;
+        (* BCP/AAA: This was
+               do! cache' <- add_rule cache masks (is_kernel_tag tpc) mem;
+           but that seems wrong: it will add the rule using the kernel-mode
+           masks, but it will be executed with user-mode masks! *)
+        do! cache' <- add_rule cache masks false mem;
         Some (mkState mem reg cache' (pc.+1)@(ctrpc rvec) epc)) = Some st'),
       step st st'
 | step_gettag :

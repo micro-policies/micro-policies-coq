@@ -533,19 +533,19 @@ Definition concat_and_measure_relocatable_segments
              (Args Cell : Type)
              (segs : list (relocatable_segment Args Cell))
            : relocatable_segment Args Cell * list nat :=
-  fold_right
-    (fun (seg : relocatable_segment Args Cell) 
-         (p : relocatable_segment Args Cell * list nat) => 
+  fold_left
+    (fun (p : relocatable_segment Args Cell * list nat)
+         (seg : relocatable_segment Args Cell) => 
        let: (acc,addrs) := p in 
        let (l1,gen1) := acc in       
        let (l2,gen2) := seg in       
        let gen := fun (base : word t) (rest : Args) =>
-                       (gen2 base rest)
-                    ++ (gen1 (add_word base (nat_to_word l1)) rest) in
+                       (gen1 base rest)
+                    ++ (gen2 (add_word base (nat_to_word l1)) rest) in
        let newseg := (l1+l2, gen) in
-       (newseg, l2+1 :: addrs)) 
-    (empty_relocatable_segment _ _, [])
-    segs.
+       (newseg, addrs ++ [l1])) 
+    segs
+    (empty_relocatable_segment _ _, []).
 
 Definition concat_relocatable_segments
              (Args Cell : Type)

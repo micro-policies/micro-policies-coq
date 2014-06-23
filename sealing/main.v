@@ -282,7 +282,7 @@ Definition fault_handler : @relocatable_segment t w w :=
   kernel_code (handler t ops fhp transfer_function).
 
 Definition extra_state : @relocatable_segment t w w := 
-  kernel_data [nat_to_word 0].
+  kernel_data [nat_to_word 13].
 
 Definition gen_syscall_code gen : @relocatable_segment t w w :=
   (length (gen (Int32.repr 0) (Int32.repr 0)), 
@@ -493,8 +493,7 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
                  (@TotalMaps.get _ Int32.int _ _) 
                  (fun a => format_atom a)
                  max_reg 
-                 (* BCP: or this... *)
-                 (Int32.repr (word_to_Z (nat_to_word 0))) in 
+                 (Int32.repr 0) in 
   let regs := map (fun r => 
                let: (x,a) := r in 
                to_string (ss "r" +++ format_nat (nat_of_Z x) 
@@ -520,7 +519,7 @@ Definition summarize_state st :=
                  (Int32.repr (word_to_Z (nat_to_word 0))) in 
   let regs := map (fun r => 
                      let: (x,a) := r in 
-                     ss "r" +++ format_nat (nat_of_Z x) +++ ss ": " +++ a) 
+                     ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a) 
                regs' in
   let current_instr := 
     let: addr@_ := Concrete.pc st in
@@ -530,9 +529,9 @@ Definition summarize_state st :=
       None => ss "(BAD ADDR)"
     | Some i => format_atom i 
     end in
-  (to_string (ss "PC: " +++ format_atom (Concrete.pc st) 
+  (to_string (ss "PC=" +++ format_atom (Concrete.pc st) +++ ss " "
               +++ current_instr
-              +++ (ss " ") +++ ssconcat (ss " ") regs),
+              +++ (ss "  ") +++ ssconcat (ss " ") regs),
   "  ", mem,
   "  ", format_whole_cache (take 1 (Concrete.cache st))).
 
@@ -546,7 +545,7 @@ Definition tracen n p :=
 
 Definition trace := tracen 10000.
 
-Compute (tracen 300 hello_world2). 
+Compute (tracen 2000 hello_world2). 
 
 (*
 Definition print_res_state n init :=

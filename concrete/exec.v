@@ -80,7 +80,10 @@ Definition step (st : state mt) : option (state mt) :=
   | AddRule =>
     let mvec := mvec TNone TNone TNone in
     next_state _ masks st mvec (fun rvec =>
-      do! cache' <- add_rule ops cache masks (is_kernel_tag _ tpc) mem;
+      (* BCP/AAA: Was
+            do! cache' <- add_rule ops cache masks (is_kernel_tag _ tpc) mem;
+      *)
+      do! cache' <- add_rule ops cache masks false mem;
       Some (mkState mem reg cache' (pc.+1)@(ctrpc rvec) epc))
   | GetTag r1 r2 =>
     let v1 := TotalMaps.get reg r1 in
@@ -151,12 +154,13 @@ Fixpoint stepn (max_steps : nat) (st : state mt) : option (state mt) :=
   end.
 
 Fixpoint tracen (max_steps : nat) (st : state mt) : list (state mt) :=
+  st :: 
   match max_steps with
   | O => []
   | S max_steps' =>
     match step st with
     | None => []
-    | Some st' => st' :: tracen max_steps' st'
+    | Some st' => tracen max_steps' st'
     end
   end.
 
