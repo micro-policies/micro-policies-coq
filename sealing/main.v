@@ -214,10 +214,18 @@ Definition user_code {X} l : @relocatable_segment t X atom :=
 (* ---------------------------------------------------------------- *)
 (* Main definitions *)
 
-(* Axiom fault_handler : @relocatable_segment t w atom.  *)
+(* TODO: THINGS TO CLEAN:
+     - move code generation macros out of fault_handler.v
+     - make a switch macro
+     - check that there are no temp registers live across the transfer
+       function call from the falut handler
+*)
 
 Definition transfer_function : list (instr t) :=
   [
+    Const _ (op_to_imm CONST) ri1;
+    Binop _ EQ rop ri1 ri1;
+
     Const _ (Z_to_imm 0) rtrpc;
     Const _ (Z_to_imm 0) rtr
   ]. (* TODO *)
