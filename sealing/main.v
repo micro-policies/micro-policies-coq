@@ -217,7 +217,10 @@ Definition user_code {X} l : @relocatable_segment t X atom :=
 (* Axiom fault_handler : @relocatable_segment t w atom.  *)
 
 Definition transfer_function : list (instr t) :=
-  []. (* TODO *)
+  [
+    Const _ (Z_to_imm 0) rtrpc;
+    Const _ (Z_to_imm 0) rtr
+  ]. (* TODO *)
 
 Definition fault_handler : @relocatable_segment t w w :=
   kernel_code (handler t ops fhp transfer_function).
@@ -428,7 +431,6 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
   "MEMORY: ", mem,
   "CACHE: ... ", format_cache (Concrete.cache st)).
 
-(*
 Definition summarize_state st :=
   let mem := filter_Somes 
                (@enum _ _ _ 
@@ -442,7 +444,6 @@ Definition summarize_state st :=
                  (@TotalMaps.get _ Int32.int _ _) 
                  (fun a => format_atom a)
                  32
-                 (* BCP: or this... *)
                  (Int32.repr (word_to_Z (nat_to_word 0))) in 
   let regs := map (fun r => 
                      let: (x,a) := r in 
@@ -450,13 +451,12 @@ Definition summarize_state st :=
                regs' in
   let current_instr := 
     let: addr@_ := Concrete.pc st in
-    match @PartMaps.get _ Int32.int _ _ 
+    match @PartMaps.get _ Int32.int _ _
                     (@Concrete.mem t cp st)
                     addr with
       None => ss "(BAD ADDR)"
-    | Some i => format_instr i 
+    | Some i => format_atom i 
     end in
- in
   (to_string (ss "PC: " +++ format_atom (Concrete.pc st) 
               +++ current_instr
               +++ (ss " ") +++ ssconcat (ss " ") regs),
@@ -472,7 +472,6 @@ Definition trace p :=
   ).
 
 Compute (trace hello_world). 
-*)
 
 (*
 Definition print_res_state n init :=

@@ -307,3 +307,6 @@ Definition fault_handler_invariant : kernel_invariant := {|
 End invariant.
 
 End fault_handler.
+
+Arguments rtrpc {_ _}.
+Arguments rtr {_ _}.
