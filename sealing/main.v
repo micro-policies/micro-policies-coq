@@ -55,7 +55,6 @@ Instance fhp : fault_handler.fault_handler_params t := {|
   ri4 := Int32.repr 11; ri5 := Int32.repr 12; 
   rtrpc := Int32.repr 13; rtr := Int32.repr 14; 
   raddr := Int32.repr 15; 
-  rra := Int32.repr 16;
 
   load_const := fun (x : word t) (r : reg t) =>
     [Const _ (Z_to_imm (word_to_Z x)) r]
@@ -73,7 +72,7 @@ Instance scr : @syscall_regs t := {|
    someplace "user accessible", since user code (or at least the
    compiler) is going to need to know which registers it is allowed to
    use. *)
-Definition user_reg_min : reg concrete_int_32_t := Int32.repr 17. (* First user register *)
+Definition user_reg_min : reg concrete_int_32_t := Int32.repr 16. (* First user register *)
 Definition user_reg_max : reg concrete_int_32_t := Int32.repr 31. (* Last user register *)
 
 Definition keytype := [eqType of nat].
@@ -206,10 +205,13 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
   | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
   end.
 
-Definition user_code {X} l : @relocatable_segment t X atom := 
-  (length l, 
-   fun _ _ => 
-     map (fun x => Atom (encode_instr x) (encode_sealing_tag Sym.DATA))  l).
+Definition user_code (f : list w -> list (instr t))
+                   : @relocatable_segment t (list w) atom := 
+  (* This is hideous.  Will totally break if we add more system calls. *)
+  (length (f [Z_to_word 0; Z_to_word 0; Z_to_word 0]), 
+   fun _ syscall_addresses => 
+     map (fun x => Atom (encode_instr x) (encode_sealing_tag Sym.DATA)) 
+         (f syscall_addresses)).
 
 (* ---------------------------------------------------------------- *)
 (* Main definitions *)
@@ -219,16 +221,62 @@ Definition user_code {X} l : @relocatable_segment t X atom :=
      - make a switch macro
      - check that there are no temp registers live across the transfer
        function call from the falut handler
+     - the handling of the ut annotations on ENTRY tags
 *)
 
-Definition transfer_function : list (instr t) :=
-  [
-    Const _ (op_to_imm CONST) ri1;
-    Binop _ EQ rop ri1 ri1;
+Definition DATA := encode_sealing_tag Sym.DATA.
 
-    Const _ (Z_to_imm 0) rtrpc;
+Definition transfer_function : list (instr t) :=
+  let assert_DATA r := [
+    Const _ (Z_to_imm (word_to_Z DATA)) ri1;
+    Binop _ EQ r ri1 ri1 ] ++
+                           if_ ri1 [] [Halt _] 
+    in
+  (* entry points for system calls *)
+  ([ Const _ (op_to_imm SERVICE) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     []
+  (* NOP *)
+  ([ Const _ (op_to_imm NOP) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     (assert_DATA rtpc ++ assert_DATA rti ++
+      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+       Const _ (Z_to_imm (word_to_Z DATA)) rtr
+      ])
+  (* CONST *)
+  ([ Const _ (op_to_imm CONST) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     (assert_DATA rtpc ++ assert_DATA rti ++
+      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+       Const _ (Z_to_imm (word_to_Z DATA)) rtr
+      ])
+  (* BINOP *)
+  (let binop cont b := 
+         [ Const _ (op_to_imm (BINOP b)) ri1;
+           Binop _ EQ rop ri1 ri1 ] ++
+         (if_ ri1 
+           (assert_DATA rtpc ++ assert_DATA rti ++
+            assert_DATA rt1 ++ assert_DATA rt2 ++
+            [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+             Const _ (Z_to_imm (word_to_Z DATA)) rtr
+            ]) 
+           cont) in
+    fold_left binop binops 
+  (* MOV *)
+  ([ Const _ (op_to_imm MOV) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     (assert_DATA rtpc ++ assert_DATA rti ++
+      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+       Mov _ rt1 rtr
+      ])
+  (* ELSE: TODO... *)
+  ([Const _ (Z_to_imm 0) rtrpc;
     Const _ (Z_to_imm 0) rtr
-  ]. (* TODO *)
+   ])))))))))). 
 
 Definition fault_handler : @relocatable_segment t w w :=
   kernel_code (handler t ops fhp transfer_function).
@@ -242,52 +290,69 @@ Definition gen_syscall_code gen : @relocatable_segment t w w :=
 
 Definition mkkey_segment : @relocatable_segment t w w :=
   gen_syscall_code (fun _ (extra : w) => [
-          (* TODO: too many numeric types! *)
-          Const _ (Z_to_imm (word_to_Z extra)) (ri1 t);
-          Load _ (ri1 t) (ri2 t);
-          (* TODO: More here! *)
-          Jump _ (rra t)
+          Const _ (Z_to_imm (word_to_Z extra)) ri1; (* load next key *)
+          Load _ ri1 ri2; 
+          Const _ (Z_to_imm 1) ri3; (* increment and store back *)
+          Binop _ ADD ri2 ri3 ri3;
+          Store _ ri1 ri3; 
+          Const _ (Z_to_imm 2) ri3; (* SHL by 2 and add 1 *)
+          Binop _ SHL ri2 ri3 ri4;
+          Const _ (Z_to_imm 1) ri3;
+          Binop _ ADD ri3 ri4 ri4;
+          Const _ (Z_to_imm 0) ri2; (* payload for new kew is 0, arbitrarily *)
+          PutTag _ ri2 ri4 syscall_ret; (* build the key *)
+          Jump _ ra 
           ]).
 
 Definition seal_segment : @relocatable_segment t w w :=
   gen_syscall_code (fun _ (extra : w) => [
           (* TODO: More here! *)
-          Jump _ (rra t)
+          Jump _ ra
           ]).
 
 Definition unseal_segment : @relocatable_segment t w w :=
   gen_syscall_code (fun _ (extra : w) => [
           (* TODO: More here! *)
-          Jump _ (rra t)
+          Jump _ ra
           ]).
 
 Definition build_concrete_sealing_machine 
-     (user_mem : @relocatable_segment t unit atom) 
+     (user_mem : @relocatable_segment t (list w) atom) 
    : Concrete.state concrete_int_32_t :=
-  let syscalls :=
-    concat_relocatable_segments
-      mkkey_segment
-      (concat_relocatable_segments seal_segment unseal_segment) in
-  let handler_and_syscalls :=
-    concat_relocatable_segments fault_handler syscalls in
+  (* This list should be defined at the same place as the decoding
+     function that splits out the addresses for use when generating
+     user code *)
+  let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
   initial_state
     extra_state
-    handler_and_syscalls
-    (@relocate_ignore_args t w atom user_mem)
+    fault_handler
+    syscalls
+    user_mem
     (encode_sealing_tag Sym.DATA)
     user_reg_min user_reg_max
     (encode_sealing_tag Sym.DATA).
 
-Definition hello_world : @relocatable_segment t unit atom :=
-  user_code [
+Definition hello_world0 : @relocatable_segment t (list w) atom :=
+  user_code (fun _ => [ 
+     Const t (Z_to_imm 2) (Int32.repr 25)
+  ]).
+
+Definition hello_world1 : @relocatable_segment t (list w) atom :=
+  user_code (fun _ => [
     Const t (Z_to_imm 2) (Int32.repr 25);
     Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
-  ].
+  ]).
 
-Definition hello_world2 : @relocatable_segment t unit atom :=
-  user_code [
-    Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
-  ].
+Definition hello_world2 : @relocatable_segment t (list w) atom :=
+  user_code (fun syscall_addresses =>
+    match syscall_addresses with 
+      [mkkey; seal; unseal] => 
+        [
+          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
+          Jal t (Int32.repr 25)
+        ]
+    | _ => []
+    end).
 
 Import Concrete.
 
@@ -471,15 +536,17 @@ Definition summarize_state st :=
   "  ", mem,
   "  ", format_whole_cache (take 1 (Concrete.cache st))).
 
-Definition trace p := 
+Definition tracen n p := 
   let init := build_concrete_sealing_machine p in
-  let tr := exec.trace less_trivial_masks t init in
+  let tr := exec.tracen less_trivial_masks t n init in
   (
-   print_state 0 1000 32 init,
+   print_state 0 3000 32 init,
    map summarize_state tr
   ).
 
-Compute (trace hello_world). 
+Definition trace := tracen 10000.
+
+Compute (tracen 300 hello_world2). 
 
 (*
 Definition print_res_state n init :=

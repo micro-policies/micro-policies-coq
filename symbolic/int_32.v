@@ -76,11 +76,25 @@ Definition kernelize (seg : @relocatable_segment concrete_int_32_t w w)
   let (l,gen) := seg in
   (l, fun b rest => map (fun x => Atom x Concrete.TKernel) (gen b rest)).
 
+Definition kernelize_syscall (seg : @relocatable_segment concrete_int_32_t w w) 
+                   : relocatable_segment w atom :=
+  let (l,gen) := seg in
+  (l, fun b rest => 
+        match gen b rest with
+          [] => []
+        | entry::others =>
+               (* ENTRY tag with constant ut *)
+               (Atom entry (Z_to_word 2))
+            :: map (fun x => Atom x Concrete.TKernel) others
+        end).
+
 Definition kernelize_user_tag t :=
   add (shl t (repr 2)) (repr 1).
 
-Definition kernelize_tags (seg : @relocatable_segment concrete_int_32_t w atom) 
-                   : relocatable_segment w atom :=
+Definition kernelize_tags 
+                   {X : Type}
+                   (seg : @relocatable_segment concrete_int_32_t X atom) 
+                   : relocatable_segment X atom :=
   let (l,gen) := seg in
   (* BCP: This has to correspond with the tag encoding used in 
      fault_handler.v -- probably better to write it there rather than here *)
@@ -91,27 +105,38 @@ Definition kernelize_tags (seg : @relocatable_segment concrete_int_32_t w atom)
 
 Definition initial_memory 
       (extra_state : relocatable_segment _ w)
-      (handler_and_syscalls : relocatable_segment w w)
-      (user_mem : relocatable_segment w atom) 
+      (handler : relocatable_segment w w)
+      (syscalls : list (relocatable_segment w w))
+      (user_mem : relocatable_segment (list w) atom) 
     : Concrete.memory concrete_int_32_t * w :=
   let cacheCell := Atom zero Concrete.TKernel in
-  let (_,gen) := concat_relocatable_segments 
-                    (kernelize
-                       (concat_relocatable_segments 
-                          handler_and_syscalls
-                          extra_state))
-                    (kernelize_tags user_mem) in
-  let extra_state_addr := add_word (fault_handler_start concrete_int_32_ops)
-                                   (nat_to_word (fst handler_and_syscalls)) in
-  let user_code_addr := add_word extra_state_addr
-                                 (nat_to_word (fst extra_state)) in
-  let contents := 
-    gen (fault_handler_start concrete_int_32_ops) extra_state_addr in
-  let mem := 
-     ( constants_from zero 8 cacheCell
-     ∘ insert_from (fault_handler_start concrete_int_32_ops) contents )
-     (Int32PMap.empty _) in
-   (mem, user_code_addr).
+  let '((kernel_length,gen_kernel), offsets) := 
+    concat_and_measure_relocatable_segments 
+      ([kernelize handler;
+       kernelize extra_state] ++
+       (map kernelize_syscall syscalls)) in
+  match offsets with 
+  | _ :: extra_state_offset :: syscall_offsets => 
+    let base_addr := fault_handler_start concrete_int_32_ops in
+    let extra_state_addr := add_word base_addr 
+                                     (nat_to_word extra_state_offset) in
+    let user_code_addr := add_word base_addr (nat_to_word kernel_length) in
+    let syscall_addrs := 
+        map (fun off => add_word base_addr (nat_to_word off)) 
+            syscall_offsets in
+    let (_, gen_user) := kernelize_tags user_mem in
+    let kernel := gen_kernel base_addr extra_state_addr in
+    let user := gen_user user_code_addr syscall_addrs in
+    let mem := 
+       ( constants_from zero 8 cacheCell
+       ∘ insert_from base_addr kernel
+       ∘ insert_from user_code_addr user )
+       (Int32PMap.empty _) in
+     (mem, user_code_addr)
+   | _ => 
+     (* Not sure what to return here... *)
+     (Int32PMap.empty _, repr 0)
+   end.
 
 (* BCP: The time argument should surely not be needed -- I got tangled
    up in numeric conversions...  If we ever try to prove something
@@ -146,13 +171,15 @@ Program Definition initial_regs
 
 Program Definition initial_state 
       (extra_state : relocatable_segment _ w)
-      (handler_and_syscalls : relocatable_segment w w)
-      (user_mem : relocatable_segment w atom) 
+      (handler : relocatable_segment w w)
+      (syscalls : list (relocatable_segment w w))
+      (user_mem : relocatable_segment (list w) atom) 
       (initial_pc_tag : w) 
       (user_reg_min user_reg_max : reg concrete_int_32_t)
       (initial_reg_tag : w) 
     : Concrete.state concrete_int_32_t := 
-  let (mem, start) := initial_memory extra_state handler_and_syscalls user_mem in
+  let '(mem, start) := 
+    initial_memory extra_state handler syscalls user_mem in
   {|  
     Concrete.mem := mem;
     Concrete.regs := initial_regs user_reg_min user_reg_max initial_reg_tag;
@@ -160,3 +187,4 @@ Program Definition initial_state
     Concrete.pc := start@(kernelize_user_tag initial_pc_tag); 
     Concrete.epc := zero@zero
   |}.
+

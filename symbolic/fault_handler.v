@@ -37,8 +37,6 @@ Class fault_handler_params := {
   rtrpc : reg mt; rtr : reg mt; (* Registers for tag results *)
   raddr : reg mt; (* Addressing register *)
 
-  rra : reg mt; (* Return addr register *)
-
   load_const : word mt -> reg mt -> code
 }.
 
@@ -46,9 +44,12 @@ Context (fhp : fault_handler_params).
 
 (* Encoding:
 
-   USER ut -> | ut   | 0 | 1 |
-   KERNEL  -> | 0..0 | 0 | 0 |
-   ENTRY   -> | ut   | 1 | 0 | *)
+   USER ut  -> | ut   | 0 | 1 |
+   KERNEL   -> | 0..0 | 0 | 0 |
+   ENTRY ut -> | ut   | 1 | 0 | 
+
+   (where "ENTRY ut" means that the entry point carries a specific
+   tag, which might be used by the transfer function) *)
 
 Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 
@@ -134,7 +135,7 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   end.
 
 (* For debugging -- put a telltale marker in the code *)
-Definition got_here : code := [Const _ (Z_to_imm 99) ri5].
+Definition got_here : code := [Const _ (Z_to_imm 999) ri5].
 
 (* The entire code for the generic fault handler.
    Warning: overwrites ri4. *)
@@ -321,4 +322,5 @@ Arguments rti {_ _}.
 Arguments rt1 {_ _}.
 Arguments rt2 {_ _}.
 Arguments rt3 {_ _}.
+Arguments if_ {_ _ _} r t f.
 
