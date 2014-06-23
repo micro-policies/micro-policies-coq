@@ -39,9 +39,6 @@ Class fault_handler_params := {
 
   rra : reg mt; (* Return addr register *)
 
-  user_reg_min : reg mt; (* First user register *)
-  user_reg_max : reg mt; (* Last user register *)
-
   load_const : word mt -> reg mt -> code
 }.
 

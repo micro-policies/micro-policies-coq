@@ -19,8 +19,6 @@ Import DoNotation.
 Import Int32.
 Import Concrete.
 
-Axiom fault_handler : list atom.
-
 (*
 Instance concrete_int_32_fh : fault_handler_params concrete_int_32_t := {
   rop := repr 1;
@@ -131,20 +129,33 @@ Fixpoint initialize_registers
       initialize_registers (add_word min (Z_to_word 1)) max tag (Int32TMap.set min zero@tag regs) time'
   end.
 
-Program Definition initial_regs : Concrete.registers concrete_int_32_t :=
-  initialize_registers user_reg_min user_reg_max 
-  Int32TMap.init zero@zero.
+(* BCP: This may need to be generalized at some point.  Right now, it
+   initializes all user registers with the tag (USER 0).  But the user
+   program might conceivably want to start with a different tag
+   assignment.  (On the other hand, maybe policies can always simply
+   be written so that tag 0 is a reasonable default.) *)
+Program Definition initial_regs
+                     (user_reg_min user_reg_max : reg concrete_int_32_t)
+                     (initial_reg_tag : word concrete_int_32_t)
+                   : Concrete.registers concrete_int_32_t :=
+  initialize_registers 
+    user_reg_min user_reg_max 
+    (kernelize_user_tag initial_reg_tag)
+    (Int32TMap.init zero@zero)
+    100.
 
 Program Definition initial_state 
       (extra_state : relocatable_segment _ w)
       (handler_and_syscalls : relocatable_segment w w)
       (user_mem : relocatable_segment w atom) 
       (initial_pc_tag : w) 
+      (user_reg_min user_reg_max : reg concrete_int_32_t)
+      (initial_reg_tag : w) 
     : Concrete.state concrete_int_32_t := 
   let (mem, start) := initial_memory extra_state handler_and_syscalls user_mem in
   {|  
     Concrete.mem := mem;
-    Concrete.regs := initial_regs;
+    Concrete.regs := initial_regs user_reg_min user_reg_max initial_reg_tag;
     Concrete.cache := ground_rules;
     Concrete.pc := start@(kernelize_user_tag initial_pc_tag); 
     Concrete.epc := zero@zero

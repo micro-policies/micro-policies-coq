@@ -35,15 +35,16 @@ Section WithClasses.
 Definition t := concrete_int_32_t.
 Definition ops := concrete_int_32_ops.
 
-Instance scr : @syscall_regs t := {|
-  syscall_ret  := Int32.repr 20;
-  syscall_arg1 := Int32.repr 21;
-  syscall_arg2 := Int32.repr 22
-|}.
-
 (* BCP/MD: There should be some proof obligations about -- at least --
-   these being pairwise distinct.  Some axioms must be false
-   somewhere! *)
+   these being pairwise distinct.  Some axioms must be false somewhere!   
+
+   (And they should be distinct from the user registers below, though
+   this should not cause axiom failures, just puzzling user program
+   errors.)
+
+   Also, it seems wrong to be making this decision here.  It should be
+   made once and for all in symbolic/int_32.v, I think! *)
+
 Instance fhp : fault_handler.fault_handler_params t := {|
   rop := Int32.repr 1; 
   rtpc := Int32.repr 2; 
@@ -56,12 +57,24 @@ Instance fhp : fault_handler.fault_handler_params t := {|
   raddr := Int32.repr 15; 
   rra := Int32.repr 16;
 
-  user_reg_min := Int32.repr 17;
-  user_reg_max := Int32.repr 31;
-
   load_const := fun (x : word t) (r : reg t) =>
     [Const _ (Z_to_imm (word_to_Z x)) r]
 |}.
+
+(* BCP: These have to be included in the range of user registers.
+   There should be a proof obligation to this effect somewhere. *)
+Instance scr : @syscall_regs t := {|
+  syscall_ret  := Int32.repr 20;
+  syscall_arg1 := Int32.repr 21;
+  syscall_arg2 := Int32.repr 22
+|}.
+
+(* BCP: This is not the right place to define these: But it should be
+   someplace "user accessible", since user code (or at least the
+   compiler) is going to need to know which registers it is allowed to
+   use. *)
+Definition user_reg_min : reg concrete_int_32_t := Int32.repr 17. (* First user register *)
+Definition user_reg_max : reg concrete_int_32_t := Int32.repr 31. (* Last user register *)
 
 Definition keytype := [eqType of nat].
 
@@ -177,25 +190,6 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
   (length l, 
    fun _ _ => map encode_instr l).
 
-Definition user_code {X} l : @relocatable_segment t X atom := 
-  (length l, 
-   fun _ _ => 
-     map (fun x => Atom (encode_instr x) Concrete.TKernel)  l).
-
-(* ---------------------------------------------------------------- *)
-(* Main definitions *)
-
-(* Axiom fault_handler : @relocatable_segment t w atom.  *)
-
-Definition transfer_function : list (instr t) :=
-  []. (* TODO *)
-
-Definition fault_handler : @relocatable_segment t w w :=
-  kernel_code (handler t ops fhp transfer_function).
-
-Definition extra_state : @relocatable_segment t w w := 
-  kernel_data [nat_to_word 0].
-
 Instance sk_defs : Sym.sealing_key := {|
   key := int_eqType;
   max_key := Int32.repr 100;
@@ -211,6 +205,25 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
   | Sym.KEY k => add_word (Int32.repr 1) (Int32.shl k (Int32.repr 2))
   | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
   end.
+
+Definition user_code {X} l : @relocatable_segment t X atom := 
+  (length l, 
+   fun _ _ => 
+     map (fun x => Atom (encode_instr x) (encode_sealing_tag Sym.DATA))  l).
+
+(* ---------------------------------------------------------------- *)
+(* Main definitions *)
+
+(* Axiom fault_handler : @relocatable_segment t w atom.  *)
+
+Definition transfer_function : list (instr t) :=
+  []. (* TODO *)
+
+Definition fault_handler : @relocatable_segment t w w :=
+  kernel_code (handler t ops fhp transfer_function).
+
+Definition extra_state : @relocatable_segment t w w := 
+  kernel_data [nat_to_word 0].
 
 Definition gen_syscall_code gen : @relocatable_segment t w w :=
   (length (gen (Int32.repr 0) (Int32.repr 0)), 
@@ -250,6 +263,8 @@ Definition build_concrete_sealing_machine
     extra_state
     handler_and_syscalls
     (@relocate_ignore_args t w atom user_mem)
+    (encode_sealing_tag Sym.DATA)
+    user_reg_min user_reg_max
     (encode_sealing_tag Sym.DATA).
 
 Definition hello_world : @relocatable_segment t unit atom :=
@@ -378,7 +393,7 @@ Definition format_whole_cache (c : Concrete.rules (word t)) :=
   map (fun l => let: (m,r) := l in to_string (format_mvec m +++ ss " => " +++ format_rvec r)) c.
 
 Definition format_cache (c : Concrete.rules (word t)) :=
-  format_whole_cache (List.rev (take 3 (List.rev c))).
+  format_whole_cache (take 3 c).
 
 Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
   match l with
@@ -415,13 +430,13 @@ Definition print_state (mem_start mem_end max_reg : nat) st :=
   "CACHE: ... ", format_cache (Concrete.cache st)).
 
 Definition print_res_state n init :=
-  omap (print_state 801 807 15) (exec.stepn less_trivial_masks t n init).
+  omap (print_state 801 807 27) (exec.stepn less_trivial_masks t n init).
 
 Definition run n := 
   (ConcreteSealing.print_res_state n (ConcreteSealing.build_concrete_sealing_machine ConcreteSealing.hello_world)).
 
 (* Why didn't we trap on instruction 33? *)
-Compute (print_res_state 0
+Compute (print_res_state 2
  (build_concrete_sealing_machine hello_world)). 
 
 (*
