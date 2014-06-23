@@ -5,14 +5,14 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.utils lib.partial_maps.
 Require Import common.common.
 Require Import symbolic.symbolic.
-Require Import cfi.cfi.
-Require Import cfi.cfi_rules.
+Require Import cfi.property.
+Require Import cfi.rules.
 Require Import lib.Coqlib.
 Set Implicit Arguments.
 
 Import ListNotations.
 
-Module SymbolicCFI.
+Module Sym.
 
 Open Scope bool_scope.
 
@@ -35,7 +35,7 @@ Variable valid_jmp : word t -> word t -> bool.
 Program Instance sym_cfi : (Symbolic.symbolic_params) := {
   tag := cfi_tag_eqType;
 
-  handler := cfi_rules.cfi_handler valid_jmp;
+  handler := rules.cfi_handler valid_jmp;
 
   internal_state := unit;
 
@@ -149,4 +149,4 @@ Definition S xs :=
 
 End WithClasses.
 
-End SymbolicCFI.
+End Sym.

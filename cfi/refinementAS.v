@@ -7,7 +7,7 @@ Require Import common.common.
 Require Import symbolic.symbolic.
 Require Import cfi.abstract.
 Require Import cfi.symbolic.
-Require Import cfi.cfi_rules.
+Require Import cfi.rules.
 Require Coq.Vectors.Vector.
 
 Set Implicit Arguments.
@@ -74,46 +74,46 @@ Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
         
-        {ap : Abstract.abstract_params t}
-        {aps : Abstract.params_spec ap}
+        {ap : Abs.abstract_params t}
+        {aps : Abs.params_spec ap}
 
         {smemory : Type}
         {sm : partial_map smemory (word t) (atom (word t) (@cfi_tag t))}
         {smems : axioms sm}
-        {smemory_map : Map.mappable sm (@Abstract.dmem_class t ap)}
+        {smemory_map : Map.mappable sm (@Abs.dmem_class t ap)}
         {smemory_filter : Filter.filterable sm}
 
         {sregisters : Type}
         {sr : partial_map sregisters (reg t) (atom (word t) (@cfi_tag t))}
         {sregs : axioms sr}
-        {sregs_map : Map.mappable sr (@Abstract.reg_class t ap)}.
+        {sregs_map : Map.mappable sr (@Abs.reg_class t ap)}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
 (* Instantiate the symbolic machine with the CFI stuff*)
-Definition sym_params := SymbolicCFI.sym_cfi valid_jmp.
+Definition sym_params := Sym.sym_cfi valid_jmp.
 
-Variable atable : list (Abstract.syscall t).
+Variable atable : list (Abs.syscall t).
 Variable stable : list (@Symbolic.syscall t sym_params).
 
 (*Probably not needed here*)
-Definition amachine := Abstract.abstract_cfi_machine atable valid_jmp.
-Definition smachine := SymbolicCFI.symbolic_cfi_machine stable.
+Definition amachine := Abs.abstract_cfi_machine atable valid_jmp.
+Definition smachine := Sym.symbolic_cfi_machine stable.
 
 (*Refinement related definitions*)
-Definition refine_dmemory (admem : Abstract.dmemory t)
+Definition refine_dmemory (admem : Abs.dmemory t)
                           (smem : smemory) :=
   forall w (x : word t),
     get smem w = Some x@DATA <->
     get admem w = Some x. 
 
-Definition refine_imemory (aimem : Abstract.imemory t)
+Definition refine_imemory (aimem : Abs.imemory t)
                           (smem : smemory) :=
   forall w x,
     (exists id, get smem w = Some x@(INSTR id)) <->
     get aimem w = Some x.
 
-Definition refine_registers (areg : Abstract.registers t)
+Definition refine_registers (areg : Abs.registers t)
                             (sreg : sregisters) :=
   forall n (x : word t),
     (exists ut, get sreg n = Some x@ut) <->
@@ -207,7 +207,7 @@ Proof.
     * auto.
 Qed.
 
-Definition refine_state (ast : Abstract.state t)
+Definition refine_state (ast : Abs.state t)
                         (sst : @Symbolic.state t sym_params) :=
   let '(imem, dmem, aregs, apc, cont) := ast in
   let '(Symbolic.State smem sregs spc@tpc _) := sst in
@@ -235,23 +235,23 @@ Definition refine_syscall acall scall :=
     refine_state ares sres.
 
 Definition syscall_domains
-           (atbl : list (Abstract.syscall t))
+           (atbl : list (Abs.syscall t))
            (stbl : list (@Symbolic.syscall t sym_params)) : Prop :=
   forall addr,
-    (exists acall, Abstract.get_syscall atbl addr = Some acall) <->
+    (exists acall, Abs.get_syscall atbl addr = Some acall) <->
     (exists scall, Symbolic.get_syscall stbl addr = Some scall).
 
 Lemma same_domain_total :
   forall atbl stbl,
     syscall_domains atbl stbl ->
-    forall addr', Abstract.get_syscall atbl addr' = None <-> 
+    forall addr', Abs.get_syscall atbl addr' = None <-> 
                   Symbolic.get_syscall stbl addr' = None.
 Proof.
   intros atbl stbl SAME addr'.
-  assert (ACALL: forall addr'', Abstract.get_syscall atbl addr'' = None \/
-                         exists ac, Abstract.get_syscall atbl addr'' = Some ac).
+  assert (ACALL: forall addr'', Abs.get_syscall atbl addr'' = None \/
+                         exists ac, Abs.get_syscall atbl addr'' = Some ac).
   { intros addr'';
-    destruct (Abstract.get_syscall atbl addr'');
+    destruct (Abs.get_syscall atbl addr'');
     [right; eexists; eauto | left; reflexivity].
   }
   assert (SCALL: forall addr'', Symbolic.get_syscall stbl addr'' = None \/
@@ -271,13 +271,13 @@ Qed.
 
 (* Might need absence of duplicates in these maps? *)
 Definition refine_syscalls 
-           (atbl : list (Abstract.syscall t))
+           (atbl : list (Abs.syscall t))
            (stbl : list (@Symbolic.syscall t sym_params)) : Prop :=
   syscall_domains atbl stbl /\
   forall addr acall scall,
-    Abstract.get_syscall atbl addr = Some acall ->
+    Abs.get_syscall atbl addr = Some acall ->
     Symbolic.get_syscall stbl addr = Some scall ->
-    refine_syscall (@Abstract.sem t ap acall)
+    refine_syscall (@Abs.sem t ap acall)
                    (@Symbolic.run_syscall t sym_params scall).
 
 Hypothesis refine_syscalls_correct : refine_syscalls atable stable.
@@ -289,13 +289,13 @@ Hypothesis syscalls_backwards_simulation :
     refine_state ast sst ->
     Symbolic.run_syscall sc sst = Some sst' ->
     exists ac ast',
-      Abstract.get_syscall atable addr = Some ac /\
-      Abstract.sem ac ast = Some ast' /\
+      Abs.get_syscall atable addr = Some ac /\
+      Abs.sem ac ast = Some ast' /\
       refine_state ast' sst'.
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    Abstract.sem ac ast = Some ast' ->
+    Abs.sem ac ast = Some ast' ->
        let '(imem,dmem,aregs,pc,b) := ast in
        let '(imem',dmem',aregs',pc',b') := ast' in
          imem = imem' /\ b' = b.
@@ -477,7 +477,7 @@ Theorem backwards_simulation ast sst sst' :
   refine_state ast sst ->
   Symbolic.step stable sst sst' ->
   exists ast',
-    Abstract.step atable valid_jmp ast ast' /\
+    Abs.step atable valid_jmp ast ast' /\
     refine_state ast' sst'.
 Proof.
   intros REF SSTEP.
@@ -588,9 +588,9 @@ Proof.
     (*handle abstract steps*)
     repeat (match goal with 
               | [|- exists _,  _ /\ _] => eexists; split
-              | [|- Abstract.step _ _ _ _] => econstructor(eassumption)
-              | [H: decode_instr _ = Some (Load _ _ _) |- Abstract.step _ _ _ _] => 
-                eapply Abstract.step_load; eauto
+              | [|- Abs.step _ _ _ _] => econstructor(eassumption)
+              | [H: decode_instr _ = Some (Load _ _ _) |- Abs.step _ _ _ _] => 
+                eapply Abs.step_load; eauto
               | [H: get ?Mem ?Addr = Some ?V@?TG, H1: refine_imemory _ _, 
                   H2: refine_dmemory _ _ |- get _ ?Addr =  _ \/ get _ ?Addr = _] => (*for load*)
                 destruct TG; 
@@ -598,20 +598,20 @@ Proof.
                     assert(MEMLOAD: exists id, get Mem Addr = Some V@(INSTR id)) 
                      by (eexists; eauto); apply H1 in MEMLOAD; eassumption | 
                    right; apply H2 in H; eassumption]
-              | [H: decode_instr _ = Some (Store _ _ _) |- Abstract.step _ _ _ _] => 
-                eapply Abstract.step_store; eauto
-              | [H: decode_instr _ = Some (Jump _ _ ) |- Abstract.step _ _ _ _] => 
-                eapply Abstract.step_jump; eauto
-              | [H: decode_instr _ = Some (Bnz _ _ _) |- Abstract.step _ _ _ _] =>
-                eapply Abstract.step_bnz; eauto
-              | [H: decode_instr _ = Some (Jal _ _ ) |- Abstract.step _ _ _ _] =>
-                eapply Abstract.step_jal; eauto
+              | [H: decode_instr _ = Some (Store _ _ _) |- Abs.step _ _ _ _] => 
+                eapply Abs.step_store; eauto
+              | [H: decode_instr _ = Some (Jump _ _ ) |- Abs.step _ _ _ _] => 
+                eapply Abs.step_jump; eauto
+              | [H: decode_instr _ = Some (Bnz _ _ _) |- Abs.step _ _ _ _] =>
+                eapply Abs.step_bnz; eauto
+              | [H: decode_instr _ = Some (Jal _ _ ) |- Abs.step _ _ _ _] =>
+                eapply Abs.step_jal; eauto
               | [H: get _ ?Pc = None, H1: refine_imemory _ _, 
                      H2: refine_dmemory _ _ |- _] => 
                   destruct (refine_memory_total H1 H2 Pc) as [? NOMEM];
                   destruct (NOMEM H)
-              | [H1: Symbolic.get_syscall _ _ = Some _ |- Abstract.step _ _ _ _] =>
-                eapply Abstract.step_syscall; eauto 
+              | [H1: Symbolic.get_syscall _ _ = Some _ |- Abs.step _ _ _ _] =>
+                eapply Abs.step_syscall; eauto 
             end); 
     unfold refine_state;
     (*handle final state refinement*)
@@ -621,8 +621,8 @@ Proof.
                 remember (valid_jmp Pc W) as b; destruct b; 
                 [left; unfold refine_normal_state; repeat (split; auto) | idtac]
               | [|- _ /\ _] => split; [eauto | idtac]
-              | [H: decode_instr _ = Some (Jump _ _) |- Abstract.step _ _ _ (_,_,_,_,false)] =>
-                  eapply Abstract.step_jump; eauto
+              | [H: decode_instr _ = Some (Jump _ _) |- Abs.step _ _ _ (_,_,_,_,false)] =>
+                  eapply Abs.step_jump; eauto
               | [H: refine_imemory ?Imem ?Mem |- refine_imemory ?Imem ?Mem] => 
                 assumption
               | [H: refine_imemory ?Imem ?Mem |- refine_imemory ?Imem ?Mem'] => 
@@ -821,12 +821,12 @@ Definition untag_atom (a : atom (word t) (@cfi_tag t)) := common.val a.
 Lemma reg_refinement_preserved_by_equiv : 
   forall areg reg reg',
     refine_registers areg reg ->
-    SymbolicCFI.equiv reg reg' ->
+    Sym.equiv reg reg' ->
     exists areg',
       refine_registers areg' reg'.
 Proof.
   intros areg reg reg' REF EQUIV.
-  unfold SymbolicCFI.equiv in EQUIV.
+  unfold Sym.equiv in EQUIV.
   unfold refine_registers in REF.
   assert (MAP := Map.map_correctness untag_atom reg'). 
   exists (Map.map untag_atom reg'). subst.
@@ -849,11 +849,11 @@ Qed.
 Lemma imem_refinement_preserved_by_equiv :
   forall imem mem mem',
     refine_imemory imem mem ->
-    SymbolicCFI.equiv mem mem' ->
+    Sym.equiv mem mem' ->
     refine_imemory imem mem'.
 Proof.
   intros imem mem mem' REF EQUIV.
-  unfold SymbolicCFI.equiv in EQUIV.
+  unfold Sym.equiv in EQUIV.
   intros addr v.
   split.
   - destruct (REF addr v) as [MEMSA MEMAS].
@@ -920,7 +920,7 @@ Qed.
 Lemma dmem_refinement_preserved_by_equiv :
   forall dmem mem mem',
     refine_dmemory dmem mem ->
-    SymbolicCFI.equiv mem mem' -> 
+    Sym.equiv mem mem' -> 
     exists dmem',
       refine_dmemory dmem' mem'.
 Proof.
@@ -949,12 +949,12 @@ Qed.
 Lemma dmem_domain_preserved_by_equiv :
   forall dmem dmem' mem mem',
     refine_dmemory dmem mem ->
-    SymbolicCFI.equiv mem mem' -> 
+    Sym.equiv mem mem' -> 
     refine_dmemory dmem' mem' ->
     same_domain dmem dmem'.
 Proof.
   intros dmem dmem' mem mem' REF EQUIV REF'.
-  assert (DOMAINMM' := SymbolicCFI.equiv_same_domain EQUIV).
+  assert (DOMAINMM' := Sym.equiv_same_domain EQUIV).
   assert (DOMAINDM' := refine_dmemory_domains REF').
   assert (DOMAINDM := refine_dmemory_domains REF).
   subst.
@@ -1010,7 +1010,7 @@ Qed.
 Lemma reg_domain_preserved_by_equiv :
   forall areg areg' reg reg',
     refine_registers areg reg ->
-    SymbolicCFI.equiv reg reg' -> 
+    Sym.equiv reg reg' -> 
     refine_registers areg' reg' ->
     same_domain areg areg'.
 Proof.
@@ -1043,9 +1043,9 @@ Qed.
   
 Theorem backwards_simulation_attacker ast sst sst' :
   refine_state ast sst ->
-  SymbolicCFI.step_a sst sst' ->
+  Sym.step_a sst sst' ->
   exists ast',
-    Abstract.step_a ast ast' /\
+    Abs.step_a ast ast' /\
     refine_state ast' sst'.
 Proof.
   intros REF SSTEP.
@@ -1065,7 +1065,7 @@ Proof.
     split; [econstructor(eauto) | repeat (split; auto)].
     { (*proof in case of no syscall*)
       intros ? src TAG.
-      unfold SymbolicCFI.equiv in MEQUIV.
+      unfold Sym.equiv in MEQUIV.
       assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
       destruct (get mem pc) eqn:GET. 
       { destruct (get mem' pc) eqn:GET'.
@@ -1104,7 +1104,7 @@ Proof.
     }
   }
   { (*case a violation has happened*)
-    unfold SymbolicCFI.no_violation in NOV.
+    unfold Sym.no_violation in NOV.
     destruct (CORRECTNESS i _ FETCH) as [? CONTRA].
     assert (HYPOTHESIS: (forall src : word t,
                            tpc = INSTR (Some src) ->
@@ -1119,9 +1119,9 @@ Qed.
 (*This is a helper lemma to instantiate CFI refinement between 
   symbolic and concrete*)
 (*Lemma attacker_no_v : forall si sj,
-                 SymbolicCFI.ssucc si sj = false ->
+                 Sym.ssucc si sj = false ->
                  Symbolic.step stable si sj ->
-                 SymbolicCFI.step_a si sj ->
+                 Sym.step_a si sj ->
                  False.
 Proof.
   intros si sj SUCC STEP STEPA.
@@ -1138,7 +1138,7 @@ Proof.
         | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
           unfold Symbolic.next_state in H; simpl in H; match_inv
       end); subst;
-   unfold SymbolicCFI.ssucc in SUCC; simpl in SUCC;
+   unfold Sym.ssucc in SUCC; simpl in SUCC;
    inversion ST; try subst;
 
    try match goal with

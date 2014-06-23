@@ -1,12 +1,25 @@
+* Deadling with system calls
+symbolic.v
 
-* Files
+* Initial states: Did we sort that out? Doesn't seem so!
+- defined wrongly as true for abstract machine
+- defined as true for symbolic machine too
 
-No need to append cfi_ in front of file names that live in cfi folder
+* Assumptions and Admits
 
-Could rename cfi.v to property.v or machine.v?
+These need to be carefully scrutinized
 
-Could consider moving cfi_rules.v into symbolic.v
+** Where is determinism actually used? [Nowhere, removed]
+Defined TWICE (abstract.v and cfi.v)
+- in abstract.v it should be Lemma not Hypothesis
+Not used at all
 
+** XXX
+* Concrete machine
+* Forward Simulation? (not a priority, but still)
++ Backwards refinement is already very automated
++ Definitions can be shared ... refinement relation, etc.
+- Backwards refinement proof is still 1000+ lines
 * Naming and notation
 
 ** Stick to Abadi's notations when possible
@@ -22,21 +35,3 @@ concrete stuff:
 #cfi/concrete_kernel.v
 #cfi/fault_handler_spec.v
 
-* Initial states: Did we sort that out? Doesn't seem so!
-- defined wrongly as true for abstract machine
-- defined as true for symbolic machine too
-
-* Deadling with system calls
-
-symbolic.v
-
-* Assumptions
-
-These need to be carefully scrutinized
-
-** Where is determinism actually used? [Nowhere, removed]
-Defined TWICE (abstract.v and cfi.v)
-- in abstract.v it should be Lemma not Hypothesis
-Not used at all
-
-** XXX

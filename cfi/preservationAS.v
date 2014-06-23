@@ -1,14 +1,14 @@
 Require Import Coq.Lists.List.
-Require Import cfi.cfi_refinement.
-Require Import cfi.abstract.
-Require Import cfi.symbolic.
-Require Import cfi.refinementAS.
-Require Import cfi.cfi_rules.
-Require Import symbolic.symbolic.
-Require Import common.common.
 Require Import lib.utils.
 Require Import lib.partial_maps.
 Require Import lib.Coqlib.
+Require Import common.common.
+Require Import symbolic.symbolic.
+Require Import cfi.abstract.
+Require Import cfi.symbolic.
+Require Import cfi.preservation.
+Require Import cfi.refinementAS.
+Require Import cfi.rules.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
@@ -22,29 +22,29 @@ Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
         
-        {ap : Abstract.abstract_params t}
-        {aps : Abstract.params_spec ap}
+        {ap : Abs.abstract_params t}
+        {aps : Abs.params_spec ap}
 
         {smemory : Type}
         {sm : partial_map smemory (word t) (atom (word t) (@cfi_tag t))}
         {smems : axioms sm}
-        {smemory_map : Map.mappable sm (@Abstract.dmem_class t ap)}
+        {smemory_map : Map.mappable sm (@Abs.dmem_class t ap)}
         {smemory_filter : Filter.filterable sm}
 
         {sregisters : Type}
         {sr : partial_map sregisters (reg t) (atom (word t) (@cfi_tag t))}
         {sregs : axioms sr}
-        {sregs_map : Map.mappable sr (@Abstract.reg_class t ap)}.
+        {sregs_map : Map.mappable sr (@Abs.reg_class t ap)}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
-Definition sym_params := SymbolicCFI.sym_cfi valid_jmp.
+Definition sym_params := Sym.sym_cfi valid_jmp.
 
-Variable atable : list (Abstract.syscall t).
+Variable atable : list (Abs.syscall t).
 Variable stable : list (@Symbolic.syscall t sym_params).
 
-Definition amachine :=  Abstract.abstract_cfi_machine atable valid_jmp.
-Definition smachine := SymbolicCFI.symbolic_cfi_machine stable.
+Definition amachine :=  Abs.abstract_cfi_machine atable valid_jmp.
+Definition smachine := Sym.symbolic_cfi_machine stable.
 
 (*Hypothesis*)
 Definition refine_sc := RefinementAS.refine_syscalls stable atable stable.
@@ -59,13 +59,13 @@ Hypothesis syscalls_backwards_simulation :
     RefinementAS.refine_state stable ast sst ->
     Symbolic.run_syscall sc sst = Some sst' ->
     exists ac ast',
-      Abstract.get_syscall atable addr = Some ac /\
-      Abstract.sem ac ast = Some ast' /\
+      Abs.get_syscall atable addr = Some ac /\
+      Abs.sem ac ast = Some ast' /\
       RefinementAS.refine_state stable ast' sst'.
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    Abstract.sem ac ast = Some ast' ->
+    Abs.sem ac ast = Some ast' ->
        let '(imem,dmem,aregs,pc,b) := ast in
        let '(imem',dmem',aregs',pc',b') := ast' in
          imem = imem' /\ b' = b.
@@ -145,11 +145,11 @@ Next Obligation.
   eexists; eauto.
 Qed.
   
-Definition astop (xs : list (@cfi.state t amachine)) :=
-  Abstract.S atable valid_jmp xs.
+Definition astop (xs : list (@property.state t amachine)) :=
+  Abs.S atable valid_jmp xs.
 
-Definition sstop (xs : list (@cfi.state t smachine)) := 
-  SymbolicCFI.S stable xs.
+Definition sstop (xs : list (@property.state t smachine)) := 
+  Sym.S stable xs.
 
 Ltac match_inv :=
   repeat match goal with
@@ -185,13 +185,13 @@ Next Obligation.
   destruct csj as [mem' regs' [spc' tpc'] int'].
   destruct H as [REFI [REFD [REFR [REFPC CORRECTNESS]]]].
   destruct H0 as [REFI' [REFD' [REFR' [REFPC' CORRECTNESS']]]].
-  unfold Abstract.succ in H1.
+  unfold Abs.succ in H1.
   unfold RefinementAS.refine_pc in REFPC; simpl in REFPC; 
   destruct REFPC as [? TPC];
   unfold RefinementAS.refine_pc in REFPC'; simpl in REFPC'; 
   destruct REFPC' as [? TPC'];
   subst.
-  unfold SymbolicCFI.ssucc; simpl.
+  unfold Sym.ssucc; simpl.
   destruct (get imem spc) eqn:GET.
   + destruct (decode_instr s) eqn:INST.
     - destruct i eqn:DECODE;
@@ -200,7 +200,7 @@ Next Obligation.
       rewrite GET'; simpl;
       rewrite INST; try assumption. 
     - discriminate.
-  + destruct (Abstract.get_syscall atable spc) eqn:GETCALL.
+  + destruct (Abs.get_syscall atable spc) eqn:GETCALL.
     - destruct (get mem spc) eqn:GET'.
       { destruct a as [v ut].
         destruct ut.
@@ -217,7 +217,7 @@ Next Obligation.
       { rewrite GET'.
         unfold refine_sc in *. 
         destruct ref_sc_correct as [CALLDOMAINS ?].
-        assert (EGETCALL: exists ac, Abstract.get_syscall atable spc = Some ac)
+        assert (EGETCALL: exists ac, Abs.get_syscall atable spc = Some ac)
           by (eexists; eauto).
         apply CALLDOMAINS in EGETCALL.
         destruct EGETCALL as [sc GETCALL'].
@@ -226,12 +226,12 @@ Next Obligation.
     - destruct (get dmem spc); discriminate.
 Qed.
 Next Obligation.
-  assert (ST := Abstract.step_succ_violation H H0).
+  assert (ST := Abs.step_succ_violation H H0).
   intro CONTRA.
   destruct CONTRA. discriminate.
 Qed.
 Next Obligation.
-  unfold Abstract.succ in H1. 
+  unfold Abs.succ in H1. 
   destruct ast as [[[[imem dmem] aregs] apc] b],
            ast' as [[[[imem' dmem'] aregs'] apc'] b'].
   destruct cst as [mem reg [pc tpc] int].
@@ -242,7 +242,7 @@ Next Obligation.
   simpl in REFPC; simpl in REFPC'; destruct REFPC as [? TPC],
                                             REFPC' as [? TPC'].
   subst.
-  unfold SymbolicCFI.ssucc.    
+  unfold Sym.ssucc.    
   destruct (get imem pc) eqn:GET.
   { apply REFI in GET.
     destruct GET as [id GET].
@@ -252,7 +252,7 @@ Next Obligation.
     }
     { simpl. rewrite GET. rewrite INST. assumption. }
   }
-  { destruct (Abstract.get_syscall atable pc) eqn:GETCALL.
+  { destruct (Abs.get_syscall atable pc) eqn:GETCALL.
     { simpl. 
       destruct (get dmem pc) eqn:GET'.
       { apply REFD in GET'. rewrite GET'. reflexivity. }
@@ -276,8 +276,8 @@ Next Obligation.
   }
 Qed.
 Next Obligation.
-  unfold astop in H0. unfold Abstract.S in H0.
-  unfold sstop. unfold SymbolicCFI.S.
+  unfold astop in H0. unfold Abs.S in H0.
+  unfold sstop. unfold Sym.S.
   destruct H0 as [s [EQ NOSTEP]].
   inversion EQ; subst.
   inversion H; subst.
@@ -286,7 +286,7 @@ Next Obligation.
     destruct (backwards_refinement_normal _ _ _ H2 CONTRA).
     unfold visible in H1. simpl in H1.
     destruct (H1 erefl) as [ast' [ASTEP REF]].
-    assert (ESTEP : exists s', Abstract.step atable valid_jmp s s')
+    assert (ESTEP : exists s', Abs.step atable valid_jmp s s')
       by (eexists; eauto).
     auto.
   - unfold visible in H4. simpl in H4. discriminate.

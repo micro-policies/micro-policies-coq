@@ -5,12 +5,12 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.utils lib.partial_maps.
 Require Import common.common.
 Require Import lib.Coqlib.
-Require Import cfi.cfi.
+Require Import cfi.property.
 Set Implicit Arguments.
 
 Import ListNotations.
 
-Module Abstract.
+Module Abs.
 
 Open Scope bool_scope.
 Open Scope Z_scope.
@@ -332,10 +332,10 @@ Qed.
 
 End WithClasses.
 
-End Abstract.
+End Abs.
 
-Arguments Abstract.state t {_}.
-Arguments Abstract.imemory t {_}.
-Arguments Abstract.dmemory t {_}.
-Arguments Abstract.registers t {_}.
-Arguments Abstract.syscall t {_}.
+Arguments Abs.state t {_}.
+Arguments Abs.imemory t {_}.
+Arguments Abs.dmemory t {_}.
+Arguments Abs.registers t {_}.
+Arguments Abs.syscall t {_}.

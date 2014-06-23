@@ -25,15 +25,18 @@ symbolic/forward.v
 symbolic/int_32.v
 symbolic/rules.v
 
+cfi/property.v
 cfi/abstract.v
-cfi/cfi_refinement.v
-cfi/cfi.v
+cfi/rules.v
+cfi/symbolic.v
+cfi/refinementAS.v
+cfi/preservation.v
+cfi/preservationAS.v
+# old files:
 #cfi/concrete_cfi.v
 #cfi/concrete_kernel.v
 #cfi/fault_handler_spec.v
-cfi/cfi_rules.v
-cfi/symbolic.v
-cfi/refinementAS.v
+#cfi/refinementac.v
 
 memory_safety/classes.v
 memory_safety/quasiabstract.v
