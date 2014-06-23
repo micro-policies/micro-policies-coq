@@ -35,9 +35,7 @@ Definition intermstep := interm cfi_step.
 
 Definition intermrstep := intermr cfi_step.
 
-Definition singlestep := single cfi_step.
-
-Hypothesis exists_initial : exists s, initial s.
+Definition zero_one_step := zero_one cfi_step.
 
 (* Execution will stop *)
 Variable S : list state -> Prop.
@@ -49,7 +47,7 @@ Definition trace_has_cfi' (trace : list state) :=
              (step_a si sj /\ get_pc si = get_pc sj) 
           \/ succ si sj = true.
 
-(* New CFI definition *)
+(* Our new CFI definition *)
 Definition trace_has_cfi (trace : list state) := 
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
@@ -60,7 +58,6 @@ Definition cfi :=
     (INIT : initial s)
     (INTERM : intermstep xs s s'),
       trace_has_cfi xs \/
-      (* the next part causes the most complexity in proofs *)
       exists s'' s''' hs tl, xs = hs ++ s'' :: s''' :: tl
                              /\ (step s'' s''' /\ succ s'' s''' = false)
                              /\ trace_has_cfi (hs ++ [s''])

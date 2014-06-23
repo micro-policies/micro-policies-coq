@@ -1402,10 +1402,10 @@ Proof.
   - eapply exec_one. trivial.
 Qed.
 
-Inductive single : A -> A -> Prop :=
-  | single_refl : forall x, single x x
-  | single_single : forall (x y : A), R x y -> single x y.
-Hint Constructors single.
+Inductive zero_one : A -> A -> Prop :=
+  | zero_one_refl : forall x, zero_one x x
+  | zero_one_single : forall (x y : A), R x y -> zero_one x y.
+Hint Constructors zero_one.
 
 (* Capture steps from s to s' (with s') *)
 Inductive interm : list A -> A -> A -> Prop :=
