@@ -110,9 +110,6 @@ Definition load_mvec : code :=
    the appropriate registers. Otherwise, enters an infinite loop. *)
 Variable policy_handler : code.
 
-(* BCP: Hmmm... the policy handler seems to be copied once for each
-   opcode!!!  That can't be optimal... *)
-
 (* Check whether the operands for a particular opcode are tagged
    USER. If so, extract the corresponding policy-level tags and call
    the higher-level handler on them. Otherwise, halt. Warning: overwrites 
@@ -128,11 +125,7 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   | Some (2, _) => do_op rt1 ++ do_op rt2
   | Some (3, _) => do_op rt1 ++ do_op rt2 ++ do_op rt3
   | _ => [Halt _]
-  end ++
-  policy_handler ++
-  (* Wrap RVec *)
-  wrap_user_tag rtrpc rtrpc ++
-  wrap_user_tag rtr rtr.
+  end.
 
 (* For debugging -- put a telltale marker in the code *)
 Definition got_here : code := [Const _ (Z_to_imm 99) ri5].
@@ -154,14 +147,19 @@ Definition handler : code :=
            (* ELSE: We are not in a system call. *)
            (extract_user_tag rti rb rti ++
             if_ rb
-                (* THEN: We are in user mode: extract operand tags *)
+                (* THEN: We are in user mode: extract operand tags
+                   and run policy handler *)
                 (fold_right (fun op c =>
                                load_const (op_to_word op) ri4 ++
                                [Binop _ EQ rop ri4 rb] ++
                                if_ rb
                                   (analyze_operand_tags_for_opcode op)
                                   c)
-                            [] opcodes)
+                            [] opcodes ++
+                 policy_handler ++
+                 (* Wrap RVec *)
+                 wrap_user_tag rtrpc rtrpc ++
+                 wrap_user_tag rtr rtr)
                 (* ELSE: The instruction is not tagged USER: halt the machine *)
                 [Halt _]))
       (* PC is not tagged USER, halt execution *)
