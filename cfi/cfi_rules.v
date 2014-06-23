@@ -36,6 +36,8 @@ Canonical cfi_tag_eqType := Eval hnf in EqType cfi_tag cfi_tag_eqMixin.
 Variable valid_jmp : word t -> word t -> bool.
 
 (* Uncertain how we handle syscalls *)
+   (* CH: should handle the SERVICE virtual opcode;
+          should set the tags on entry points to INSTR (Some ...) *)
 (* This allows loading of instructions as DATA *)
 Definition cfi_handler (umvec : Symbolic.MVec cfi_tag) : option (Symbolic.RVec cfi_tag) :=
   match umvec with
@@ -61,7 +63,8 @@ Definition cfi_handler (umvec : Symbolic.MVec cfi_tag) : option (Symbolic.RVec c
   | mkMVec _ _ _ _ => None
   end.
 
-(* Here is a more readable variant *)
+(* Here is a more readable variant (unused at the moment) *)
+(* CH: TODO: start using or prove them equivalent :) *)
 Definition cfi_handler' (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
   match umvec with
   | mkMVec   JUMP   _  (INSTR (Some m))  _

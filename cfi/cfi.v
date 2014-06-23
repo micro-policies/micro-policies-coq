@@ -37,6 +37,7 @@ Definition intermrstep := intermr cfi_step.
 
 Definition zero_one_step := zero_one cfi_step.
 
+(* CH: Move this to cfi_machine Class, with a better name like stopping? *)
 (* Execution will stop *)
 Variable S : list state -> Prop.
 

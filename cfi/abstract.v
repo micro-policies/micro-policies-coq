@@ -51,9 +51,21 @@ Open Scope word_scope.
 Local Notation word := (word t).
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
+(* CH: TODO: turn this into a record:
+Record state := State {
+  imem : imemory;
+  dmem : dmemory;
+  regs : registers;
+  pc   : word;
+  cont : bool (* machine stops when this is false;
+                 this starts out as true in initial state *)
+}.
+*)
 Definition state :=
   (imemory * dmemory * registers * word (* pc *) * bool (*jump check*))%type.
 
+(* Para-virtualizing system calls, since CFI doesn't have any system
+   calls of its own and dealing with them is an interesting problem *)
 Record syscall := Syscall {
   address : word;
   sem : state -> option state
@@ -138,12 +150,12 @@ Inductive step_a : state -> state -> Prop :=
              (RSAME: same_domain reg reg'),
              step_a (imem,dmem,reg,pc,true) (imem,dmem',reg',pc,true).
 
+(* Extending valid_jmp to a complete allowed CFG *)
 Definition succ (st : state) (st' : state) : bool :=
   let '(imem,dmem,reg,pc,_) := st in
   let '(_,_,_,pc',_) := st' in
   match (get imem pc) with
     | Some i =>
-      (*XXX: Review this *)
       match decode_instr i with
         | Some (Jump r) => valid_jmp pc pc'
         | Some (Jal r) => valid_jmp pc pc'
@@ -157,11 +169,15 @@ Definition succ (st : state) (st' : state) : bool :=
         | None =>
           match get_syscall pc with
             | Some sc => true (* Double-check *)
+              (* An alternative would be restricting this to the value
+                 in the ra register (which should be the same at the end
+                 of the system call to what it was before it) *)
             | None => false
           end
       end
   end.
 
+(* CH: TODO: I'm expecting the cont bit to be initially true *)
 Definition initial (s : state) := True.
 
 Program Instance abstract_cfi_machine : cfi_machine t := {|

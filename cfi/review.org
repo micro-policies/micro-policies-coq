@@ -1,0 +1,42 @@
+
+* Files
+
+No need to append cfi_ in front of file names that live in cfi folder
+
+Could rename cfi.v to property.v or machine.v?
+
+Could consider moving cfi_rules.v into symbolic.v
+
+* Naming and notation
+
+** Stick to Abadi's notations when possible
+step -> step_n
+step_cfi -> step
+
+* Why are there things excluded from build?
+
+#cfi/cfi_preservation.v -- file removed
+
+concrete stuff:
+#cfi/concrete_cfi.v
+#cfi/concrete_kernel.v
+#cfi/fault_handler_spec.v
+
+* Initial states: Did we sort that out? Doesn't seem so!
+- defined wrongly as true for abstract machine
+- defined as true for symbolic machine too
+
+* Deadling with system calls
+
+symbolic.v
+
+* Assumptions
+
+These need to be carefully scrutinized
+
+** Where is determinism actually used? [Nowhere, removed]
+Defined TWICE (abstract.v and cfi.v)
+- in abstract.v it should be Lemma not Hypothesis
+Not used at all
+
+** XXX

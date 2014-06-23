@@ -46,10 +46,9 @@ Program Instance sym_cfi : (Symbolic.symbolic_params) := {
   sr := sr
 }.
 
-(* The rest of the file is only used for CFI theorem ... so probably
-   move somewhere else? *)
-
 Variable table : list (Symbolic.syscall t).
+
+(* The rest of the file is defining an instance of the cfi_machine *)
 
 Definition no_violation (sst : Symbolic.state t) :=
   let '(Symbolic.State mem _ pc@tpc _) := sst in
@@ -62,24 +61,19 @@ Definition no_violation (sst : Symbolic.state t) :=
 Inductive atom_equiv : atom (word t) (@cfi_tag t) -> atom (word t) (@cfi_tag t) 
                        -> Prop :=
   | data_equiv : forall a a', 
-                   common.tag a = DATA ->
-                   common.tag a' = DATA ->
+                   tag a = DATA ->
+                   tag a' = DATA ->
                    atom_equiv a a'
   | instr_equiv : forall a a' id id',
-                    common.tag a = INSTR id ->
-                    common.tag a' = INSTR id' ->
+                    tag a = INSTR id ->
+                    tag a' = INSTR id' ->
                     a = a' ->
                     atom_equiv a a'.
 
 Definition equiv {M : Type} {Key : Type} 
-           {M_class : partial_map M Key (atom (word t) cfi_tag)}
-           (m : M) (m' : M) : Prop :=
-  forall (k : Key),
-    match get m k, get m' k with
-    | None  , None   => True
-    | Some a, Some a' => atom_equiv a a'
-    | _     , _      => False
-    end.
+           {M_class : partial_map M Key (atom (word t) cfi_tag)} :
+           M -> M -> Prop :=
+  pointwise atom_equiv.
 
 Inductive step_a : Symbolic.state t ->
                    Symbolic.state t -> Prop :=
@@ -130,6 +124,8 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
       end
   end.
 
+(* CH: I'm a bit skeptical about this; I thought we require quite a
+   lot about how things are initially tagged *)
 Definition initial (s : Symbolic.state t) := True.
 
 Program Instance symbolic_cfi_machine : cfi_machine t := {|
@@ -146,9 +142,6 @@ Program Instance symbolic_cfi_machine : cfi_machine t := {|
 Next Obligation.
   inversion H. reflexivity.
 Qed.
-
-Definition V s s' := 
-  ssucc s s' = false.
 
 Definition S xs :=
   exists s, xs = [s] /\ ~ exists s', Symbolic.step table s s'.
