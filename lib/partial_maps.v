@@ -15,7 +15,8 @@ Variables M K V : Type.
 
 Class partial_map := {
   get : M -> K -> option V;
-  set : M -> K -> V -> M
+  set : M -> K -> V -> M;
+  filter : (V -> bool) -> M -> M
 }.
 
 Class axioms (pm : partial_map) := mkAxioms {
@@ -24,7 +25,10 @@ Class axioms (pm : partial_map) := mkAxioms {
 
   get_set_neq : forall km ak ak' sk,
                   ak' <> ak  ->
-                  get (set km ak sk) ak' = get km ak'
+                  get (set km ak sk) ak' = get km ak';
+
+  filter_correctness: forall (f : V -> bool) (m : M) (k : K),
+                        get (filter f m) k = option_filter f (get m k)
 
 }.
 
@@ -210,10 +214,10 @@ Lemma pointwise_none : forall P m1 m2 k,
   (pointwise P) m1 m2 ->
   (get m2 k = None <-> get m1 k = None).
 Proof.
-  intros P m1 m2 k ref. 
-  pose proof (ref k). 
-  destruct (get m1 k) eqn:?; destruct (get m2 k) eqn:?; try tauto.  
-  split; intro X; discriminate X. 
+  intros P m1 m2 k ref.
+  pose proof (ref k).
+  destruct (get m1 k) eqn:?; destruct (get m2 k) eqn:?; try tauto.
+  split; intro X; discriminate X.
 Qed.
 
 Lemma pointwise_same_domain : forall P m1 m2,
@@ -221,8 +225,8 @@ Lemma pointwise_same_domain : forall P m1 m2,
   same_domain m1 m2.
 Proof.
   unfold same_domain, pointwise. intros. specialize (H k).
-  destruct (get m1 k) eqn:?; destruct (get m2 k) eqn:?; tauto.  
-Qed.   
+  destruct (get m1 k) eqn:?; destruct (get m2 k) eqn:?; tauto.
+Qed.
 
 End PartMapPointwise.
 
@@ -353,5 +357,30 @@ Proof.
 Qed.
 
 End PartMapDomains.
+
+Section Filter.
+
+Context {M K V : Type}
+        {pm : partial_map M K V}
+        {a : axioms pm}.
+
+Lemma filter_domains (f : V -> bool) (m : M) (m' : M) :
+  same_domain(*s*) m m' ->
+  (forall k, match get m k, get m' k with
+               | Some v, Some v' => f v = f v'
+               | None, None => True
+               | _, _ => False
+             end) ->
+  same_domain (filter f m) (filter f m').
+Proof.
+  move => SAME E k.
+  do! rewrite filter_correctness.
+  case GET: (get m k) (E k) => [v|] {E} E;
+  case GET': (get m' k) E => [v'|] E //=.
+  rewrite E.
+  by case: (f v').
+Qed.
+
+End Filter.
 
 End PartMaps.

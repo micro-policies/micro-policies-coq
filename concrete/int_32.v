@@ -289,7 +289,8 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
 
   mem_class := {|
     PartMaps.get mem i := Int32PMap.get i mem;
-    PartMaps.set mem i x := Int32PMap.set i x mem
+    PartMaps.set mem i x := Int32PMap.set i x mem;
+    PartMaps.filter mem p := Int32PMap.filter mem p                                          
   |};
 
   reg_class := {|
@@ -306,6 +307,8 @@ Next Obligation.
     intros mem i x. by apply Int32PMap.gss.
   - (* get_set_neq *)
     intros mem i i' x y. by apply Int32PMap.gso.
+  - (* filter_correctness *)
+    intros f m k. by apply Int32PMap.gfilter.
 Qed.
 Next Obligation.
   constructor.

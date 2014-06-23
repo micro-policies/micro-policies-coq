@@ -31,6 +31,9 @@ Module FiniteMap (I : INDEXED_TYPE).
     @PTree.set    A ∘ I.index.
   Definition remove (A : Type) : elt ->      t A -> t A      :=
     @PTree.remove A ∘ I.index.
+
+  Definition filter (A : Type) (p : A -> bool) : t A -> t A :=
+    PTree.filter1 p.
   
   Local Ltac basic :=
     simpl in *;
@@ -80,6 +83,10 @@ Module FiniteMap (I : INDEXED_TYPE).
   Theorem grspec : forall (A : Type) (i j : elt) (m : t A),
     get i (remove j m) = if elt_eq i j then None else get i m.
   Proof. basic. Qed.
+
+  Theorem gfilter {V} : forall (f : V -> bool) (m : t V) (k : elt),
+                          get k (filter f m) = option_filter f (get k m).
+  Proof. intros. apply PTree.gfilter1. Qed.
   
   (* Equality *)
   

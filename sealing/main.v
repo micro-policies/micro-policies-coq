@@ -119,7 +119,8 @@ Instance cp : Concrete.concrete_params t := {|
 
   mem_class := {|
     PartMaps.get mem i := Int32PMap.get i mem;
-    PartMaps.set mem i x := Int32PMap.set i x mem
+    PartMaps.set mem i x := Int32PMap.set i x mem;
+    PartMaps.filter mem p := Int32PMap.filter mem p
   |};
 
   reg_class := {|
