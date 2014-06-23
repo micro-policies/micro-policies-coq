@@ -248,6 +248,8 @@ Proof.
   + reflexivity.
 Qed.
 
+Open Scope Z_scope.
+
 Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
   constructor.
