@@ -5,7 +5,7 @@ Require Import List.
 
 Import ListNotations.
 
-Require Import eqtype.
+Require Import eqtype ssrbool.
 
 Require Import lib.utils lib.Coqlib lib.partial_maps.
 Require Import common.common.
@@ -112,7 +112,7 @@ Variable policy_handler : code.
 
 (* Check whether the operands for a particular opcode are tagged
    USER. If so, extract the corresponding policy-level tags and call
-   the higher-level handler on them. Otherwise, halt. Warning: overwrites 
+   the higher-level handler on them. Otherwise, halt. Warning: overwrites
    ri3. *)
 Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   (* Check that [rop] contains a USER tag that does
@@ -140,7 +140,7 @@ Definition handler : code :=
       (* Check whether we're at an entry point *)
       (is_entry_tag rti ri4 ++
        if_ ri4
-           (* THEN: We are entering a system call routine. 
+           (* THEN: We are entering a system call routine.
                     Put KERNEL tags in rvector. *)
            (load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
@@ -175,11 +175,15 @@ Definition handler : code :=
 
 Section invariant.
 
-Context {s : machine_ops_spec ops}.
+Context {s : machine_ops_spec ops}
+        {ap : Symbolic.symbolic_params}
+        {e : encodable (Symbolic.tag mt)}
+        {pinv : Concrete.memory mt -> Symbolic.internal_state mt -> Prop}.
 
 Let invariant (mem : Concrete.memory _)
               (regs : Concrete.registers _)
-              (cache : Concrete.rules (word mt)) : Prop :=
+              (cache : Concrete.rules (word mt))
+              (int : Symbolic.internal_state mt) : Prop :=
   (forall addr : word mt, In addr (Concrete.rvec_fields ops) ->
                           exists w : word mt, PartMaps.get mem addr = Some w@Concrete.TKernel) /\
   (forall addr instr,
@@ -200,80 +204,87 @@ Let invariant (mem : Concrete.memory _)
      Concrete.cache_lookup _ ground_rules masks mvec = Some rvec ->
      Concrete.cache_lookup _ cache masks mvec = Some rvec) /\
   (forall r, In r kernel_regs ->
-             common.tag (TotalMaps.get regs r) = Concrete.TKernel).
+             common.tag (TotalMaps.get regs r) = Concrete.TKernel) /\
+  pinv mem int.
 
-(*
 Lemma invariant_upd_mem :
-  forall regs mem1 mem2 cache addr w1 ut b w2 int
-         (KINV : invariant mem1 regs cache)
-         (GET : PartMaps.get mem1 addr = Some w1@(tag_to_word USER)) (* TODO: non-kernel memory *)
-         (UPD : Concrete.upd_mem mem1 addr w2 = Some mem2),
-    invariant mem2 regs cache.
+  forall regs mem1 mem2 cache addr w1 ut w2 int
+         (KINV : invariant mem1 regs cache int)
+         (GET : PartMaps.get mem1 addr = Some w1@(encode (USER ut)))
+         (UPD : PartMaps.upd mem1 addr w2 = Some mem2),
+    invariant mem2 regs cache int.
 Proof.
-  intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS).
-  split; [|split]; [ | | solve[eauto]].
+  intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
+  repeat split; eauto.
   - intros addr' IN.
-    destruct (eq_wordP addr' addr) as [|NEQ]; subst.
-    + apply RVEC in IN. destruct IN as [w1' IN].
+    case E: (addr' == addr); move/eqP: E => E.
+    + subst addr'.
+      apply RVEC in IN. destruct IN as [w1' IN].
       rewrite IN in GET.
-      assert (EQ : tag_to_word KERNEL = tag_to_word USER) by congruence.
-      apply tag_to_word_inj in EQ. discriminate.
-    + rewrite (PartMaps.get_upd_neq (Concrete.mem_axioms (t := mt)) _ _ NEQ UPD).
+      assert (EQ : Concrete.TKernel = encode (USER ut)) by congruence.
+      erewrite encode_kernel_tag in EQ.
+      apply encode_inj in EQ. discriminate.
+    + rewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
   - intros addr' i GET'.
-    destruct (eq_wordP (fhstart + Z_to_word (Z.of_nat addr'))%word addr) as [|NEQ]; subst.
-    + erewrite (PartMaps.get_upd_eq (Concrete.mem_axioms (t := mt))); [|eauto].
-      apply PROG in GET'.
-      assert (EQ : tag_to_word KERNEL = tag_to_word USER) by congruence.
-      apply tag_to_word_inj in EQ. discriminate.
-    + rewrite (PartMaps.get_upd_neq (Concrete.mem_axioms (t := mt)) _ _ NEQ UPD).
+    case E: (Concrete.fault_handler_start _ + Z_to_word (Z.of_nat addr') == addr)%w; move/eqP: E => E.
+    + subst addr.
+      specialize (@PROG _ _ GET').
+      assert (EQ : Concrete.TKernel = encode (USER ut)) by congruence.
+      erewrite encode_kernel_tag in EQ.
+      apply encode_inj in EQ. discriminate.
+    + erewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
+  - admit. (* TODO: Add hypotheses about policy invariant *)
 Qed.
 
 Lemma invariant_upd_reg :
-  forall mem regs cache r w1 w2
-         (KINV : invariant mem regs cache)
-         (GET : Concrete.get_reg regs r = w1@(tag_to_word USER)), (* TODO: non-kernel register *)
-    invariant mem (Concrete.upd_reg regs r w2@(tag_to_word USER)) cache.
+  forall mem regs cache r w1 ut1 w2 ut2 int
+         (KINV : invariant mem regs cache int)
+         (GET : TotalMaps.get regs r = w1@(encode (USER ut1))),
+    invariant mem (TotalMaps.upd regs r w2@(encode (USER ut2))) cache int.
 Proof.
-  intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS).
-  do 5 (split; eauto).
+  intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
+  do 6 (split; eauto).
   intros r' IN.
-  destruct (eq_regP r' r) as [|NEQ]; subst.
-  - apply REGS in IN.
-    rewrite GET in IN. simpl in IN.
-    apply tag_to_word_inj in IN.
+  case E: (r' == r); move/eqP: E => E.
+  - subst r'.
+    apply REGS in IN.
+    erewrite GET, encode_kernel_tag in IN. simpl in IN.
+    apply encode_inj in IN.
     discriminate.
   - erewrite (TotalMaps.get_upd_neq (Concrete.reg_axioms (t := mt))); eauto.
 Qed.
 
-Lemma invariant_store_mvec mem mem' mvec regs cache :
-  forall (KINV : invariant mem regs cache)
+Lemma invariant_store_mvec mem mem' mvec regs cache int :
+  forall (KINV : invariant mem regs cache int)
          (MVEC : Concrete.store_mvec ops mem mvec = Some mem'),
-    invariant mem' regs cache.
+    invariant mem' regs cache int.
 Proof.
-  intros (RVEC & PROG & MEM & REGS).
-  split; [|split; eauto].
+  intros (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
+  do 7 (try split; eauto).
   - intros addr IN.
-    destruct (in_dec (fun x y => Bool.reflect_dec _ _ (eq_wordP x y))
+    destruct (in_dec (fun x y : word mt => eqType_EqDec _ x y)
                      addr (Concrete.mvec_fields ops)) as [IN' | NIN].
-    + destruct (PartMaps.get_upd_list_in (Concrete.mem_axioms (t := mt)) mem _ addr MVEC IN')
+    + destruct (PartMaps.get_upd_list_in MVEC IN')
         as (v' & IN'' & GET).
       rewrite GET. clear GET.
       simpl in IN''.
-      rewrite <- kernel_tag_correct.
       repeat match goal with
       | H : _ \/ _ |- _ =>
         destruct H as [E | ?]; [inv E; eauto|]
       | H : False |- _ => inversion H
       end.
-    + erewrite (PartMaps.get_upd_list_nin (Concrete.mem_axioms (t := mt))); eauto.
+    + erewrite PartMaps.get_upd_list_nin; eauto.
+      eapply Concrete.mem_axioms; eauto.
   - intros addr instr GET.
-    erewrite (PartMaps.get_upd_list_nin (Concrete.mem_axioms (t := mt))); eauto.
+    erewrite PartMaps.get_upd_list_nin; eauto.
+    { eapply Concrete.mem_axioms; eauto. }
     intros CONTRA.
     eapply MEM.
-    + eapply nth_error_valid; eauto.
+    + eapply nth_error_Some; eauto.
     + apply in_or_app. now eauto.
+  - admit. (* TODO: Add hypothesis about policy invariant *)
 Qed.
 
 Definition fault_handler_invariant : kernel_invariant := {|
@@ -282,7 +293,7 @@ Definition fault_handler_invariant : kernel_invariant := {|
   kernel_invariant_upd_mem := invariant_upd_mem;
   kernel_invariant_store_mvec := invariant_store_mvec
 |}.
-*)
+
 End invariant.
 
 End fault_handler.
