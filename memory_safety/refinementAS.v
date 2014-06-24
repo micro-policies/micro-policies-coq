@@ -713,7 +713,7 @@ Proof.
 Qed.
 *)
 
-Ltac subst_degueu :=
+Ltac subst_beq :=
   match goal with
   | EQ : (?x == ?y) = true |- _ => (move/eqP: EQ => EQ; subst) || fail 2
   end.
@@ -815,9 +815,6 @@ Lemma backward_simulation ast mi sym_st sym_st' :
   exists ast' mi', Abstract.step ast ast' /\ refine_state mi' ast' sym_st'.
 Proof.
 case: ast => a_mem a_regs a_pc.
-(*
-case: sym_st => sym_mem sym_regs [sym_pcv [[|sym_pcb]||]] // sym_ist.
-*)
 case: sym_st => sym_mem sym_regs sym_pc // sym_ist rst.
 case: sym_st' => sym_mem' sym_regs' sym_pc' sym_ist' sym_step.
 Coqlib.inv sym_step;
@@ -828,10 +825,9 @@ destruct a_pc as [|[pc_b pc_off]]; try (by inversion rpc);
 try subst mvec;
 try rewrite /Symbolic.next_state_pc /Symbolic.next_state_reg /Symbolic.next_state_reg_and_pc /Symbolic.next_state /= /Sym.mvec_match /= in NEXT;
 match_inv;
-repeat subst_degueu;
+repeat subst_beq;
 have [miP _] := rmem;
 have [rpcb [mi_apcb rpci]] := refine_pc_inv rpc;
-
 repeat match goal with
   | GET : PartMaps.get ?reg ?r = Some ?v@V(?ty) |- _ =>
   match type_of reg with
@@ -889,17 +885,6 @@ match goal with
   | |- _ => idtac
 end;
 
-(*
-match goal with
-  | UPD : PartMaps.upd ?mem ?w1 ?v = Some _ |- _ =>
-    match type_of mem with
-    | Symbolic.memory _ =>
-    eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?)
-    end
-  | |- _ => idtac
-  end;
-*)
-
 try solve_pc rpci.
 
 (* Jump *)
@@ -913,10 +898,7 @@ simpl in E.
 eapply (refine_registers_upd rregs) in E; last first.
 by rewrite <-rpci, <-addwA; econstructor.
 destruct E as (? & ? & ?).
-by eexists; eexists; split;
-[econstructor (by eauto) |
-split; try eassumption;
-simpl; rewrite <-rpci, <-addwA; econstructor].
+by solve_pc rpci.
 
 (* Syscall *)
 admit.
