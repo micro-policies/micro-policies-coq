@@ -187,6 +187,8 @@ Hypothesis syscall_preserves_entry_tags :
     Symbolic.sem sc st = Some st' ->
     entry_points_tagged (Symbolic.mem st').
 
+(*Invariant (step) preservation theorems*)
+
 Lemma itags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
   instructions_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
@@ -321,7 +323,114 @@ Lemma entry_point_tags_preserved_by_step
   entry_points_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
   entry_points_tagged (Symbolic.mem st').
-Admitted.
+Proof.
+  intros INVARIANT STEP.
+  inversion STEP;
+  (*unfoldings and case analysis on tags*)
+    repeat (
+        match goal with
+          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_pc in H
+          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_reg in H
+          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+            unfold Symbolic.next_state_reg_and_pc in H
+          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+            unfold Symbolic.next_state in H; simpl in H
+        end); match_inv; subst; try (simpl; assumption).
+  + simpl in E. simpl.
+    intros addr sc id GET' CALL ETAG.
+    have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
+    - intros. subst.
+      apply PartMaps.get_upd_eq in E.
+      rewrite GET' in E. congruence. auto.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; auto.
+      rewrite E in GET'. unfold entry_points_tagged in INVARIANT.
+      specialize (INVARIANT _ _ _ GET' CALL ETAG); assumption.
+  + simpl in E. simpl.
+    intros addr sc id GET' CALL ETAG.
+    have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
+    - intros. subst.
+      apply PartMaps.get_upd_eq in E.
+      rewrite GET' in E. congruence. auto.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; auto.
+      rewrite E in GET'. unfold entry_points_tagged in INVARIANT.
+      specialize (INVARIANT _ _ _ GET' CALL ETAG); assumption.
+  + unfold Symbolic.run_syscall in CALL. simpl in CALL. 
+     match_inv;  eapply syscall_preserves_entry_tags; eauto.
+Qed.
+
+Lemma itags_preserved_by_step_a (st : Symbolic.state t) (st' : Symbolic.state t) :
+  instructions_tagged (Symbolic.mem st) ->
+  step_a st st' ->
+  instructions_tagged (Symbolic.mem st').
+Proof.
+  intros INV STEP.
+  destruct STEP. 
+  simpl. intros addr i0 id0 GET.
+  assert (MEQUIV' := MEQUIV addr).
+  rewrite GET in MEQUIV'.
+  destruct (get mem addr) eqn:GET'.
+  - inv MEQUIV'. 
+    + simpl in H0. congruence.
+    + specialize (INV _ _ _ GET'). assumption.
+  - destruct MEQUIV'.
+Qed.
+    
+Lemma valid_jmp_tagged_preserved_by_step_a
+      (st : Symbolic.state t) (st' : Symbolic.state t) :
+  valid_jmp_tagged (Symbolic.mem st) ->
+  step_a st st' ->
+  valid_jmp_tagged (Symbolic.mem st').
+Proof.
+  intros INVARIANT STEP.
+  destruct STEP.
+  simpl; intros src dst VALID. unfold valid_jmp_tagged in INVARIANT.
+  assert (MEQUIVS := MEQUIV src).
+  assert (MEQUIVD := MEQUIV dst).
+  destruct (INVARIANT _ _ VALID) as [[isrc GET] [[idst GET'] | [GET' [sc [CALL TAG]]]]]; 
+    clear INVARIANT.
+  { rewrite GET in MEQUIVS; rewrite GET' in MEQUIVD.
+    split.
+    - destruct (get mem' src) eqn:GETS.
+      + inversion MEQUIVS; subst. 
+        * simpl in H; congruence.
+        * eexists; eauto.
+      + destruct MEQUIVS.
+    - destruct (get mem' dst) eqn:GETD.
+      + inv MEQUIVD. 
+        * simpl in H. congruence.
+        * left. eexists; eauto.
+      + destruct MEQUIVD.
+  }
+  { rewrite GET in MEQUIVS. rewrite GET' in MEQUIVD.
+    split.
+    - destruct (get mem' src) eqn:GETS.
+      + inv MEQUIVS.
+        * simpl in H; congruence.
+        * eexists; eauto.
+      + destruct MEQUIVS.
+    - destruct (get mem' dst) eqn:GETD.
+      + destruct MEQUIVD.
+      + right. split; [auto | eexists; eauto].
+  }
+Qed.
+
+Lemma entry_point_tags_preserved_by_step_a 
+      (st : Symbolic.state t) (st' : Symbolic.state t) :
+  entry_points_tagged (Symbolic.mem st) ->
+  step_a st st' ->
+  entry_points_tagged (Symbolic.mem st').
+Proof.
+  intros INV STEP addr sc id GET' CALL ETAG.
+  destruct STEP.
+  specialize ( MEQUIV addr).
+  unfold entry_points_tagged in INV.
+  rewrite GET' in MEQUIV.
+  destruct (get mem addr) eqn:GET.
+  - destruct MEQUIV.
+  - apply (INV _ _ _ GET CALL ETAG).
+Qed.
 
 (* CH: I'm a bit skeptical about this; I thought we require quite a
    lot about how things are initially tagged

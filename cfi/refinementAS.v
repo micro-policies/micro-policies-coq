@@ -785,26 +785,25 @@ Definition is_data (a : atom (word t) (@cfi_tag t)) :=
 
 Lemma refine_dmemory_domains dmem mem :
   refine_dmemory dmem mem ->
-  same_domain dmem (Filter.filter is_data mem).
+  same_domain dmem (filter is_data mem).
 Proof.
   intros REF addr. 
   unfold refine_dmemory in REF.
   destruct (get dmem addr) eqn:GET.
-  + destruct (get (Filter.filter is_data mem) addr) eqn:GET'.
+  + destruct (get (filter is_data mem) addr) eqn:GET'.
     * auto.
-    * assert (FILTER := Filter.filter_correctness is_data mem).
+    * assert (FILTER := filter_correctness is_data mem).
       assert (FILTER' := FILTER addr); clear FILTER.
       apply REF in GET.
       rewrite GET in FILTER'. simpl in FILTER'. congruence.
-  + destruct (get (Filter.filter is_data mem) addr) eqn:GET'.
-    * assert (FILTER := Filter.filter_correctness is_data mem).
+  + destruct (get (filter is_data mem) addr) eqn:GET'.
+    * assert (FILTER := filter_correctness is_data mem).
       assert (FILTER' := FILTER addr); clear FILTER.
       destruct (get mem addr) eqn:GET''.
-      destruct a0 as [v tg].
-      destruct tg.
-      - simpl in FILTER'. congruence.
-      - simpl in FILTER'. apply REF in GET''. congruence.
-      - congruence.
+      - destruct a0 as [v tg].
+        destruct tg; simpl in FILTER';
+        [idtac | apply REF in GET'']; congruence.
+      - simpl in FILTER'. rewrite FILTER' in GET'. congruence.
     * auto.
 Qed.
 
@@ -816,9 +815,9 @@ Lemma dmem_refinement_preserved_by_equiv :
       refine_dmemory dmem' mem'.
 Proof.
   intros dmem mem mem' REF EQUIV.
-  assert (FILTER := Filter.filter_correctness is_data mem').
-  assert (MAP := Map.map_correctness untag_atom (Filter.filter is_data mem')). 
-  exists (Map.map untag_atom (Filter.filter is_data mem')). subst.
+  assert (FILTER := filter_correctness is_data mem').
+  assert (MAP := Map.map_correctness untag_atom (filter is_data mem')). 
+  exists (Map.map untag_atom (filter is_data mem')). subst.
   intros addr v.
   split.
   - intro GET.
@@ -849,36 +848,36 @@ Proof.
   assert (DOMAINDM' := refine_dmemory_domains REF').
   assert (DOMAINDM := refine_dmemory_domains REF).
   subst.
-  assert (FILTER := Filter.filter_correctness is_data mem').
+  assert (FILTER := filter_correctness is_data mem').
   intro addr.
-    assert (FILTER' := FILTER addr); clear FILTER.
-    assert (EQUIV' := EQUIV addr); clear EQUIV.
-    assert (DOMAINFMFM': same_domain (Filter.filter is_data mem) (Filter.filter is_data mem')).
-    { apply Filter.filter_domains with (k := addr); auto.
-      destruct (get mem addr) eqn:GET.
-      + destruct (get mem' addr) eqn:GET'.
-        * destruct a as [v tg], a0 as [v0 tg0].
-          destruct tg, tg0.
-          - reflexivity.
-          - destruct EQUIV' as [a a' TG TG' | a a' id id' TG TG' EQ].
-            { unfold is_data. rewrite TG TG'. reflexivity. }
-            { inversion EQ; auto. }
-          - destruct EQUIV' as [a a' TG TG' | a a' id id' TG TG' EQ].
-            { unfold is_data. rewrite TG TG'. reflexivity. }
-            { inversion EQ; auto. }
-          - reflexivity.
-        * destruct EQUIV'.
-      + destruct (get mem' addr) eqn:GET'.
-        * destruct EQUIV'.
-        * auto.
+  assert (FILTER' := FILTER addr).
+  assert (EQUIV' := EQUIV addr).
+  assert (DOMAINFMFM': same_domain (filter is_data mem) (filter is_data mem')).
+  { apply filter_domains; auto. intros.
+    assert (FILTERK := FILTER k).
+    assert (EQUIVK := EQUIV k).
+    destruct (get mem k) eqn:GET, (get mem' k) eqn:GET'.
+    - destruct a as [v tg], a0 as [v0 tg0].
+      destruct tg, tg0.
+      + reflexivity.
+      + destruct EQUIVK as [a a' TG TG' | a a' id id' TG TG' EQ].
+        { unfold is_data. rewrite TG TG'. reflexivity. }
+        { inversion EQ; auto. }
+      + destruct EQUIVK as [a a' TG TG' | a a' id id' TG TG' EQ].
+        { unfold is_data. rewrite TG TG'. reflexivity. }
+        { inversion EQ; auto. }
+      + reflexivity.
+    - destruct EQUIVK.
+    - destruct EQUIVK.
+    - constructor.
     }
-    assert (DOMAIN: same_domain dmem dmem'). 
-    { eapply same_domain_trans; eauto. apply same_domain_comm.
-      eapply same_domain_trans; eauto. apply same_domain_comm;
-      assumption. }
-    apply DOMAIN.
+  assert (DOMAIN: same_domain dmem dmem'). 
+  { eapply same_domain_trans; eauto. apply same_domain_comm.
+    eapply same_domain_trans; eauto. apply same_domain_comm;
+    assumption. }
+  apply DOMAIN. 
 Qed.
-
+    
 Lemma refine_reg_domains areg reg :
   refine_registers areg reg ->
   same_domain areg reg.
@@ -934,7 +933,7 @@ Qed.
   
 Theorem backwards_simulation_attacker ast sst sst' :
   refine_state ast sst ->
-  Sym.step_a sst sst' ->
+  Sym.step_a stable sst sst' ->
   exists ast',
     Abs.step_a ast ast' /\
     refine_state ast' sst'.
@@ -943,7 +942,7 @@ Proof.
   destruct ast as [[[[imem dmem] aregs] apc] b].
   destruct b; inversion SSTEP; subst;
   unfold refine_state in REF; 
-  destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS SYSCORRECT]]]]];
+  destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT INV]]]]]];
   unfold refine_pc in REFPC; simpl in REFPC; destruct REFPC as [? ?]; subst.
   { destruct (reg_refinement_preserved_by_equiv REFR REQUIV) as [aregs' REFR'];
     assert (REFI' := imem_refinement_preserved_by_equiv REFI MEQUIV);
