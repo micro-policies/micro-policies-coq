@@ -162,9 +162,9 @@ Instance cp : Concrete.concrete_params t := {|
 |}.
 
 
-(* Notes:
+(* ---------------------------------------------------------------- *)
 
-   - encoding of tags
+(* Encoding of tags
 
        DATA      --> 0
        KEY(k)    --> k*4+1
@@ -173,28 +173,7 @@ Instance cp : Concrete.concrete_params t := {|
   Questions:
 
    - How should we really deal with user-code registers
-
-  Need to build...
-
-   - concrete transfer function (with combinators)
-
-       basically we just check that things are tagged DATA (unless
-       they are only being copied around)
-
-   - three system call routines
-
-       MKKEY: increment the extra state and return the old value (as a KEY)
-
-       SEAL: move a tag KEY(k) from one atom to another (currently
-       marked DATA, afterwards marked SEAL(k))
-
-       UNSEAL: check that the tag of one arg is KEY(k) and the other
-       is SEAL(k) and then change the latter to DATA.
-
 *)
-
-(* ---------------------------------------------------------------- *)
-(* Code combinators... *)
 
 Definition kernel_data {X} l : @relocatable_segment t X w := 
   (length l, fun _ _ => l).
@@ -316,11 +295,12 @@ Definition transfer_function : list (instr t) :=
      (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
       [Const _ (word_to_imm DATA) rtrpc])
   (* JAL *)
-  ([ Const _ (op_to_imm BNZ) ri1;
+  ([ Const _ (op_to_imm JAL) ri1;
      Binop _ EQ rop ri1 ri1 ] ++
    (if_ ri1 
      (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-      [Const _ (word_to_imm DATA) rtrpc])
+      [Const _ (word_to_imm DATA) rtrpc;
+       Const _ (word_to_imm DATA) rtr])
   (* Unknown opcode: Halt *)
   ([Halt _])))))))))))))))))))). 
 
@@ -689,9 +669,10 @@ Definition hello_world5 : @relocatable_segment t (list w) atom :=
           Const _ (word_to_imm seal) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
           Jal t ruser1;
-          (* Store it in the data block *)
+          (* Store it in the data block and read it back *)
           Const _ data ruser1;
-          Store t ruser1 syscall_ret
+          Store t ruser1 syscall_ret;
+          Load t ruser1 ruser2
         ]
     | _ => []
     end).
