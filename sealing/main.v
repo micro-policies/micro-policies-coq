@@ -30,6 +30,10 @@ Import DoNotation.
 
 Module ConcreteSealing.
 
+(* BCP: These belong someplace central *)
+Definition Z_to_nat z := word_to_nat (Z_to_word z).
+Definition word_to_imm w := Z_to_imm (word_to_Z w).
+
 Section WithClasses.
 
 Definition t := concrete_int_32_t.
@@ -57,15 +61,7 @@ Instance fhp : fault_handler.fault_handler_params t := {|
   raddr := Int32.repr 15; 
 
   load_const := fun (x : word t) (r : reg t) =>
-    [Const _ (Z_to_imm (word_to_Z x)) r]
-|}.
-
-(* BCP: These have to be included in the range of user registers.
-   There should be a proof obligation to this effect somewhere. *)
-Global Instance scr : @syscall_regs t := {|
-  syscall_ret  := Int32.repr 20;
-  syscall_arg1 := Int32.repr 21;
-  syscall_arg2 := Int32.repr 22
+    [Const _ (word_to_imm x) r]
 |}.
 
 (* BCP: This is not the right place to define these: But it should be
@@ -73,7 +69,25 @@ Global Instance scr : @syscall_regs t := {|
    compiler) is going to need to know which registers it is allowed to
    use. *)
 Definition user_reg_min : reg concrete_int_32_t := Int32.repr 16. (* First user register *)
-Definition user_reg_max : reg concrete_int_32_t := Int32.repr 31. (* Last user register *)
+Definition user_reg_max : reg concrete_int_32_t := Int32.repr 22. (* Last user register *)
+
+(* BCP: These have to be included in the range of user registers.
+   There should be a proof obligation to this effect somewhere. *)
+(* TODO: ARGH -- why can't I write 
+           syscall_ret  := user_reg_min;
+           syscall_arg1 := Int32.add (word_to_Z syscall_ret) (Int32.repr 1);
+         ?
+*)
+Global Instance scr : @syscall_regs t := {|
+  syscall_ret  := Int32.repr 16;
+  syscall_arg1 := Int32.repr 17;
+  syscall_arg2 := Int32.repr 18
+|}.
+
+Definition ruser1 := Int32.repr 19.
+Definition ruser2 := Int32.repr 20.
+Definition ruser3 := Int32.repr 21.
+Definition ruser4 := Int32.repr 22.
 
 Definition keytype := [eqType of nat].
 
@@ -228,7 +242,7 @@ Definition DATA := encode_sealing_tag Sym.DATA.
 
 Definition transfer_function : list (instr t) :=
   let assert_DATA r := [
-    Const _ (Z_to_imm (word_to_Z DATA)) ri1;
+    Const _ (word_to_imm DATA) ri1;
     Binop _ EQ r ri1 ri1 ] ++
                            if_ ri1 [] [Halt _] 
     in
@@ -242,23 +256,23 @@ Definition transfer_function : list (instr t) :=
      Binop _ EQ rop ri1 ri1 ] ++
    (if_ ri1 
      (assert_DATA rtpc ++ assert_DATA rti ++
-      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
-       Const _ (Z_to_imm (word_to_Z DATA)) rtr
+      [Const _ (word_to_imm DATA) rtrpc;
+       Const _ (word_to_imm DATA) rtr
       ])
   (* CONST *)
   ([ Const _ (op_to_imm CONST) ri1;
      Binop _ EQ rop ri1 ri1 ] ++
    (if_ ri1 
      (assert_DATA rtpc ++ assert_DATA rti ++
-      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
-       Const _ (Z_to_imm (word_to_Z DATA)) rtr
+      [Const _ (word_to_imm DATA) rtrpc;
+       Const _ (word_to_imm DATA) rtr
       ])
   (* MOV *)
   ([ Const _ (op_to_imm MOV) ri1;
      Binop _ EQ rop ri1 ri1 ] ++
    (if_ ri1 
      (assert_DATA rtpc ++ assert_DATA rti ++
-      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+      [Const _ (word_to_imm DATA) rtrpc;
        Mov _ rt1 rtr
       ])
   (* BINOPs *)
@@ -268,8 +282,8 @@ Definition transfer_function : list (instr t) :=
          (if_ ri1 
            (assert_DATA rtpc ++ assert_DATA rti ++
             assert_DATA rt1 ++ assert_DATA rt2 ++
-            [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
-             Const _ (Z_to_imm (word_to_Z DATA)) rtr
+            [Const _ (word_to_imm DATA) rtrpc;
+             Const _ (word_to_imm DATA) rtr
             ]) 
            cont) in
     fold_left binop binops 
@@ -278,7 +292,7 @@ Definition transfer_function : list (instr t) :=
      Binop _ EQ rop ri1 ri1 ] ++
    (if_ ri1 
      (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+      [Const _ (word_to_imm DATA) rtrpc;
        Mov _ rt2 rtr
       ])
   (* STORE *)
@@ -286,11 +300,29 @@ Definition transfer_function : list (instr t) :=
      Binop _ EQ rop ri1 ri1 ] ++
    (if_ ri1 
      (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+      [Const _ (word_to_imm DATA) rtrpc;
        Mov _ rt2 rtr
       ])
+  (* JUMP *)
+  ([ Const _ (op_to_imm JUMP) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     (assert_DATA rtpc ++ assert_DATA rti ++
+      [Const _ (word_to_imm DATA) rtrpc])
+  (* BNZ *)
+  ([ Const _ (op_to_imm BNZ) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
+      [Const _ (word_to_imm DATA) rtrpc])
+  (* JAL *)
+  ([ Const _ (op_to_imm BNZ) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
+      [Const _ (word_to_imm DATA) rtrpc])
   (* Unknown opcode: Halt *)
-  ([Halt _])))))))))))))). 
+  ([Halt _])))))))))))))))))))). 
 
 Definition fault_handler : @relocatable_segment t w w :=
   kernel_code (handler t ops fhp transfer_function).
@@ -304,7 +336,7 @@ Definition gen_syscall_code gen : @relocatable_segment t w w :=
 
 Definition mkkey_segment : @relocatable_segment t w w :=
   gen_syscall_code (fun _ (extra : w) =>
-         [Const _ (Z_to_imm (word_to_Z extra)) ri1; (* load next key *)
+         [Const _ (word_to_imm extra) ri1; (* load next key *)
           Load _ ri1 ri5; 
           Const _ (Z_to_imm 1) ri3; (* increment and store back *)
           Binop _ ADD ri5 ri3 ri3;
@@ -496,24 +528,24 @@ Definition format_mvec l :=
             | None => ss "<BAD OPCODE>"
             end in
    os 
-   +++ ss " " +++
+   +++ sspace +++
    format_word (@Concrete.ctpc (word t) l)
-   +++ ss " " +++
+   +++ sspace +++
    format_word (@Concrete.cti (word t) l)
-   +++ ss " " +++
+   +++ sspace +++
    format_word (@Concrete.ct1 (word t) l)
-   +++ ss " " +++
+   +++ sspace +++
    format_word (@Concrete.ct2 (word t) l)
-   +++ ss " " +++
+   +++ sspace +++
    format_word (@Concrete.ct3 (word t) l).
 
 Definition format_rvec l := 
    format_word (@Concrete.ctrpc (word t) l)
-   +++ ss " " +++
+   +++ sspace +++
    format_word (@Concrete.ctr (word t) l).
 
 Definition format_whole_cache (c : Concrete.rules (word t)) :=
-  map (fun l => let: (m,r) := l in to_string (format_mvec m +++ ss " => " +++ format_rvec r)) c.
+  map (fun l => let: (m,r) := l in (format_mvec m +++ ss " => " +++ format_rvec r)) c.
 
 Definition format_cache (c : Concrete.rules (word t)) :=
   format_whole_cache (take 3 c).
@@ -525,44 +557,22 @@ Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
   | (x, Some y) :: l' => (x,y) :: filter_Somes l'
   end.
 
-Require Import Coqlib.
-Definition print_state (mem_start mem_end max_reg : nat) st :=
-  let mem := filter_Somes 
-               (@enum _ _ _ 
-                 (@Concrete.mem t cp st) 
-                 (@PartMaps.get _ Int32.int _ _) 
-                 (@omap atom string (fun a => to_string (format_atom a)))
-                 mem_end 
-                 (* BCP: Surely this is not the right way to do this... *)
-                 (Int32.repr (word_to_Z (nat_to_word mem_start)))) in 
-  let regs' := @enum _ _ _ 
-                 (@Concrete.regs t cp st) 
-                 (@TotalMaps.get _ Int32.int _ _) 
-                 (fun a => format_atom a)
-                 max_reg 
-                 (Int32.repr 0) in 
-  let regs := map (fun r => 
-               let: (x,a) := r in 
-               to_string (ss "r" +++ format_nat (nat_of_Z x) 
-                          +++ ss ": " +++ a)) regs' in
-  (to_string (ss "PC: " +++ format_atom (Concrete.pc st)),
-  "REGISTERS: ", regs,
-  "MEMORY: ", mem,
-  "CACHE: ... ", format_cache (Concrete.cache st)).
+Require Import Coqlib. (* Needed?? *)
 
-Definition summarize_state st :=
-  let mem := filter_Somes 
+Definition summarize_state mem_count cache_count st :=
+  let mem' := filter_Somes 
                (@enum _ _ _ 
                  (@Concrete.mem t cp st) 
                  (@PartMaps.get _ Int32.int _ _) 
-                 (@omap atom string (fun a => to_string (format_atom a)))
-                 8
+                 (@omap atom sstring format_atom)
+                 mem_count
                  (Int32.repr 0)) in 
+  let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := @enum _ _ _ 
                  (@Concrete.regs t cp st) 
                  (@TotalMaps.get _ Int32.int _ _) 
                  (fun a => format_atom a)
-                 32
+                 (word_to_nat user_reg_max)
                  (Int32.repr (word_to_Z (nat_to_word 0))) in 
   let regs := map (fun r => 
                      let: (x,a) := r in 
@@ -576,18 +586,23 @@ Definition summarize_state st :=
       None => ss "(BAD ADDR)"
     | Some i => format_atom i 
     end in
-  (to_string (ss "PC=" +++ format_atom (Concrete.pc st) +++ ss " "
-              +++ current_instr
-              +++ (ss "  ") +++ ssconcat (ss " ") regs),
-  "  ", mem,
-  "  ", format_whole_cache (take 1 (Concrete.cache st))).
+  (to_string 
+     (ss "PC=" +++ format_atom (Concrete.pc st) +++ ss "  "
+               +++ current_instr +++ 
+      ss " | " +++ 
+      ssconcat sspace regs +++
+      ss " | " +++ 
+      mem +++ 
+      ss " | " +++ 
+      ssconcat sspace (format_whole_cache 
+                         (take cache_count (Concrete.cache st))))).
 
 Definition tracen n p := 
   let init := build_concrete_sealing_machine p in
   let tr := exec.tracen less_trivial_masks t n init in
   (
-   print_state 0 3000 32 init,
-   map summarize_state tr
+   summarize_state 3000 1000 init ::
+   map (summarize_state 8 1) tr
   ).
 
 Definition trace := tracen 10000.
@@ -597,13 +612,13 @@ Definition trace := tracen 10000.
 
 Definition hello_world0 : @relocatable_segment t (list w) atom :=
   user_code (fun _ _ => [ 
-     Const t (Z_to_imm 2) (Int32.repr 25)
+     Const t (Z_to_imm 2) ruser1
   ]).
 
 Definition hello_world1 : @relocatable_segment t (list w) atom :=
   user_code (fun _ _ => [
-    Const t (Z_to_imm 2) (Int32.repr 25);
-    Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
+    Const t (Z_to_imm 2) ruser1;
+    Binop t ADD ruser1 ruser1 ruser2
   ]).
 
 Definition hello_world2 : @relocatable_segment t (list w) atom :=
@@ -611,12 +626,12 @@ Definition hello_world2 : @relocatable_segment t (list w) atom :=
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
         [
-          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
-          Jal t (Int32.repr 25);
-          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (word_to_imm mkkey) ruser1;
+          Jal t ruser1;
+          Const _ (word_to_imm seal) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
           Mov _ syscall_ret syscall_arg2;
-          Jal t (Int32.repr 25)
+          Jal t ruser1
         ]
     | _ => []
     end).
@@ -627,14 +642,14 @@ Definition hello_world3 : @relocatable_segment t (list w) atom :=
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
         [
-          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
-          Jal t (Int32.repr 25);
-          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (word_to_imm mkkey) ruser1;
+          Jal t ruser1;
+          Const _ (word_to_imm seal) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
           Mov _ syscall_ret syscall_arg2;
-          Jal t (Int32.repr 25);
+          Jal t ruser1;
           Mov _ syscall_ret syscall_arg1;
-          Jal t (Int32.repr 25)
+          Jal t ruser1
         ]
     | _ => []
     end).
@@ -645,15 +660,15 @@ Definition hello_world4 : @relocatable_segment t (list w) atom :=
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
         [
-          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
-          Jal t (Int32.repr 25);
+          Const _ (word_to_imm mkkey) ruser1;
+          Jal t ruser1;
           Mov _ syscall_ret syscall_arg2;
-          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (word_to_imm seal) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
-          Jal t (Int32.repr 25);
+          Jal t ruser1;
           Mov _ syscall_ret syscall_arg1;
-          Const _ (Z_to_imm (word_to_Z unseal)) (Int32.repr 25);
-          Jal t (Int32.repr 25)
+          Const _ (word_to_imm unseal) ruser1;
+          Jal t ruser1
         ]
     | _ => []
     end).
@@ -661,54 +676,27 @@ Definition hello_world4 : @relocatable_segment t (list w) atom :=
 (* Test store and load *)
 Definition hello_world5 : @relocatable_segment t (list w) atom :=
   user_code (fun base syscall_addresses =>
-    let data := Z_to_imm (word_to_Z (add_word base (Int32.repr 0))) in
+    let data := word_to_imm (add_word base (Int32.repr 0)) in
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
         [
           (* DATA BLOCK *)
           Nop _;
           (* As before, make up a key and seal 17 with it *)
-          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
-          Jal t (Int32.repr 25);
+          Const _ (word_to_imm mkkey) ruser1;
+          Jal t ruser1;
           Mov _ syscall_ret syscall_arg2;
-          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (word_to_imm seal) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
-          Jal t (Int32.repr 25);
+          Jal t ruser1;
           (* Store it in the data block *)
-          Const _ data (Int32.repr 25);
-          Store t (Int32.repr 25) syscall_ret
+          Const _ data ruser1;
+          Store t ruser1 syscall_ret
         ]
     | _ => []
     end).
 
 Compute (tracen 2000 hello_world5). 
-
-(*
-Definition print_res_state n init :=
-  omap (print_state 801 807 27) init.
-
-Compute (print_res_state 140
- (build_concrete_sealing_machine hello_world)). 
-*)
-
-(*
-Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).
-*)
-
-(*
-Compute (print_res_state 19 (build_concrete_sealing_machine hello_world)).
-*)
-
-(* BCP: One nontrivial issue here.  How do we find out the system call
-addresses to use when instantiating the sealing machine?
-Answer (roughly)...
-
-Definition build_abstract_sealing_machine :=
-  fun user_memory : ...
-  let ... := build_concrete_sealing_machine ...
-  Instance ...
-  ... 
-*)
 
 (* TODO: Refinement proof from concrete to abstract instances *)
 

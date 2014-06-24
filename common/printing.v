@@ -76,6 +76,8 @@ Definition to_string (s : sstring) : string := s "".
 Definition ssconcat (sep : sstring) (s : list sstring) : sstring :=
   List.fold_right (fun rest x => rest +++ sep +++ x) ssempty s.
 
+Definition sspace := ss " ".
+
 (* ------------------------------------------------------------------- *)
 
 Open Scope char_scope.
