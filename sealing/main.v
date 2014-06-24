@@ -62,7 +62,7 @@ Instance fhp : fault_handler.fault_handler_params t := {|
 
 (* BCP: These have to be included in the range of user registers.
    There should be a proof obligation to this effect somewhere. *)
-Instance scr : @syscall_regs t := {|
+Global Instance scr : @syscall_regs t := {|
   syscall_ret  := Int32.repr 20;
   syscall_arg1 := Int32.repr 21;
   syscall_arg2 := Int32.repr 22
@@ -295,12 +295,12 @@ Definition mkkey_segment : @relocatable_segment t w w :=
           Const _ (Z_to_imm 1) ri3; (* increment and store back *)
           Binop _ ADD ri5 ri3 ri3;
           Store _ ri1 ri3; 
-          Const _ (Z_to_imm 4) ri3; (* SHL by 2 and add 1 *)
+          Const _ (Z_to_imm 2) ri3; (* wrap k as KEY(k): SHL by 2 and add 1 *)
           Binop _ SHL ri5 ri3 ri4;
           Const _ (Z_to_imm 1) ri3;
           Binop _ ADD ri3 ri4 ri4] ++
          wrap_user_tag ri4 ri4 ++
-         [Const _ (Z_to_imm 0) ri5; (* payload for new kew is 0, arbitrarily *)
+         [Const _ (Z_to_imm 0) ri5; (* payload for new key is 0, arbitrarily *)
           PutTag _ ri5 ri4 syscall_ret; (* build the key *)
           Jump _ ra 
           ]).
@@ -319,11 +319,11 @@ Definition seal_segment : @relocatable_segment t w w :=
         extract_user_tag ri4 rb ri4 ++
         if_ rb [] [Halt _] ++
         [Const _ (Z_to_imm 3) ri5;
-         Binop _ AND ri4 ri5 ri4;
+         Binop _ AND ri4 ri5 ri2;
          Const _ (Z_to_imm 1) ri5;
-         Binop _ EQ ri5 ri4 ri5] ++
+         Binop _ EQ ri5 ri2 ri5] ++
         if_ ri5 [] [Halt _] ++
-        (* Form SEALED tag *)
+        (* Form SEALED(k) tag from KEY(k) in ri4 *)
         [Const _ (Z_to_imm 2) ri5;
          Binop _ OR ri5 ri4 ri4] ++
         wrap_user_tag ri4 ri4 ++
@@ -338,10 +338,40 @@ Definition seal_segment : @relocatable_segment t w w :=
   ).
 
 Definition unseal_segment : @relocatable_segment t w w :=
-  gen_syscall_code (fun _ (extra : w) => [
-          (* TODO: More here! *)
-          Jump _ ra
-          ]).
+  gen_syscall_code (fun _ (extra : w) => 
+        (* Ensure that second argument is tagged KEY, halting otherwise *)
+        [GetTag _ syscall_arg2 ri4] ++
+        extract_user_tag ri4 rb ri4 ++
+        if_ rb [] [Halt _] ++
+        [Const _ (Z_to_imm 3) ri5;
+         Binop _ AND ri4 ri5 ri2;
+         Const _ (Z_to_imm 1) ri5;
+         Binop _ EQ ri5 ri2 ri5] ++
+        if_ ri5 [] [Halt _] ++
+        (* Form SEALED(k) tag from KEY(k) in ri4 *)
+        [Const _ (Z_to_imm 2) ri5;
+         Binop _ OR ri5 ri4 ri4] ++
+        (* Ensure that first argument has a user tag (put it in ri3) *)
+        [GetTag _ syscall_arg1 ri3] ++
+        extract_user_tag ri3 rb ri3 ++
+        if_ rb [] [Halt _] ++
+        (* Check that the two tags are equal (i.e. both SEALED(k)) *)
+        [Binop _ EQ ri3 ri4 ri4] ++
+        if_ ri5 [] [Halt _] ++
+        (* Retag the payload with DATA *)
+        [Const _ (Z_to_imm 0) ri5] ++
+        wrap_user_tag ri5 ri5 ++
+        [PutTag _ syscall_arg1 ri5 syscall_ret] ++
+        (* Check that return PC is tagged DATA *)
+        (* (not certain this is needed, but keeping it here and above
+            to make sure we satisfy refinement hypotheses...) *)
+        [GetTag _ ra ri3] ++
+        extract_user_tag ri3 rb ri3 ++
+        if_ rb [] [Halt _] ++
+        [Const _ (Z_to_imm 0) ri5;
+         Binop _ EQ ri3 ri5 ri5] ++
+        if_ ri5 [Jump _ ra] [Halt _]
+).
 
 Definition build_concrete_sealing_machine 
      (user_mem : @relocatable_segment t (list w) atom) 
@@ -358,32 +388,6 @@ Definition build_concrete_sealing_machine
     (encode_sealing_tag Sym.DATA)
     user_reg_min user_reg_max
     (encode_sealing_tag Sym.DATA).
-
-Definition hello_world0 : @relocatable_segment t (list w) atom :=
-  user_code (fun _ => [ 
-     Const t (Z_to_imm 2) (Int32.repr 25)
-  ]).
-
-Definition hello_world1 : @relocatable_segment t (list w) atom :=
-  user_code (fun _ => [
-    Const t (Z_to_imm 2) (Int32.repr 25);
-    Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
-  ]).
-
-Definition hello_world2 : @relocatable_segment t (list w) atom :=
-  user_code (fun syscall_addresses =>
-    match syscall_addresses with 
-      [mkkey; seal; unseal] => 
-        [
-          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
-          Jal t (Int32.repr 25);
-          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
-          Const _ (Z_to_imm 17) syscall_arg1;
-          Mov _ syscall_ret syscall_arg2;
-          Jal t (Int32.repr 25)
-        ]
-    | _ => []
-    end).
 
 Import Concrete.
 
@@ -449,8 +453,6 @@ Definition eval_reg n (r : reg t) init :=
   end.
 
 Open Scope Z_scope.
-
-Definition init := build_concrete_sealing_machine hello_world2.
 
 Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) (n : nat) (i : Int32.int) :=
   match n with
@@ -576,7 +578,72 @@ Definition tracen n p :=
 
 Definition trace := tracen 10000.
 
-Compute (tracen 2000 hello_world2). 
+(* ---------------------------------------------------------------------- *)
+(* Tests... *)
+
+Definition hello_world0 : @relocatable_segment t (list w) atom :=
+  user_code (fun _ => [ 
+     Const t (Z_to_imm 2) (Int32.repr 25)
+  ]).
+
+Definition hello_world1 : @relocatable_segment t (list w) atom :=
+  user_code (fun _ => [
+    Const t (Z_to_imm 2) (Int32.repr 25);
+    Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
+  ]).
+
+Definition hello_world2 : @relocatable_segment t (list w) atom :=
+  user_code (fun syscall_addresses =>
+    match syscall_addresses with 
+      [mkkey; seal; unseal] => 
+        [
+          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
+          Jal t (Int32.repr 25);
+          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (Z_to_imm 17) syscall_arg1;
+          Mov _ syscall_ret syscall_arg2;
+          Jal t (Int32.repr 25)
+        ]
+    | _ => []
+    end).
+
+(* double seal: should fail *)
+Definition hello_world3 : @relocatable_segment t (list w) atom :=
+  user_code (fun syscall_addresses =>
+    match syscall_addresses with 
+      [mkkey; seal; unseal] => 
+        [
+          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
+          Jal t (Int32.repr 25);
+          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (Z_to_imm 17) syscall_arg1;
+          Mov _ syscall_ret syscall_arg2;
+          Jal t (Int32.repr 25);
+          Mov _ syscall_ret syscall_arg1;
+          Jal t (Int32.repr 25)
+        ]
+    | _ => []
+    end).
+
+Definition hello_world4 : @relocatable_segment t (list w) atom :=
+  user_code (fun syscall_addresses =>
+    match syscall_addresses with 
+      [mkkey; seal; unseal] => 
+        [
+          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
+          Jal t (Int32.repr 25);
+          Mov _ syscall_ret syscall_arg2;
+          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (Z_to_imm 17) syscall_arg1;
+          Jal t (Int32.repr 25);
+          Mov _ syscall_ret syscall_arg1;
+          Const _ (Z_to_imm (word_to_Z unseal)) (Int32.repr 25);
+          Jal t (Int32.repr 25)
+        ]
+    | _ => []
+    end).
+
+Compute (tracen 2000 hello_world4). 
 
 (*
 Definition print_res_state n init :=
