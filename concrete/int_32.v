@@ -325,9 +325,9 @@ Open Scope string_scope.
 Import printing.
 
 Instance p : printing concrete_int_32_t := {|
-  format_word := fun i => format_nat (nat_of_Z (word_to_Z i));
-  format_reg := fun i => format_nat (nat_of_Z (word_to_Z i));
-  format_imm := fun i => format_nat (nat_of_Z (word_to_Z i))
+  format_word := fun i => format_Z (word_to_Z i);
+  format_reg := fun i => format_Z (word_to_Z i);
+  format_imm := fun i => format_Z (word_to_Z i)
 |}.
 
 Definition format_instr := printing.format_instr.
