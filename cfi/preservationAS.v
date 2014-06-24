@@ -193,7 +193,7 @@ Next Obligation. (*step or no step*)
   by apply classic. 
 Qed.
 Next Obligation. (*initial state*)
-  destruct H as [TPC [NOV [ITG [VTG ETG]]]].
+  destruct H as [TPC [ITG [VTG ETG]]].
   destruct cst as [mem reg [pc tpc] int].
   exists (Abs.State (Map.map RefinementAS.untag_atom (filter is_instr mem)) 
                     ((Map.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)))

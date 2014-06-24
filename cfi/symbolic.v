@@ -432,9 +432,16 @@ Proof.
   - apply (INV _ _ _ GET CALL ETAG).
 Qed.
 
+Lemma data_pc_no_violation : forall s,
+  tag (Symbolic.pc s) = DATA ->
+  no_violation s.
+Proof.
+  intros. destruct s. destruct pc as [pc tpc]. simpl. split; intros;
+  simpl in H; congruence.
+Qed.
+
 Definition initial (s : Symbolic.state t) := 
   (common.tag (Symbolic.pc s)) = DATA /\
-  no_violation s /\ (* CH: doesn't this follow from tag(pc) = DATA? *)
   instructions_tagged (Symbolic.mem s) /\
   valid_jmp_tagged (Symbolic.mem s) /\ entry_points_tagged (Symbolic.mem s).
 
