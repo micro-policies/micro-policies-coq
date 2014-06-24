@@ -96,8 +96,8 @@ Class machine_refinement_specs := {
     succ asi asj = true ->
     succ csi csj = true;
 
-  (* CH: I'm a curious how we discharge this one without making
-         strange assumptions on the shape of the CFG *)
+  (* We discharge this for abstract and symbolic machine without
+     making any assumptions on the shape of the CFG *)
   av_no_attacker : forall (asi asj : @state amachine),
     succ asi asj = false ->
     step asi asj ->
@@ -110,6 +110,9 @@ Class machine_refinement_specs := {
     visible cst cst' = true ->
     succ cst cst' = false;
 
+  (* Q: Can this be simplified to if we were to show that
+     backwards_refinement_traces_stronger produces _unique_ axs?
+     Doesn't seem easy to state! *)
   as_implies_cs : forall axs cxs,
     refine_traces axs cxs ->
     AS axs ->
