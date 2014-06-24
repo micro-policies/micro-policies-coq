@@ -1202,6 +1202,50 @@ Fixpoint assoc_list_lookup {T1 T2 : Type} (xys : list (T1*T2))
                       else assoc_list_lookup xys' select
   end.
 
+Theorem assoc_list_lookup_some : forall {T1 T2 : Type} (xys : list (T1 * T2))
+                                        (select : T1 -> bool) (y : T2),
+  assoc_list_lookup xys select = Some y ->
+  exists x, select x = true /\ In (x,y) xys.
+Proof.
+  intros T1 T2 xys select; induction xys as [|[x' y'] xys];
+    intros y LOOKUP; simpl in *.
+  - discriminate.
+  - destruct (select x') eqn:SEL.
+    + inversion LOOKUP; eauto.
+    + apply IHxys in LOOKUP; destruct LOOKUP as [x [SEL' IN]]; eauto.
+Qed.
+
+Theorem in_assoc_list_lookup : forall {T1 T2 : Type} (xys : list (T1 * T2))
+                                      (select : T1 -> bool) (x : T1) (y : T2),
+  select x = true ->
+  In (x,y) xys    ->
+  exists y', assoc_list_lookup xys select = Some y'.
+Proof.
+  intros T1 T2 xys select; induction xys as [|[x' y'] xys]; intros x y SEL IN;
+    simpl in *; [elim IN|].
+  destruct IN as [EQ | IN].
+  - inversion EQ; subst. rewrite SEL; eauto.
+  - apply IHxys in IN; [destruct IN as [y'' ASSOC] | exact SEL].
+    destruct (select x') eqn:SEL'; eauto.
+Qed.
+
+Theorem assoc_list_lookup_none : forall {T1 T2 : Type} (xys : list (T1 * T2))
+                                        (select : T1 -> bool),
+  assoc_list_lookup xys select = None <->
+  (forall xy, In xy xys -> select (fst xy) = false).
+Proof.
+  intros T1 T2 xys select; induction xys as [|[x y] xys]; simpl.
+  - split; [intros _ _ [] | reflexivity].
+  - destruct (select x) eqn:SEL.
+    + split; [discriminate|].
+      intros IN; specialize (IN (x,y) (or_introl eq_refl)); simpl in *;
+        congruence.
+    + split.
+      * intros ASSOC; rewrite IHxys in ASSOC.
+        intros [x' y'] [<- | IN]; simpl; [|apply ASSOC in IN]; assumption.
+      * intros ALL; apply IHxys; auto.
+Qed.
+
 Section EqDec.
 
 Context {A : Type}
