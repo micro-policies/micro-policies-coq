@@ -289,18 +289,19 @@ Definition gen_syscall_code gen : @relocatable_segment t w w :=
    fun b w => map encode_instr (gen b w)).
 
 Definition mkkey_segment : @relocatable_segment t w w :=
-  gen_syscall_code (fun _ (extra : w) => [
-          Const _ (Z_to_imm (word_to_Z extra)) ri1; (* load next key *)
-          Load _ ri1 ri2; 
+  gen_syscall_code (fun _ (extra : w) =>
+         [Const _ (Z_to_imm (word_to_Z extra)) ri1; (* load next key *)
+          Load _ ri1 ri5; 
           Const _ (Z_to_imm 1) ri3; (* increment and store back *)
-          Binop _ ADD ri2 ri3 ri3;
+          Binop _ ADD ri5 ri3 ri3;
           Store _ ri1 ri3; 
-          Const _ (Z_to_imm 2) ri3; (* SHL by 2 and add 1 *)
-          Binop _ SHL ri2 ri3 ri4;
+          Const _ (Z_to_imm 4) ri3; (* SHL by 2 and add 1 *)
+          Binop _ SHL ri5 ri3 ri4;
           Const _ (Z_to_imm 1) ri3;
-          Binop _ ADD ri3 ri4 ri4;
-          Const _ (Z_to_imm 0) ri2; (* payload for new kew is 0, arbitrarily *)
-          PutTag _ ri2 ri4 syscall_ret; (* build the key *)
+          Binop _ ADD ri3 ri4 ri4] ++
+         wrap_user_tag ri4 ri4 ++
+         [Const _ (Z_to_imm 0) ri5; (* payload for new kew is 0, arbitrarily *)
+          PutTag _ ri5 ri4 syscall_ret; (* build the key *)
           Jump _ ra 
           ]).
 

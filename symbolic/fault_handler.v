@@ -324,4 +324,5 @@ Arguments rt1 {_ _}.
 Arguments rt2 {_ _}.
 Arguments rt3 {_ _}.
 Arguments if_ {_ _ _} r t f.
-
+Arguments extract_user_tag {_ _ _} rsrc rsucc rut.
+Arguments wrap_user_tag {_ _ _} rut rdst.
