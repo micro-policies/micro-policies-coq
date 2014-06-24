@@ -279,7 +279,7 @@ Admitted.
 Definition label_eqMixin := EqMixin label_eqP.
 Canonical label_eqType := Eval hnf in EqType label label_eqMixin.
 
-Program Instance sym_memory_safety : (symbolic_params) := {
+Global Instance sym_memory_safety : symbolic_params := {
   tag := label_eqType;
 
   handler := rules;
@@ -292,7 +292,6 @@ Program Instance sym_memory_safety : (symbolic_params) := {
   registers := registers;
   sr := reg_class
 }.
-
 
 Definition malloc_fun st : option (state t) :=
   let: pcv@pcl := pc st in
@@ -398,6 +397,9 @@ Definition memsafe_syscalls : list (syscall t) :=
 Definition step := step memsafe_syscalls.
 
 End WithClasses.
+
+Arguments memory t {_}.
+Arguments registers t {_}.
 
 Module Notations.
 
