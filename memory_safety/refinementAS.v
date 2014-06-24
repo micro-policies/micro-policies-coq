@@ -451,13 +451,14 @@ Qed.
 Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
   refine_registers aregs qaregs ->
   PartMaps.get qaregs n = Some w@V(INT) ->
-  PartMaps.get aregs n = Some (Abstract.VData _ w).
+    refine_val (Abstract.VData _ w) w INT /\
+    PartMaps.get aregs n = Some (Abstract.VData _ w).
 Proof.
 intros rregs get_n.
 specialize (rregs n).
 rewrite get_n in rregs.
 destruct (PartMaps.get aregs n); try contradiction.
-by inversion rregs.
+by inversion rregs; split; first by constructor.
 Qed.
 
 Lemma refine_registers_get_ptr aregs qaregs (n : common.reg mt) w b :
@@ -834,6 +835,7 @@ repeat match goal with
   match type_of reg with
   | Symbolic.registers _ =>
     match ty with
+    | INT => eapply (refine_registers_get_int rregs) in GET; destruct GET as [? ?]
     | PTR _ =>
       (eapply (refine_registers_get_ptr rregs) in GET; destruct GET as ((? & ?) & ? & ?))
         || let op := current_instr_opcode in fail 5 "refine_registers_get_ptr" op GET
@@ -889,10 +891,11 @@ match goal with
   | |- _ => idtac
 end;
 
-try solve_pc rpci.
+repeat match goal with
+  | def := _ |- _ => rewrite /def
+end;
 
-(* Bnz *)
-admit.
+try solve_pc rpci.
 
 (* Jal *)
 simpl in E.
