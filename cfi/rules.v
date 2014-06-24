@@ -64,16 +64,21 @@ Definition cfi_handler (umvec : Symbolic.MVec cfi_tag) : option (Symbolic.RVec c
 
 (* Here is a more readable variant (unused at the moment) *)
 (* CH: TODO: start using or prove them equivalent :) *)
+(* NG: Found bug in store case*)
+(* NG: Found second bug*)
 Definition cfi_handler' (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
   match umvec with
   | mkMVec   JUMP   _  (INSTR (Some m))  _
   | mkMVec   JAL    _  (INSTR (Some m))  _  =>
     Some (mkRVec (INSTR (Some m)) DATA)
+  | mkMVec JUMP _ _ _
+  | mkMVec JAL _ _ _ => None (*jump/jal untagged should get stuck?*)
   | mkMVec   STORE  _  (INSTR _)  [_ ; _ ; t]  =>
     match t with
     | DATA => Some (mkRVec DATA DATA)
     | _    => None
     end
+  | mkMVec STORE _ _ _ => None (*This is needed*)
   | mkMVec    _     _  (INSTR _)  _  => 
     Some (mkRVec DATA DATA)
   | mkMVec    _     _  DATA       _ => None
@@ -88,4 +93,34 @@ Definition cfi_handler'' (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
   | _, _ => None
   end.
 
+Ltac handler_equiv_tac := 
+  match goal with
+    | [|- match ?Expr with _ => _ end = _] => 
+      destruct Expr
+    | [|- _ = match ?Expr with _ => _ end] =>
+      destruct Expr
+    | [|- ?E = ?E] => reflexivity
+  end. 
+
+Lemma handlers_equiv umvec :
+  cfi_handler umvec = cfi_handler'' umvec.
+Proof.
+  destruct umvec as [op tpc ti ts].
+  unfold cfi_handler''.
+  destruct tpc as [[n|]|], ti as [[m|]|]; try (destruct op; reflexivity).
+  {  destruct op; simpl; destruct (valid_jmp n m); auto;
+     repeat handler_equiv_tac.
+  }
+  { destruct op; simpl; auto; 
+    repeat handler_equiv_tac.
+  }
+  { destruct op; simpl; auto.
+    destruct ts. reflexivity.
+    destruct ts0. reflexivity.
+    destruct ts0. reflexivity.
+    destruct h1. destruct ts0; reflexivity.
+    destruct ts0; reflexivity.
+  }
+Qed.
+    
 End uhandler.
