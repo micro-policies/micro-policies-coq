@@ -51,7 +51,6 @@ Open Scope word_scope.
 Local Notation word := (word t).
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
-(* CH: TODO: turn this into a record:
 Record state := State {
   imem : imemory;
   dmem : dmemory;
@@ -60,9 +59,6 @@ Record state := State {
   cont : bool (* machine stops when this is false;
                  this starts out as true in initial state *)
 }.
-*)
-Definition state :=
-  (imemory * dmemory * registers * word (* pc *) * bool (*jump check*))%type.
 
 (* Para-virtualizing system calls, since CFI doesn't have any system
    calls of its own and dealing with them is an interesting problem *)
@@ -82,78 +78,80 @@ Inductive step : state -> state -> Prop :=
 | step_nop : forall imem dmem reg pc i,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Nop _)),
-             step (imem,dmem,reg,pc,true) (imem,dmem,reg,pc.+1,true)
+             step (State imem dmem reg pc true) (State imem dmem reg pc.+1 true)
 | step_const : forall imem dmem reg reg' pc i n r,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Const _ n r)),
              forall (UPD : upd reg r (imm_to_word n) = Some reg'),
-             step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
+             step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_mov : forall imem dmem reg reg' pc i r1 r2 w1,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Mov _ r1 r2)),
              forall (R1W : get reg r1 = Some w1),
              forall (UPD : upd reg r2 w1 = Some reg'),
-             step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
+             step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_binop : forall imem dmem reg reg' pc i f r1 r2 r3 w1 w2,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Binop _ f r1 r2 r3)),
              forall (R1W : get reg r1 = Some w1),
              forall (R2W : get reg r2 = Some w2),
              forall (UPD : upd reg r3 (binop_denote f w1 w2) = Some reg'),
-             step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
+             step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_load : forall imem dmem reg reg' pc i r1 r2 w1 w2,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Load _ r1 r2)),
              forall (R1W : get reg r1 = Some w1),
              forall (MEM1 : get imem w1 = Some w2 \/ get dmem w1 = Some w2),
              forall (UPD : upd reg r2 w2 = Some reg'),
-             step (imem,dmem,reg,pc,true) (imem,dmem,reg',pc.+1,true)
+             step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_store : forall imem dmem dmem' reg pc i r1 r2 w1 w2,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Store _ r1 r2)),
              forall (R1W : get reg r1 = Some w1),
              forall (R2W : get reg r2 = Some w2),
              forall (UPD : upd dmem w1 w2 = Some dmem'),
-             step (imem,dmem,reg,pc,true) (imem,dmem',reg,pc.+1,true)
+             step (State imem dmem reg pc true) (State imem dmem' reg pc.+1 true)
 | step_jump : forall imem dmem reg pc i r w b,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Jump _ r)),
              forall (RW : get reg r = Some w),
              forall (VALID : valid_jmp pc w = b),
-             step (imem,dmem,reg,pc,true) (imem,dmem,reg,w,b)
+             step (State imem dmem reg pc true) (State imem dmem reg w b)
 | step_bnz : forall imem dmem reg pc i r n w,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Bnz _ r n)),
              forall (RW : get reg r = Some w),
              let pc' := add_word pc (if w == Z_to_word 0 then Z_to_word 1
                                      else imm_to_word n) in
-             step (imem,dmem,reg,pc,true) (imem,dmem,reg,pc',true)
+             step (State imem dmem reg pc true) (State imem dmem reg pc' true)
 | step_jal : forall imem dmem reg reg' pc i r w b,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Jal _ r)),
              forall (RW : get reg r = Some w),
              forall (UPD : upd reg ra (pc.+1) = Some reg'),
              forall (VALID : valid_jmp pc w = b),
-             step (imem,dmem,reg,pc,true) (imem,dmem,reg',w,b)
+             step (State imem dmem reg pc true) (State imem dmem reg' w b)
 | step_syscall : forall imem dmem dmem' reg reg' pc pc' sc,
                  forall (FETCH : get imem pc = None),
                  forall (NOUSERM : get dmem pc = None),
                  forall (GETCALL : get_syscall pc = Some sc), 
-                 forall (CALL : sem sc (imem,dmem,reg,pc,true) =
-                                Some (imem,dmem',reg',pc',true)),
-                 step (imem,dmem,reg,pc,true) (imem,dmem',reg',pc',true).
+                 forall (CALL : sem sc (State imem dmem reg pc true) =
+                                Some (State imem dmem' reg' pc' true)),
+                 step (State imem dmem reg pc true) 
+                      (State imem dmem' reg' pc' true).
 
 Inductive step_a : state -> state -> Prop :=
 | step_attack : forall imem dmem dmem' reg reg' pc i
              (FETCH: get imem pc = Some i)
              (MSAME: same_domain dmem dmem')
              (RSAME: same_domain reg reg'),
-             step_a (imem,dmem,reg,pc,true) (imem,dmem',reg',pc,true).
+             step_a (State imem dmem reg pc true) 
+                    (State imem dmem' reg' pc true).
 
 (* Extending valid_jmp to a complete allowed CFG *)
 Definition succ (st : state) (st' : state) : bool :=
-  let '(imem,dmem,reg,pc,_) := st in
-  let '(_,_,_,pc',_) := st' in
+  let '(State imem dmem reg pc _) := st in
+  let '(State _ _ _ pc' _) := st' in
   match (get imem pc) with
     | Some i =>
       match decode_instr i with
@@ -180,7 +178,7 @@ Definition succ (st : state) (st' : state) : bool :=
 
 (* CH: TODO: I'm expecting the cont bit to be initially true *)
 Definition initial (s : state) := 
-  let '(_,_,_,_,cont) := s in cont = true.
+  cont s = true.
 
 Program Instance abstract_cfi_machine : cfi_machine := {|
   state := state;
@@ -217,8 +215,7 @@ Ltac match_inv :=
 Lemma step_succ_violation ast ast' :
    succ ast ast' = false ->
    step ast ast' ->
-   let '(_,_,_,_,b) := ast' in
-   b = false.
+   cont ast' = false.
 Proof.
   intros SUCC STEP.
   inversion STEP; subst; simpl in SUCC; rewrite FETCH in SUCC;
@@ -232,8 +229,7 @@ Qed.
 
 Lemma step_a_violation ast ast' :
    step_a ast ast' ->
-   let '(_,_,_,_,b) := ast' in
-   b = true.
+   cont ast = true.
 Proof.
   intros STEP.
   inversion STEP; subst. reflexivity.
@@ -265,8 +261,7 @@ Proof.
         unfold S. exists s'. split; auto.
         intro CONTRA. destruct CONTRA as [s'' CONTRA].
         assert (FLAG := step_succ_violation SUCC STEP).
-        destruct s' as [[[[imem dmem] aregs] apc] b].
-        subst. inversion CONTRA.
+        inv CONTRA; simpl in FLAG; discriminate.
   + apply interm_equiv_intermrev in INTERM.
     destruct (IHINTERM INIT) as [TSAFE | [sv1 [sv2 [hs [tl VIOLATION]]]]].
     { unfold trace_has_cfi in TSAFE.
@@ -306,8 +301,8 @@ Proof.
         unfold S. exists s''. split; [reflexivity | idtac].
         intro CONTRA. destruct CONTRA as [s''' CONTRA].
         assert (FLAG := step_succ_violation SUCC STEP).
-        destruct s'' as [[[[imem dmem] aregs] apc] b].
-        subst. inversion CONTRA. }
+        inv CONTRA; simpl in FLAG; discriminate.
+    }
     { (*Case a violation occurs in the trace*)
      induction xs using rev_ind; [inversion INTERM | subst; clear IHxs].
      destruct VIOLATION as [LST [VIO [T1 [T2 STOPS]]]].
@@ -321,10 +316,9 @@ Proof.
      apply interm_last_step in INTERM; subst.
      destruct VIO as [VSTEP SUCC].
      assert (FLAG := step_succ_violation SUCC VSTEP).
-     destruct s' as [[[[imem dmem] aregs] apc] b]; subst.
-     destruct STEP as [STEPA | STEP].
-     - inversion STEPA.
-     - inversion STEP. }
+     destruct STEP as [STEP | STEP];
+       inv STEP; simpl in FLAG; discriminate.
+    }
 Qed.
 
 End WithClasses.

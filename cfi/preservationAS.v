@@ -28,8 +28,8 @@ Context {t : machine_types}
         {smemory : Type}
         {sm : partial_map smemory (word t) (atom (word t) (@cfi_tag t))}
         {smems : axioms sm}
-        {smemory_map : Map.mappable sm (@Abs.dmem_class t ap)}
-        {smemory_filter : Filter.filterable sm}
+        {smemory_mapd : Map.mappable sm (@Abs.dmem_class t ap)}
+        {smemory_mapi : Map.mappable sm (@Abs.imem_class t ap)}
 
         {sregisters : Type}
         {sr : partial_map sregisters (reg t) (atom (word t) (@cfi_tag t))}
@@ -52,17 +52,6 @@ Definition refine_sc := RefinementAS.refine_syscalls stable atable stable.
 (*TODO: look at arguments mess*)
 Hypothesis ref_sc_correct : refine_sc.
 
-Hypothesis syscalls_backwards_simulation :
-  forall ast sst addr sc sst',
-    refine_sc ->
-    Symbolic.get_syscall stable addr = Some sc ->
-    RefinementAS.refine_state stable ast sst ->
-    Symbolic.run_syscall sc sst = Some sst' ->
-    exists ac ast',
-      Abs.get_syscall atable addr = Some ac /\
-      Abs.sem ac ast = Some ast' /\
-      RefinementAS.refine_state stable ast' sst'.
-
 Hypothesis syscall_sem :
   forall ac ast ast',
     Abs.sem ac ast = Some ast' ->
@@ -70,65 +59,101 @@ Hypothesis syscall_sem :
        let '(imem',dmem',aregs',pc',b') := ast' in
          imem = imem' /\ b' = b.
 
-Hypothesis jump_tagged :
-  forall pc i (mem : @Symbolic.memory t sym_params) r itg,
-    get mem pc = Some i@(INSTR itg) ->
-    decode_instr i = Some (Jump _ r) ->
-    itg = Some pc.
+Hypothesis syscall_preserves_instruction_tags :
+  forall sc st st',
+    Sym.instructions_tagged valid_jmp (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.instructions_tagged valid_jmp (Symbolic.mem st').
 
-Hypothesis jal_tagged :
-  forall pc i (mem : @Symbolic.memory t sym_params) r itg,
-    get mem pc = Some i@(INSTR itg) ->
-    decode_instr i = Some (Jal _ r) ->
-    itg = Some pc.
+Hypothesis syscall_preserves_valid_jmp_tags :
+  forall sc st st',
+    Sym.valid_jmp_tagged stable (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.valid_jmp_tagged stable (Symbolic.mem st').
 
-Hypothesis jump_target_tagged :
-  forall pc w (mem : @Symbolic.memory t sym_params) i i0 id r reg 
-         (tr ti : @Symbolic.tag t sym_params),
-    get mem pc = Some i@(INSTR (Some id)) ->
-    decode_instr i = Some (Jump _ r) ->
-    get reg r = Some w@tr ->
-    get mem w = Some i0@ti ->
-    ti = INSTR (Some w).
-
-Hypothesis jal_target_tagged :
-  forall pc w (mem : @Symbolic.memory t sym_params) i i0 id r reg 
-         (tr ti : @Symbolic.tag t sym_params),
-    get mem pc = Some i@(INSTR (Some id)) ->
-    decode_instr i = Some (Jal _ r) ->
-    get reg r = Some w@tr ->
-    get mem w = Some i0@ti ->
-    ti = INSTR (Some w).
-
-Hypothesis jump_entry_tagged :
-  forall pc w (mem : @Symbolic.memory t sym_params) i id r reg sc
-         (tr : @Symbolic.tag t sym_params),
-    get mem pc = Some i@(INSTR (Some id)) ->
-    decode_instr i = Some (Jump _ r) ->
-    get reg r = Some w@tr ->
-    get mem w = None ->
-    Symbolic.get_syscall stable w = Some sc ->
-    (Symbolic.entry_tag sc) = INSTR (Some w).
-
-Hypothesis jal_entry_tagged :
-  forall pc w (mem : @Symbolic.memory t sym_params) i id r reg sc
-         (tr : @Symbolic.tag t sym_params),
-    get mem pc = Some i@(INSTR (Some id)) ->
-    decode_instr i = Some (Jal _ r) ->
-    get reg r = Some w@tr ->
-    get mem w = None ->
-    Symbolic.get_syscall stable w = Some sc ->
-    (Symbolic.entry_tag sc) = INSTR (Some w).
+Hypothesis syscall_preserves_entry_tags :
+  forall sc st st',
+    Sym.entry_points_tagged stable (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.entry_points_tagged stable (Symbolic.mem st').
 
 
 Definition backwards_simulation := 
-  RefinementAS.backwards_simulation ref_sc_correct syscalls_backwards_simulation
-                                    syscall_sem jump_tagged jal_tagged
-                                    jump_target_tagged jal_target_tagged
-                                    jump_entry_tagged jal_entry_tagged.
+  RefinementAS.backwards_simulation ref_sc_correct syscall_sem 
+                                    syscall_preserves_instruction_tags syscall_preserves_valid_jmp_tags
+                                    syscall_preserves_entry_tags.
+
+(* For initial states - may need to think a bit about how to structure the whole thing*)
+Lemma untag_implies_reg_refinement reg :
+  RefinementAS.refine_registers (Map.map RefinementAS.untag_atom reg) reg.
+Proof.
+   intros r v.
+   split.
+   - intros (ut & GET).
+     rewrite Map.map_correctness.
+     rewrite GET. reflexivity.
+   - intros GET.
+     rewrite Map.map_correctness in GET.
+     destruct (get reg r) eqn:GET'.
+     + destruct a. simpl in GET. inv GET.
+       eexists; reflexivity.
+     + simpl in GET. congruence.
+Qed.
+
+Lemma untag_data_implies_dmem_refinement mem :
+  RefinementAS.refine_dmemory 
+    (Map.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)) mem.
+Proof.
+   intros addr v.
+   split.
+   - intros GET.
+     rewrite Map.map_correctness.
+     rewrite filter_correctness.
+     rewrite GET. reflexivity.
+   - intros GET.
+     rewrite Map.map_correctness in GET.
+     rewrite filter_correctness in GET.
+     destruct (get mem addr) eqn:GET'.
+     + destruct a as [val tg]. 
+       simpl in GET.
+       destruct tg as [[id|]|]; simpl in GET.
+       * congruence.
+       * congruence.
+       * inv GET. reflexivity.
+     + simpl in GET. congruence.
+Qed.
+
+Definition is_instr (a : atom (word t) (@cfi_tag t)) := 
+  match common.tag a with
+    | INSTR _ => true
+    | DATA => false
+  end.
+
+Lemma untag_instr_implies_imem_refinement mem :
+  RefinementAS.refine_imemory 
+    (Map.map RefinementAS.untag_atom (filter is_instr mem)) mem.
+Proof.
+   intros addr v.
+   split.
+   - intros (ut & GET).
+     rewrite Map.map_correctness.
+     rewrite filter_correctness.
+     rewrite GET. reflexivity.
+   - intros GET.
+     rewrite Map.map_correctness in GET.
+     rewrite filter_correctness in GET.
+     destruct (get mem addr) eqn:GET'.
+     + destruct a as [val tg]. 
+       simpl in GET.
+       destruct tg as [[id|]|]; simpl in GET.
+       * inv GET. eexists; reflexivity.
+       * inv GET; eexists; reflexivity.
+       * congruence.
+     + simpl in GET. congruence.
+Qed.
 
 Program Instance cfi_refinementAS  : 
-  (@machine_refinement t amachine smachine) := {
+  (machine_refinement amachine smachine) := {
     refine_state st st' := RefinementAS.refine_state stable st st';
 
     visible st st' := true
@@ -141,34 +166,16 @@ Next Obligation.
    eexists; split; eauto | discriminate].
 Qed.
 Next Obligation.
-  destruct (RefinementAS.backwards_simulation_attacker stable ast REF STEPA);
+  destruct (RefinementAS.backwards_simulation_attacker ast REF STEPA);
   eexists; eauto.
 Qed.
-  
-Definition astop (xs : list (@property.state t amachine)) :=
+
+(* Stopping Conditions for the two machines*)  
+Definition astop (xs : list (@property.state amachine )) :=
   Abs.S atable valid_jmp xs.
 
-Definition sstop (xs : list (@property.state t smachine)) := 
+Definition sstop (xs : list (@property.state smachine)) := 
   Sym.S stable xs.
-
-Ltac match_inv :=
-  repeat match goal with
-  | H : bind (fun x : _ => _) _ = Some _ |- _ =>
-    apply bind_inv in H;
-    let x := fresh x in
-    let E := fresh "E" in
-    destruct H as (x & H & E);
-    simpl in H; simpl in E
-  | H : (if ?b then _ else _) = Some _ |- _ =>
-    let E := fresh "E" in
-    destruct b eqn:E;
-    try discriminate
-  | H : match ?E with _ => _ end = _ |- _ =>
-    destruct E eqn:?; try discriminate
-  | H : Some _ = Some _ |- _ => inv H
-  | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
-  | H : True |- _ => clear H
-  end.
 
 Import ListNotations.
 
@@ -177,16 +184,25 @@ Require Import Classical.
 Program Instance cfi_refinementAS_specs :
   machine_refinement_specs astop sstop cfi_refinementAS.
 Next Obligation. (*step or no step*)
-  by apply classic. Qed.
+  by apply classic. 
+Qed.
 Next Obligation. (*initial state*)
+  destruct H as [NOV [ITG [VTG ETG]]].
+  destruct cst as [mem reg [pc tpc] int].
+  remember ((Map.map RefinementAS.untag_atom (filter RefinementAS.is_data mem))) as dmem.
+  remember ((Map.map RefinementAS.untag_atom (filter is_instr mem))) as imem.
+  remember (Map.map RefinementAS.untag_atom reg) as areg.
+  exists (imem,dmem,areg,pc,true).
+  
+  
   Admitted. (* TODO: using map/filter mechanism now used for attacker *)
 Next Obligation.
   destruct asi as [[[[imem dmem] aregs] apc] b], 
            asj as [[[[imem' dmem'] aregs'] apc'] b'].
   destruct csi as [mem regs [spc tpc] int].
   destruct csj as [mem' regs' [spc' tpc'] int'].
-  destruct H as [REFI [REFD [REFR [REFPC CORRECTNESS]]]].
-  destruct H0 as [REFI' [REFD' [REFR' [REFPC' CORRECTNESS']]]].
+  destruct H as [REFI [REFD [REFR [REFPC ?]]]].
+  destruct H0 as [REFI' [REFD' [REFR' [REFPC' ?]]]].
   unfold Abs.succ in H1.
   unfold RefinementAS.refine_pc in REFPC; simpl in REFPC; 
   destruct REFPC as [? TPC];
@@ -217,8 +233,8 @@ Next Obligation.
             rewrite GET' in AGET. congruence.
       }
       { rewrite GET'.
-        unfold refine_sc in *. 
-        destruct ref_sc_correct as [CALLDOMAINS ?].
+        unfold refine_sc in *. unfold RefinementAS.refine_syscalls in ref_sc_correct.
+        assert (CALLDOMAINS := RefinementAS.refine_syscalls_domains ref_sc_correct).
         assert (EGETCALL: exists ac, Abs.get_syscall atable spc = Some ac)
           by (eexists; eauto).
         apply CALLDOMAINS in EGETCALL.
@@ -270,7 +286,7 @@ Next Obligation.
         { rewrite GET'. reflexivity. } 
       } 
       { rewrite GET'. 
-        destruct ref_sc_correct as [SCDOMAINS ?].
+        assert (SCDOMAINS := RefinementAS.refine_syscalls_domains ref_sc_correct).
         apply RefinementAS.same_domain_total with (addr' := pc) in SCDOMAINS.
         apply SCDOMAINS in GETCALL. rewrite GETCALL. reflexivity.
       }

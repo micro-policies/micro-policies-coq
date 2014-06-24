@@ -180,7 +180,7 @@ Definition symbolic_invariants (mem : Symbolic.memory t) :=
 
 Definition refine_state (ast : Abs.state t)
                         (sst : @Symbolic.state t sym_params) :=
-  let '(imem, dmem, aregs, apc, cont) := ast in
+  let '(Abs.State imem dmem aregs apc cont) := ast in
   let '(Symbolic.State smem sregs spc@tpc _) := sst in
   refine_imemory imem smem /\
   refine_dmemory dmem smem /\
@@ -261,7 +261,22 @@ Definition refine_syscalls
 Lemma refine_syscalls_domains : forall atbl stbl,
   refine_syscalls atbl stbl ->
   syscall_domains atbl stbl.
-Admitted.
+Proof.
+  intros atbl stbl REFS.
+  intro addr.
+  specialize (REFS addr).
+  split.
+  - intros [? AGET].
+    rewrite AGET in REFS.
+    destruct (Symbolic.get_syscall stbl addr) eqn:SGET.
+    + eexists; reflexivity.
+    + destruct REFS.
+  - intros [? SGET].
+    rewrite SGET in REFS.
+    destruct (Abs.get_syscall atbl addr) eqn:AGET.
+    + eexists; reflexivity.
+    + destruct REFS.
+Qed.
 
 Hypothesis refine_syscalls_correct : refine_syscalls atable stable.
 
@@ -285,8 +300,8 @@ Qed.
 Hypothesis syscall_sem :
   forall ac ast ast',
     Abs.sem ac ast = Some ast' ->
-       let '(imem,dmem,aregs,pc,b) := ast in
-       let '(imem',dmem',aregs',pc',b') := ast' in
+       let '(Abs.State imem dmem aregs pc b) := ast in
+       let '(Abs.State imem' dmem' aregs' pc' b') := ast' in
          imem = imem' /\ b' = b.
 
 (*We will need stronger assumption on symbolic system calls for fwd simulation?*)
@@ -420,7 +435,7 @@ Theorem backwards_simulation ast sst sst' :
     refine_state ast' sst'.
 Proof.
   intros REF SSTEP;
-  destruct ast as [[[[imem dmem] aregs] apc] b];
+  destruct ast as [imem dmem aregs apc b];
   destruct b.
   { (*1st case*)
     inversion SSTEP; subst;
@@ -490,7 +505,7 @@ Proof.
                apply H1 in H2
            end;
     (*Refine registers update - unsure about this part - it seems to still work*)
-    repeat match goal with
+     try match goal with
              | [H: refine_registers ?Aregs ?Regs, 
                  H1: get ?Aregs ?R = Some ?Old |- _] => 
                unfold refine_registers in H; destruct (H R Old) as [RSA RAS]; 
@@ -510,17 +525,17 @@ Proof.
           by (eexists; eauto);
           destruct (DOMAIN W) as [ASDOM SADOM];
           apply SADOM in EGETCALL; destruct EGETCALL;
-          assert (REF: refine_state (imem,dmem,aregs,pc,true) 
+          assert (REF: refine_state (Abs.State imem dmem aregs pc true) 
                                     (Symbolic.State mem reg pc@tpc int))
             by (repeat (split; auto));
-          destruct (syscalls_backwards_simulation (imem,dmem,aregs,pc,true) 
+          destruct (syscalls_backwards_simulation (Abs.State imem dmem aregs pc true) 
                                                   (Symbolic.State mem reg pc@tpc int)
                                                   W
                                                   refine_syscalls_correct H1
                                                   REF CALL) as
               [ac [ast' [GETCALL' [CALL' FINALREF]]]];
-          destruct ast' as [[[[imem' dmem'] aregs'] apc'] b];
-          destruct (syscall_sem ac (imem,dmem,aregs,pc,true) CALL') as 
+          destruct ast' as [imem' dmem' aregs' apc' b];
+          destruct (syscall_sem ac (Abs.State imem dmem aregs pc true) CALL') as 
               [? ?];
           subst
         ) || fail 4 "Couldn't analyze syscall"
@@ -558,7 +573,7 @@ Proof.
     (*handle final state refinement*)
     repeat (match goal with
               | [H: decode_instr _ = Some (Jump _ _) 
-                   |- refine_state (_,_,_,_, valid_jmp ?Pc ?W) _] =>
+                   |- refine_state (Abs.State _ _ _ _ (valid_jmp ?Pc ?W)) _] =>
                 remember (valid_jmp Pc W) as b; destruct b; 
                 [left; unfold refine_normal_state; repeat (split; auto) | idtac]
               | [|- _ /\ _] => split; [eauto | idtac]
@@ -939,7 +954,7 @@ Theorem backwards_simulation_attacker ast sst sst' :
     refine_state ast' sst'.
 Proof.
   intros REF SSTEP.
-  destruct ast as [[[[imem dmem] aregs] apc] b].
+  destruct ast as [imem dmem aregs apc b].
   destruct b; inversion SSTEP; subst;
   unfold refine_state in REF; 
   destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT INV]]]]]];
@@ -951,7 +966,7 @@ Proof.
     assert (DOMAINR := reg_domain_preserved_by_equiv REFR REQUIV REFR').
     assert (EFETCH : exists id, get mem pc = Some i@(INSTR id)) by (eexists; eauto);
     apply REFI in EFETCH;
-    exists (imem, dmem', aregs', pc, true).
+    exists (Abs.State imem dmem' aregs' pc true).
     destruct INV as [ITAGGED [VTAGGED ETAGGED]].
     split; [econstructor(eauto) | split; auto].
     split; auto.
