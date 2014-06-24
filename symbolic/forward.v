@@ -44,25 +44,6 @@ Hint Resolve kernel_invariant_upd_mem.
 Hint Resolve kernel_invariant_upd_reg.
 Hint Resolve kernel_invariant_store_mvec.
 
-Ltac match_inv :=
-  repeat match goal with
-  | H : bind (fun x : _ => _) _ = Some _ |- _ =>
-    apply bind_inv in H;
-    let x := fresh x in
-    let E := fresh "E" in
-    destruct H as (x & H & E);
-    simpl in H; simpl in E
-  | H : (if ?b then _ else _) = Some _ |- _ =>
-    let E := fresh "E" in
-    destruct b eqn:E;
-    try discriminate
-  | H : match ?E with _ => _ end = _ |- _ =>
-    destruct E eqn:?; try discriminate
-  | H : Some _ = Some _ |- _ => inv H
-  | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
-  | H : True |- _ => clear H
-  end.
-
 Hint Unfold Concrete.next_state_reg.
 Hint Unfold Concrete.next_state_reg_and_pc.
 Hint Unfold Concrete.next_state_pc.

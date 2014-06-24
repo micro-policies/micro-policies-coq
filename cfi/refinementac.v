@@ -32,25 +32,6 @@ Variable table : list (Abstract.syscall mt).
 Definition amachine := Abstract.abstract_cfi_machine table valid_jmp.
 Definition cmachine := concrete_cfi_machine ops valid_jmp masks.
 
-Ltac match_inv :=
-  repeat match goal with
-  | H : bind (fun x : _ => _) _ = Some _ |- _ =>
-    apply bind_inv in H;
-    let x := fresh x in
-    let E := fresh "E" in
-    destruct H as (x & H & E);
-    simpl in H; simpl in E
-  | H : (if ?b then _ else _) = Some _ |- _ =>
-    let E := fresh "E" in
-    destruct b eqn:E;
-    try discriminate
-  | H : match ?E with _ => _ end = _ |- _ =>
-    destruct E eqn:?; try discriminate
-  | H : Some _ = Some _ |- _ => inv H
-  | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
-  | H : True |- _ => clear H
-  end.
-
 Definition refine_dmemory (admem : Abstract.dmemory mt) (cmem : Concrete.memory mt) :=
   forall w x,
     Concrete.get_mem cmem w = Some x@(tag_to_word (USER DATA)) <->
