@@ -312,29 +312,29 @@ Definition seal_segment : @relocatable_segment t w w :=
         extract_user_tag ri3 rb ri3 ++
         if_ rb [] [Halt _] ++
         [Const _ (Z_to_imm 3) ri5;
-         Binop _ AND ri3 ri5 ri3] ++
-        if_ ri3 [Halt _] [] ++
+         Binop _ AND ri3 ri5 ri5] ++
+        if_ ri5 [Halt _] [] ++
         (* Ensure that second argument is tagged KEY, halting otherwise *)
-        [GetTag _ syscall_arg2 ri3] ++
-        extract_user_tag ri3 rb ri3 ++
+        [GetTag _ syscall_arg2 ri4] ++
+        extract_user_tag ri4 rb ri4 ++
         if_ rb [] [Halt _] ++
-        [Binop _ AND ri3 ri5 ri3; (* ri5 == 3 *)
+        [Const _ (Z_to_imm 3) ri5;
+         Binop _ AND ri4 ri5 ri4;
          Const _ (Z_to_imm 1) ri5;
-         Binop _ EQ ri5 ri3 ri3] ++
-        if_ ri3 [] [Halt _] ++
+         Binop _ EQ ri5 ri4 ri5] ++
+        if_ ri5 [] [Halt _] ++
         (* Form SEALED tag *)
         [Const _ (Z_to_imm 2) ri5;
-         GetTag _ syscall_arg2 ri3;
-         Binop _ OR ri5 ri3 ri3] ++
-        wrap_user_tag ri3 ri3 ++
-        [PutTag _ syscall_arg1 ri3 syscall_ret] ++
+         Binop _ OR ri5 ri4 ri4] ++
+        wrap_user_tag ri4 ri4 ++
+        [PutTag _ syscall_arg1 ri4 syscall_ret] ++
         (* Check that return PC is tagged DATA *)
         [GetTag _ ra ri3] ++
         extract_user_tag ri3 rb ri3 ++
         if_ rb [] [Halt _] ++
-        [Const _ (Z_to_imm 0) ri4;
-         Binop _ EQ ri3 ri4 ri3] ++
-        if_ ri3 [Jump _ ra] [Halt _]
+        [Const _ (Z_to_imm 0) ri5;
+         Binop _ EQ ri3 ri5 ri5] ++
+        if_ ri5 [Jump _ ra] [Halt _]
   ).
 
 Definition unseal_segment : @relocatable_segment t w w :=
@@ -376,6 +376,10 @@ Definition hello_world2 : @relocatable_segment t (list w) atom :=
       [mkkey; seal; unseal] => 
         [
           Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
+          Jal t (Int32.repr 25);
+          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (Z_to_imm 17) syscall_arg1;
+          Mov _ syscall_ret syscall_arg2;
           Jal t (Int32.repr 25)
         ]
     | _ => []
