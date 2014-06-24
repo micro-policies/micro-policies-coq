@@ -205,13 +205,13 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
   | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
   end.
 
-Definition user_code (f : list w -> list (instr t))
+Definition user_code (f : w -> list w -> list (instr t))
                    : @relocatable_segment t (list w) atom := 
   (* This is hideous.  Will totally break if we add more system calls. *)
-  (length (f [Z_to_word 0; Z_to_word 0; Z_to_word 0]), 
-   fun _ syscall_addresses => 
+  (length (f (Z_to_word 0) [Z_to_word 0; Z_to_word 0; Z_to_word 0]), 
+   fun base syscall_addresses => 
      map (fun x => Atom (encode_instr x) (encode_sealing_tag Sym.DATA)) 
-         (f syscall_addresses)).
+         (f base syscall_addresses)).
 
 (* ---------------------------------------------------------------- *)
 (* Main definitions *)
@@ -253,7 +253,15 @@ Definition transfer_function : list (instr t) :=
       [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
        Const _ (Z_to_imm (word_to_Z DATA)) rtr
       ])
-  (* BINOP *)
+  (* MOV *)
+  ([ Const _ (op_to_imm MOV) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     (assert_DATA rtpc ++ assert_DATA rti ++
+      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+       Mov _ rt1 rtr
+      ])
+  (* BINOPs *)
   (let binop cont b := 
          [ Const _ (op_to_imm (BINOP b)) ri1;
            Binop _ EQ rop ri1 ri1 ] ++
@@ -265,18 +273,24 @@ Definition transfer_function : list (instr t) :=
             ]) 
            cont) in
     fold_left binop binops 
-  (* MOV *)
-  ([ Const _ (op_to_imm MOV) ri1;
+  (* LOAD *)
+  ([ Const _ (op_to_imm LOAD) ri1;
      Binop _ EQ rop ri1 ri1 ] ++
    (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++
+     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
       [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
-       Mov _ rt1 rtr
+       Mov _ rt2 rtr
       ])
-  (* ELSE: TODO... *)
-  ([Const _ (Z_to_imm 0) rtrpc;
-    Const _ (Z_to_imm 0) rtr
-   ])))))))))). 
+  (* STORE *)
+  ([ Const _ (op_to_imm STORE) ri1;
+     Binop _ EQ rop ri1 ri1 ] ++
+   (if_ ri1 
+     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
+      [Const _ (Z_to_imm (word_to_Z DATA)) rtrpc;
+       Mov _ rt2 rtr
+      ])
+  (* Unknown opcode: Halt *)
+  ([Halt _])))))))))))))). 
 
 Definition fault_handler : @relocatable_segment t w w :=
   kernel_code (handler t ops fhp transfer_function).
@@ -582,18 +596,18 @@ Definition trace := tracen 10000.
 (* Tests... *)
 
 Definition hello_world0 : @relocatable_segment t (list w) atom :=
-  user_code (fun _ => [ 
+  user_code (fun _ _ => [ 
      Const t (Z_to_imm 2) (Int32.repr 25)
   ]).
 
 Definition hello_world1 : @relocatable_segment t (list w) atom :=
-  user_code (fun _ => [
+  user_code (fun _ _ => [
     Const t (Z_to_imm 2) (Int32.repr 25);
     Binop t ADD (Int32.repr 25) (Int32.repr 25) (Int32.repr 26)
   ]).
 
 Definition hello_world2 : @relocatable_segment t (list w) atom :=
-  user_code (fun syscall_addresses =>
+  user_code (fun _ syscall_addresses =>
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
         [
@@ -609,7 +623,7 @@ Definition hello_world2 : @relocatable_segment t (list w) atom :=
 
 (* double seal: should fail *)
 Definition hello_world3 : @relocatable_segment t (list w) atom :=
-  user_code (fun syscall_addresses =>
+  user_code (fun _ syscall_addresses =>
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
         [
@@ -625,8 +639,9 @@ Definition hello_world3 : @relocatable_segment t (list w) atom :=
     | _ => []
     end).
 
+(* Test seal-then-unseal *)
 Definition hello_world4 : @relocatable_segment t (list w) atom :=
-  user_code (fun syscall_addresses =>
+  user_code (fun _ syscall_addresses =>
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
         [
@@ -643,7 +658,30 @@ Definition hello_world4 : @relocatable_segment t (list w) atom :=
     | _ => []
     end).
 
-Compute (tracen 2000 hello_world4). 
+(* Test store and load *)
+Definition hello_world5 : @relocatable_segment t (list w) atom :=
+  user_code (fun base syscall_addresses =>
+    let data := Z_to_imm (word_to_Z (add_word base (Int32.repr 0))) in
+    match syscall_addresses with 
+      [mkkey; seal; unseal] => 
+        [
+          (* DATA BLOCK *)
+          Nop _;
+          (* As before, make up a key and seal 17 with it *)
+          Const _ (Z_to_imm (word_to_Z mkkey)) (Int32.repr 25);
+          Jal t (Int32.repr 25);
+          Mov _ syscall_ret syscall_arg2;
+          Const _ (Z_to_imm (word_to_Z seal)) (Int32.repr 25);
+          Const _ (Z_to_imm 17) syscall_arg1;
+          Jal t (Int32.repr 25);
+          (* Store it in the data block *)
+          Const _ data (Int32.repr 25);
+          Store t (Int32.repr 25) syscall_ret
+        ]
+    | _ => []
+    end).
+
+Compute (tracen 2000 hello_world5). 
 
 (*
 Definition print_res_state n init :=
