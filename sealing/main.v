@@ -306,10 +306,36 @@ Definition mkkey_segment : @relocatable_segment t w w :=
           ]).
 
 Definition seal_segment : @relocatable_segment t w w :=
-  gen_syscall_code (fun _ (extra : w) => [
-          (* TODO: More here! *)
-          Jump _ ra
-          ]).
+  gen_syscall_code (fun _ (extra : w) =>
+        (* Ensure that first argument is tagged DATA, halting otherwise *)
+        [GetTag _ syscall_arg1 ri3] ++
+        extract_user_tag ri3 rb ri3 ++
+        if_ rb [] [Halt _] ++
+        [Const _ (Z_to_imm 3) ri5;
+         Binop _ AND ri3 ri5 ri3] ++
+        if_ ri3 [Halt _] [] ++
+        (* Ensure that second argument is tagged KEY, halting otherwise *)
+        [GetTag _ syscall_arg2 ri3] ++
+        extract_user_tag ri3 rb ri3 ++
+        if_ rb [] [Halt _] ++
+        [Binop _ AND ri3 ri5 ri3; (* ri5 == 3 *)
+         Const _ (Z_to_imm 1) ri5;
+         Binop _ EQ ri5 ri3 ri3] ++
+        if_ ri3 [] [Halt _] ++
+        (* Form SEALED tag *)
+        [Const _ (Z_to_imm 2) ri5;
+         GetTag _ syscall_arg2 ri3;
+         Binop _ OR ri5 ri3 ri3] ++
+        wrap_user_tag ri3 ri3 ++
+        [PutTag _ syscall_arg1 ri3 syscall_ret] ++
+        (* Check that return PC is tagged DATA *)
+        [GetTag _ ra ri3] ++
+        extract_user_tag ri3 rb ri3 ++
+        if_ rb [] [Halt _] ++
+        [Const _ (Z_to_imm 0) ri4;
+         Binop _ EQ ri3 ri4 ri3] ++
+        if_ ri3 [Jump _ ra] [Halt _]
+  ).
 
 Definition unseal_segment : @relocatable_segment t w w :=
   gen_syscall_code (fun _ (extra : w) => [

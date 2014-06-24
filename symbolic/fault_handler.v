@@ -312,6 +312,7 @@ End fault_handler.
 
 Arguments rtrpc {_ _}.
 Arguments rtr {_ _}.
+Arguments rb {_ _}.
 Arguments ri1 {_ _}.
 Arguments ri2 {_ _}.
 Arguments ri3 {_ _}.
