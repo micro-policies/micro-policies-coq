@@ -182,20 +182,15 @@ Definition succ (st : state) (st' : state) : bool :=
 Definition initial (s : state) := 
   let '(_,_,_,_,cont) := s in cont = true.
 
-Program Instance abstract_cfi_machine : cfi_machine t := {|
+Program Instance abstract_cfi_machine : cfi_machine := {|
   state := state;
   initial s := initial s;
 
   step := step;
   step_a := step_a;
 
-  get_pc s := let '(_,_,_,pc,_) := s in pc;
-
   succ := succ
  |}.
-Next Obligation.
-  inversion H; subst. reflexivity.
-Qed.
 
 Definition S (xs : list state) :=
   exists s, xs = [s] /\ ~ exists s', step s s'.

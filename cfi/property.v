@@ -20,9 +20,6 @@ Class cfi_machine := {
   step : state -> state -> Prop;
   step_a : state -> state -> Prop;
 
-  get_pc : state -> word;
-  attacker_pc : forall s s', step_a s s' -> get_pc s = get_pc s';
-  
   succ : state -> state -> bool       
 }.
 
@@ -41,12 +38,13 @@ Definition zero_one_step := zero_one cfi_step.
 (* Execution will stop *)
 Variable S : list state -> Prop.
 
-(* Old definition of CFI (Abadi) *)
+(* Old definition of CFI (Abadi)
 Definition trace_has_cfi' (trace : list state) := 
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
              (step_a si sj /\ get_pc si = get_pc sj) 
           \/ succ si sj = true.
+*)
 
 (* Our new CFI definition *)
 Definition trace_has_cfi (trace : list state) := 

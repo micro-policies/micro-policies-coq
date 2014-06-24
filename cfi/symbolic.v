@@ -333,20 +333,15 @@ Definition initial (s : Symbolic.state t) :=
   no_violation s /\ instructions_tagged (Symbolic.mem s) /\
   valid_jmp_tagged (Symbolic.mem s) /\ entry_points_tagged (Symbolic.mem s).
 
-Program Instance symbolic_cfi_machine : cfi_machine t := {|
+Program Instance symbolic_cfi_machine : cfi_machine := {|
   state := Symbolic.state t;
   initial s := initial s;
   
   step := Symbolic.step table;
   step_a := step_a;
-  
-  get_pc s := common.val (Symbolic.pc s);
-  
+
   succ := ssucc      
  |}.
-Next Obligation.
-  inversion H. reflexivity.
-Qed.
 
 Definition S xs :=
   exists s, xs = [s] /\ ~ exists s', Symbolic.step table s s'.

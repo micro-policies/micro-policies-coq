@@ -15,18 +15,18 @@ Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}.
 
-Variable amachine : cfi_machine t.
-Variable cmachine : cfi_machine t.
+Variable amachine : cfi_machine.
+Variable cmachine : cfi_machine.
 
-Variable AS : (list (@state t amachine)) -> Prop.
+Variable AS : (list (@state amachine)) -> Prop.
 
-Variable CS : (list (@state t cmachine)) -> Prop.
+Variable CS : (list (@state cmachine)) -> Prop.
 
 (* General notion of refinement between two machines*)
-Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) := {
-  refine_state : ((@state t) amachine) -> ((@state t) cmachine) -> Prop;
+Class machine_refinement (amachine : cfi_machine) (cmachine : cfi_machine) := {
+  refine_state : (@state amachine) -> (@state cmachine) -> Prop;
  
-  visible : ((@state t) cmachine) -> ((@state t) cmachine) -> bool;
+  visible : (@state cmachine) -> (@state cmachine) -> bool;
 
   backwards_refinement_normal :  
     forall ast cst cst'
@@ -47,7 +47,7 @@ Class machine_refinement (amachine : cfi_machine t) (cmachine : cfi_machine t) :
 Context (rf : machine_refinement amachine cmachine).
 
 Inductive refine_traces :
-  list (@state t amachine) -> list (@state t cmachine) -> Prop :=
+  list (@state amachine) -> list (@state cmachine) -> Prop :=
 | TRNil : forall ast cst, 
             refine_state ast cst -> 
             refine_traces [ast] [cst]
@@ -77,27 +77,28 @@ Inductive refine_traces :
 
 Class machine_refinement_specs := {
 
-  step_classic : forall st st',
-    (step st st') \/ (~step st st');
+  step_classic : forall (cst cst': @state cmachine),
+    (step cst cst') \/ (~step cst cst');
   (* in a hurry it can be instantiated with classic axiom from Classical *)
 
-  initial_refine : forall (cst : @state t cmachine),
+  initial_refine : forall (cst : @state cmachine),
     initial cst ->
-    exists (ast : @state t amachine), initial ast /\ refine_state ast cst;
+    exists (ast : @state amachine), initial ast /\ refine_state ast cst;
 
   cfg_invisible : forall csi csj, 
     step csi csj ->
     visible csi csj = false ->
     succ csi csj = true;
 
-  cfg_equiv : forall (asi asj : @state t amachine) csi csj,
+  cfg_equiv : forall (asi asj : @state amachine) csi csj,
     refine_state asi csi ->
     refine_state asj csj ->
     succ asi asj = true ->
     succ csi csj = true;
 
-  
-  av_no_attacker : forall (asi asj : @state t amachine),
+  (* CH: I'm a curious how we discharge this one without making
+         strange assumptions on the shape of the CFG *)
+  av_no_attacker : forall (asi asj : @state amachine),
     succ asi asj = false ->
     step asi asj ->
     ~ step_a asi asj;
@@ -121,7 +122,7 @@ Context (rfs : machine_refinement_specs).
 (* nit: the final state is irrelevant for both intermstep and
         intermrstep, can we remove it and get of useless existentials? no :P *)
 Lemma backwards_refinement_traces_stronger
-    (ast : @state t amachine) cst cst' cxs :
+    (ast : @state amachine) cst cst' cxs :
   refine_state ast cst ->
   intermstep cmachine cxs cst cst' ->
   exists axs,
