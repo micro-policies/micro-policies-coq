@@ -828,19 +828,23 @@ match_inv;
 repeat subst_beq;
 have [miP _] := rmem;
 have [rpcb [mi_apcb rpci]] := refine_pc_inv rpc;
+
 repeat match goal with
   | GET : PartMaps.get ?reg ?r = Some ?v@V(?ty) |- _ =>
   match type_of reg with
   | Symbolic.registers _ =>
     match ty with
     | PTR _ =>
-eapply (refine_registers_get_ptr rregs) in R1W; destruct R1W as ((? & ?) & ? & ?)
+      (eapply (refine_registers_get_ptr rregs) in GET; destruct GET as ((? & ?) & ? & ?))
+        || let op := current_instr_opcode in fail 5 "refine_registers_get_ptr" op GET
     | _ =>
-    (eapply (refine_registers_get rregs) in GET; destruct GET as (? & ? & ?)) || let op := current_instr_opcode in
+    (eapply (refine_registers_get rregs) in GET; destruct GET as (? & ? & ?))
+        || let op := current_instr_opcode in
             fail 5 "refine_registers_get" op GET
     end
   end
   end;
+
 
 repeat match goal with
   | GET : PartMaps.get ?mem ?w1 = Some ?v@M(_,?ty) |- _ =>
@@ -886,9 +890,6 @@ match goal with
 end;
 
 try solve_pc rpci.
-
-(* Jump *)
-admit.
 
 (* Bnz *)
 admit.
