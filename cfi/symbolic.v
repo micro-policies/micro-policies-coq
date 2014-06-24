@@ -135,7 +135,14 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
 Definition instructions_tagged (mem : @Symbolic.memory t sym_cfi) :=
   forall addr i (id : word t), 
     get mem addr = Some i@(INSTR (Some id)) ->
-    id = addr. (*this seems redundant when we have the one below*)
+    id = addr. 
+
+Definition entry_points_tagged (mem : @Symbolic.memory t sym_cfi) :=
+  forall addr sc id,
+    get mem addr = None ->
+    Symbolic.get_syscall table addr = Some sc ->
+    Symbolic.entry_tag sc = INSTR (Some id) ->
+    id = addr.
 
 Definition valid_jmp_tagged (mem : @Symbolic.memory t sym_cfi) := 
   forall src dst,
@@ -173,6 +180,12 @@ Hypothesis syscall_preserves_valid_jmp_tags :
     valid_jmp_tagged (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
     valid_jmp_tagged (Symbolic.mem st').
+
+Hypothesis syscall_preserves_entry_tags :
+  forall sc st st',
+    entry_points_tagged (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    entry_points_tagged (Symbolic.mem st').
 
 Lemma itags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
   instructions_tagged (Symbolic.mem st) ->
@@ -303,6 +316,13 @@ Proof.
      match_inv;  eapply syscall_preserves_valid_jmp_tags; eauto.
 Qed.
 
+Lemma entry_point_tags_preserved_by_step 
+      (st : Symbolic.state t) (st' : Symbolic.state t) :
+  entry_points_tagged (Symbolic.mem st) ->
+  Symbolic.step table st st' ->
+  entry_points_tagged (Symbolic.mem st').
+Admitted.
+
 (* CH: I'm a bit skeptical about this; I thought we require quite a
    lot about how things are initially tagged
    TODO: What should this contain?
@@ -311,7 +331,7 @@ Qed.
 *)
 Definition initial (s : Symbolic.state t) := 
   no_violation s /\ instructions_tagged (Symbolic.mem s) /\
-  valid_jmp_tagged (Symbolic.mem s).
+  valid_jmp_tagged (Symbolic.mem s) /\ entry_points_tagged (Symbolic.mem s).
 
 Program Instance symbolic_cfi_machine : cfi_machine t := {|
   state := Symbolic.state t;

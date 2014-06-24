@@ -175,7 +175,8 @@ Qed.
 
 Definition symbolic_invariants (mem : Symbolic.memory t) := 
   Sym.instructions_tagged valid_jmp mem /\
-  Sym.valid_jmp_tagged stable mem.
+  Sym.valid_jmp_tagged stable mem /\
+  Sym.entry_points_tagged stable mem.
 
 Definition refine_state (ast : Abs.state t)
                         (sst : @Symbolic.state t sym_params) :=
@@ -301,6 +302,12 @@ Hypothesis syscall_preserves_valid_jmp_tags :
     Symbolic.sem sc st = Some st' ->
     Sym.valid_jmp_tagged stable (Symbolic.mem st').
 
+Hypothesis syscall_preserves_entry_tags :
+  forall sc st st',
+    Sym.entry_points_tagged stable (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.entry_points_tagged stable (Symbolic.mem st').
+
 Import Vector.VectorNotations.
 
 Lemma refine_registers_upd sreg sreg' areg r v tg v' tg' :
@@ -412,13 +419,13 @@ Theorem backwards_simulation ast sst sst' :
     Abs.step atable valid_jmp ast ast' /\
     refine_state ast' sst'.
 Proof.
-  intros REF SSTEP.
-  destruct ast as [[[[imem dmem] aregs] apc] b].
+  intros REF SSTEP;
+  destruct ast as [[[[imem dmem] aregs] apc] b];
   destruct b.
   { (*1st case*)
     inversion SSTEP; subst;
     destruct REF 
-      as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG VALIDTGS]]]]]]];
+      as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VALIDTGS ETG]]]]]]]];
     (*unfoldings and case analysis on tags*)
     repeat (
         match goal with
@@ -494,7 +501,7 @@ Proof.
                destruct (refine_registers_upd R V' T' H H1 H2) as [aregs' [? ?]]
                                                                     
            end; auto;
-    pose proof (refine_syscalls_domains refine_syscalls_correct) as DOMAIN.
+    pose proof (refine_syscalls_domains refine_syscalls_correct) as DOMAIN;
     (* put into context stuff required for syscalls *)
     match goal with
       | [H1: Symbolic.get_syscall _ ?W = Some _
@@ -518,10 +525,7 @@ Proof.
           subst
         ) || fail 4 "Couldn't analyze syscall"
       | |- _ => idtac
-    end. Focus 14. eexists; split.
-    eapply Abs.step_jump. eauto. eauto. eauto. eauto.
-    
-    
+    end;
     (*handle abstract steps*)
     repeat (match goal with 
               | [|- exists _,  _ /\ _] => eexists; split
@@ -583,141 +587,91 @@ Proof.
     repeat (
         match goal with
           | [H: INSTR _ = INSTR _ |- _] => inv H
-        end).
-    unfold Sym.valid_jmp_tagged in VALIDTGS. 
-    destruct (VALIDTGS _ _ H3) as [[? GET] [[I' GET'] | [GET' SCTG]]].
-    rewrite H2 in GET'. inversion GET'. subst.
-    exists w. rewrite GET in PC. inversion PC; subst.
-    split; auto.
-    rewrite GET' in H2. congruence.
-    destruct (H3 _ erefl) as [dst [TI VALID]]. clear H3.
-    subst. 
+        end);
+    try  match goal with
+           | [H: forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
+                           |- valid_jmp _ _ = true] =>
+             destruct (H _ erefl) as [? [? ?]]
+         end;
     try match goal with
           | [H: Sym.valid_jmp_tagged _ _,
-             H' : valid_jmp _ _ = true |- _] => 
+             H1: get imem ?Pc = Some _, (*only for selecting the right thing*)
+             H': valid_jmp ?Pc _ = true |- _] => 
             unfold Sym.valid_jmp_tagged in H;
-            destruct (H _ _ H') as [? ?] [[? ?] | [? ?]]]
-         end;
-     try match goal with
-           | [H: get ?Mem ?Pc
-
-    Focus 2. simpl in SSTEP. 
-    destruct (CORRECTNESS w 
+            destruct (H _ _ H') as [[? ?] [[? ?] | [? ?]]]
+  end;
+     repeat match goal with
+           | [H: get ?Mem ?Pc = Some ?I@_, H': get ?Mem ?Pc = Some ?I'@_ |- _] =>
+             rewrite H in H'; inversion H'
+           | [H: get ?Mem ?W = None, H': get ?Mem ?W = Some _ |- _] =>
+             rewrite H in H'; congruence
+            end;
+     subst;
     try match goal with
-          | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some _)), 
-              H1: decode_instr ?I = Some (Jump _ ?R), 
-              H2: get ?Reg ?R = Some ?W@_,
-              H3: get ?Mem ?W = Some _ |- _] =>
-              assert (EQ := jump_target_tagged Pc Mem Reg H H1 H2 H3);
-              assert (EQ' := jump_tagged Pc Mem H H1); inversion EQ'; subst
-          | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some _)), 
-              H1: decode_instr ?I = Some (Jump _ ?R), 
-              H2: get ?Reg ?R = Some ?W@_,
-              H3: get ?Mem ?W = None,
-              H4: Symbolic.get_syscall stable ?W = Some ?Sc |- _] =>
-              assert (EQ := jump_entry_tagged Pc Mem Reg H H1 H2 H3 H4);
-              assert (EQ' := jump_tagged Pc Mem H H1); inversion EQ'; subst
-          | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some _)), 
-                H1: decode_instr ?I = Some (Jal _ ?R), 
-                H2: get ?Reg ?R = Some ?W@_,
-                H3: get ?Mem ?W = Some _ |- _] =>
-            assert (EQ := jal_target_tagged Pc Mem Reg H H1 H2 H3);
-              assert (EQ' := jal_tagged Pc Mem H H1); inversion EQ'; subst
-          | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some _)), 
-                H1: decode_instr ?I = Some (Jal _ ?R), 
-                H2: get ?Reg ?R = Some ?W@_,
-                H3: get ?Mem ?W = None,
-                H4: Symbolic.get_syscall stable ?W = Some ?Sc |- _] =>
-              assert (EQ := jal_entry_tagged Pc Mem Reg H H1 H2 H3 H4);
-              assert (EQ' := jal_tagged Pc Mem H H1); inversion EQ'; subst
-        end; 
-   try  match goal with
-          | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-            exists W; split; auto
-          | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-             H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                           |- valid_jmp _ _ = true] =>
-            destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-            inv TI'; auto
-        end; eauto.
-    (*these should somehow become 1, but I am not sure what's wrong*)
-Admitted.
-      match goal with
-        | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-          exists W; split; auto
-        | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-               H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                         |- valid_jmp _ _ = true] =>
-           destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-           inv TI'; auto
-      end.
-      match goal with
-        | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-          exists W; split; auto
-        | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-               H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                         |- valid_jmp _ _ = true] =>
-           destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-           inv TI'; auto
-      end.
-      match goal with
-        | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-          exists W; split; auto
-        | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-               H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                         |- valid_jmp _ _ = true] =>
-           destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-           inv TI'; auto
-      end.
-      match goal with
-        | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-          exists W; split; auto
-        | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-               H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                         |- valid_jmp _ _ = true] =>
-           destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-           inv TI'; auto
-      end.
-      match goal with
-        | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-          exists W; split; auto
-        | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-               H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                         |- valid_jmp _ _ = true] =>
-           destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-           inv TI'; auto
-      end.
-      match goal with
-        | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-          exists W; split; auto
-        | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-               H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                         |- valid_jmp _ _ = true] =>
-           destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-           inv TI'; auto
-      end.
-      match goal with
-        | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-          exists W; split; auto
-        | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-               H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                         |- valid_jmp _ _ = true] =>
-           destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-           inv TI'; auto
-      end.
-      match goal with
-        | [|- exists _, INSTR (Some ?W) = INSTR _ /\ valid_jmp _ _ = true] =>
-          exists W; split; auto
-        | [H0': get mem ?W = Some _@(INSTR (Some ?W)), 
-               H': forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                         |- valid_jmp _ _ = true] =>
-           destruct (H' W erefl) as [dst' [TI' VALID']]; try (rewrite EQ in TI'); 
-           inv TI'; auto
-      end.           
+          | [H: Sym.instructions_tagged _ _, 
+              H': get ?Mem ?Pc = Some _@(INSTR _),
+              H'': get ?Mem ?W = Some _@(INSTR _)   
+             |- valid_jmp ?Pc ?W = true] =>
+            assert (EQ := ITG _ _ _ H'); 
+            assert (EQ' := ITG _ _ _ H'');
+            subst       
+          | [HE: Sym.entry_points_tagged _ _,
+              HI: Sym.instructions_tagged _ _,
+              H': get ?Mem ?Pc = Some _@(INSTR _),
+              H'': get ?Mem ?W = None,
+              H''': Symbolic.get_syscall _ ?W = Some _,
+              H'''': Symbolic.entry_tag _ = INSTR _
+              |- valid_jmp ?Pc ?W = true] =>
+              assert (EQ := HI _ _ _ H');
+              assert (EQ' := HE _ _ _ H'' H''' H''''); subst                    
+        end;
+     try match goal with
+           | [|- exists _, _ /\ _] => eexists; eauto
+           | [H: valid_jmp ?Pc ?W = true 
+              |- valid_jmp ?Pc ?W = true] => assumption
+         end;
+    (*handling syscall case*)
+    repeat match goal with
+          | [H: exists _, Symbolic.get_syscall _ _ = Some _ /\ _ |- _] =>
+            destruct H as [? [? ?]]
+          | [H: Symbolic.get_syscall _ _ = Some _,
+             H': Symbolic.get_syscall _ _ = Some _ |- _ /\ _] =>
+            rewrite H in H'; inv H'; split; eauto
+           end; auto;
+    (*re-establishing invariants*)
+    match goal with
+      | [H: Symbolic.step _ ?St ?St',
+         H1: Sym.instructions_tagged _ ?Mem,
+         H2: Sym.entry_points_tagged _ _,
+         H3: Sym.valid_jmp_tagged _ _ |- symbolic_invariants ?Mem'] =>
+        unfold symbolic_invariants;
+        assert (MEMRT: Mem = Symbolic.mem St)
+          by reflexivity;
+        assert (MERT': Mem' = Symbolic.mem St') 
+          by reflexivity;
+        rewrite MERT'; rewrite MEMRT in H1 H2 H3; split; [idtac | split]
+    end;
+    try match goal with
+      | [H: Sym.instructions_tagged _ _,
+         H': Symbolic.step _ _ _ |-
+         Sym.instructions_tagged _ _] =>
+        apply (Sym.itags_preserved_by_step 
+                 syscall_preserves_instruction_tags H H')
+      | [H: Sym.valid_jmp_tagged _ _,
+         H': Symbolic.step _ _ _ |-
+         Sym.valid_jmp_tagged _ _] =>
+        apply (Sym.valid_jmp_tagged_preserved_by_step 
+                 syscall_preserves_valid_jmp_tags H H')
+      | [H: Sym.entry_points_tagged _ _,
+         H': Symbolic.step _ _ _ |-
+         Sym.entry_points_tagged _ _] =>
+        apply (Sym.entry_point_tags_preserved_by_step
+                  H H') (*XXX: This will need a hypothesis when proved*)
+        end.         
   }
   { 
     inversion SSTEP; subst;
-    destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS SYSCORRECT]]]]];
+    destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT INV]]]]]];
     match goal with 
       | [H : refine_pc _ ?Pc@_, H': get _ ?Pc = Some ?I@?Ti |- _] => 
         destruct (CORRECTNESS I Ti H') as [? ABSURD]
@@ -743,35 +697,14 @@ Admitted.
         end); match_inv; subst; assert (false = true);
     try match goal with
           | [H: _ -> false = true |- false = true] => apply H
-        end;
+        end; try discriminate;
     repeat match goal with
              | [|- forall _, _] => intros
              | [H: INSTR _ = INSTR _ |- _] => inversion H; subst; clear H
              | [H: DATA = INSTR _ |- _] => inversion H
              | [|- exists _, _] => eexists; eauto
-           end; try discriminate.
+           end.
   }
-Grab Existential Variables.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
-discriminate.
 Qed.
 
 Definition untag_atom (a : atom (word t) (@cfi_tag t)) := common.val a.
