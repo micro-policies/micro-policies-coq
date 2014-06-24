@@ -198,6 +198,7 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
   | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
   end.
 
+(* BCP: Arguably the second argument to f should be a list of immediates... *)
 Definition user_code (f : w -> list w -> list (instr t))
                    : @relocatable_segment t (list w) atom := 
   (* This is hideous.  Will totally break if we add more system calls. *)
