@@ -665,8 +665,8 @@ Proof.
       | [H: Sym.entry_points_tagged _ _,
          H': Symbolic.step _ _ _ |-
          Sym.entry_points_tagged _ _] =>
-        apply (Sym.entry_point_tags_preserved_by_step
-                  H H') (*XXX: This will need a hypothesis when proved*)
+        apply (Sym.entry_point_tags_preserved_by_step 
+                 syscall_preserves_entry_tags H H') 
         end.         
   }
   { 
@@ -952,45 +952,85 @@ Proof.
     assert (EFETCH : exists id, get mem pc = Some i@(INSTR id)) by (eexists; eauto);
     apply REFI in EFETCH;
     exists (imem, dmem', aregs', pc, true).
-    split; [econstructor(eauto) | repeat (split; auto)].
-    { (*proof in case of no syscall*)
-      intros ? src TAG.
-      unfold Sym.equiv in MEQUIV.
-      assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
-      destruct (get mem pc) eqn:GET. 
-      { destruct (get mem' pc) eqn:GET'.
-        + destruct MEQUIV' as [a a' TG1 TG2 | a a0 id' id'' TG TG' EQ].
-        - destruct a as [av atg].
-          simpl in TG1. rewrite TG1 in GET. apply CORRECTNESS in GET.
-          assert (TRUE: true = true) by reflexivity.
-          destruct GET as [CORRECT ?].
-          destruct tpc as [opt_id|].
-          * destruct opt_id.
-            { apply CORRECT with (src := s) in TRUE.
-              destruct TRUE as [? [CONTRA ?]].
-              discriminate.
+    destruct INV as [ITAGGED [VTAGGED ETAGGED]].
+    split; [econstructor(eauto) | split; auto].
+    split; auto.
+    split; auto.
+    split.
+    unfold refine_pc. split; auto.
+    split. intros ? ? H.
+    { (*proof of correctness for instructions*)
+      split.
+      - intros ? src TAG.
+        unfold Sym.equiv in MEQUIV.
+        assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
+        destruct (get mem pc) eqn:GET. 
+        { destruct (get mem' pc) eqn:GET'.
+          + destruct MEQUIV' as [a a' TG1 TG2 | a a0 id' id'' TG TG' EQ].
+            - destruct a as [av atg].
+              simpl in TG1. rewrite TG1 in GET. apply CORRECTNESS in GET.
+              assert (TRUE: true = true) by reflexivity.
+              destruct GET as [CORRECT ?].
+              destruct tpc as [opt_id|].
+              * destruct opt_id.
+                { apply CORRECT with (src := s) in TRUE.
+                  destruct TRUE as [? [CONTRA ?]].
+                  discriminate.
+                  reflexivity.
+                }
+                { inversion TAG. }
+              * inversion TAG.
+            - subst. simpl in GET. destruct a0 as [a0_v a0_t]. 
+              apply CORRECTNESS in GET. destruct GET as [CORRECT ?].
+              assert (TRUE: true = true) by reflexivity.
+              simpl in TG. apply CORRECT with (src0 := src) in TRUE.
+              simpl in GET'. simpl in H. rewrite GET' in H. inversion H. subst a0_t.
+              subst ti. assumption.
               reflexivity.
-            }
-            { inversion TAG. }
-          * inversion TAG.
-        - subst. simpl in GET. destruct a0 as [a0_v a0_t]. 
-          apply CORRECTNESS in GET. destruct GET as [CORRECT ?].
-          assert (TRUE: true = true) by reflexivity.
-          simpl in TG. apply CORRECT with (src0 := src) in TRUE.
-          simpl in GET'. simpl in H. rewrite GET' in H. inversion H. subst a0_t.
-          subst ti. assumption.
-          reflexivity.
           + destruct MEQUIV'.
-      }
-      { destruct (get mem' pc) eqn:GET'.
-        - destruct MEQUIV'.
-        - simpl in H. simpl in GET'. rewrite GET' in H. discriminate.
-      }
+        }
+        { destruct (get mem' pc) eqn:GET'.
+          - destruct MEQUIV'.
+          - simpl in H. simpl in GET'. rewrite GET' in H. discriminate.
+        }
+      - intros ?. reflexivity.
     }
-    { (*proof syscall case*)
-      apply REFI' in EFETCH.
-      destruct EFETCH as [? CONTRA].
-      rewrite CONTRA in H. congruence.
+    { split.
+      - (*proof for syscall correctness*)
+        intros sc H GETCALL.
+        split.
+        + intros ? src TPC.
+          apply REFI' in EFETCH.
+          destruct EFETCH as [? CONTRA].
+          rewrite CONTRA in H. congruence.
+        + intros ?. reflexivity.
+      -  
+        match goal with
+          | [H: Sym.step_a _ ?St ?St',
+             H1: Sym.instructions_tagged _ ?Mem,
+             H2: Sym.entry_points_tagged _ _,
+             H3: Sym.valid_jmp_tagged _ _ |- symbolic_invariants ?Mem'] =>
+            unfold symbolic_invariants;
+              assert (MEMRT: Mem = Symbolic.mem St)
+                by reflexivity;
+              assert (MERT': Mem' = Symbolic.mem St') 
+                by reflexivity;
+              rewrite MERT'; rewrite MEMRT in H1 H2 H3; split; [idtac | split]
+        end;
+        try match goal with
+              | [H: Sym.instructions_tagged _ _,
+                  H': Sym.step_a _ _ _ |-
+                 Sym.instructions_tagged _ _] =>
+                apply (Sym.itags_preserved_by_step_a H H')
+      | [H: Sym.valid_jmp_tagged _ _,
+         H': Sym.step_a _ _ _ |-
+         Sym.valid_jmp_tagged _ _] =>
+        apply (Sym.valid_jmp_tagged_preserved_by_step_a H H')
+      | [H: Sym.entry_points_tagged _ _,
+         H': Sym.step_a _ _ _ |-
+         Sym.entry_points_tagged _ _] =>
+        apply (Sym.entry_point_tags_preserved_by_step_a H H') 
+        end.   
     }
   }
   { (*case a violation has happened*)
