@@ -432,15 +432,10 @@ Proof.
   - apply (INV _ _ _ GET CALL ETAG).
 Qed.
 
-(* CH: I'm a bit skeptical about this; I thought we require quite a
-   lot about how things are initially tagged
-   TODO: What should this contain?
-   - no violation
-   - instructions tagged "the right way"
-*)
 Definition initial (s : Symbolic.state t) := 
   (common.tag (Symbolic.pc s)) = DATA /\
-  no_violation s /\ instructions_tagged (Symbolic.mem s) /\
+  no_violation s /\ (* CH: doesn't this follow from tag(pc) = DATA? *)
+  instructions_tagged (Symbolic.mem s) /\
   valid_jmp_tagged (Symbolic.mem s) /\ entry_points_tagged (Symbolic.mem s).
 
 Program Instance symbolic_cfi_machine : cfi_machine := {|
