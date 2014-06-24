@@ -300,8 +300,8 @@ Qed.
 Hypothesis syscall_sem :
   forall ac ast ast',
     Abs.sem ac ast = Some ast' ->
-       let '(Abs.State imem dmem aregs pc b) := ast in
-       let '(Abs.State imem' dmem' aregs' pc' b') := ast' in
+       let '(Abs.State imem _ _ _ b) := ast in
+       let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
 
 (*We will need stronger assumption on symbolic system calls for fwd simulation?*)

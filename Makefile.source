@@ -31,7 +31,7 @@ cfi/rules.v
 cfi/symbolic.v
 cfi/refinementAS.v
 cfi/preservation.v
-#cfi/preservationAS.v
+cfi/preservationAS.v
 # old files:
 #cfi/concrete_cfi.v
 #cfi/concrete_kernel.v

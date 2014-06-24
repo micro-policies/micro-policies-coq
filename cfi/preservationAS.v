@@ -55,8 +55,8 @@ Hypothesis ref_sc_correct : refine_sc.
 Hypothesis syscall_sem :
   forall ac ast ast',
     Abs.sem ac ast = Some ast' ->
-       let '(imem,dmem,aregs,pc,b) := ast in
-       let '(imem',dmem',aregs',pc',b') := ast' in
+       let '(Abs.State imem _ _ _ b) := ast in
+       let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
 
 Hypothesis syscall_preserves_instruction_tags :
@@ -80,10 +80,12 @@ Hypothesis syscall_preserves_entry_tags :
 
 Definition backwards_simulation := 
   RefinementAS.backwards_simulation ref_sc_correct syscall_sem 
-                                    syscall_preserves_instruction_tags syscall_preserves_valid_jmp_tags
+                                    syscall_preserves_instruction_tags 
+                                    syscall_preserves_valid_jmp_tags
                                     syscall_preserves_entry_tags.
 
-(* For initial states - may need to think a bit about how to structure the whole thing*)
+(* For initial states - may need to think a bit about how to structure 
+   the whole thing*)
 Lemma untag_implies_reg_refinement reg :
   RefinementAS.refine_registers (Map.map RefinementAS.untag_atom reg) reg.
 Proof.
@@ -152,6 +154,10 @@ Proof.
      + simpl in GET. congruence.
 Qed.
 
+Hint Resolve untag_instr_implies_imem_refinement.
+Hint Resolve untag_data_implies_dmem_refinement.
+Hint Resolve untag_implies_reg_refinement.
+
 Program Instance cfi_refinementAS  : 
   (machine_refinement amachine smachine) := {
     refine_state st st' := RefinementAS.refine_state stable st st';
@@ -187,18 +193,22 @@ Next Obligation. (*step or no step*)
   by apply classic. 
 Qed.
 Next Obligation. (*initial state*)
-  destruct H as [NOV [ITG [VTG ETG]]].
+  destruct H as [TPC [NOV [ITG [VTG ETG]]]].
   destruct cst as [mem reg [pc tpc] int].
-  remember ((Map.map RefinementAS.untag_atom (filter RefinementAS.is_data mem))) as dmem.
-  remember ((Map.map RefinementAS.untag_atom (filter is_instr mem))) as imem.
-  remember (Map.map RefinementAS.untag_atom reg) as areg.
-  exists (imem,dmem,areg,pc,true).
-  
-  
-  Admitted. (* TODO: using map/filter mechanism now used for attacker *)
+  exists (Abs.State (Map.map RefinementAS.untag_atom (filter is_instr mem)) 
+                    ((Map.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)))
+                    (Map.map RefinementAS.untag_atom reg) pc true).
+  split.
+  - unfold Abs.initial. reflexivity.
+  - unfold RefinementAS.refine_state. repeat (split; eauto).
+    intros ? ? TPC'.
+    simpl in TPC. rewrite TPC in TPC'; congruence.
+    intros ? ? TPC'. simpl in TPC. rewrite TPC in TPC'.
+    congruence.
+Qed.
 Next Obligation.
-  destruct asi as [[[[imem dmem] aregs] apc] b], 
-           asj as [[[[imem' dmem'] aregs'] apc'] b'].
+  destruct asi as [imem dmem aregs apc b], 
+           asj as [imem' dmem' aregs' apc' b'].
   destruct csi as [mem regs [spc tpc] int].
   destruct csj as [mem' regs' [spc' tpc'] int'].
   destruct H as [REFI [REFD [REFR [REFPC ?]]]].
@@ -250,8 +260,8 @@ Next Obligation.
 Qed.
 Next Obligation.
   unfold Abs.succ in H1. 
-  destruct ast as [[[[imem dmem] aregs] apc] b],
-           ast' as [[[[imem' dmem'] aregs'] apc'] b'].
+  destruct ast as [imem dmem aregs apc b],
+           ast' as [imem' dmem' aregs' apc' b'].
   destruct cst as [mem reg [pc tpc] int].
   destruct cst' as [mem' reg' [pc' tpc'] int'].
   destruct H as [REFI [REFD [REFR [REFPC CORRECT]]]],

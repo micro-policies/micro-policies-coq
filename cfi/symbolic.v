@@ -439,6 +439,7 @@ Qed.
    - instructions tagged "the right way"
 *)
 Definition initial (s : Symbolic.state t) := 
+  (common.tag (Symbolic.pc s)) = DATA /\
   no_violation s /\ instructions_tagged (Symbolic.mem s) /\
   valid_jmp_tagged (Symbolic.mem s) /\ entry_points_tagged (Symbolic.mem s).
 
@@ -448,7 +449,7 @@ Program Instance symbolic_cfi_machine : cfi_machine := {|
   
   step := Symbolic.step table;
   step_a := step_a;
-
+  
   succ := ssucc      
  |}.
 
