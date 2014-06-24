@@ -1,6 +1,6 @@
 Require Import List Arith ZArith Bool.
 Require Import Coq.Classes.SetoidDec.
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.ordered.
 
 Require Import utils.
@@ -18,6 +18,7 @@ Inductive binop :=
 | LEQ
 | AND
 | OR
+| XOR
 | SHRU
 | SHL.
 
@@ -29,9 +30,21 @@ Definition binops := [
   LEQ;
   AND;
   OR;
+  XOR;
   SHRU;
   SHL
   ].
+
+Scheme Equality for binop.
+
+Lemma binop_eqP : Equality.axiom binop_beq.
+Proof. by do !case; constructor. Qed.
+
+Definition binop_eqMixin := EqMixin binop_eqP.
+Canonical binop_eqType := Eval hnf in EqType binop binop_eqMixin.
+
+Lemma binopsP : forall b : binop, b \in binops.
+Proof. by case. Qed.
 
 Inductive opcode : Set :=
 | NOP
@@ -70,6 +83,7 @@ Definition opcodes :=
    BINOP LEQ;
    BINOP AND;
    BINOP OR;
+   BINOP XOR;
    BINOP SHRU;
    BINOP SHL;
    LOAD;
@@ -84,14 +98,8 @@ Definition opcodes :=
    HALT;
    SERVICE].
 
-(* This should be a proof by reflection... *)
-Lemma opcodesP : forall op, In op opcodes.
-Proof.
-  intros []; try intros []; vm_compute;
-  repeat match goal with
-  | |- _ \/ _ => (left; reflexivity) || right
-  end.
-Qed.
+Lemma opcodesP : forall op, op \in opcodes.
+Proof. by do !case. Qed.
 
 Record machine_types := {
   word : eqType;
@@ -400,10 +408,11 @@ Definition Z_to_op (z : Z) : option opcode :=
   | 17 => Some (BINOP LEQ)
   | 18 => Some (BINOP AND)
   | 19 => Some (BINOP OR)
-  | 20 => Some (BINOP SHRU)
-  | 21 => Some (BINOP SHL)
-  | 22 => Some HALT
-  | 23 => Some SERVICE
+  | 20 => Some (BINOP XOR)
+  | 21 => Some (BINOP SHRU)
+  | 22 => Some (BINOP SHL)
+  | 23 => Some HALT
+  | 24 => Some SERVICE
   | _  => None
   end.
 
@@ -428,10 +437,11 @@ Definition op_to_Z (o : opcode) : Z :=
   | BINOP LEQ  => 17
   | BINOP AND  => 18
   | BINOP OR   => 19
-  | BINOP SHRU => 20
-  | BINOP SHL  => 21
-  | HALT       => 22
-  | SERVICE    => 23
+  | BINOP XOR  => 20
+  | BINOP SHRU => 21
+  | BINOP SHL  => 22
+  | HALT       => 23
+  | SERVICE    => 24
   end.
 
 Definition word_to_op (w : word t) : option opcode :=
@@ -535,15 +545,15 @@ Definition concat_and_measure_relocatable_segments
            : relocatable_segment Args Cell * list nat :=
   fold_left
     (fun (p : relocatable_segment Args Cell * list nat)
-         (seg : relocatable_segment Args Cell) => 
-       let: (acc,addrs) := p in 
-       let (l1,gen1) := acc in       
-       let (l2,gen2) := seg in       
+         (seg : relocatable_segment Args Cell) =>
+       let: (acc,addrs) := p in
+       let (l1,gen1) := acc in
+       let (l2,gen2) := seg in
        let gen := fun (base : word t) (rest : Args) =>
                        (gen1 base rest)
                     ++ (gen2 (add_word base (nat_to_word l1)) rest) in
        let newseg := (l1+l2, gen) in
-       (newseg, addrs ++ [l1])) 
+       (newseg, addrs ++ [l1]))
     segs
     (empty_relocatable_segment _ _, []).
 

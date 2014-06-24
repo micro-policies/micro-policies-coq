@@ -119,6 +119,7 @@ Definition format_binop (b : binop) :=
    | LEQ => ss "LEQ"
    | AND => ss "AND"
    | OR => ss "OR"
+   | XOR => ss "XOR"
    | SHRU => ss "SHRU"
    | SHL => ss "SHL"
   end.

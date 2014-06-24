@@ -100,6 +100,7 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
                         else repr 0
     | AND => and
     | OR => or
+    | XOR => xor
     | SHRU => shru
     | SHL => shl
     end;
