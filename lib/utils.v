@@ -1820,6 +1820,48 @@ Qed.
 
 End exec.
 
+Section preservation.
+
+Variables X Y : Type.
+Variables (stepX : X -> X -> Prop) (stepY : Y -> Y -> Prop).
+Variables (P : X -> Prop) (Q : Y -> Prop).
+Variable (vis : Y -> bool). (* Whether a given state is visible or not *)
+Variable (ref : X -> Y -> Prop).
+
+Hypothesis ref_single :
+  forall x y y',
+    vis y = true -> vis y' = true ->
+    stepY y y' ->
+    ref x y ->
+    exists x', stepX x x' /\ ref x' y'.
+
+Hypothesis ref_mult :
+  forall x y yk yk' y',
+    vis y = true -> vis y' = true ->
+    stepY y yk ->
+    restricted_exec stepY (fun y => vis y = false) yk yk' ->
+    stepY yk' y' ->
+    ref x y ->
+    ref x y' \/
+    exists x', stepX x x' /\ ref x' y'.
+
+Hypothesis preservation :
+  forall x x', P x -> stepX x x' -> P x'.
+
+Hypothesis compatible :
+  forall x y, ref x y -> (P x <-> Q y).
+
+Hypothesis ref_vis : forall x y, ref x y -> vis y = true.
+
+Definition ref_weak x y :=
+  ref x y \/
+  exists y0 yk,
+    ref x y0 /\
+    stepY y0 yk /\
+    restricted_exec stepY (fun y => vis y = false) yk y.
+
+End preservation.
+
 Section vectors.
 
 Definition caseS A n (T : Vector.t A (S n) -> Type)
