@@ -16,7 +16,8 @@ Variables M K V : Type.
 Class partial_map := {
   get : M -> K -> option V;
   set : M -> K -> V -> M;
-  filter : (V -> bool) -> M -> M
+  filter : (V -> bool) -> M -> M;
+  empty : M
 }.
 
 Class axioms (pm : partial_map) := mkAxioms {
@@ -30,6 +31,7 @@ Class axioms (pm : partial_map) := mkAxioms {
   filter_correctness: forall (f : V -> bool) (m : M) (k : K),
                         get (filter f m) k = option_filter f (get m k)
 
+  (* TODO: Need some axioms about empty! *)
 }.
 
 Section with_classes.
@@ -382,5 +384,7 @@ Proof.
 Qed.
 
 End Filter.
+
+Arguments empty {_ _ _ _}. 
 
 End PartMaps.

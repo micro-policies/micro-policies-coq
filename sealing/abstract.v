@@ -152,6 +152,34 @@ Inductive step (st st' : state) : Prop :=
     (RET  : get reg ra =? VData pc)
     (NEXT : st' = State mem reg' pc ks),   step st st'.
 
+(* ---------------------------------------------------------------------- *)
+(* Building initial machine states *)
+
+Program Definition abstract_initial_state 
+      (user_mem : relocatable_segment (list (word t)) value) 
+      (base_addr : word t) (syscall_addrs : list (word t))
+      (user_regs : list (reg t))
+    : state := 
+  let (_, gen) := user_mem in
+  let mem_contents := gen base_addr syscall_addrs in 
+  let mem := 
+    snd (fold_left
+      (fun x c => let: (i,m) := x in (add_word (Z_to_word 1) i, PartMaps.set m i c))
+      mem_contents
+      (base_addr, @PartMaps.empty _ _ _ _))
+      in
+  let regs := 
+        fold_left
+          (fun regs r => PartMaps.set regs r (VData (Z_to_word 0)))
+           user_regs
+           (@PartMaps.empty _ _ _ _) in
+  {|  
+    mem := mem;
+    regs := regs;
+    pc := base_addr;
+    keys := []
+  |}.
+
 End WithClasses.
 
 End Abs.
@@ -159,3 +187,6 @@ End Abs.
 Arguments Abs.state t {_ _}.
 Arguments Abs.memory t {_ _}.
 Arguments Abs.registers t {_ _}.
+
+
+

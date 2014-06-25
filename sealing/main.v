@@ -65,20 +65,6 @@ Instance fhp : fault_handler.fault_handler_params t := {|
     [Const _ (word_to_imm x) r]
 |}.
 
-(* BCP: This is not the right place to define these: But it should be
-   someplace "user accessible", since user code (or at least the
-   compiler) is going to need to know which registers it is allowed to
-   use. *)
-Definition user_reg_min : reg concrete_int_32_t := Int32.repr 16. (* First user register *)
-Definition user_reg_max : reg concrete_int_32_t := Int32.repr 22. (* Last user register *)
-
-(* BCP: These have to be included in the range of user registers.
-   There should be a proof obligation to this effect somewhere. *)
-(* TODO: ARGH -- why can't I write 
-           syscall_ret  := user_reg_min;
-           syscall_arg1 := Int32.add (word_to_Z syscall_ret) (Int32.repr 1);
-         ?
-*)
 Global Instance scr : @syscall_regs t := {|
   syscall_ret  := Int32.repr 16;
   syscall_arg1 := Int32.repr 17;
@@ -90,76 +76,82 @@ Definition ruser2 := Int32.repr 20.
 Definition ruser3 := Int32.repr 21.
 Definition ruser4 := Int32.repr 22.
 
+Definition user_registers := 
+  [ra; syscall_ret; syscall_arg1; syscall_arg2; ruser1; 
+   ruser2; ruser3; ruser4].
+Definition user_reg_max := last user_registers (Int32.repr 0).
+
 Definition keytype := [eqType of nat].
 
 Definition max_element (l : list keytype) : keytype :=
-  fold_right maxn O l.
+ fold_right maxn O l.
 
 Lemma max_element_plus_one_is_distinct :
-  forall (l : list keytype),
-    ~(In (1 + max_element l) l).
+ forall (l : list keytype),
+   ~(In (1 + max_element l) l).
 Proof.
-  move => l.
-  have MAX: forall x, In x l -> x <= max_element l.
-  { elim: l => [|x' l IH] // x [-> | THERE] //=.
-    - by rewrite leq_max leqnn.
-    - by rewrite leq_max IH //= orb_true_r. }
-  move => CONTRA.
-  move: (MAX _ CONTRA).
-  rewrite /addn /addn_rec.
-  move/leP => LE.
-  omega.
+ move => l.
+ have MAX: forall x, In x l -> x <= max_element l.
+ { elim: l => [|x' l IH] // x [-> | THERE] //=.
+   - by rewrite leq_max leqnn.
+   - by rewrite leq_max IH //= orb_true_r. }
+ move => CONTRA.
+ move: (MAX _ CONTRA).
+ rewrite /addn /addn_rec.
+ move/leP => LE.
+ omega.
 Qed.
 
 Instance sk : Abs.sealing_key := {|
-  key := keytype;
-  mkkey_f := fun l => 1 + max_element l;
-  mkkey_fresh := max_element_plus_one_is_distinct
+ key := keytype;
+ mkkey_f := fun l => 1 + max_element l;
+ mkkey_fresh := max_element_plus_one_is_distinct
 |}.
 
 (* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
-   a different order from Int32PMap.get and Int32PMap.set?? *)
+  a different order from Int32PMap.get and Int32PMap.set?? *)
 
 (*
 Instance ap : Abs.params t := {|
-  memory    := Int32PMap.t (Abs.value t);
-  registers := Int32PMap.t (Abs.value t);
+ memory    := Int32PMap.t (Abs.value t);
+ registers := Int32PMap.t (Abs.value t);
 
-  am := {|
-    PartMaps.get mem i := Int32PMap.get i mem;
-    PartMaps.set mem i x := Int32PMap.set i x mem;
-    PartMaps.upd mem i x := match Int32PMap.get i mem with
-                              | Some _ => Some (Int32PMap.set i x mem)
-                              | None   => None
-                            end
-  |};
+ am := {|
+   PartMaps.get mem i := Int32PMap.get i mem;
+   PartMaps.set mem i x := Int32PMap.set i x mem;
+   PartMaps.upd mem i x := match Int32PMap.get i mem with
+                             | Some _ => Some (Int32PMap.set i x mem)
+                             | None   => None
+                           end
+ |};
 
-  ar := {|
-    PartMaps.get regs r := Int32PMap.get r regs;
-    PartMaps.set mem i x := Int32PMap.set i x mem;
-    PartMaps.upd regs r x := match Int32PMap.get r regs with
-                              | Some _ => Some (Int32PMap.set r x regs)
-                              | None   => None
-                            end
-  |}
+ ar := {|
+   PartMaps.get regs r := Int32PMap.get r regs;
+   PartMaps.set mem i x := Int32PMap.set i x mem;
+   PartMaps.upd regs r x := match Int32PMap.get r regs with
+                             | Some _ => Some (Int32PMap.set r x regs)
+                             | None   => None
+                           end
+ |}
 |}.
 *)
 
 Instance cp : Concrete.concrete_params t := {|
-  memory    := Int32PMap.t atom;
-  registers := Int32TMap.t atom;
+ memory    := Int32PMap.t atom;
+ registers := Int32TMap.t atom;
 
-  mem_class := {|
-    PartMaps.get mem i := Int32PMap.get i mem;
-    PartMaps.set mem i x := Int32PMap.set i x mem;
-    PartMaps.filter mem p := Int32PMap.filter mem p
-  |};
+ mem_class := {|
+   PartMaps.get mem i := Int32PMap.get i mem;
+   PartMaps.set mem i x := Int32PMap.set i x mem;
+   PartMaps.filter mem p := Int32PMap.filter mem p;
+   PartMaps.empty := @Int32PMap.empty _
+ |};
 
-  reg_class := {|
-    TotalMaps.get regs r := Int32TMap.get r regs;
-    (* BCP/MD: Why isn't this called 'set'? *)
-    TotalMaps.upd regs r x := Int32TMap.set r x regs
-  |}
+ reg_class := {|
+   TotalMaps.get regs r := Int32TMap.get r regs;
+   (* BCP/MD: Why isn't this called 'set'? *)
+   TotalMaps.upd regs r x := Int32TMap.set r x regs
+ |}
 |}.
 
 
@@ -167,255 +159,260 @@ Instance cp : Concrete.concrete_params t := {|
 
 (* Encoding of tags
 
-       DATA      --> 0
-       KEY(k)    --> k*4+1
-       SEALED(k) --> k*4+3
+      DATA      --> 0
+      KEY(k)    --> k*4+1
+      SEALED(k) --> k*4+3
 
-  Questions:
+ Questions:
 
-   - How should we really deal with user-code registers
+  - How should we really deal with user-code registers
 *)
 
 Definition kernel_data {X} l : @relocatable_segment t X w := 
-  (length l, fun _ _ => l).
+ (length l, fun _ _ => l).
 
 Definition kernel_code {X} l : @relocatable_segment t X w := 
-  (length l, 
-   fun _ _ => map encode_instr l).
+ (length l, 
+  fun _ _ => map encode_instr l).
 
 Instance sk_defs : Sym.sealing_key := {|
-  key := int_eqType;
-  max_key := Int32.repr 100;
-  inc_key := fun x => Int32.add x (Int32.repr 1);
-  ord_key := int_ordered
+ key := int_eqType;
+ max_key := Int32.repr 100;
+ inc_key := fun x => Int32.add x (Int32.repr 1);
+ ord_key := int_ordered
 |}.
 admit.
 Defined.
 
 Definition encode_sealing_tag (t : Sym.stag) : w := 
-  match t with
-    Sym.DATA => Z_to_word 0
-  | Sym.KEY k => add_word (Int32.repr 1) (Int32.shl k (Int32.repr 2))
-  | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
-  end.
+ match t with
+   Sym.DATA => Z_to_word 0
+ | Sym.KEY k => add_word (Int32.repr 1) (Int32.shl k (Int32.repr 2))
+ | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
+ end.
 
 (* BCP: Arguably the second argument to f should be a list of immediates... *)
 Definition user_code (f : w -> list w -> list (instr t))
-                   : @relocatable_segment t (list w) atom := 
-  (* This is hideous.  Will totally break if we add more system calls. *)
-  (length (f (Z_to_word 0) [Z_to_word 0; Z_to_word 0; Z_to_word 0]), 
-   fun base syscall_addresses => 
-     map (fun x => Atom (encode_instr x) (encode_sealing_tag Sym.DATA)) 
-         (f base syscall_addresses)).
+                  : @relocatable_segment t (list w) (instr t) := 
+ (* This is hideous.  Will totally break if we add more system calls. *)
+ (length (f (Z_to_word 0) [Z_to_word 0; Z_to_word 0; Z_to_word 0]), 
+  f).
 
 (* ---------------------------------------------------------------- *)
 (* Main definitions *)
 
 (* TODO: THINGS TO CLEAN:
-     - move code generation macros out of fault_handler.v
-     - make a switch macro
-     - check that there are no temp registers live across the transfer
-       function call from the falut handler
-     - the handling of the ut annotations on ENTRY tags
+    - move code generation macros out of fault_handler.v
+    - make a switch macro
+    - check that there are no temp registers live across the transfer
+      function call from the falut handler
+    - the handling of the ut annotations on ENTRY tags
 *)
 
 Definition DATA := encode_sealing_tag Sym.DATA.
 
 Definition transfer_function : list (instr t) :=
-  let assert_DATA r := [
-    Const _ (word_to_imm DATA) ri1;
-    Binop _ EQ r ri1 ri1 ] ++
-                           if_ ri1 [] [Halt _] 
-    in
-  (* entry points for system calls *)
-  ([ Const _ (op_to_imm SERVICE) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     []
-  (* NOP *)
-  ([ Const _ (op_to_imm NOP) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++
-      [Const _ (word_to_imm DATA) rtrpc;
-       Const _ (word_to_imm DATA) rtr
-      ])
-  (* CONST *)
-  ([ Const _ (op_to_imm CONST) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++
-      [Const _ (word_to_imm DATA) rtrpc;
-       Const _ (word_to_imm DATA) rtr
-      ])
-  (* MOV *)
-  ([ Const _ (op_to_imm MOV) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++
-      [Const _ (word_to_imm DATA) rtrpc;
-       Mov _ rt1 rtr
-      ])
-  (* BINOPs *)
-  (let binop cont b := 
-         [ Const _ (op_to_imm (BINOP b)) ri1;
-           Binop _ EQ rop ri1 ri1 ] ++
-         (if_ ri1 
-           (assert_DATA rtpc ++ assert_DATA rti ++
-            assert_DATA rt1 ++ assert_DATA rt2 ++
-            [Const _ (word_to_imm DATA) rtrpc;
-             Const _ (word_to_imm DATA) rtr
-            ]) 
-           cont) in
-    fold_left binop binops 
-  (* LOAD *)
-  ([ Const _ (op_to_imm LOAD) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-      [Const _ (word_to_imm DATA) rtrpc;
-       Mov _ rt2 rtr
-      ])
-  (* STORE *)
-  ([ Const _ (op_to_imm STORE) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-      [Const _ (word_to_imm DATA) rtrpc;
-       Mov _ rt2 rtr
-      ])
-  (* JUMP *)
-  ([ Const _ (op_to_imm JUMP) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++
-      [Const _ (word_to_imm DATA) rtrpc])
-  (* BNZ *)
-  ([ Const _ (op_to_imm BNZ) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-      [Const _ (word_to_imm DATA) rtrpc])
-  (* JAL *)
-  ([ Const _ (op_to_imm JAL) ri1;
-     Binop _ EQ rop ri1 ri1 ] ++
-   (if_ ri1 
-     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-      [Const _ (word_to_imm DATA) rtrpc;
-       Const _ (word_to_imm DATA) rtr])
-  (* Unknown opcode: Halt *)
-  ([Halt _])))))))))))))))))))). 
+ let assert_DATA r := [
+   Const _ (word_to_imm DATA) ri1;
+   Binop _ EQ r ri1 ri1 ] ++
+                          if_ ri1 [] [Halt _] 
+   in
+ (* entry points for system calls *)
+ ([ Const _ (op_to_imm SERVICE) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    []
+ (* NOP *)
+ ([ Const _ (op_to_imm NOP) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    (assert_DATA rtpc ++ assert_DATA rti ++
+     [Const _ (word_to_imm DATA) rtrpc;
+      Const _ (word_to_imm DATA) rtr
+     ])
+ (* CONST *)
+ ([ Const _ (op_to_imm CONST) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    (assert_DATA rtpc ++ assert_DATA rti ++
+     [Const _ (word_to_imm DATA) rtrpc;
+      Const _ (word_to_imm DATA) rtr
+     ])
+ (* MOV *)
+ ([ Const _ (op_to_imm MOV) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    (assert_DATA rtpc ++ assert_DATA rti ++
+     [Const _ (word_to_imm DATA) rtrpc;
+      Mov _ rt1 rtr
+     ])
+ (* BINOPs *)
+ (let binop cont b := 
+        [ Const _ (op_to_imm (BINOP b)) ri1;
+          Binop _ EQ rop ri1 ri1 ] ++
+        (if_ ri1 
+          (assert_DATA rtpc ++ assert_DATA rti ++
+           assert_DATA rt1 ++ assert_DATA rt2 ++
+           [Const _ (word_to_imm DATA) rtrpc;
+            Const _ (word_to_imm DATA) rtr
+           ]) 
+          cont) in
+   fold_left binop binops 
+ (* LOAD *)
+ ([ Const _ (op_to_imm LOAD) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
+     [Const _ (word_to_imm DATA) rtrpc;
+      Mov _ rt2 rtr
+     ])
+ (* STORE *)
+ ([ Const _ (op_to_imm STORE) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
+     [Const _ (word_to_imm DATA) rtrpc;
+      Mov _ rt2 rtr
+     ])
+ (* JUMP *)
+ ([ Const _ (op_to_imm JUMP) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    (assert_DATA rtpc ++ assert_DATA rti ++
+     [Const _ (word_to_imm DATA) rtrpc])
+ (* BNZ *)
+ ([ Const _ (op_to_imm BNZ) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
+     [Const _ (word_to_imm DATA) rtrpc])
+ (* JAL *)
+ ([ Const _ (op_to_imm JAL) ri1;
+    Binop _ EQ rop ri1 ri1 ] ++
+  (if_ ri1 
+    (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
+     [Const _ (word_to_imm DATA) rtrpc;
+      Const _ (word_to_imm DATA) rtr])
+ (* Unknown opcode: Halt *)
+ ([Halt _])))))))))))))))))))). 
 
 Definition fault_handler : @relocatable_segment t w w :=
-  kernel_code (fault_handler.handler t ops fhp transfer_function).
+ kernel_code (fault_handler.handler t ops fhp transfer_function).
 
 Definition extra_state : @relocatable_segment t w w := 
-  kernel_data [nat_to_word 13].
+ kernel_data [nat_to_word 13].
 
 Definition gen_syscall_code gen : @relocatable_segment t w w :=
-  (length (gen (Int32.repr 0) (Int32.repr 0)), 
-   fun b w => map encode_instr (gen b w)).
+ (length (gen (Int32.repr 0) (Int32.repr 0)), 
+  fun b w => map encode_instr (gen b w)).
 
 Definition mkkey_segment : @relocatable_segment t w w :=
-  gen_syscall_code (fun _ (extra : w) =>
-         [Const _ (word_to_imm extra) ri1; (* load next key *)
-          Load _ ri1 ri5; 
-          Const _ (Z_to_imm 1) ri3; (* increment and store back *)
-          Binop _ ADD ri5 ri3 ri3;
-          Store _ ri1 ri3; 
-          Const _ (Z_to_imm 2) ri3; (* wrap k as KEY(k): SHL by 2 and add 1 *)
-          Binop _ SHL ri5 ri3 ri4;
-          Const _ (Z_to_imm 1) ri3;
-          Binop _ ADD ri3 ri4 ri4] ++
-         wrap_user_tag ri4 ri4 ++
-         [Const _ (Z_to_imm 0) ri5; (* payload for new key is 0, arbitrarily *)
-          PutTag _ ri5 ri4 syscall_ret; (* build the key *)
-          Jump _ ra 
-          ]).
+ gen_syscall_code (fun _ (extra : w) =>
+        [Const _ (word_to_imm extra) ri1; (* load next key *)
+         Load _ ri1 ri5; 
+         Const _ (Z_to_imm 1) ri3; (* increment and store back *)
+         Binop _ ADD ri5 ri3 ri3;
+         Store _ ri1 ri3; 
+         Const _ (Z_to_imm 2) ri3; (* wrap k as KEY(k): SHL by 2 and add 1 *)
+         Binop _ SHL ri5 ri3 ri4;
+         Const _ (Z_to_imm 1) ri3;
+         Binop _ ADD ri3 ri4 ri4] ++
+        wrap_user_tag ri4 ri4 ++
+        [Const _ (Z_to_imm 0) ri5; (* payload for new key is 0, arbitrarily *)
+         PutTag _ ri5 ri4 syscall_ret; (* build the key *)
+         Jump _ ra 
+         ]).
 
 Definition seal_segment : @relocatable_segment t w w :=
-  gen_syscall_code (fun _ (extra : w) =>
-        (* Ensure that first argument is tagged DATA, halting otherwise *)
-        [GetTag _ syscall_arg1 ri3] ++
-        extract_user_tag ri3 rb ri3 ++
-        if_ rb [] [Halt _] ++
-        [Const _ (Z_to_imm 3) ri5;
-         Binop _ AND ri3 ri5 ri5] ++
-        if_ ri5 [Halt _] [] ++
-        (* Ensure that second argument is tagged KEY, halting otherwise *)
-        [GetTag _ syscall_arg2 ri4] ++
-        extract_user_tag ri4 rb ri4 ++
-        if_ rb [] [Halt _] ++
-        [Const _ (Z_to_imm 3) ri5;
-         Binop _ AND ri4 ri5 ri2;
-         Const _ (Z_to_imm 1) ri5;
-         Binop _ EQ ri5 ri2 ri5] ++
-        if_ ri5 [] [Halt _] ++
-        (* Form SEALED(k) tag from KEY(k) in ri4 *)
-        [Const _ (Z_to_imm 2) ri5;
-         Binop _ OR ri5 ri4 ri4] ++
-        wrap_user_tag ri4 ri4 ++
-        [PutTag _ syscall_arg1 ri4 syscall_ret] ++
-        (* Check that return PC is tagged DATA *)
-        [GetTag _ ra ri3] ++
-        extract_user_tag ri3 rb ri3 ++
-        if_ rb [] [Halt _] ++
-        [Const _ (Z_to_imm 0) ri5;
-         Binop _ EQ ri3 ri5 ri5] ++
-        if_ ri5 [Jump _ ra] [Halt _]
-  ).
+ gen_syscall_code (fun _ (extra : w) =>
+       (* Ensure that first argument is tagged DATA, halting otherwise *)
+       [GetTag _ syscall_arg1 ri3] ++
+       extract_user_tag ri3 rb ri3 ++
+       if_ rb [] [Halt _] ++
+       [Const _ (Z_to_imm 3) ri5;
+        Binop _ AND ri3 ri5 ri5] ++
+       if_ ri5 [Halt _] [] ++
+       (* Ensure that second argument is tagged KEY, halting otherwise *)
+       [GetTag _ syscall_arg2 ri4] ++
+       extract_user_tag ri4 rb ri4 ++
+       if_ rb [] [Halt _] ++
+       [Const _ (Z_to_imm 3) ri5;
+        Binop _ AND ri4 ri5 ri2;
+        Const _ (Z_to_imm 1) ri5;
+        Binop _ EQ ri5 ri2 ri5] ++
+       if_ ri5 [] [Halt _] ++
+       (* Form SEALED(k) tag from KEY(k) in ri4 *)
+       [Const _ (Z_to_imm 2) ri5;
+        Binop _ OR ri5 ri4 ri4] ++
+       wrap_user_tag ri4 ri4 ++
+       [PutTag _ syscall_arg1 ri4 syscall_ret] ++
+       (* Check that return PC is tagged DATA *)
+       [GetTag _ ra ri3] ++
+       extract_user_tag ri3 rb ri3 ++
+       if_ rb [] [Halt _] ++
+       [Const _ (Z_to_imm 0) ri5;
+        Binop _ EQ ri3 ri5 ri5] ++
+       if_ ri5 [Jump _ ra] [Halt _]
+ ).
 
 Definition unseal_segment : @relocatable_segment t w w :=
-  gen_syscall_code (fun _ (extra : w) => 
-        (* Ensure that second argument is tagged KEY, halting otherwise *)
-        [GetTag _ syscall_arg2 ri4] ++
-        extract_user_tag ri4 rb ri4 ++
-        if_ rb [] [Halt _] ++
-        [Const _ (Z_to_imm 3) ri5;
-         Binop _ AND ri4 ri5 ri2;
-         Const _ (Z_to_imm 1) ri5;
-         Binop _ EQ ri5 ri2 ri5] ++
-        if_ ri5 [] [Halt _] ++
-        (* Form SEALED(k) tag from KEY(k) in ri4 *)
-        [Const _ (Z_to_imm 2) ri5;
-         Binop _ OR ri5 ri4 ri4] ++
-        (* Ensure that first argument has a user tag (put it in ri3) *)
-        [GetTag _ syscall_arg1 ri3] ++
-        extract_user_tag ri3 rb ri3 ++
-        if_ rb [] [Halt _] ++
-        (* Check that the two tags are equal (i.e. both SEALED(k)) *)
-        [Binop _ EQ ri3 ri4 ri4] ++
-        if_ ri5 [] [Halt _] ++
-        (* Retag the payload with DATA *)
-        [Const _ (Z_to_imm 0) ri5] ++
-        wrap_user_tag ri5 ri5 ++
-        [PutTag _ syscall_arg1 ri5 syscall_ret] ++
-        (* Check that return PC is tagged DATA *)
-        (* (not certain this is needed, but keeping it here and above
-            to make sure we satisfy refinement hypotheses...) *)
-        [GetTag _ ra ri3] ++
-        extract_user_tag ri3 rb ri3 ++
-        if_ rb [] [Halt _] ++
-        [Const _ (Z_to_imm 0) ri5;
-         Binop _ EQ ri3 ri5 ri5] ++
-        if_ ri5 [Jump _ ra] [Halt _]
+ gen_syscall_code (fun _ (extra : w) => 
+       (* Ensure that second argument is tagged KEY, halting otherwise *)
+       [GetTag _ syscall_arg2 ri4] ++
+       extract_user_tag ri4 rb ri4 ++
+       if_ rb [] [Halt _] ++
+       [Const _ (Z_to_imm 3) ri5;
+        Binop _ AND ri4 ri5 ri2;
+        Const _ (Z_to_imm 1) ri5;
+        Binop _ EQ ri5 ri2 ri5] ++
+       if_ ri5 [] [Halt _] ++
+       (* Form SEALED(k) tag from KEY(k) in ri4 *)
+       [Const _ (Z_to_imm 2) ri5;
+        Binop _ OR ri5 ri4 ri4] ++
+       (* Ensure that first argument has a user tag (put it in ri3) *)
+       [GetTag _ syscall_arg1 ri3] ++
+       extract_user_tag ri3 rb ri3 ++
+       if_ rb [] [Halt _] ++
+       (* Check that the two tags are equal (i.e. both SEALED(k)) *)
+       [Binop _ EQ ri3 ri4 ri4] ++
+       if_ ri5 [] [Halt _] ++
+       (* Retag the payload with DATA *)
+       [Const _ (Z_to_imm 0) ri5] ++
+       wrap_user_tag ri5 ri5 ++
+       [PutTag _ syscall_arg1 ri5 syscall_ret] ++
+       (* Check that return PC is tagged DATA *)
+       (* (not certain this is needed, but keeping it here and above
+           to make sure we satisfy refinement hypotheses...) *)
+       [GetTag _ ra ri3] ++
+       extract_user_tag ri3 rb ri3 ++
+       if_ rb [] [Halt _] ++
+       [Const _ (Z_to_imm 0) ri5;
+        Binop _ EQ ri3 ri5 ri5] ++
+       if_ ri5 [Jump _ ra] [Halt _]
 ).
 
 Definition build_concrete_sealing_machine 
-     (user_mem : @relocatable_segment t (list w) atom) 
-   : Concrete.state concrete_int_32_t :=
-  (* This list should be defined at the same place as the decoding
-     function that splits out the addresses for use when generating
-     user code *)
-  let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
-  initial_state
-    extra_state
-    fault_handler
-    syscalls
-    user_mem
-    (encode_sealing_tag Sym.DATA)
-    user_reg_min user_reg_max
-    (encode_sealing_tag Sym.DATA).
+    (user_program : @relocatable_segment t (list w) (instr t))
+  : Concrete.state concrete_int_32_t * (* Initial machine state *)
+     w *                               (* Base addr for user code *)
+     list w                            (* Syscall addrs *)
+     :=
+ (* This list should be defined at the same place as the decoding
+    function that splits out the addresses for use when generating
+    user code *)
+ let user_mem := 
+       map_relocatable_segment 
+         (fun x => Atom (encode_instr x) (encode_sealing_tag Sym.DATA)) 
+         user_program in
+ let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
+ concrete_initial_state
+   extra_state
+   fault_handler
+   syscalls
+   user_mem
+   (encode_sealing_tag Sym.DATA)
+   user_registers
+   (encode_sealing_tag Sym.DATA).
 
 End WithClasses.
 
@@ -424,20 +421,21 @@ End WithClasses.
 
 (*
 Definition build_abstract_sealing_machine 
-     (user_mem : @relocatable_segment t (list w) atom) 
-   : Concrete.state concrete_int_32_t :=
-  (* This list should be defined at the same place as the decoding
-     function that splits out the addresses for use when generating
-     user code *)
-  let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
-  initial_state
-    extra_state
-    fault_handler
-    syscalls
+    (user_program : @relocatable_segment t (list w) (instr t))
+  : Concrete.state concrete_int_32_t :=
+ (* This list should be defined at the same place as the decoding
+    function that splits out the addresses for use when generating
+    user code *)
+ let: (_,base,syscalls) := build_concrete_sealing_machine user_program in
+ let user_mem := 
+       map_relocatable_segment 
+         ((@Abs.VData _ _) ∘ encode_instr)
+         user_program in
+  abstract_initial_state
     user_mem
-    (encode_sealing_tag Sym.DATA)
-    user_reg_min user_reg_max
-    (encode_sealing_tag Sym.DATA).
+    base_addr
+    syscall_addrs
+    user_reg_min user_reg_max  (* should be a set!! *).
 *)
 
 (* ------------------------------------------------------------------------- *)
@@ -548,7 +546,7 @@ Definition summarize_state mem_count cache_count st :=
                          (take cache_count (Concrete.cache st))))).
 
 Definition tracen n p := 
-  let init := build_concrete_sealing_machine p in
+  let: (init,_,_) := build_concrete_sealing_machine p in
   let tr := exec.tracen masks t n init in
   (
    summarize_state 3000 1000 init ::
@@ -560,18 +558,18 @@ Definition trace := tracen 10000.
 (* ---------------------------------------------------------------------- *)
 (* Tests... *)
 
-Definition hello_world0 : @relocatable_segment t (list w) atom :=
+Definition hello_world0 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [ 
      Const t (Z_to_imm 2) ruser1
   ]).
 
-Definition hello_world1 : @relocatable_segment t (list w) atom :=
+Definition hello_world1 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [
     Const t (Z_to_imm 2) ruser1;
     Binop t ADD ruser1 ruser1 ruser2
   ]).
 
-Definition hello_world2 : @relocatable_segment t (list w) atom :=
+Definition hello_world2 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun _ syscall_addresses =>
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
@@ -587,7 +585,7 @@ Definition hello_world2 : @relocatable_segment t (list w) atom :=
     end).
 
 (* double seal: should fail *)
-Definition hello_world3 : @relocatable_segment t (list w) atom :=
+Definition hello_world3 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun _ syscall_addresses =>
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
@@ -605,7 +603,7 @@ Definition hello_world3 : @relocatable_segment t (list w) atom :=
     end).
 
 (* Test seal-then-unseal *)
-Definition hello_world4 : @relocatable_segment t (list w) atom :=
+Definition hello_world4 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun _ syscall_addresses =>
     match syscall_addresses with 
       [mkkey; seal; unseal] => 
@@ -624,7 +622,7 @@ Definition hello_world4 : @relocatable_segment t (list w) atom :=
     end).
 
 (* Test store and load *)
-Definition hello_world5 : @relocatable_segment t (list w) atom :=
+Definition hello_world5 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun base syscall_addresses =>
     let data := word_to_imm (add_word base (Int32.repr 0)) in
     match syscall_addresses with 
@@ -647,7 +645,7 @@ Definition hello_world5 : @relocatable_segment t (list w) atom :=
     | _ => []
     end).
 
-Compute (tracen 2000 hello_world5). 
+(* Compute (tracen 2000 hello_world5). *)
 
 (* TODO: Refinement proof from concrete to abstract instances *)
 

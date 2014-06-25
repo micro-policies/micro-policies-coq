@@ -108,7 +108,7 @@ Definition initial_memory
       (handler : relocatable_segment w w)
       (syscalls : list (relocatable_segment w w))
       (user_mem : relocatable_segment (list w) atom) 
-    : Concrete.memory concrete_int_32_t * w :=
+    : Concrete.memory concrete_int_32_t * w * list w :=
   let cacheCell := Atom zero Concrete.TKernel in
   let '((kernel_length,gen_kernel), offsets) := 
     concat_and_measure_relocatable_segments 
@@ -132,64 +132,43 @@ Definition initial_memory
        ∘ insert_from base_addr kernel
        ∘ insert_from user_code_addr user )
        (Int32PMap.empty _) in
-     (mem, user_code_addr)
+     (mem, user_code_addr, syscall_addrs)
    | _ => 
-     (* Not sure what to return here... *)
-     (Int32PMap.empty _, repr 0)
+     (* Should not happen *)
+     (Int32PMap.empty _, repr 0, [])
    end.
 
-(* BCP: The time argument should surely not be needed -- I got tangled
-   up in numeric conversions...  If we ever try to prove something
-   about this function, we need to rewrite it first! *)
-Fixpoint initialize_registers 
-             (min max : reg concrete_int_32_t)
-             (tag : word concrete_int_32_t)
-             (regs : Concrete.registers concrete_int_32_t)
-             (time : nat)
-           : Concrete.registers concrete_int_32_t :=
-  let regs := Int32TMap.set ra zero@tag regs in
-  match time with
-    0%nat => 
-      (* Last thing to do is to set ra, which is also a user register 
-         when the program starts *)
-      regs
-  | S time' =>
-      if Z.leb (word_to_Z max) (word_to_Z min) then regs else 
-      initialize_registers (add_word min (Z_to_word 1)) max tag 
-        (Int32TMap.set min zero@tag regs) time'
-  end.
+(* BCP: Register initialization may need to be generalized at some
+   point.  Right now, it initializes all user registers with the
+   tag (USER 0).  But the user program might conceivably want to start
+   with a different tag assignment.  (On the other hand, maybe
+   policies can always simply be written so that tag 0 is a reasonable
+   default.) *)
 
-(* BCP: This may need to be generalized at some point.  Right now, it
-   initializes all user registers with the tag (USER 0).  But the user
-   program might conceivably want to start with a different tag
-   assignment.  (On the other hand, maybe policies can always simply
-   be written so that tag 0 is a reasonable default.) *)
-Program Definition initial_regs
-                     (user_reg_min user_reg_max : reg concrete_int_32_t)
-                     (initial_reg_tag : word concrete_int_32_t)
-                   : Concrete.registers concrete_int_32_t :=
-  initialize_registers 
-    user_reg_min user_reg_max 
-    (kernelize_user_tag initial_reg_tag)
-    (Int32TMap.init zero@zero)
-    100.
-
-Program Definition initial_state 
+Program Definition concrete_initial_state 
       (extra_state : relocatable_segment _ w)
       (handler : relocatable_segment w w)
       (syscalls : list (relocatable_segment w w))
       (user_mem : relocatable_segment (list w) atom) 
       (initial_pc_tag : w) 
-      (user_reg_min user_reg_max : reg concrete_int_32_t)
+      (user_regs : list (reg concrete_int_32_t))
       (initial_reg_tag : w) 
-    : Concrete.state concrete_int_32_t := 
-  let '(mem, start) := 
+    : Concrete.state concrete_int_32_t * w * list w := 
+  let '(mem, start, syscall_addrs) := 
     initial_memory extra_state handler syscalls user_mem in
-  {|  
+  let regs := 
+        fold_left
+          (fun regs r => 
+            Int32TMap.set r zero@(kernelize_user_tag initial_reg_tag) regs)
+          user_regs
+          (Int32TMap.init zero@zero) in
+  ({|  
     Concrete.mem := mem;
-    Concrete.regs := initial_regs user_reg_min user_reg_max initial_reg_tag;
+    Concrete.regs := regs;
     Concrete.cache := ground_rules;
     Concrete.pc := start@(kernelize_user_tag initial_pc_tag); 
     Concrete.epc := zero@zero
-  |}.
+  |},
+  start, syscall_addrs).
 
+(* TODO: Regularize naming of base addresses and system call stuff. *)

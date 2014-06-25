@@ -563,6 +563,15 @@ Definition concat_relocatable_segments
            : relocatable_segment Args Cell :=
   fst (concat_and_measure_relocatable_segments segs).
 
+Definition map_relocatable_segment
+             (Args Cell Cell' : Type)
+             (f : Cell -> Cell')
+             (seg : relocatable_segment Args Cell)
+           : relocatable_segment Args Cell' :=
+  let (l,gen) := seg in
+  let gen' := fun (base : word t) (rest : Args) => map f (gen base rest) in
+  (l, gen').
+
 Definition relocate_ignore_args
              (Args Cell : Type)
              (seg : relocatable_segment unit Cell)

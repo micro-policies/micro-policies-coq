@@ -293,7 +293,8 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
   mem_class := {|
     PartMaps.get mem i := Int32PMap.get i mem;
     PartMaps.set mem i x := Int32PMap.set i x mem;
-    PartMaps.filter mem p := Int32PMap.filter mem p                                          
+    PartMaps.filter mem p := Int32PMap.filter mem p;
+    PartMaps.empty := @Int32PMap.empty _ 
   |};
 
   reg_class := {|
