@@ -498,7 +498,7 @@ Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
   | (x, Some y) :: l' => (x,y) :: filter_Somes l'
   end.
 
-Require Import Coqlib. (* Needed?? *)
+Require Import Coqlib. 
 
 Definition summarize_concrete_state mem_count cache_count st :=
   let mem' := filter_Somes 
