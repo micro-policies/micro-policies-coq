@@ -102,39 +102,11 @@ Proof.
  omega.
 Qed.
 
-Instance sk : Abs.sealing_key := {|
+Global Instance sk : Abs.sealing_key := {|
  key := keytype;
  mkkey_f := fun l => 1 + max_element l;
  mkkey_fresh := max_element_plus_one_is_distinct
 |}.
-
-(* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
-  a different order from Int32PMap.get and Int32PMap.set?? *)
-
-(*
-Instance ap : Abs.params t := {|
- memory    := Int32PMap.t (Abs.value t);
- registers := Int32PMap.t (Abs.value t);
-
- am := {|
-   PartMaps.get mem i := Int32PMap.get i mem;
-   PartMaps.set mem i x := Int32PMap.set i x mem;
-   PartMaps.upd mem i x := match Int32PMap.get i mem with
-                             | Some _ => Some (Int32PMap.set i x mem)
-                             | None   => None
-                           end
- |};
-
- ar := {|
-   PartMaps.get regs r := Int32PMap.get r regs;
-   PartMaps.set mem i x := Int32PMap.set i x mem;
-   PartMaps.upd regs r x := match Int32PMap.get r regs with
-                             | Some _ => Some (Int32PMap.set r x regs)
-                             | None   => None
-                           end
- |}
-|}.
-*)
 
 Instance cp : Concrete.concrete_params t := {|
  memory    := Int32PMap.t atom;
@@ -419,32 +391,53 @@ End WithClasses.
 (* ------------------------------------------------------------------------- *)
 (* Abstract machine *)
 
-(*
+(* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
+  a different order from Int32PMap.get and Int32PMap.set?? *)
+
+Instance ap : Abs.params t := {|
+ memory    := Int32PMap.t (Abs.value t);
+ registers := Int32PMap.t (Abs.value t);
+
+ am := {|
+   PartMaps.get mem i := Int32PMap.get i mem;
+   PartMaps.set mem i x := Int32PMap.set i x mem;
+   PartMaps.filter mem p := Int32PMap.filter mem p;
+   PartMaps.empty := Int32PMap.empty _ 
+ |};
+
+ ar := {|
+   PartMaps.get regs r := Int32PMap.get r regs;
+   PartMaps.set mem i x := Int32PMap.set i x mem;
+   PartMaps.filter mem p := Int32PMap.filter mem p;
+   PartMaps.empty := Int32PMap.empty _ 
+ |}
+|}.
+
 Definition build_abstract_sealing_machine 
     (user_program : @relocatable_segment t (list w) (instr t))
-  : Concrete.state concrete_int_32_t :=
+  : @Abs.state concrete_int_32_t sk ap * classes.sealing_syscall_addrs :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
- let: (_,base,syscalls) := build_concrete_sealing_machine user_program in
+ let: (_,base_addr,syscall_addrs) := build_concrete_sealing_machine user_program in
  let user_mem := 
        map_relocatable_segment 
          ((@Abs.VData _ _) ∘ encode_instr)
          user_program in
-  abstract_initial_state
+  let syscall_addr_rcd := 
+      {| 
+        classes.mkkey_addr  := nth 0 syscall_addrs (Int32.repr 0);
+        classes.seal_addr   := nth 1 syscall_addrs (Int32.repr 0);
+        classes.unseal_addr := nth 2 syscall_addrs (Int32.repr 0)
+      |} in
+  (Abs.abstract_initial_state
     user_mem
     base_addr
     syscall_addrs
-    user_reg_min user_reg_max  (* should be a set!! *).
-*)
+    user_registers,
+   syscall_addr_rcd).
 
 (* ------------------------------------------------------------------------- *)
-
-Definition eval_reg n (r : reg t) init :=
-  match exec.stepn masks t n init with
-  | Some st => Some (TotalMaps.get (Concrete.regs st) r)
-  | None => None
-  end.
 
 Open Scope Z_scope.
 
@@ -545,15 +538,27 @@ Definition summarize_state mem_count cache_count st :=
       ssconcat sspace (format_whole_cache 
                          (take cache_count (Concrete.cache st))))).
 
-Definition tracen n p := 
+Definition runn n p := 
   let: (init,_,_) := build_concrete_sealing_machine p in
-  let tr := exec.tracen masks t n init in
+  let tr := utils.runn (step masks t) n init in
   (
    summarize_state 3000 1000 init ::
    map (summarize_state 8 1) tr
   ).
 
-Definition trace := tracen 10000.
+Definition run := runn 10000.
+
+Definition run_abs n p := 
+  let: (init,syscall_addrs) := build_abstract_sealing_machine p in
+  let tr := utils.runn (fun x => Abs.stepf x) n init in
+  (
+(*
+   summarize_state 3000 1000 init ::
+   map (summarize_state 8 1) tr
+*)
+  init, tr
+  ).
+
 
 (* ---------------------------------------------------------------------- *)
 (* Tests... *)
@@ -645,7 +650,9 @@ Definition hello_world5 : @relocatable_segment t (list w) (instr concrete_int_32
     | _ => []
     end).
 
-(* Compute (tracen 2000 hello_world5). *)
+(* Compute (runn 2000 hello_world5). *)
+
+(* Compute (run_abs 2000 hello_world5). *)
 
 (* TODO: Refinement proof from concrete to abstract instances *)
 

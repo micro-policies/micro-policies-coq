@@ -139,6 +139,10 @@ Inductive step (st st' : state) : Prop :=
     (NEXT : st' = State mem reg' pc ((mkkey_f ks) :: ks)),   step st st'
 | step_seal : forall mem reg reg' pc ks payload key
     (ST   : st = State mem reg seal_addr ks)
+(* TODO: This (and the one below) is needed, but adding it breaks the 
+   refinement proof slightly -- Catalin, can you fix?
+    (INST : decode mem seal_addr = None)
+*)
     (R1   : get reg syscall_arg1 =? VData payload)
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VSealed payload key) =? reg')
@@ -146,11 +150,105 @@ Inductive step (st st' : state) : Prop :=
     (NEXT : st' = State mem reg' pc ks),   step st st'
 | step_unseal : forall mem reg reg' pc ks payload key
     (ST   : st = State mem reg unseal_addr ks)
+(*
+    (INST : decode mem unseal_addr = None)
+*)
     (R1   : get reg syscall_arg1 =? VSealed payload key)
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VData payload) =? reg')
     (RET  : get reg ra =? VData pc)
     (NEXT : st' = State mem reg' pc ks),   step st st'.
+
+Definition stepf (st : state) : option state :=
+  let 'State mem reg pc keys := st in
+  match decode mem pc with
+    | Some Nop =>
+      Some (State mem reg (pc.+1) keys)
+    | Some (Const n r) =>
+      do! reg' <- PartMaps.upd reg r (VData (imm_to_word n));
+      Some (State mem reg' (pc.+1) keys)
+    | Some (Mov r1 r2) =>
+      do! v <- PartMaps.get reg r1;
+      do! reg' <- PartMaps.upd reg r2 v;
+      Some (State mem reg' (pc.+1) keys)
+    | Some (Binop b r1 r2 r3) =>
+      do! v1 <- PartMaps.get reg r1;
+      do! v2 <- PartMaps.get reg r2;
+      if v1 is VData i1 then if v2 is VData i2 then 
+        do! reg' <- PartMaps.upd reg r3 (VData (binop_denote b i1 i2));
+        Some (State mem reg' (pc.+1) keys)
+      else None else None
+    | Some (Load r1 r2) =>
+      do! v <- PartMaps.get reg r1;
+      if v is VData i then
+        do! v' <- PartMaps.get mem i;
+        do! reg' <- PartMaps.upd reg r2 v';
+        Some (State mem reg' (pc.+1) keys)
+      else None
+    | Some (Store r1 r2) =>
+      do! v1 <- PartMaps.get reg r1;
+      do! v2 <- PartMaps.get reg r2;
+      if v1 is VData i1 then
+        do! mem' <- PartMaps.upd mem i1 v2;
+        Some (State mem' reg (pc.+1) keys)
+      else None
+    | Some (Jump r) =>
+      do! v <- PartMaps.get reg r;
+      if v is VData i then
+        Some (State mem reg i keys)
+      else None
+    | Some (Bnz r n) =>
+      do! vr <- PartMaps.get reg r;
+      if vr is VData c then
+        let pc' := pc + if c == Z_to_word 0 
+                        then Z_to_word 1 else imm_to_word n in
+        Some (State mem reg pc' keys)
+      else None
+    | Some (Jal r) =>
+      do! vr <- PartMaps.get reg r;
+      if vr is VData i then
+        do! reg' <- PartMaps.upd reg ra (VData (pc.+1));
+        Some (State mem reg' i keys)
+      else None
+    | Some JumpEpc | Some AddRule | Some (GetTag _ _) 
+    | Some (PutTag _ _ _) | Some Halt =>
+    None
+    | None =>
+    if pc == mkkey_addr then
+      let k := mkkey_f keys in
+      let keys' := k :: keys in
+      do! reg' <- PartMaps.upd reg syscall_ret (VKey k);        
+      do! ret <- PartMaps.get reg ra;
+      if ret is VData pc' then
+        Some (State mem reg' pc' keys')
+      else None
+    else if pc == seal_addr then
+      do! v1 <- PartMaps.get reg syscall_arg1;
+      do! v2 <- PartMaps.get reg syscall_arg2;
+      if v1 is VData payload then if v2 is VKey k then
+        do! reg' <- PartMaps.upd reg syscall_ret (VSealed payload k);
+        do! ret <- PartMaps.get reg ra;
+        if ret is VData pc' then
+          Some (State mem reg' pc' keys)
+        else None
+      else None else None
+    else if pc == unseal_addr then
+      do! v1 <- PartMaps.get reg syscall_arg1;
+      do! v2 <- PartMaps.get reg syscall_arg2;
+      if v1 is VSealed payload k then if v2 is VKey k' then
+        if k == k' then
+          do! reg' <- PartMaps.upd reg syscall_ret (VData payload);
+          do! ret <- PartMaps.get reg ra;
+          if ret is VData pc' then
+            Some (State mem reg' pc' keys)
+          else None
+        else None
+      else None else None
+    else 
+      None
+    end.
+
+(* TODO: Prove correctness *)
 
 (* ---------------------------------------------------------------------- *)
 (* Building initial machine states *)
@@ -164,15 +262,16 @@ Program Definition abstract_initial_state
   let mem_contents := gen base_addr syscall_addrs in 
   let mem := 
     snd (fold_left
-      (fun x c => let: (i,m) := x in (add_word (Z_to_word 1) i, PartMaps.set m i c))
+      (fun x c => let: (i,m) := x in 
+                  (add_word (Z_to_word 1) i, PartMaps.set m i c))
       mem_contents
-      (base_addr, @PartMaps.empty _ _ _ _))
+      (base_addr, PartMaps.empty))
       in
   let regs := 
         fold_left
           (fun regs r => PartMaps.set regs r (VData (Z_to_word 0)))
            user_regs
-           (@PartMaps.empty _ _ _ _) in
+           PartMaps.empty in
   {|  
     mem := mem;
     regs := regs;

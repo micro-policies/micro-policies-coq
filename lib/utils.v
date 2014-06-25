@@ -1982,3 +1982,27 @@ Ltac match_inv :=
   | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
   | H : True |- _ => clear H
   end.
+
+Fixpoint stepn {A} (step : A -> option A) (max_steps : nat) (st : A) : option A :=
+  match max_steps with
+  | O => Some st
+  | S max_steps' =>
+    match step st with 
+      Some st' => stepn step max_steps' st'
+    | None => None
+    end
+  end.
+
+Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : list A :=
+  st :: 
+  match max_steps with
+  | O => []
+  | S max_steps' =>
+    match step st with
+    | None => []
+    | Some st' => runn step max_steps' st'
+    end
+  end.
+
+Definition run {A} (step: A -> option A) (st : A) := runn step 10000 st.
+

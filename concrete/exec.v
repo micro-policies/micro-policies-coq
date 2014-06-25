@@ -22,6 +22,7 @@ Open Scope word_scope.
 
 Local Notation "x .+1" := (x + Z_to_word 1).
 
+(* TODO: mt should be named t, or vice versa, globally! *)
 Definition step (st : state mt) : option (state mt) :=
   let 'mkState mem reg cache pc@tpc epc := st in
   do! i <- PartMaps.get mem pc;
@@ -144,26 +145,5 @@ Proof.
     + rewrite M1. simpl. trivial.
     + rewrite M1. simpl. trivial.
 Qed.
-
-Fixpoint stepn (max_steps : nat) (st : state mt) : option (state mt) :=
-  match max_steps with
-  | O => Some st
-  | S max_steps' =>
-    do! st' <- step st;
-    stepn max_steps' st'
-  end.
-
-Fixpoint tracen (max_steps : nat) (st : state mt) : list (state mt) :=
-  st :: 
-  match max_steps with
-  | O => []
-  | S max_steps' =>
-    match step st with
-    | None => []
-    | Some st' => tracen max_steps' st'
-    end
-  end.
-
-Definition trace (st : state mt) := tracen 10000 st.
 
 End Masks.
