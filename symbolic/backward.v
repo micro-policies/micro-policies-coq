@@ -369,70 +369,43 @@ Proof.
   rewrite eq_tag_eq_word // in NKERNEL.
 Qed.
 
-Lemma backwards_refinement_aux cst cst' (EXEC : exec (Concrete.step _ masks) cst cst') :
-  in_user cst' = true ->
-  (in_user cst = true ->
-   forall ast,
-     refine_state ki table ast cst ->
-     exists ast',
-       exec (Symbolic.step table) ast ast' /\
-       refine_state ki table ast' cst') /\
-  (in_kernel cst = true ->
-   forall ast cst0 kst,
-     refine_state ki table ast cst0 ->
-     Concrete.step _ masks cst0 kst ->
-     kernel_exec kst cst ->
-     exists ast',
-       exec (Symbolic.step table) ast ast' /\
-       refine_state ki table ast' cst').
+Definition refine_state_weak ast cst :=
+  refine_state ki table ast cst \/
+  exists cst0 kst,
+    refine_state ki table ast cst0 /\
+    Concrete.step _ masks cst0 kst /\
+    kernel_exec kst cst.
+
+Lemma backwards_simulation ast cst cst' :
+  refine_state_weak ast cst ->
+  Concrete.step _ masks cst cst' ->
+  refine_state_weak ast cst' \/
+  exists ast',
+    Symbolic.step table ast ast' /\
+    refine_state ki table ast' cst'.
 Proof.
-  induction EXEC as [cst _|cst cst'' cst' _ STEP EXEC IH];
-  intros USER'.
-  - split; eauto.
-    intros KERNEL.
-    apply in_user_in_kernel in USER'; auto. congruence.
-  - specialize (IH USER').
-    split.
-    + intros USER ast REF.
-      destruct (in_user cst'') eqn:USER''.
-      { assert (USTEP := hs_intro USER USER'' STEP).
-        eapply hit_simulation in USTEP; eauto.
-        destruct USTEP as (ast' & ASTEP & REF').
-        destruct IH as [IH _]; eauto.
-        specialize (IH (erefl _) _ REF').
-        destruct IH as (ast'' & AEXEC & REF'').
-        now eauto. }
-      exploit user_into_kernel; eauto. intros KERNEL''.
-      destruct IH as [_ IH].
-      specialize (IH KERNEL'' ast cst cst'' REF STEP (re_refl _ KERNEL'')).
-      destruct IH as (ast' & AEXEC & REF').
-      eauto.
-    + intros KERNEL ast cst0 kst REF STEP0 KEXEC.
-      destruct (in_kernel cst'') eqn:KERNEL''.
-      { assert (KEXEC'' : kernel_exec kst cst'').
-        { apply restricted_exec_trans with cst; eauto. }
-        destruct IH as [_ IH].
-        specialize (IH (erefl _) ast cst0 kst REF STEP0 KEXEC'').
-        destruct IH as (ast' & AEXEC & REF').
-        eexists ast'.
-        split; eauto. }
-      assert (USER0 : in_user cst0 = true) by (destruct REF; eauto).
-      assert (KUEXEC := eu_intro (Q := fun s => in_kernel s = false) KEXEC KERNEL'' STEP).
-      assert (MSTEP := ukus_intro USER0 STEP0 KUEXEC).
-      eapply user_kernel_user_simulation in MSTEP; eauto.
-      destruct MSTEP as [MSTEP | MSTEP].
-      * assert (USER'' : in_user cst'' = true) by now destruct MSTEP.
-        destruct IH as [IH _].
-        specialize (IH USER'' ast MSTEP).
-        destruct IH as (ast' & AEXEC & REF').
-        eexists ast'.
-        split; eauto.
-      * destruct MSTEP as (ast' & ASTEP & REF').
-        assert (USER'' : in_user cst'' = true) by now destruct REF'.
-        destruct IH as [IH _].
-        specialize (IH USER'' _ REF').
-        destruct IH as (ast'' & AEXEC & REF'').
-        eauto.
+  intros [REF | (cst0 & kst & REF & KSTEP & EXEC)] STEP.
+  - assert (USER : in_user cst = true) by (destruct cst, ast, REF; eauto).
+    destruct (in_user cst') eqn:USER'.
+    + right.
+      eapply hit_simulation; eauto.
+      constructor; auto.
+    + left. right. do 2 eexists. do 2 (split; eauto).
+      constructor.
+      eapply user_into_kernel; eauto.
+  - assert (USER : in_user cst0 = true) by (destruct cst0, ast, REF; eauto).
+    destruct (in_kernel cst') eqn:KER'.
+    + left. right.
+      do 2 eexists. do 2 (split; eauto).
+      eapply restricted_exec_trans; eauto.
+      have KER : in_kernel cst = true by eapply restricted_exec_snd in EXEC.
+      eapply re_step; by eauto using user_into_kernel.
+    + assert (EXEC' : user_kernel_user_step cst0 cst').
+      { econstructor; eauto.
+        econstructor; eauto using in_user_in_kernel. }
+      eapply user_kernel_user_simulation in EXEC'; eauto.
+      destruct EXEC' as [REF' | ?]; eauto.
+      by do 2 left.
 Qed.
 
 Theorem backwards_refinement ast cst cst' :
@@ -444,9 +417,20 @@ Theorem backwards_refinement ast cst cst' :
     refine_state ki table ast' cst'.
 Proof.
   intros REF EXEC USER'.
-  assert (USER : in_user cst = true) by (destruct REF; trivial).
-  exploit backwards_refinement_aux; eauto.
-  intros [H _]. eauto.
+  have {REF} REF: refine_state_weak ast cst by left.
+  move: ast REF.
+  induction EXEC as [cst _|cst cst'' cst' _ STEP EXEC IH].
+  - move => ast [? | REF]; first by eauto.
+    destruct REF as (? & ? & ? & ? & EXEC).
+    apply restricted_exec_snd in EXEC.
+    apply in_user_in_kernel in USER'. congruence.
+  - move => ast REF.
+    exploit backwards_simulation; eauto.
+    intros [REF' | (ast' & ASTEP & REF')]; first by auto.
+    have {REF'} REF': refine_state_weak ast' cst'' by left.
+    move: (IH USER' _ REF') => {IH USER' REF'} [ast'' [EXEC' REF']].
+    eexists. split; last by eauto.
+    eapply re_step; trivial; eauto.
 Qed.
 
 End Refinement.
