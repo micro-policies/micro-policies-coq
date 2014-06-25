@@ -301,4 +301,67 @@ Theorem backwards_simulation_attacker sst cst cst' :
 Proof. 
   intros REF STEP.
   inversion STEP; subst.
-  unfold Conc.equiv in MEQUIV. unfold pointwise in MEQUIV.
+  destruct sst as [smem sreg [spc stpc] int].
+  unfold refine_state in REF.
+  destruct REF as [REF | CONTRA].
+  - unfold refine_user_state in REF.
+    unfold refinement_common.refine_state in REF.
+    destruct REF as [? [PCV [PCT [REFM [REFR [? [? [? [WFENTRY ?]]]]]]]]];
+    unfold Conc.no_violation in NOV.
+    destruct NOV as [NOV NOVSYS].
+    apply REFM in FETCH.
+    destruct (rules.decode tpc) eqn:DECODE.
+    + destruct t.
+      * subst.
+        destruct (mem_refinement_equiv REFM MEQUIV) as [smem' [REFM' SMEQUIV]].
+        destruct (reg_refinement_equiv REFR REQUIV) as [sreg' [REFR' SREQUIV]].
+        eexists; split. 
+        { econstructor; eauto.
+          unfold Sym.no_violation.
+          apply rules.encodeK in DECODE;
+            subst.
+          split.
+          { intros i0 ti src SGET STPC.
+            apply REFM in SGET.
+            rewrite STPC in NOV.
+            destruct (NOV _ _ _ SGET erefl) as [dst [TI VALID]].
+            eexists; eauto.
+          }
+          { intros sc SGET SGETCALL src STPC. (*we currently don't allow attacker when in syscall*)
+            unfold refinement_common.wf_entry_points in WFENTRY.
+            clear NOV.
+            remember (Symbolic.entry_tag sc) as etg.
+            specialize (WFENTRY pc etg).
+            assert (SCALL: (exists sc : Symbolic.syscall mt,
+                              Symbolic.get_syscall stable pc = Some sc /\
+                              Symbolic.entry_tag sc = etg))
+              by (eexists; eauto).
+            apply WFENTRY in SCALL.
+            apply REFM in FETCH. rewrite FETCH in SCALL.
+            move/eqP/rules.encode_inj: SCALL => SCALL.
+            inversion SCALL.
+          }
+        }
+        { left. unfold refine_user_state.
+          unfold refinement_common.refine_state.
+          (*need to prove invariants are preserved by attacker/equiv*)
+          admit.
+        }
+      * destruct PCT.
+      * destruct PCT.
+    + destruct PCT.
+  - destruct CONTRA as [CONTRA ?].
+    unfold refinement_common.in_kernel in CONTRA.
+    simpl in CONTRA. unfold Concrete.is_kernel_tag in CONTRA.
+    unfold rules.word_lift in INUSER.
+    move/eqP: CONTRA => CONTRA.
+    rewrite CONTRA in INUSER.
+    rewrite rules.encode_kernel_tag in INUSER.
+    rewrite rules.decodeK in INUSER.
+    unfold rules.is_user in INUSER.
+    congruence.
+Qed.
+          
+End Refinement.
+        
+  

@@ -76,9 +76,9 @@ Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t
   Isn't the violation enough? *)
 Inductive step_a : Concrete.state t ->
                    Concrete.state t -> Prop :=
-| step_attack : forall mem reg cache pc tpc epc mem' reg' i ctg
+| step_attack : forall mem reg cache pc tpc epc mem' reg' i id
                   (INUSER: word_lift (fun x => is_user x) tpc)
-                  (FETCH: get mem pc = Some i@ctg)
+                  (FETCH: get mem pc = Some i@(encode (USER (INSTR id))))
                   (NOV: no_violation (Concrete.mkState mem reg cache pc@tpc epc))
                   (REQUIV: reg_equiv reg reg')
                   (MEQUIV: equiv mem mem'),
