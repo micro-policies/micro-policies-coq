@@ -500,7 +500,7 @@ Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
 
 Require Import Coqlib. (* Needed?? *)
 
-Definition summarize_state mem_count cache_count st :=
+Definition summarize_concrete_state mem_count cache_count st :=
   let mem' := filter_Somes 
                (@enum _ _ _ 
                  (@Concrete.mem t cp st) 
@@ -538,12 +538,59 @@ Definition summarize_state mem_count cache_count st :=
       ssconcat sspace (format_whole_cache 
                          (take cache_count (Concrete.cache st))))).
 
+Definition format_value v :=
+  match v with
+  | Abs.VData w => 
+      match decode_instr w with
+        Some i => ss "(" +++ format_instr i +++ ss ")"
+      | None => format_word w 
+      end
+  | Abs.VKey k => ss "KEY(" +++ format_nat k +++ ss ")"
+  | Abs.VSealed w k => ss "SEALED(" +++ format_word w +++ ss "," +++ format_nat k +++ ss ")"
+  end.
+
+Definition summarize_abstract_state mem_count st :=
+  let mem' := filter_Somes 
+               (@enum _ _ _ 
+                 (@Abs.mem t sk ap st) 
+                 (@PartMaps.get _ Int32.int _ _) 
+                 (@omap (@Abs.value t sk) sstring format_value)
+                 mem_count
+                 (Int32.repr 0)) in 
+  let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
+  let regs' := filter_Somes 
+                 (@enum _ _ _ 
+                    (@Abs.regs t sk ap st) 
+                    (@PartMaps.get _ Int32.int _ _) 
+                    (@omap (@Abs.value t sk) sstring format_value)
+                    (word_to_nat user_reg_max)
+                    (Int32.repr (word_to_Z (nat_to_word 0)))) in 
+  let regs := map (fun r => 
+                     let: (x,a) := r in 
+                     ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a) 
+               regs' in
+  let current_instr := 
+    let: addr := Abs.pc st in
+    match @PartMaps.get _ Int32.int _ _
+                    (@Abs.mem t sk ap st)
+                    addr with
+      None => ss "(BAD ADDR)"
+    | Some i => format_value i 
+    end in
+  (to_string 
+     (ss "PC=" +++ format_word (Abs.pc st) +++ ss "  "
+               +++ current_instr +++ 
+      ss " | " +++ 
+      ssconcat sspace regs +++
+      ss " | " +++ 
+      mem)).
+
 Definition runn n p := 
   let: (init,_,_) := build_concrete_sealing_machine p in
   let tr := utils.runn (step masks t) n init in
   (
-   summarize_state 3000 1000 init ::
-   map (summarize_state 8 1) tr
+   summarize_concrete_state 3000 1000 init ::
+   map (summarize_concrete_state 8 1) tr
   ).
 
 Definition run := runn 10000.
@@ -552,11 +599,8 @@ Definition run_abs n p :=
   let: (init,syscall_addrs) := build_abstract_sealing_machine p in
   let tr := utils.runn (fun x => Abs.stepf x) n init in
   (
-(*
-   summarize_state 3000 1000 init ::
-   map (summarize_state 8 1) tr
-*)
-  init, tr
+   summarize_abstract_state 3000 init ::
+   map (summarize_abstract_state 8) tr
   ).
 
 
@@ -652,7 +696,7 @@ Definition hello_world5 : @relocatable_segment t (list w) (instr concrete_int_32
 
 (* Compute (runn 2000 hello_world5). *)
 
-(* Compute (run_abs 2000 hello_world5). *)
+Compute (run_abs 2000 hello_world5). 
 
 (* TODO: Refinement proof from concrete to abstract instances *)
 
