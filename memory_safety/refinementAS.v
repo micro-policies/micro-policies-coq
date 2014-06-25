@@ -719,13 +719,6 @@ Ltac subst_beq :=
   | EQ : (?x == ?y) = true |- _ => (move/eqP: EQ => EQ; subst) || fail 2
   end.
 
-Ltac current_instr_opcode :=
-  match goal with
-  | H : decode_instr _ = Some ?instr |- _ =>
-    let op := (eval compute in (opcode_of instr)) in
-    op
-  end.
-
 Definition lift_binop (f : binop) (x y : atom (word mt) (Sym.label mt)) :=
   match f with
   | ADD => match x, y with

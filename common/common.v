@@ -581,3 +581,10 @@ Definition relocate_ignore_args
   (l, gen').
 
 End Relocation.
+
+Ltac current_instr_opcode :=
+  match goal with
+  | H : decode_instr _ = Some ?instr |- _ =>
+    let op := (eval compute in (opcode_of instr)) in
+    op
+  end.

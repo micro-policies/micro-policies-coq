@@ -994,13 +994,6 @@ Proof.
   end.
 Qed.
 
-Ltac current_instr_opcode :=
-  match goal with
-  | H : decode_instr _ = Some ?instr |- _ =>
-    let op := (eval compute in (opcode_of instr)) in
-    op
-  end.
-
 Lemma in_user_no_system_call st :
   in_user st = true ->
   Concrete.tag (Concrete.pc st) = tag_to_word CALL ->

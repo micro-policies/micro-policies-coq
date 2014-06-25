@@ -19,13 +19,6 @@ Hint Constructors restricted_exec.
 Hint Unfold exec.
 Hint Resolve restricted_exec_trans.
 
-Ltac current_instr_opcode :=
-  match goal with
-  | H : decode_instr _ = Some ?instr |- _ =>
-    let op := (eval compute in (opcode_of instr)) in
-    op
-  end.
-
 Section Refinement.
 
 Context {mt : machine_types}
@@ -551,13 +544,6 @@ Proof.
   simpl in *; try erewrite encode_kernel_tag; now rewrite decodeK.
 
 Qed.
-
-Ltac current_instr_opcode :=
-  match goal with
-  | H : decode_instr _ = Some ?instr |- _ =>
-    let op := (eval compute in (opcode_of instr)) in
-    op
-  end.
 
 Ltac simpl_word_lift :=
   match goal with
