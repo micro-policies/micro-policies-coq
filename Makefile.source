@@ -29,6 +29,7 @@ cfi/property.v
 cfi/abstract.v
 cfi/rules.v
 cfi/symbolic.v
+cfi/concrete.v
 cfi/refinementAS.v
 cfi/preservation.v
 cfi/preservationAS.v

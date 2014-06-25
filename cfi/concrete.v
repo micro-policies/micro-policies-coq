@@ -16,7 +16,8 @@ Require Import symbolic.refinement_common.
 Set Implicit Arguments.
 Open Scope Z_scope.
 
-Section Conc.
+Module Conc.
+Section ConcreteSection.
 
 Context {t : machine_types}
         {cp : Concrete.concrete_params t}
@@ -75,7 +76,7 @@ Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t
   Isn't the violation enough? *)
 Inductive step_a : Concrete.state t ->
                    Concrete.state t -> Prop :=
-| step_attack : forall (mem : Concrete.memory t) reg cache pc tpc epc mem' reg' i ctg
+| step_attack : forall mem reg cache pc tpc epc mem' reg' i ctg
                   (INUSER: word_lift (fun x => is_user x) tpc)
                   (FETCH: get mem pc = Some i@ctg)
                   (NOV: no_violation (Concrete.mkState mem reg cache pc@tpc epc))
@@ -83,7 +84,6 @@ Inductive step_a : Concrete.state t ->
                   (MEQUIV: equiv mem mem'),
                   step_a (Concrete.mkState mem reg cache pc@tpc epc)
                          (Concrete.mkState mem' reg' cache pc@tpc epc).
-
 
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 Local Open Scope word_scope.
@@ -119,5 +119,6 @@ Program Instance concrete_cfi_machine : cfi_machine := {|
   succ := csucc
  |}.
 
-End Conc.
+End ConcreteSection.
 
+End Conc.
