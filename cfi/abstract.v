@@ -1,4 +1,4 @@
-Require Import Coq.Lists.List Coq.Arith.Arith Coq.ZArith.ZArith.
+Require Import Coq.Lists.List Coq.Arith.Arith.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
@@ -13,7 +13,6 @@ Import ListNotations.
 Module Abs.
 
 Open Scope bool_scope.
-Open Scope Z_scope.
 
 Section WithClasses.
 

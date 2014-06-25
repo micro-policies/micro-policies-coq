@@ -8,17 +8,11 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-(* This abstract machine corresponds to the one described under the name
-"High-level abstract machine" in Catalin's notes on memory safety:
-verif/stock-pico/notes/2013-05-memory-protection-no-free/main.pdf
-*)
-
 Import ListNotations.
 
 Module Abstract.
 
 Open Scope bool_scope.
-Open Scope Z_scope.
 
 Section WithClasses.
 
@@ -28,11 +22,6 @@ Context {ops : machine_ops t}.
 Variable block : eqType.
 
 Definition pointer := (block * word t)%type.
-
-Definition eq_pointer pt1 pt2 :=
-  let '(b1,i1) := pt1 in
-  let '(b2,i2) := pt2 in
-  Z.eqb b1 b2 && i1 == i2.
 
 Inductive value :=
 | VData : word t -> value
