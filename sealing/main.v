@@ -18,6 +18,7 @@ Require Import symbolic.int_32.
 Require Import sealing.symbolic.
 Require Import symbolic.fault_handler.
 Require Import sealing.abstract.
+Require Import symbolic.rules.
 Require Import concrete.exec.
 Require Import Integers.
 Require Import Omega.
@@ -306,7 +307,7 @@ Definition transfer_function : list (instr t) :=
   ([Halt _])))))))))))))))))))). 
 
 Definition fault_handler : @relocatable_segment t w w :=
-  kernel_code (handler t ops fhp transfer_function).
+  kernel_code (fault_handler.handler t ops fhp transfer_function).
 
 Definition extra_state : @relocatable_segment t w w := 
   kernel_data [nat_to_word 13].
@@ -416,65 +417,33 @@ Definition build_concrete_sealing_machine
     user_reg_min user_reg_max
     (encode_sealing_tag Sym.DATA).
 
-Import Concrete.
-
-(* BCP: Maybe these should come from rules.v? *)
-Definition less_trivial_masks : Concrete.Masks :=
-  let mk_mask dcm cm :=
-      let '(dcm_tcp,dcm_ti,dcm_t1,dcm_t2,dcm_t3) := dcm in
-      let '(cm_trpc,cm_tr) := cm in
-      Concrete.Build_Mask
-        (fun mvp =>
-           match mvp with
-             | mvp_tpc => dcm_tcp
-             | mvp_ti => dcm_ti
-             | mvp_t1 => dcm_t1
-             | mvp_t2 => dcm_t2
-             | mvp_t3 => dcm_t3
-           end)
-         (Concrete.mkCTMask cm_trpc cm_tr) in
-  fun kernel opcode =>
-    if kernel then
-      match opcode with
-        | NOP => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
-        | CONST =>  mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
-        | MOV => mk_mask (false,false,true,true,true) (Some mvp_tpc,Some mvp_t1)
-        | BINOP _ => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
-        | LOAD =>  mk_mask (false,false,true,true,true) (Some mvp_tpc,Some mvp_t2)  (* unclear whether copy-through is useful, but seems harmless enough *)
-        | STORE => mk_mask (false,false,true,true,true) (Some mvp_tpc,Some mvp_t2)
-        | JUMP => mk_mask (false,false,true,true,true) (Some mvp_t1,None)
-        | BNZ => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
-        | JAL => mk_mask (false,false,true,true,true) (Some mvp_t1,Some mvp_tpc)
-        | JUMPEPC => mk_mask (false,false,true,true,true) (Some mvp_t1,None)
-        | ADDRULE => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
-        | GETTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
-        | PUTTAG => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
-        | HALT => mk_mask (false,false,false,false,false) (None,None)
-        | SERVICE => mk_mask (false,false,false,false,false) (None,None)
-      end
-    else
-      match opcode with
-        | NOP => mk_mask (false,false,true,true,true) (None,None)
-        | CONST =>  mk_mask (false,false,false,true,true) (None,None)
-        | MOV => mk_mask (false,false,false,false,true) (None,None)
-        | BINOP _ => mk_mask (false,false,false,false,false) (None,None)
-        | LOAD =>  mk_mask (false,false,false,false,false) (None,None)
-        | STORE => mk_mask (false,false,false,false,false) (None,None)
-        | JUMP => mk_mask (false,false,false,true,true) (None,None)
-        | BNZ => mk_mask (false,false,false,true,true) (None,None)
-        | JAL => mk_mask (false,false,false,false,true) (None,None)
-        | JUMPEPC => mk_mask (false,false,true,true,true) (None,None)
-        | ADDRULE => mk_mask (false,false,true,true,true) (None,None)
-        | GETTAG => mk_mask (false,false,false,false,true) (None,None)
-        | PUTTAG => mk_mask (false,false,false,false,false) (None,None)
-        | HALT => mk_mask (false,false,false,false,false) (None,None)
-        | SERVICE => mk_mask (false,false,false,false,false) (None,None)
-      end
-.
 End WithClasses.
 
+(* ------------------------------------------------------------------------- *)
+(* Abstract machine *)
+
+(*
+Definition build_abstract_sealing_machine 
+     (user_mem : @relocatable_segment t (list w) atom) 
+   : Concrete.state concrete_int_32_t :=
+  (* This list should be defined at the same place as the decoding
+     function that splits out the addresses for use when generating
+     user code *)
+  let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
+  initial_state
+    extra_state
+    fault_handler
+    syscalls
+    user_mem
+    (encode_sealing_tag Sym.DATA)
+    user_reg_min user_reg_max
+    (encode_sealing_tag Sym.DATA).
+*)
+
+(* ------------------------------------------------------------------------- *)
+
 Definition eval_reg n (r : reg t) init :=
-  match exec.stepn less_trivial_masks t n init with
+  match exec.stepn masks t n init with
   | Some st => Some (TotalMaps.get (Concrete.regs st) r)
   | None => None
   end.
@@ -580,7 +549,7 @@ Definition summarize_state mem_count cache_count st :=
 
 Definition tracen n p := 
   let init := build_concrete_sealing_machine p in
-  let tr := exec.tracen less_trivial_masks t n init in
+  let tr := exec.tracen masks t n init in
   (
    summarize_state 3000 1000 init ::
    map (summarize_state 8 1) tr
