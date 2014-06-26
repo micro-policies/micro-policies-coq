@@ -226,6 +226,7 @@ Qed.
 
 Import Vector.VectorNotations.
 
+(* TODO: split this between syscall vs fault *)
 Lemma user_kernel_user_simulation ast cst cst' :
   refine_state ki table ast cst ->
   user_kernel_user_step cst cst' ->
@@ -375,6 +376,16 @@ Definition refine_state_weak ast cst :=
     refine_state ki table ast cst0 /\
     Concrete.step _ masks cst0 kst /\
     kernel_exec kst cst.
+
+(* This should be useful for proving backwards_simulation,
+   and for CFI *)
+Lemma kernel_simulation_strong ast cst cst' :
+  refine_state_weak ast cst ->
+  Symbolic.get_syscall table (common.val (Symbolic.pc ast)) = None ->
+  Concrete.step _ masks cst cst' ->
+  in_kernel cst \/ in_kernel cst' ->
+  refine_state_weak ast cst'.
+Admitted.
 
 Lemma backwards_simulation ast cst cst' :
   refine_state_weak ast cst ->

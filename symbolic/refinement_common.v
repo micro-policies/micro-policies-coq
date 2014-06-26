@@ -663,9 +663,9 @@ Class kernel_code_correctness : Prop := {
        beginning of the corresponding system call code and let it run
        until it reaches a user-mode state with primes on everything... *)
 
+    (* TODO: ADD HYPOTHESIS ABOUT NOT FAULTING *)
+
     exists cmem' creg' cache' epc',
-      (* CH: this doesn't quite agree with what's happening in symbolic.v;
-             should bring the step_syscall rule back in sync *)
       user_kernel_user_step (Concrete.mkState cmem
                                               creg
                                               cache
