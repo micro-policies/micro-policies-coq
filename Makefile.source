@@ -29,10 +29,11 @@ cfi/property.v
 cfi/abstract.v
 cfi/rules.v
 cfi/symbolic.v
-cfi/concrete.v
 cfi/refinementAS.v
 cfi/preservation.v
 cfi/preservationAS.v
+cfi/concrete.v
+cfi/refinementSC.v
 # old files:
 #cfi/concrete_cfi.v
 #cfi/concrete_kernel.v
