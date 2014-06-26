@@ -145,7 +145,7 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
   end.
 
 Inductive refine_val : Abstract.value mt block -> word mt -> Sym.type mt -> Prop :=
-  | RefineInt : forall w, refine_val (Abstract.VData _ w) w INT
+  | RefineData : forall w, refine_val (Abstract.VData _ w) w DATA
   | RefinePtr : forall b base nonce off, mi b = Some (base,nonce) ->
                 refine_val (Abstract.VPtr (b,off)) (base + off) (PTR nonce).
 
@@ -232,7 +232,7 @@ Definition refine_memory amem (qamem : Sym.memory mt) :=
 
 Lemma refine_memory_get_int qamem (w1 w2 w3 : word mt) pt :
          refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR w2) ->
-         PartMaps.get qamem w1 = Some w3@M(w2,INT) ->
+         PartMaps.get qamem w1 = Some w3@M(w2,DATA) ->
          Abstract.getv amem pt = Some (Abstract.VData _ w3).
 Proof.
 intros [miP rmem] rpt get_w.
@@ -450,8 +450,8 @@ Qed.
 
 Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
   refine_registers aregs qaregs ->
-  PartMaps.get qaregs n = Some w@V(INT) ->
-    refine_val (Abstract.VData _ w) w INT /\
+  PartMaps.get qaregs n = Some w@V(DATA) ->
+    refine_val (Abstract.VData _ w) w DATA /\
     PartMaps.get aregs n = Some (Abstract.VData _ w).
 Proof.
 intros rregs get_n.
@@ -580,14 +580,14 @@ Qed.
 (*
 Lemma pc_noJal st st' mvec pc :
   Symbolic.next_state_pc st mvec pc = Some st' ->
-  Symbolic.op mvec != JAL -> Symbolic.tpc mvec != V(INT).
+  Symbolic.op mvec != JAL -> Symbolic.tpc mvec != V(DATA).
 Proof.
 by case: mvec=> op [[|]||].
 Qed.
 
 Lemma tiE st st' mvec pc :
   Symbolic.next_state_pc st mvec pc = Some st' ->
-  exists b, Symbolic.ti mvec = M(b,INT).
+  exists b, Symbolic.ti mvec = M(b,DATA).
 Proof.
 case: mvec=> op tpc ti.
 case: op; (do ?case) => ts;
@@ -601,7 +601,7 @@ Qed.
 
 Lemma next_state_pcE st st' mvec pc :
   Symbolic.next_state_pc st mvec pc = Some st' ->
-  exists b, Symbolic.tpc mvec = V(PTR b) /\ Symbolic.ti mvec = M(b,INT).
+  exists b, Symbolic.tpc mvec = V(PTR b) /\ Symbolic.ti mvec = M(b,DATA).
 Proof.
 case: mvec=> op tpc ti.
 case: op; (do ?case) => ts;
@@ -615,7 +615,7 @@ Qed.
 Lemma next_state_regE st st' mvec r w :
   Symbolic.next_state_reg st mvec r w = Some st' ->
   (* PartMaps.get reg r = Some old@told -> *)
-  exists b, Symbolic.tpc mvec = V(PTR b) /\ Symbolic.ti mvec = M(b,INT).
+  exists b, Symbolic.tpc mvec = V(PTR b) /\ Symbolic.ti mvec = M(b,DATA).
 Proof.
 case: mvec=> op tpc ti.
 case: op; (do ?case) => ts;
@@ -722,35 +722,35 @@ Ltac subst_beq :=
 Definition lift_binop (f : binop) (x y : atom (word mt) (Sym.label mt)) :=
   match f with
   | ADD => match x, y with
-           | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
-           | w1@V(PTR b), w2@V(INT) => Some (binop_denote f w1 w2, PTR b)
-           | w1@V(INT), w2@V(PTR b) => Some (binop_denote f w1 w2, PTR b)
+           | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
+           | w1@V(PTR b), w2@V(DATA) => Some (binop_denote f w1 w2, PTR b)
+           | w1@V(DATA), w2@V(PTR b) => Some (binop_denote f w1 w2, PTR b)
            | _, _ => None
            end
   | SUB => match x, y with
-           | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
-           | w1@V(PTR b), w2@V(INT) => Some (binop_denote f w1 w2, PTR b)
+           | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
+           | w1@V(PTR b), w2@V(DATA) => Some (binop_denote f w1 w2, PTR b)
            | w1@V(PTR b1), w2@V(PTR b2) =>
-             if b1 == b2 then Some (binop_denote f w1 w2, INT)
+             if b1 == b2 then Some (binop_denote f w1 w2, DATA)
              else None
            | _, _ => None
            end
   | EQ => match x, y with
-          | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
+          | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
           | w1@V(PTR b1), w2@V(PTR b2) =>
-            if b1 == b2 then Some (binop_denote f w1 w2, INT)
+            if b1 == b2 then Some (binop_denote f w1 w2, DATA)
             else None
           | _, _ => None
           end
   | LEQ => match x, y with
-          | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
+          | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
           | w1@V(PTR b1), w2@V(PTR b2) =>
-            if b1 == b2 then Some (binop_denote f w1 w2, INT)
+            if b1 == b2 then Some (binop_denote f w1 w2, DATA)
             else None
           | _, _ => None
           end
   | _ => match x, y with
-         | w1@V(INT), w2@V(INT) => Some (binop_denote f w1 w2, INT)
+         | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
          | _, _ => None
          end
   end.
@@ -828,7 +828,7 @@ repeat match goal with
   match type_of reg with
   | Symbolic.registers _ =>
     match ty with
-    | INT => eapply (refine_registers_get_int rregs) in GET; destruct GET as [? ?]
+    | DATA => eapply (refine_registers_get_int rregs) in GET; destruct GET as [? ?]
     | PTR _ =>
       (eapply (refine_registers_get_ptr rregs) in GET; destruct GET as ((? & ?) & ? & ?))
         || let op := current_instr_opcode in fail 5 "refine_registers_get_ptr" op GET
@@ -846,7 +846,7 @@ repeat match goal with
   match type_of mem with
   | Symbolic.memory _ =>
     match ty with
-    | INT => (eapply (refine_memory_get_int rmem) in GET; [|by eauto])
+    | DATA => (eapply (refine_memory_get_int rmem) in GET; [|by eauto])
                     || fail 5 "refine_memory_get_int"
     | _ =>
     (eapply (refine_memory_get rmem) in GET; [|by eauto]; destruct GET as (? & ? & ? & ? & ?)) || let op := current_instr_opcode in
