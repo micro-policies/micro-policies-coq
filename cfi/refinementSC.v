@@ -512,13 +512,88 @@ Program Instance cfi_refinementSC  :
 }.
 Next Obligation.
 Proof.
-  split.
-  { (*Visible steps*)
-    intro VIS.
-    unfold refine_state in REF.
-    unfold visible in VIS.
-    apply andb_true_iff in VIS.
-    destruct VIS as [VIS VIS'].
+  unfold refine_state in REF.
+  destruct REF as [UREF | KREF].
+  - split.
+    { (*Visible steps*)
+      intro VIS.
+      unfold visible in VIS.
+      apply andb_true_iff in VIS.
+      destruct VIS as [VIS VIS'].
+      assert (HIT: @hit_step mt ops sym_params cp e cst cst')
+        by (constructor; auto).
+      destruct (hit_simulation UREF HIT) as [sst' [SSTEP REF']].
+      unfold refine_state, refine_state_weak.
+      eexists; split; eauto.
+    }
+    { (*cst' invisible*)
+      intro INVIS.
+      apply andb_false_iff in INVIS.
+      destruct INVIS as [CONTRA | INVIS].
+      - unfold refinement_common.refine_state in UREF.
+        destruct UREF as [USER ?].
+        unfold in_user in CONTRA.
+        rewrite USER in CONTRA. discriminate.
+      - (*user to not user step*)
+        right. exists cst; exists cst'.
+        repeat (split; auto).
+        unfold kernel_exec.
+        destruct (user_into_kernel UREF STEP INVIS).
+        eapply re_refl; eauto.
+    }
+  - split.
+    { 
+      intro VIS.
+      apply andb_true_iff in VIS.
+      destruct VIS as [VIS VIS'].
+      destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
+      unfold kernel_exec in KEXEC.
+      apply restricted_exec_snd in KEXEC.
+      unfold in_user in VIS.
+      apply (@in_user_in_kernel mt ops sym_params cp e) in VIS.
+      rewrite VIS in KEXEC. discriminate.
+    }
+    { intros INVIS. apply andb_false_iff in INVIS.
+      destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
+      assert (INKERNEL := restricted_exec_snd KEXEC). simpl in INKERNEL.
+      clear INVIS.
+      destruct (in_user cst') eqn:INUSER.
+      - unfold refine_state, refine_state_weak.
+        destruct ast as [mem regs [pc tpc] int].
+        destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
+        - destruct (Symbolic.run_syscall s (Symbolic.State mem regs pc@tpc int)) eqn:RUNCALL.
+          (*case system call is allowed*)
+          assert (INUSERUST: @refinement_common.in_user mt ops sym_params cp e ust = true).
+            by (destruct UREF; assumption).
+          assert (KUEXEC: kernel_user_exec kst cst').
+          { econstructor; eauto. apply (@in_user_in_kernel mt ops sym_params cp e).
+            unfold in_user in INUSER.  assumption. }
+          assert (UKU1: @user_kernel_user_step mt ops sym_params cp e ust cst').
+            by (econstructor; eauto).
+          destruct ust as [cmem cregs cache [cpc ctpc] epc].
+          destruct UREF as [USTUSER [? [TPC [REFM [REFR [CACHE [MVEC [RA [WF KI]]]]]]]]].
+          destruct s0 as [mem0 regs0 [pc0 tpc0] int0]. subst.
+          destruct (syscalls_correct_allowed_case cpc tpc int epc KI REFM REFR CACHE MVEC GETCALL RUNCALL)
+            as [cmem' [creg' [cache' [epc' [UKU2 [REFM' [REFR' [CACHE' [MVEC' [RA' [WF' KI']]]]]]]]]]].
+          left. 
+          destruct (rules.decode ctpc) eqn:DECODE.
+          - destruct t; try contradiction. subst.
+            apply rules.encodeK in DECODE.
+            rewrite DECODE in UKU2.
+            assert (EQ := user_kernel_user_step_determ UKU1 UKU2).
+            subst.
+            
+
+Arguments ki, table, amem, areg, amem', areg', apc', tpc', int', cmem, creg,
+cache, sc are implicit
+Arguments mt, ops, ap, cp, e, kernel_code_correctness are implicit and
+maximally inserted
+Argument scopes are
+
+
+        (*
+        
+
     destruct (backward.backwards_simulation REF STEP) as [CONTRA | [ast' [SSTEP]]].
     - unfold refine_state_weak in CONTRA.
       destruct CONTRA as [CONTRA | CONTRA].
