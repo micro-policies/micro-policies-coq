@@ -11,6 +11,7 @@ Require Import cfi.preservation.
 Require Import cfi.rules.
 Require Import cfi.refinementAS. (*for Map - should remove when we move it*)
 Require Import symbolic.backward.
+Require Import symbolic.refinement_common.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
@@ -490,7 +491,43 @@ Proof.
     unfold rules.is_user in INUSER.
     congruence.
 Qed.
-          
+
+(* Preservation related stuff, probably move to other file*)
+
+Definition in_user := @in_user mt ops sym_params cp e.
+
+Definition visible cst cst' := 
+  in_user cst && in_user cst'.
+
+Definition smachine := Sym.symbolic_cfi_machine stable.
+Definition cmachine := Conc.concrete_cfi_machine valid_jmp masks.
+
+Context {kcc : kernel_code_correctness ki stable}. (*should this go to the top?*)
+
+Program Instance cfi_refinementSC  : 
+  (machine_refinement smachine cmachine) := {
+    refine_state st st' := refine_state st st';
+
+    visible st st' := visible st st'
+}.
+Next Obligation.
+Proof.
+  split.
+  { (*Visible steps*)
+    intro VIS.
+    unfold refine_state in REF.
+    unfold visible in VIS.
+    apply andb_true_iff in VIS.
+    destruct VIS as [VIS VIS'].
+    destruct (backward.backwards_simulation REF STEP) as [CONTRA | [ast' [SSTEP]]].
+    - unfold refine_state_weak in CONTRA.
+      destruct CONTRA as [CONTRA | CONTRA].
+      + unfold refinement_common.refine_state in CONTRA.
+        destruct ast, cst'.
+        destruct [
+      
+      
+   
 End Refinement.
         
   
