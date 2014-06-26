@@ -609,7 +609,7 @@ case: tpc => [[|?]|? [|?]|] //;
 case: ti => [[|?]|? [|?]|] //;
 rewrite /Symbolic.next_state_pc /Symbolic.next_state /=;
 case: ifP => //= /eqP->;
-by eexists.
+try by eexists. eexists.
 Qed.
 
 Lemma next_state_regE st st' mvec r w :
