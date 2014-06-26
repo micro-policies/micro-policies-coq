@@ -33,16 +33,16 @@ Import PartMaps.
 
 Class abstract_params := {
   memory : Type;
-  mem_class :> partial_map memory block frame;
+  mem_map :> partial_map memory block frame;
   registers : Type;
-  reg_class :> partial_map registers (reg t) value
+  reg_map :> partial_map registers (reg t) value
 }.
 
 Class params_spec (ap : abstract_params) := {
 
-  mem_axioms :> PartMaps.axioms (@mem_class ap);
+  mem_map_spec :> PartMaps.axioms (@mem_map ap);
 
-  reg_axioms :> PartMaps.axioms (@reg_class ap)
+  reg_map_spec :> PartMaps.axioms (@reg_map ap)
 
 }.
 
@@ -138,12 +138,18 @@ Definition lift_binop (f : binop) (x y : value) :=
 Definition bool_to_word (b : bool) : word :=
   Z_to_word (if b then 1%Z else 0%Z).
 
-Definition total_eq (x y : value) : bool :=
+Definition value_eq (x y : value) : bool :=
   match x, y with
     | VData w1, VData w2 => w1 == w2
     | VPtr(b1,o1), VPtr (b2,o2) => (b1 == b2) && (o1 == o2)
     | _, _ => false
   end.
+
+Lemma value_eqP : Equality.axiom value_eq.
+Admitted.
+
+Definition value_eqMixin := EqMixin value_eqP.
+Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
 
 Inductive step : state -> state -> Prop :=
 | step_nop : forall mem reg pc i,
@@ -230,7 +236,7 @@ Inductive step : state -> state -> Prop :=
 | step_eq : forall mem reg reg' v1 v2 pc'
     (V1   : get reg syscall_arg1 = Some v1)
     (V2   : get reg syscall_arg2 = Some v2),
-    let v := VData (bool_to_word (total_eq v1 v2)) in forall
+    let v := VData (bool_to_word (value_eq v1 v2)) in forall
     (UPD  : upd reg syscall_ret v = Some reg')
     (RA   : get reg ra = Some (VPtr pc')),
     step (mkState mem reg (VData eq_addr)) (mkState mem reg' (VPtr pc')).
