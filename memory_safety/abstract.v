@@ -122,13 +122,6 @@ Definition lift_binop (f : binop) (x y : value) :=
            else None
           | _, _ => None
          end
-  | LEQ => match x, y with
-         | VData w1, VData w2 => Some (VData (binop_denote f w1 w2))
-         | VPtr(b1,w1), VPtr (b2,w2)=>
-           if b1 == b2 then Some (VData (binop_denote f w1 w2))
-           else None
-          | _, _ => None
-         end
   | _ => match x, y with
          | VData w1, VData w2 => Some (VData (binop_denote f w1 w2))
          | _, _ => None
