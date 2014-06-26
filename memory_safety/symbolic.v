@@ -184,15 +184,6 @@ Definition rules (mvec : MVec tag) : option (RVec tag) :=
                        else None
                      | _, _ => None
                      end
-                   | LEQ =>
-                     match t1, t2 with
-                     | V(DATA), V(DATA) => Some (mkRVec V(PTR b) V(DATA))
-                     | V(PTR b1), V(PTR b2) =>
-                       if b1 == b2 then Some (mkRVec V(PTR b) V(DATA))
-                       else None (* comparing pointers to different regions disallowed
-                                    as it would expose too much about allocation *)
-                     | _, _ => None
-                     end
                    | _ =>
                      match t1, t2 with
                      | V(DATA), V(DATA) => Some (mkRVec V(PTR b) V(DATA))
