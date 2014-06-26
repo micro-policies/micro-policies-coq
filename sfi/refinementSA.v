@@ -16,6 +16,7 @@ Section RefinementSA.
 Set Implicit Arguments.
 
 Import PartMaps.
+Import Sym.EnhancedDo.
 
 (* I want to use S and I as variables. *)
 Let S := Datatypes.S.
@@ -32,8 +33,10 @@ Context
   {sfi_syscalls : sfi_syscall_params t}
   {smemory      : Type}
   {smem_class   : partial_map smemory (word t) (atom (word t) (@Sym.stag t))}
+  {smem_axioms  : axioms smem_class}
   {sregisters   : Type}
-  {sreg_class   : partial_map sregisters (reg t) (atom (word t) (@Sym.stag t))}.
+  {sreg_class   : partial_map sregisters (reg t) (atom (word t) (@Sym.stag t))}
+  {sreg_axioms  : axioms sreg_class}.
 
 Notation word    := (word t).
 Notation stag    := (@Sym.stag t).
@@ -93,25 +96,34 @@ Definition refine_compartment_b (c : Abs.compartment t)
     Some tt.
 End With_EqType_refine_compartment_b.
 
-Definition refine_compartment_set_b (C   : list (Abs.compartment t))
-                                    (sst : sstate)
-                                    (p   : word) : bool :=
+Definition refine_compartment_tag (C   : list (Abs.compartment t))
+                                  (sst : sstate)
+                                  (p   : word) : Prop :=
   match get (Symbolic.mem sst) p with
-    | Some (_ @ (Sym.DATA _ I W)) =>
-      is_some (assoc_list_lookup (Sym.set_ids (Symbolic.internal sst))
-                                 (eq_op I)) &&
-      is_some (assoc_list_lookup (Sym.set_ids (Symbolic.internal sst))
-                                 (eq_op W))
+    | Some (_ @ (Sym.DATA cid I W)) =>
+      (exists c,
+         Abs.in_compartment p C c /\
+         forall p',
+           match get (Symbolic.mem sst) p' with
+             | Some (_ @ (Sym.DATA cid' _ _)) => cid = cid' ->
+                                                 Abs.in_compartment p' C c
+             | Some (_ @ _)                   => False
+             | None                           => True
+           end) /\
+        is_some (assoc_list_lookup (Sym.set_ids (Symbolic.internal sst))
+                                   (eq_op I)) /\
+        is_some (assoc_list_lookup (Sym.set_ids (Symbolic.internal sst))
+                                   (eq_op W))
     | Some (_ @ _) =>
-      false
+      False
     | None =>
-      true
+      True
   end.
 
 Definition refine_compartments (C : list (Abs.compartment t))
                                (sst : sstate) : Prop :=
   forallb (refine_compartment_b ^~ (Symbolic.mem sst)) C /\
-  (forall p, refine_compartment_set_b C sst p) /\
+  (forall p, refine_compartment_tag C sst p) /\
   forallb (fun set_id => let: (set,id) := set_id in
              is_set set && (id <? (Sym.next_id (Symbolic.internal sst))))
           (Sym.set_ids (Symbolic.internal sst)).
@@ -141,18 +153,18 @@ Proof.
          GOOD;
     simpl in *;
     unfold refine_compartments in RCOMPS; simpl in RCOMPS;
-    destruct RCOMPS as [RCOMPS [RSETS ROK]];
+    destruct RCOMPS as [RCOMPS [RTAGS ROK]];
   unfold Sym.good_state, Abs.good_state in *; simpl in *;
     move: GOOD => /andP [ICO GOOD].
   repeat split.
   - intros p; unfold Sym.good_memory_tag.
     unfold refine_memory, pointwise in RMEMS; specialize RMEMS with p.
-    specialize RSETS with p; unfold refine_compartment_set_b in RSETS;
-      simpl in RSETS.
-    destruct (get SM p) as [[Sx SL]|] eqn:SGET; rewrite SGET in RSETS *;
+    specialize RTAGS with p; unfold refine_compartment_tag in RTAGS;
+      simpl in RTAGS.
+    destruct (get SM p) as [[Sx SL]|] eqn:SGET; rewrite SGET in RTAGS *;
       [|trivial].
     destruct (get AM p) as [Ax|] eqn:AGET; [simpl in RMEMS | elim RMEMS].
-    by destruct SL as [|c I W|].
+    destruct SL as [|c I W|]; solve [apply/andP; tauto | done].
   - intros r; unfold Sym.good_register_tag.
     unfold refine_registers, pointwise in RREGS; specialize RREGS with r.
     destruct (get SR r) as [[Sx SL]|] eqn:SGET; rewrite SGET; [|trivial].
@@ -163,6 +175,22 @@ Proof.
   - exact ROK.
 Qed.
 
+Ltac unoption :=
+  repeat match goal with
+    | EQ  : Some _ = Some _ |- _ => inversion EQ; subst; clear EQ
+    | NEQ : Some _ = None   |- _ => discriminate
+    | NEQ : None   = Some   |- _ => discriminate
+    | EQ  : None   = None   |- _ => clear EQ
+  end.
+
+(* For greppability *)
+Tactic Notation "slowness" "admit" :=
+  match goal with
+    | |- Abs.in_compartment (_ + _)%w _ _ => admit
+    | _ => fail "Not a slowness case!"
+  end.
+
+(* This *really* needs to be cleaned up! *)
 Theorem backward_simulation : forall ast sst sst',
   refine_astate' ast sst ->
   sstep sst sst' ->
@@ -170,6 +198,251 @@ Theorem backward_simulation : forall ast sst sst',
     astep' ast ast' /\
     refine_astate' ast' sst'.
 Proof.
-Abort.
+  clear S I; move=> ast sst sst' REFINE SSTEP.
+  destruct REFINE as [sst NOT|ast sst REFINE]; [elim NOT; eauto|]; simpl in *.
+  destruct REFINE as [RPC RREGS RMEMS RCOMP], ast as [Apc AR AM AC]; simpl in *.
+  destruct SSTEP; subst; try subst mvec;
+    unfold Symbolic.next_state_reg, Symbolic.next_state_pc,
+           Symbolic.next_state_reg_and_pc, Symbolic.next_state in *;
+    simpl in *;
+    unfold Sym.rvec_next, Sym.rvec_jump, Sym.rvec_store, Sym.rvec_simple,
+           Sym.rvec_step in *;
+    simpl in *.
+  - (* Nop *)
+    undo1 NEXT rvec; undo1 def_rvec cid;
+      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+    destruct tpc as [S cid'| |]; try discriminate;
+      destruct ti as [|cid'' I W|]; try discriminate.
+    move/eqP in RPC; subst Apc.
+    exists (Some (Abs.State (pc+1)%w AR AM AC)); split.
+    + eapply AbsSlow.step_go; try reflexivity.
+      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
+      specialize RCTAGS with pc; rewrite PC in RCTAGS.
+      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
+      eapply Abs.step_nop; try reflexivity.
+      * unfold Abs.decode.
+        unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
+          specialize RMEMS with pc; rewrite PC in RMEMS;
+          destruct (get AM pc); [simpl|contradiction].
+        move/eqP in RMEMS; subst; assumption.
+      * split; [apply IN_c|].
+        slowness admit.
+    + by do 2 constructor; simpl.
+  - (* Const *)
+    undo1 NEXT rvec;
+      destruct told as [| |]; try discriminate;
+      undo1 def_rvec cid;
+      undo1 NEXT regs';
+      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+    destruct tpc as [S cid'| |]; try discriminate;
+      destruct ti as [|cid'' I W|]; try discriminate.
+    move/eqP in RPC; subst Apc.
+    evar (AR' : registers);
+      exists (Some (Abs.State (pc+1)%w AR' AM AC)); split;
+      subst AR'.
+    + eapply AbsSlow.step_go; try reflexivity.
+      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
+      specialize RCTAGS with pc; rewrite PC in RCTAGS.
+      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
+      eapply Abs.step_const; try reflexivity.
+      * unfold Abs.decode.
+        unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
+          specialize RMEMS with pc; rewrite PC in RMEMS;
+          destruct (get AM pc); [simpl|contradiction].
+        move/eqP in RMEMS; subst; eassumption.
+      * split; [apply IN_c|].
+        slowness admit.
+      * unfold upd; rewrite /refine_registers /pointwise in RREGS;
+          specialize RREGS with r.
+        destruct (get AR r) eqn:GET;
+          [reflexivity | rewrite OLD in RREGS; done].
+    + do 2 constructor; simpl; try done.
+      unfold upd; rewrite /refine_registers /pointwise in RREGS *; intros r'.
+      destruct (r == r') eqn:EQ_r; move/eqP in EQ_r; [subst r'|].
+      * erewrite get_set_eq, get_upd_eq by eauto using reg_axioms.
+        by unfold refine_reg_b.
+      * erewrite get_set_neq, get_upd_neq with (m' := regs')
+          by eauto using reg_axioms.
+        apply RREGS.
+  - (* Mov *)
+    undo1 NEXT rvec;
+      destruct t1,told; try discriminate;
+      undo1 def_rvec cid;
+      undo1 NEXT regs';
+      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+    destruct tpc as [S cid'| |]; try discriminate;
+      destruct ti as [|cid'' I W|]; try discriminate.
+    move/eqP in RPC; subst Apc.
+    rewrite /refine_registers /pointwise in RREGS.
+    destruct (get AR r1) as [x1|] eqn:GET1;
+      [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
+    destruct (get AR r2) as [x2|] eqn:GET2;
+      [| specialize RREGS with r2; rewrite OLD GET2 in RREGS; done].
+    evar (AR' : registers);
+      exists (Some (Abs.State (pc+1)%w AR' AM AC)); split;
+      subst AR'.
+    + rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
+      specialize RCTAGS with pc; rewrite PC in RCTAGS.
+      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
+      eapply AbsSlow.step_go; try reflexivity.
+      eapply Abs.step_mov; try reflexivity.
+      * unfold Abs.decode.
+        unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
+          specialize RMEMS with pc; rewrite PC in RMEMS;
+          destruct (get AM pc); [simpl|contradiction].
+        move/eqP in RMEMS; subst; eassumption.
+      * split; [apply IN_c|].
+        slowness admit.
+      * eassumption.
+      * unfold upd; rewrite GET2; reflexivity.
+    + do 2 constructor; simpl; try done.
+      unfold upd; rewrite /refine_registers /pointwise in RREGS *; intros r2'.
+      destruct (r2 == r2') eqn:EQ_r2; move/eqP in EQ_r2; [subst r2'|].
+      * erewrite get_set_eq, get_upd_eq by eauto using reg_axioms.
+        by specialize RREGS with r1; rewrite GET1 R1W /refine_reg_b in RREGS *.
+      * erewrite get_set_neq, get_upd_neq with (m' := regs')
+          by eauto using reg_axioms.
+        apply RREGS.
+  - (* Binop *)
+    undo1 NEXT rvec;
+      destruct t1,t2,told; try discriminate;
+      undo1 def_rvec cid;
+      undo1 NEXT regs';
+      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+    destruct tpc as [S cid'| |]; try discriminate;
+      destruct ti as [|cid'' I W|]; try discriminate.
+    move/eqP in RPC; subst Apc.
+    rewrite /refine_registers /pointwise in RREGS.
+    destruct (get AR r1) as [x1|] eqn:GET1;
+      [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
+    destruct (get AR r2) as [x2|] eqn:GET2;
+      [| specialize RREGS with r2; rewrite R2W GET2 in RREGS; done].
+    destruct (get AR r3) as [x3|] eqn:GET3;
+      [| specialize RREGS with r3; rewrite OLD GET3 in RREGS; done].
+    evar (AR' : registers);
+      exists (Some (Abs.State (pc+1)%w AR' AM AC)); split;
+      subst AR'.
+    + rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
+      specialize RCTAGS with pc; rewrite PC in RCTAGS.
+      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
+      eapply AbsSlow.step_go; try reflexivity.
+      eapply Abs.step_binop; try reflexivity.
+      * unfold Abs.decode.
+        unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
+          specialize RMEMS with pc; rewrite PC in RMEMS;
+          destruct (get AM pc); [simpl|contradiction].
+        move/eqP in RMEMS; subst; eassumption.
+      * split; [apply IN_c|].
+        slowness admit.
+      * eassumption.
+      * eassumption.
+      * unfold upd; rewrite GET3; reflexivity.
+    + do 2 constructor; simpl; try done.
+      unfold upd; rewrite /refine_registers /pointwise in RREGS *; intros r3'.
+      destruct (r3 == r3') eqn:EQ_r3; move/eqP in EQ_r3; [subst r3'|].
+      * erewrite get_set_eq, get_upd_eq by eauto using reg_axioms.
+        { unfold refine_reg_b. apply/eqP; f_equal.
+          - by specialize RREGS with r1;
+               rewrite GET1 R1W /refine_reg_b in RREGS *; apply/eqP.
+          - by specialize RREGS with r2;
+               rewrite GET2 R2W /refine_reg_b in RREGS *; apply/eqP. }
+      * erewrite get_set_neq, get_upd_neq with (m' := regs')
+          by eauto using reg_axioms.
+        apply RREGS.
+  - (* Load *)
+    undo1 NEXT rvec;
+      destruct t1,t2,told; try discriminate;
+      undo1 def_rvec cid;
+      undo1 NEXT regs';
+      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+    destruct tpc as [S cid'| |]; try discriminate;
+      destruct ti as [|cid'' I'' W''|]; try discriminate.
+    move/eqP in RPC; subst Apc.
+    rewrite /refine_registers /refine_memory /pointwise  in RREGS RMEMS.
+    destruct (get AR r1) as [x1|] eqn:GET1;
+      [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
+    destruct (get AR r2) as [xold|] eqn:GET2;
+      [| specialize RREGS with r2; rewrite OLD GET2 in RREGS; done].
+    assert (EQ1 : x1 = w1) by
+      (by specialize RREGS with r1;
+          rewrite R1W GET1 /refine_reg_b in RREGS; move/eqP in RREGS);
+      subst x1.
+    destruct (get AM w1) as [x2|] eqn:GETM1;
+      [|specialize RMEMS with w1; rewrite MEM1 GETM1 in RMEMS; done].
+    evar (AR' : registers);
+      exists (Some (Abs.State (pc+1)%w AR' AM AC)); split;
+      subst AR'.
+    + rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
+      specialize RCTAGS with pc; rewrite PC in RCTAGS.
+      destruct RCTAGS as [[ac [IN_ac IN_SAME]] [OK_I OK_W]].
+      eapply AbsSlow.step_go; try reflexivity.
+      eapply Abs.step_load; try reflexivity.
+      * unfold Abs.decode.
+        unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
+          specialize RMEMS with pc; rewrite PC in RMEMS;
+          destruct (get AM pc); [simpl|contradiction].
+        move/eqP in RMEMS; subst; eassumption.
+      * split; [apply IN_ac|].
+        slowness admit.
+      * eassumption.
+      * eassumption.
+      * unfold upd; rewrite GET2; reflexivity.
+    + do 2 constructor; simpl; try done.
+      unfold upd; rewrite /refine_registers /pointwise in RREGS *; intros r2'.
+      destruct (r2 == r2') eqn:EQ_r2; move/eqP in EQ_r2; [subst r2'|].
+      * erewrite get_set_eq, get_upd_eq by eauto using reg_axioms.
+        by specialize RMEMS with w1;
+           rewrite GETM1 MEM1 /refine_mem_loc_b /refine_reg_b in RMEMS *.
+      * erewrite get_set_neq, get_upd_neq with (m' := regs')
+          by eauto using reg_axioms.
+        apply RREGS.
+  - (* Store *)
+    admit.
+  - (* Jump *)
+    admit.
+  - (* Bnz *)
+    undo1 NEXT rvec;
+      destruct t1; try discriminate;
+      undo1 def_rvec cid;
+      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+    destruct tpc as [S cid'| |]; try discriminate;
+      destruct ti as [|cid'' I W|]; try discriminate.
+    move/eqP in RPC; subst Apc.
+    rewrite /refine_registers /pointwise in RREGS.
+    destruct (get AR r) as [x|] eqn:GET;
+      [| specialize RREGS with r; rewrite RW GET in RREGS; done].
+    assert (EQ : x = w) by
+      (by specialize RREGS with r;
+          rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
+      subst x.
+    evar (AR' : registers);
+      exists (Some (Abs.State (pc + (if w == 0 then 1 else imm_to_word n))%w
+                              AR' AM AC)); split;
+      subst AR'.
+    + eapply AbsSlow.step_go; try reflexivity.
+      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
+      specialize RCTAGS with pc; rewrite PC in RCTAGS.
+      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
+      eapply Abs.step_bnz; try reflexivity.
+      * unfold Abs.decode.
+        unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
+          specialize RMEMS with pc; rewrite PC in RMEMS;
+          destruct (get AM pc); [simpl|contradiction].
+        move/eqP in RMEMS; subst; eassumption.
+      * assumption.
+      * split; [apply IN_c|].
+        slowness admit.
+    + by do 2 constructor; simpl.
+  - (* Jal *)
+    admit.
+  - (* Syscall *)
+    admit.
+Qed.
 
 End RefinementSA.

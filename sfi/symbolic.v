@@ -11,9 +11,81 @@ Set Bullet Behavior "Strict Subproofs".
 
 Module Sym.
 
+Inductive where_from :=
+| INTERNAL : where_from
+| JUMPED   : where_from.
+
+Inductive stag {t : machine_types} :=
+| PC     : forall (S : where_from) (c : word t), stag
+| DATA   : forall (c : word t) (I W : list (word t)), stag
+| REG    : stag.
+
+Module EnhancedDo.
+Export DoNotation.
+
+Notation "'do!' ( X , Y ) <- A ; B" :=
+  (bind (fun XY => let '(X,Y) := XY in B) A)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200).
+
+Notation "'do!' X @ L <- A ; B" :=
+  (bind (fun XL => let '(X @ L) := XL in B) A)
+  (at level 200, X ident, L ident, A at level 100, B at level 200).
+
+Notation "'do!' X @ 'REG' <- A ; B" :=
+  (bind (fun XREG => match XREG with X @ REG => B | _ => None end) A)
+  (at level 200, X ident, A at level 100, B at level 200).
+
+Notation "'do!' X @ 'DATA' c' I' W' <- A ; B" :=
+  (bind (fun XcIW => match XcIW with X @ (DATA c' I' W') => B | _ => None end) A)
+  (at level 200, X ident, c' ident, I' ident, W' ident,
+   A at level 100, B at level 200).
+
+Notation "'do!' 'REG' <- A ; B" :=
+  (bind (fun maybeREG => match maybeREG with REG => B | _ => None end) A)
+  (at level 200, A at level 100, B at level 200).
+
+Notation "'do!' 'DATA' c' I' W' <- A ; B" :=
+  (bind (fun cIW => match cIW with DATA c' I' W' => B | _ => None end) A)
+  (at level 200, c' ident, I' ident, W' ident, A at level 100, B at level 200).
+
+Notation "'do!' 'REG' <-! A ; B" :=
+  (match A with REG => B | _ => None end)
+  (at level 200, A at level 100, B at level 200).
+
+Notation "'do!' 'DATA' c' I' W' <-! A ; B" :=
+  (match A with DATA c' I' W' => B | _ => None end)
+  (at level 200, c' ident, I' ident, W' ident, A at level 100, B at level 200).
+
+Ltac undo1 hyp var :=
+  let def_var := fresh "def_" var in
+  match type of hyp with
+    | (do! _ <- ?GET; _) = Some _ =>
+      destruct GET as [var|] eqn:def_var
+    | (do! guard ?COND; _) = Some _ =>
+      destruct COND eqn:var
+    | match ?OCOND with _ => _ end = Some _ =>
+      destruct OCOND as [[|]|] eqn:var
+  end; simpl in hyp; try discriminate.
+
+Ltac undo2 hyp v1 v2 :=
+  let GET := match type of hyp with
+               | (do! (_,_) <- ?GET; _) = Some _ => GET
+               | (do! _ @ _ <- ?GET; _) = Some _ => GET
+             end
+  in let def_v1_v2 := fresh "def_" v1 "_" v2 in
+     destruct GET as [[v1 v2]|] eqn:def_v1_v2;
+     simpl in hyp; [|discriminate].
+
+Ltac undoDATA hyp x c I W :=
+  let xcIW := fresh "xcIW" in
+  undo1 hyp xcIW; destruct xcIW as [x [|c I W|]];
+  [discriminate | simpl in hyp | discriminate].
+End EnhancedDo.
+
 Section WithClasses.
 
 Import PartMaps.
+Import EnhancedDo.
 
 Context {t            : machine_types}
         {ops          : machine_ops t}
@@ -26,14 +98,7 @@ Let I := Logic.I.
 (* ssreflect exposes `succn' as a synonym for `S' *)
 Local Notation II := Logic.I.
 
-Inductive where_from :=
-| INTERNAL : where_from
-| JUMPED   : where_from.
-
-Inductive stag :=
-| PC     : forall (S : where_from) (c : word t), stag
-| DATA   : forall (c : word t) (I W : list (word t)), stag
-| REG    : stag.
+Notation stag := (@stag t).
 
 Definition stag_is_PC (L : stag) : bool :=
   match L with PC _ _ => true | _ => false end.
@@ -92,8 +157,6 @@ Context {memory    : Type}
         {registers : Type}
         {sr        : partial_map registers (reg t) (atom (word t) stag)}
         {sra       : axioms sr}.
-
-Import DoNotation.
 
 Section WithVectors.
 Import Symbolic Coq.Vectors.Vector.VectorNotations.
@@ -163,39 +226,6 @@ Instance sym_sfi : Symbolic.symbolic_params := {
   registers := registers;
   sr        := sr
 }.
-
-Notation "'do!' ( X , Y ) <- A ; B" :=
-  (bind (fun XY => let '(X,Y) := XY in B) A)
-  (at level 200, X ident, Y ident, A at level 100, B at level 200).
-
-Notation "'do!' X @ L <- A ; B" :=
-  (bind (fun XL => let '(X @ L) := XL in B) A)
-  (at level 200, X ident, L ident, A at level 100, B at level 200).
-
-Notation "'do!' X @ 'REG' <- A ; B" :=
-  (bind (fun XREG => match XREG with | X @ REG => B | _ => None end) A)
-  (at level 200, X ident, A at level 100, B at level 200).
-
-Notation "'do!' X @ 'DATA' c I W <- A ; B" :=
-  (bind (fun XcIW => match XcIW with | X @ (DATA c I W) => B | _ => None end) A)
-  (at level 200, X ident, c ident, I ident, W ident,
-   A at level 100, B at level 200).
-
-Notation "'do!' 'REG' <- A ; B" :=
-  (bind (fun maybeREG => match maybeREG with | REG => B | _ => None end) A)
-  (at level 200, A at level 100, B at level 200).
-
-Notation "'do!' 'DATA' c I W <- A ; B" :=
-  (bind (fun cIW => match cIW with | DATA c I W => B | _ => None end) A)
-  (at level 200, c ident, I ident, W ident, A at level 100, B at level 200).
-
-Notation "'do!' 'REG' <-! A ; B" :=
-  (match A with | REG => B | _ => None end)
-  (at level 200, A at level 100, B at level 200).
-
-Notation "'do!' 'DATA' c I W <-! A ; B" :=
-  (match A with | DATA c I W => B | _ => None end)
-  (at level 200, c ident, I ident, W ident, A at level 100, B at level 200).
 
 Definition fresh (si : sfi_internal) : option (word t * sfi_internal) :=
   let 'Internal next ids := si in
@@ -346,29 +376,6 @@ Definition memory_has_sets (M : memory) (p : word t) : bool :=
   end.
 
 Generalizable All Variables.
-
-Ltac undo1 hyp var :=
-  let def_var := fresh "def_" var in
-  match type of hyp with
-    | (do! _ <- ?GET; _) = Some _ =>
-      destruct GET as [var|] eqn:def_var
-    | (do! guard ?COND; _) = Some _ =>
-      destruct COND eqn:var
-  end; simpl in hyp; [|discriminate].
-
-Ltac undo2 hyp v1 v2 :=
-  let GET := match type of hyp with
-               | (do! (_,_) <- ?GET; _) = Some _ => GET
-               | (do! _ @ _ <- ?GET; _) = Some _ => GET
-             end
-  in let def_v1_v2 := fresh "def_" v1 "_" v2 in
-     destruct GET as [[v1 v2]|] eqn:def_v1_v2;
-     simpl in hyp; [|discriminate].
-
-Ltac undoDATA hyp x c I W :=
-  let xcIW := fresh "xcIW" in
-  undo1 hyp xcIW; destruct xcIW as [x [|c I W|]];
-  [discriminate | simpl in hyp | discriminate].
 
 Corollary assoc_list_lookup_some_eq : forall (K : eqType) V (kvs : list (K * V))
                                              k v,

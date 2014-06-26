@@ -50,6 +50,12 @@ Theorem slow_stopped : forall othercalls s',
   ~ step othercalls None s'.
 Proof. by move=> oc s' []. Qed.
 
+Definition good_state (s : state) : bool :=
+  match s with
+    | Some MM => Abs.good_state MM
+    | None    => true
+  end.
+
 End WithClasses.
 
 End AbsSlow.
