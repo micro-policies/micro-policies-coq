@@ -10,6 +10,7 @@ Require Import cfi.symbolic.
 Require Import cfi.preservation.
 Require Import cfi.rules.
 Require Import cfi.refinementAS. (*for Map - should remove when we move it*)
+Require Import symbolic.backward.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
@@ -69,23 +70,23 @@ Variable stable : list (@Symbolic.syscall mt sym_params).
 
 Variable ki : (@refinement_common.kernel_invariant mt ops sym_params cp e).
 
-Definition masks := symbolic.rules.masks.
+Definition masks := symbolic.rules.masks. (*is this right?*)
 
-Definition refine_user_state (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
-  refinement_common.refine_state ki stable sst cst.
+(* Definition refine_user_state (sst : Symbolic.state mt) (cst : Concrete.state mt) := *)
+(*   refinement_common.refine_state ki stable sst cst. *)
 
-Definition refine_kernel_state (st : Symbolic.state mt) (kst : Concrete.state mt) :=
-  refinement_common.in_kernel kst = true /\
-  exists (ust : Concrete.state mt), 
-    (@refinement_common.in_user mt ops sym_params cp e) ust = true /\
-    exists kst', Concrete.step _ masks ust kst' /\ 
-                restricted_exec (fun s s' => Concrete.step _ masks s s') 
-                                (fun s => refinement_common.in_kernel s = true) 
-                                kst' kst /\
-                refine_user_state st ust.
+(* Definition refine_kernel_state (st : Symbolic.state mt) (kst : Concrete.state mt) := *)
+(*   refinement_common.in_kernel kst = true /\ *)
+(*   exists (ust : Concrete.state mt),  *)
+(*     (@refinement_common.in_user mt ops sym_params cp e) ust = true /\ *)
+(*     exists kst', Concrete.step _ masks ust kst' /\  *)
+(*                 restricted_exec (fun s s' => Concrete.step _ masks s s')  *)
+(*                                 (fun s => refinement_common.in_kernel s = true)  *)
+(*                                 kst' kst /\ *)
+(*                 refine_user_state st ust. *)
 
-Definition refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
-  refine_user_state sst cst \/ refine_kernel_state sst cst.
+Definition refine_state (sst : @Symbolic.state mt sym_params) (cst : Concrete.state mt) :=
+  @refine_state_weak mt ops sym_params cp e ki stable sst cst.
 
 Definition is_user (x : atom (word mt) (word mt)) := 
   rules.word_lift (fun t => rules.is_user t) (common.tag x).
@@ -292,6 +293,131 @@ Proof.
   }
 Qed.  
 
+(*Kernel invariants preserved by attacker*)
+Lemma mvec_in_kernel_preserved_by_equiv 
+      (mem : Concrete.memory mt) (mem' : Concrete.memory mt) :
+  refinement_common.mvec_in_kernel mem ->
+  Conc.equiv mem mem' ->
+  refinement_common.mvec_in_kernel mem'.
+Proof.
+  intros INV MEQUIV.
+  unfold refinement_common.mvec_in_kernel.
+  intros addr INMVEC.
+  specialize (INV addr).
+  apply INV in INMVEC.
+  destruct INMVEC as [v GET].
+  unfold Conc.equiv, pointwise in MEQUIV.
+  specialize (MEQUIV addr).
+  rewrite GET in MEQUIV.
+  destruct (get mem' addr) eqn:GET'.
+  - inversion MEQUIV 
+        as [a0 a' v0 v'' ? ? EQ1 EQ2 SEQUIV | a0 a' ? ? EQ1 EQ2 EQ3 |a0 a' EQ1 EQ2 EQ3];
+    subst.
+    + inversion EQ1; subst.
+      rewrite rules.encode_kernel_tag in H1.
+      apply rules.encode_inj in H1.
+      discriminate.
+    + simpl in EQ1. rewrite rules.encode_kernel_tag in EQ1.
+      apply rules.encode_inj in EQ1. discriminate.
+    + eexists; reflexivity.
+  - destruct MEQUIV.
+Qed.
+    
+Lemma ra_in_user_preserved_by_equiv 
+      (reg reg' : Concrete.registers mt) :
+  @refinement_common.ra_in_user mt ops sym_params cp e reg ->
+  Conc.reg_equiv reg reg' ->
+  @refinement_common.ra_in_user mt ops sym_params cp e reg'.
+Proof.
+  intros INV REQUIV.
+  unfold refinement_common.ra_in_user, rules.word_lift.
+  destruct (TotalMaps.get reg' ra) eqn:GET'.
+  unfold Conc.reg_equiv in REQUIV.
+  specialize (REQUIV ra).
+  inversion REQUIV 
+        as [a0 a' v0 v'' ? ? EQ1 EQ2 SEQUIV | a0 a' ? ? EQ1 EQ2 EQ3 |a0 a' EQ1 EQ2 EQ3];
+    subst.
+  - rewrite GET' in EQ2.
+    inv EQ2.
+    simpl. rewrite rules.decodeK.
+    simpl. constructor.
+  - unfold refinement_common.ra_in_user in INV.
+    unfold rules.word_lift in INV. 
+    rewrite EQ1 in INV.
+    rewrite rules.decodeK in INV. inversion INV.
+  - unfold refinement_common.ra_in_user, rules.word_lift in INV.
+    rewrite EQ1 in INV.
+    rewrite rules.decodeK in INV. inversion INV.
+Qed.
+
+Lemma wf_entry_points_preserved_by_equiv 
+      (mem : Concrete.memory mt) (mem' : Concrete.memory mt) :
+  refinement_common.wf_entry_points stable mem ->
+  Conc.equiv mem mem' ->
+  refinement_common.wf_entry_points stable mem'.
+Proof.
+  intros INV MEQUIV.
+  intros addr stg.
+  specialize (INV addr stg).
+  specialize (MEQUIV addr).
+  split.
+  { intro SCALL.
+    apply INV in SCALL.
+    destruct (get mem addr) eqn:GET.
+    - destruct a as [v ctg].
+      destruct (get mem' addr) eqn:GET'.
+      + destruct a as [v' ctg'].
+        inversion MEQUIV 
+        as [a0 a' v0 v'' ? ? EQ1 EQ2 SEQUIV | a0 a' ? ? EQ1 EQ2 EQ3 |a0 a' EQ1 EQ2 EQ3];
+          subst.
+        * inv EQ1.
+          move/eqP/rules.encode_inj: SCALL => CONTRA.
+          inversion CONTRA.
+        * simpl in *. inv EQ3.
+          apply rules.encode_inj in H1. inv H1.
+          assumption.
+        * simpl in *. inv EQ3.
+          move/eqP/rules.encode_inj: SCALL => CONTRA.
+          inversion CONTRA.
+      + destruct MEQUIV.
+    - discriminate.
+  }
+  { intro CALL.
+    destruct (get mem' addr) eqn:GET'.
+    - destruct a as [v' ctg'].
+      destruct (get mem addr) eqn:GET.
+      + destruct a as [v ctg].
+        inversion MEQUIV 
+        as [a0 a' v0 v'' ? ? EQ1 EQ2 SEQUIV | a0 a' ? ? EQ1 EQ2 EQ3 |a0 a' EQ1 EQ2 EQ3];
+          subst.
+        * inv EQ2.
+          move/eqP/rules.encode_inj: CALL => CONTRA.
+          inversion CONTRA.
+        * simpl in *. inv EQ3.
+          apply rules.encode_inj in H1. inv H1.
+          apply INV in CALL. assumption.
+        * simpl in *. inv EQ3.
+          move/eqP/rules.encode_inj: CALL => CONTRA.
+          inversion CONTRA.
+      + destruct MEQUIV.
+    - discriminate.
+  }
+Qed.
+
+
+(*Q: Do we want to prove anything about this? Maybe using the other assumptions
+   on ki?*)
+Hypothesis ki_preserved_by_equiv :
+  forall mem mem' reg reg' cache int,
+    refinement_common.kernel_invariant_statement ki mem reg cache int -> 
+    Conc.equiv mem mem' ->
+    Conc.reg_equiv reg reg' ->
+    refinement_common.kernel_invariant_statement ki mem' reg' cache int. 
+
+Hint Resolve mvec_in_kernel_preserved_by_equiv.
+Hint Resolve ra_in_user_preserved_by_equiv.
+Hint Resolve wf_entry_points_preserved_by_equiv.
+
 Theorem backwards_simulation_attacker sst cst cst' :
   refine_state sst cst ->
   Conc.step_a valid_jmp cst cst' ->
@@ -304,8 +430,7 @@ Proof.
   destruct sst as [smem sreg [spc stpc] int].
   unfold refine_state in REF.
   destruct REF as [REF | CONTRA].
-  - unfold refine_user_state in REF.
-    unfold refinement_common.refine_state in REF.
+  - unfold refinement_common.refine_state in REF.
     destruct REF as [? [PCV [PCT [REFM [REFR [? [? [? [WFENTRY ?]]]]]]]]];
     unfold Conc.no_violation in NOV.
     destruct NOV as [NOV NOVSYS].
@@ -342,15 +467,19 @@ Proof.
             inversion SCALL.
           }
         }
-        { left. unfold refine_user_state.
+        { left.
           unfold refinement_common.refine_state.
           (*need to prove invariants are preserved by attacker/equiv*)
-          admit.
+          repeat (split; eauto).
+          rewrite DECODE. reflexivity.
         }
       * destruct PCT.
       * destruct PCT.
     + destruct PCT.
-  - destruct CONTRA as [CONTRA ?].
+  - destruct CONTRA as [? [? [? [? CONTRA]]]].
+    clear FETCH NOV REQUIV MEQUIV.
+    unfold refinement_common.kernel_exec in CONTRA.
+    apply restricted_exec_snd in CONTRA.
     unfold refinement_common.in_kernel in CONTRA.
     simpl in CONTRA. unfold Concrete.is_kernel_tag in CONTRA.
     unfold rules.word_lift in INUSER.
