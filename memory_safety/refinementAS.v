@@ -590,35 +590,6 @@ by eexists.
 Qed.
 *)
 
-(* TODO : factor these proofs out *)
-
-Lemma next_state_pcE st st' mvec pc :
-  Symbolic.next_state_pc st mvec pc = Some st' ->
-  exists b, Symbolic.tpc mvec = V(PTR b) /\ Symbolic.ti mvec = M(b,DATA).
-Proof.
-case: mvec=> op tpc ti.
-case: op; (do ?case) => ts;
-case: tpc => [[|?]|? [|?]|] //;
-case: ti => [[|?]|? [|?]|] //;
-rewrite /Symbolic.next_state_pc /Symbolic.next_state /=;
-case: ifP => //= /eqP->;
-try by eexists. eexists.
-Qed.
-
-Lemma next_state_regE st st' mvec r w :
-  Symbolic.next_state_reg st mvec r w = Some st' ->
-  (* PartMaps.get reg r = Some old@told -> *)
-  exists b, Symbolic.tpc mvec = V(PTR b) /\ Symbolic.ti mvec = M(b,DATA).
-Proof.
-case: mvec=> op tpc ti.
-case: op; (do ?case) => ts;
-case: tpc => [[|?]|? [|?]|] //;
-case: ti => [[|?]|? [|?]|] //;
-rewrite /Symbolic.next_state_reg /Symbolic.next_state_reg_and_pc /Symbolic.next_state /=;
-case: ifP => //= /eqP->;
-by eexists.
-Qed.
-
 (*
 Inductive refine_sym_step_spec : Abstract.state mt -> Symbolic.state mt -> Type :=
   RefineNop ast sst : refine_sym_step_spec ast sst.
@@ -712,7 +683,7 @@ Ltac subst_beq :=
   | EQ : (?x == ?y) = true |- _ => (move/eqP: EQ => EQ; subst) || fail 2
   end.
 
-Definition lift_binop (f : binop) (x y : atom (word mt) (Sym.label mt)) :=
+Definition lift_binop (f : binop) (x y : atom (word mt) (Sym.tag mt)) :=
   match f with
   | ADD => match x, y with
            | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
@@ -789,6 +760,10 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
   have [eq_nonce hyp|neq_nonce hyp] := altP (nonce1 =P nonce2).
     rewrite (miIr miP mi_b1 mi_b2 eq_nonce) in neq_b; congruence. congruence.
   eexists; split; try reflexivity.
+rewrite /Abstract.lift_binop /=.
+rewrite /lift_binop in hyp.
+
+
 Admitted.
 
 Ltac solve_pc rpci :=
@@ -832,7 +807,6 @@ repeat match goal with
     end
   end
   end;
-
 
 repeat match goal with
   | GET : PartMaps.get ?mem ?w1 = Some ?v@M(_,?ty) |- _ =>
@@ -891,6 +865,10 @@ destruct E as (? & ? & ?).
 by solve_pc rpci.
 
 (* Syscall *)
+move: GETCALL CALL; rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=.
+have [eq_pc [<-] /= | ?] := altP (malloc_addr =P pc).
+rewrite /Sym.malloc_fun /=.
+admit.
 admit.
 
 Qed.

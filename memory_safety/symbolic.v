@@ -142,17 +142,18 @@ Definition mvec_match {A B} op : forall (fs : mvec_operands A (nfields op))
   | None => fun fs f => match fs with end
   end.
 
-
 Definition rules (mvec : MVec tag) : option (RVec tag) :=
   match mvec with
-  | mkMVec op V(PTR b) M(b',INT) ts =>
+  | mkMVec op V(PTR b) ti ts =>
+    if op is SERVICE then Some (mkRVec V(DATA) V(DATA))
+    else if ti is M(b', DATA) then
     if b == b' then
       let ret tpc tr := Some (mkRVec tpc tr) in
       let retv tr := ret V(PTR b) tr in
       mvec_match ts
                  match op return mvec_dest _ (option (RVec tag)) op with
-                 | NOP => retv V(INT)
-                 | CONST => fun _ => retv V(INT)
+                 | NOP => retv V(DATA)
+                 | CONST => fun _ => retv V(DATA)
                  | MOV => fun t1 t2 =>
                    match t1 with
                    | V(ty) => retv V(ty)
@@ -220,15 +221,14 @@ Definition rules (mvec : MVec tag) : option (RVec tag) :=
                    | V(ty) => ret V(ty) V(PTR b)
                    | _ => None
                    end
-                 | op => mvec_const_dest op None
-                        (* this fallthrough case seems highly suspicious,
-                           why not just return None? *)
+                 | JUMPEPC as op | ADDRULE as op | GETTAG as op
+                 | PUTTAG as op | HALT as op | SERVICE as op =>
+                     mvec_const_dest op None
                  end
-    else None
-(* CH: Would like to add this but I can't because of dependent types
-  | mkMVec SERVICE V(DATA) _ ts => Some (mkRVec V(DATA) V(DATA))*)
+    else None else None
   | _ => None
   end.
+
 End WithVectorNotations.
 
 Variable initial_block : block.
