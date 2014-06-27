@@ -1350,11 +1350,10 @@ Proof.
 Qed.
 Hint Resolve good_state_preserved.
 
-(* TODO Typo in the theorem statement!  Eek! *)
 Theorem permitted_pcs : forall `(STEP : step MM MM') c,
   good_state MM = true ->
   compartments MM ⊢ pc MM ∈ c ->
-  In (pc MM) (address_space c) \/ In (pc MM') (jump_targets c).
+  In (pc MM') (address_space c) \/ In (pc MM') (jump_targets c).
 Proof.
   intros until 1; destruct STEP; intros c0 GOOD_STATE IC_c0; simpl in *;
     try solve
