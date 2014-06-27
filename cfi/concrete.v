@@ -51,16 +51,11 @@ Inductive atom_equiv : atom (word t) (word t) -> atom (word t) (word t)
                    a' = v'@(encode (USER ut')) ->
                    Sym.atom_equiv v@ut v'@ut' ->
                    atom_equiv a a'
-  | entry_equiv : forall a a' ut ut',
-                    common.tag a = encode (ENTRY ut) ->
-                    common.tag a' = encode (ENTRY ut') ->
+  | any_equiv : forall a a',
+                    (~ exists ut, common.tag a = encode (USER ut)) ->
                     a = a' ->
-                    atom_equiv a a'
-  | kernel_equiv : forall a a', 
-                   common.tag a = encode KERNEL ->
-                   common.tag a' = encode KERNEL ->
-                   a = a' ->
-                   atom_equiv a a'.
+                    atom_equiv a a'.
+
 
 Definition equiv {M : Type} {Key : Type} 
            {M_class : partial_map M Key (atom (word t) (word t))} :
@@ -70,7 +65,6 @@ Definition equiv {M : Type} {Key : Type}
 Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t) :=
   forall r,
     atom_equiv (TotalMaps.get regs r) (TotalMaps.get regs' r).
-
 
 (* Do we also want to disallow attacker if the next step is KERNEL?
   Isn't the violation enough? *)

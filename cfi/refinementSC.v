@@ -154,7 +154,7 @@ Proof.
       destruct (get cmem' addr) eqn:CGET'.
       + destruct a as [v' ctg'].
         inversion EQUIV 
-          as [a a' v0 v'' ut ut' EQ1 EQ2 SEQUIV| a a' ut ut' CONTRA ? ? |a a' CONTRA]; subst.
+          as [a a' v0 v'' ut ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
         * rewrite Map.map_correctness filter_correctness.
           rewrite CGET'.
           unfold is_user. unfold rules.word_lift.
@@ -165,10 +165,12 @@ Proof.
           apply rules.encode_inj in H1.
           inversion H1; subst.
           assumption.
-        * apply rules.encode_inj in CONTRA.
-          inversion CONTRA.
-        * simpl in CONTRA. apply rules.encode_inj in CONTRA.
-          inversion CONTRA.
+        * simpl in NEQ. 
+          assert (CONTRA: (exists ut : cfi_tag,
+           rules.encode (rules.USER (user_tag:=cfi_tag_eqType) utg) =
+           rules.encode (rules.USER (user_tag:=cfi_tag_eqType) ut)))
+             by (eexists; eauto).
+          apply NEQ in CONTRA. destruct CONTRA.
       + destruct EQUIV.
     - destruct (get cmem addr) eqn:CGET.
       + destruct a as [v ctg]. unfold refinement_common.refine_memory in REF.
@@ -184,15 +186,14 @@ Proof.
               destruct t; try discriminate.
               apply rules.encodeK in DECODE.
               rewrite <- DECODE in EQUIV.
-               inversion EQUIV 
-          as [a a' v0 v'' ? ? EQ1 EQ2 SEQUIV| a a' ? ? ? CONTRA ? |a a' ? CONTRA];
-                subst.
+              inversion EQUIV 
+                as [a a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
                { inversion EQ1; subst.
                  apply REF in CGET. rewrite SGET in CGET; discriminate. }
-               { simpl in CONTRA. apply rules.encode_inj in CONTRA.
-                 inversion CONTRA. }
-               { simpl in CONTRA. apply rules.encode_inj in CONTRA.
-                 inversion CONTRA. }
+               { simpl in NEQ. 
+                 inv EQ.
+                 apply NEQ. eexists; eauto.
+               }
             + simpl. constructor.
           - simpl. constructor.
         * destruct EQUIV.
@@ -263,37 +264,42 @@ Proof.
       rewrite MapTP.map_correctness. 
       destruct (TotalMaps.get creg' n) eqn:CGET'.
       inversion EQUIV 
-        as [a a' v0 v'' ut ut' EQ1 EQ2 SEQUIV| a a' ut ut' CONTRA ? ? |a a' CONTRA]; subst.
+        as [a a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
       * inv EQ2.
         unfold creg_to_sreg, is_user, rules.word_lift, coerce, rules.is_user.
         simpl. rewrite rules.decodeK.
         inv EQ1.
         apply rules.encode_inj in H1. inv H1.
         assumption.
-      * apply rules.encode_inj in CONTRA.
-          inversion CONTRA.
-      * simpl in CONTRA. apply rules.encode_inj in CONTRA.
-          inversion CONTRA.
+      * inv EQ. simpl in NEQ.
+        assert (CONTRA: (exists ut : cfi_tag,
+           rules.encode (rules.USER (user_tag:=cfi_tag_eqType) utg) =
+           rules.encode (rules.USER (user_tag:=cfi_tag_eqType) ut)))
+          by (eexists; eauto).
+        apply NEQ in CONTRA. destruct CONTRA.
     - rewrite MapTP.map_correctness.
       destruct (TotalMaps.get creg' n) eqn:CGET'.
       destruct (TotalMaps.get creg n) eqn:CGET.
       inversion EQUIV 
-        as [a a' v0 v'' ? ? EQ1 EQ2 SEQUIV| a a' ? ? EQ1 EQ2 EQ3 |a a' EQ1 EQ2 EQ3];
-        subst.
+        as [a a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
        + inv EQ1.
          apply REF in CGET.
          rewrite CGET in SGET. discriminate.
-       + inv EQ3.
+       + inv EQ.
          unfold creg_to_sreg, is_user, rules.word_lift, coerce.
-         rewrite EQ1. rewrite rules.decodeK. simpl.
-         constructor.
-       + inv EQ3.
-         unfold creg_to_sreg, is_user, rules.word_lift, coerce.
-         rewrite EQ1. rewrite rules.decodeK. simpl.
-         constructor.
+         simpl. 
+         destruct (rules.decode tag) eqn:DECODE.
+         { destruct t.
+           - apply rules.encodeK in DECODE.
+             simpl in NEQ.
+             exfalso. apply NEQ. eexists; eauto.
+           - unfold rules.is_user. constructor.
+           - unfold rules.is_user. constructor.
+         }
+         { constructor. }
   }
-Qed.  
-
+Qed.
+    
 (*Kernel invariants preserved by attacker*)
 Lemma mvec_in_kernel_preserved_by_equiv 
       (mem : Concrete.memory mt) (mem' : Concrete.memory mt) :
@@ -312,14 +318,11 @@ Proof.
   rewrite GET in MEQUIV.
   destruct (get mem' addr) eqn:GET'.
   - inversion MEQUIV 
-        as [a0 a' v0 v'' ? ? EQ1 EQ2 SEQUIV | a0 a' ? ? EQ1 EQ2 EQ3 |a0 a' EQ1 EQ2 EQ3];
-    subst.
+      as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
     + inversion EQ1; subst.
       rewrite rules.encode_kernel_tag in H1.
       apply rules.encode_inj in H1.
       discriminate.
-    + simpl in EQ1. rewrite rules.encode_kernel_tag in EQ1.
-      apply rules.encode_inj in EQ1. discriminate.
     + eexists; reflexivity.
   - destruct MEQUIV.
 Qed.
@@ -336,19 +339,23 @@ Proof.
   unfold Conc.reg_equiv in REQUIV.
   specialize (REQUIV ra).
   inversion REQUIV 
-        as [a0 a' v0 v'' ? ? EQ1 EQ2 SEQUIV | a0 a' ? ? EQ1 EQ2 EQ3 |a0 a' EQ1 EQ2 EQ3];
-    subst.
+    as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
   - rewrite GET' in EQ2.
     inv EQ2.
     simpl. rewrite rules.decodeK.
     simpl. constructor.
   - unfold refinement_common.ra_in_user in INV.
     unfold rules.word_lift in INV. 
-    rewrite EQ1 in INV.
-    rewrite rules.decodeK in INV. inversion INV.
-  - unfold refinement_common.ra_in_user, rules.word_lift in INV.
-    rewrite EQ1 in INV.
-    rewrite rules.decodeK in INV. inversion INV.
+    rewrite <- EQ in GET'. rewrite GET' in INV.
+    simpl in *.
+    destruct (rules.decode tag) eqn:DECODE.
+         { destruct t.
+           - apply rules.encodeK in DECODE.
+             simpl in NEQ. assumption. 
+           - inversion INV.
+           - inversion INV.
+         }
+         { assumption. }
 Qed.
 
 Lemma wf_entry_points_preserved_by_equiv 
@@ -369,17 +376,11 @@ Proof.
       destruct (get mem' addr) eqn:GET'.
       + destruct a as [v' ctg'].
         inversion MEQUIV 
-        as [a0 a' v0 v'' ? ? EQ1 EQ2 SEQUIV | a0 a' ? ? EQ1 EQ2 EQ3 |a0 a' EQ1 EQ2 EQ3];
-          subst.
+          as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
         * inv EQ1.
           move/eqP/rules.encode_inj: SCALL => CONTRA.
           inversion CONTRA.
-        * simpl in *. inv EQ3.
-          apply rules.encode_inj in H1. inv H1.
-          assumption.
-        * simpl in *. inv EQ3.
-          move/eqP/rules.encode_inj: SCALL => CONTRA.
-          inversion CONTRA.
+        * simpl in *. inv EQ. assumption.
       + destruct MEQUIV.
     - discriminate.
   }
@@ -389,17 +390,12 @@ Proof.
       destruct (get mem addr) eqn:GET.
       + destruct a as [v ctg].
         inversion MEQUIV 
-        as [a0 a' v0 v'' ? ? EQ1 EQ2 SEQUIV | a0 a' ? ? EQ1 EQ2 EQ3 |a0 a' EQ1 EQ2 EQ3];
-          subst.
+          as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
         * inv EQ2.
           move/eqP/rules.encode_inj: CALL => CONTRA.
           inversion CONTRA.
-        * simpl in *. inv EQ3.
-          apply rules.encode_inj in H1. inv H1.
-          apply INV in CALL. assumption.
-        * simpl in *. inv EQ3.
-          move/eqP/rules.encode_inj: CALL => CONTRA.
-          inversion CONTRA.
+        * simpl in *. inv EQ. apply INV in CALL.
+          assumption.
       + destruct MEQUIV.
     - discriminate.
   }
