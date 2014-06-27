@@ -31,6 +31,7 @@ cfi/rules.v
 cfi/symbolic.v
 cfi/refinementAS.v
 cfi/preservation.v
+cfi/preservation2.v
 cfi/preservationAS.v
 cfi/concrete.v
 #cfi/refinementSC.v

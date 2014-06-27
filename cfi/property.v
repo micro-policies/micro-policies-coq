@@ -52,15 +52,18 @@ Definition trace_has_cfi (trace : list state) :=
          (INTRACE : In2 si sj trace ),
            step si sj -> succ si sj = true.
 
+Definition trace_has_at_most_one_violation (trace : list state) :=
+  trace_has_cfi trace \/
+  exists s'' s''' hs tl, trace = hs ++ s'' :: s''' :: tl
+                         /\ (step s'' s''' /\ succ s'' s''' = false)
+                         /\ trace_has_cfi (hs ++ [s''])
+                         /\ trace_has_cfi (s''' :: tl)
+                         /\ S(s''' :: tl).
+
 Definition cfi := 
   forall s s' xs
     (INIT : initial s)
     (INTERM : intermstep xs s s'),
-      trace_has_cfi xs \/
-      exists s'' s''' hs tl, xs = hs ++ s'' :: s''' :: tl
-                             /\ (step s'' s''' /\ succ s'' s''' = false)
-                             /\ trace_has_cfi (hs ++ [s''])
-                             /\ trace_has_cfi (s''' :: tl)
-                             /\ S(s''' :: tl).
+    trace_has_at_most_one_violation xs.
 
 End CFI.
