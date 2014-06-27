@@ -1473,9 +1473,25 @@ Proof.
       end; assumption.
     + rewrite (PartMaps.get_upd_neq NE UPDR) in DIFF; congruence.
   - (* Syscall *)
-    admit.
-    (* I don't even know if this will be true... what invariants should I
-       enforce on syscalls, anyway? *)
+    unfold get_syscall in *; subst table; simpl in *.
+    repeat match type of GETSC with
+      | (if ?COND then Some _ else _) ?= _ =>
+        destruct COND
+      | Some _ ?= _ =>
+        inversion GETSC; subst; clear GETSC
+      | None ?= _ =>
+        discriminate
+    end; simpl in *;
+      repeat match type of CALL with
+        | (do! _ <- ?GET; _) ?= _ =>
+          destruct GET; simpl in CALL; [|discriminate]
+        | (do! guard ?COND; _) ?= _ =>
+          destruct COND; simpl in CALL; [|discriminate]
+        | match ?c with <<_,_,_>> => _ end ?= _ =>
+          destruct c; simpl in CALL
+      end;
+      inversion CALL; subst; simpl in *; clear CALL;
+      elim DIFF; reflexivity.
 Qed.
 
 End WithClasses.
