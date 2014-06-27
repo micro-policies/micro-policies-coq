@@ -245,6 +245,9 @@ Class machine_ops_spec t (ops : machine_ops t) := {
 
   decodeK : forall i, decode_instr (encode_instr i) = Some i;
 
+  encodeK : forall i w, decode_instr w = Some i ->
+                        encode_instr i = w;
+
   min_word_bound : (word_to_Z min_word <= 0)%Z;
 
   max_word_bound : (31 < word_to_Z max_word)%Z;

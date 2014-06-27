@@ -163,13 +163,13 @@ Lemma no_syscall_no_entry_point mem addr t :
   wf_entry_points table mem ->
   Symbolic.get_syscall table addr = None ->
   ~~ match PartMaps.get mem addr with
-     | Some _@it => it == encode (ENTRY t)
+     | Some i@it => (i == encode_instr (Nop _)) && (it == encode (ENTRY t))
      | None => false
      end.
 Proof.
   intros WF GETSC.
   destruct (match PartMaps.get mem addr with
-            | Some _@it => it == encode (ENTRY t)
+            | Some i@it => (i == encode_instr (Nop _)) && (it == encode (ENTRY t))
             | None => false
             end) eqn:E; trivial.
   apply WF in E.
@@ -306,7 +306,7 @@ Proof.
   repeat autounfold in NEXT;
   match_inv;
 
-  match goal with
+  try match goal with
   | HANDLER : Symbolic.handler ?mvec = Some ?rvec |- _ =>
     destruct rvec;
     let cmvec := constr:(encode_mvec (mvec_of_umvec mvec)) in
@@ -346,8 +346,55 @@ Proof.
       | solve_refine_state ] ]
       || let op := current_instr_opcode in fail 3 "failed miss case" op
     ]
-  | _ : Symbolic.run_syscall _ _ = Some _ |- _ => analyze_syscall
+  | _ : Symbolic.run_syscall _ _ = Some _ |- _ => idtac
   end.
+
+  match goal with
+    | |- context[exec _ ?cst _] =>
+      case: (boolP (cache_allows_syscall table cst)) => [ALLOWED | NOTALLOWED]
+  end.
+  + by analyze_syscall.
+  + move: (wf_entry_points_if _ WFENTRYPOINTS GETCALL) => ?.
+    have ? : decode_instr (encode_instr (Nop mt)) = Some (Nop mt) by rewrite common.decodeK.
+    move: (CALL) => CALL'. rewrite /Symbolic.run_syscall /= in CALL'.
+    rewrite /cache_allows_syscall GETCALL /= in NOTALLOWED.
+    match type of NOTALLOWED with
+    | context[Concrete.cache_lookup _ _ _ ?x] =>
+      set (cmvec := x);
+      destruct (Concrete.cache_lookup _ _ masks x) eqn:LOOKUP; first by []
+    end.
+    match type of CALL' with
+    | context[Symbolic.handler ?mvec] =>
+      destruct (Symbolic.handler mvec) eqn:HANDLER; last by []
+    end.
+    assert (HANDLER' : handler Symbolic.handler cmvec = Some (Symbolic.mkRVec KERNEL KERNEL)).
+    { by rewrite /handler /= op_to_wordK 2!decodeK HANDLER. }
+    destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE].
+    pose proof (store_mvec_mvec_in_kernel _ _ STORE).
+    pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE).
+    try destruct (handler_correct_allowed_case _ cmvec _ pc@(encode (USER tpc)) _ KINV HANDLER' STORE CACHE)
+      as ([? ? ? [? ?] ?] &
+          KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'').
+    simpl in PC'. inv PC'.
+    match_data.
+    destruct ast' as [amem' aregs' [apc' tapc'] int'].
+    match type of KEXEC with
+    | kernel_user_exec _ ?cst' =>
+      have ALLOWED : cache_allows_syscall table cst'
+        by rewrite /cache_allows_syscall /= GETCALL LOOKUP'
+    end.
+    exploit syscalls_correct_allowed_case; eauto. simpl.
+    intros HH.
+    repeat match goal with
+    | H : exists _, _ |- _ => destruct H
+    | H : _ /\ _ |- _ => destruct H
+    end.
+    eexists. split.
+    eapply re_step; trivial.
+    { solve_concrete_step. }
+    eapply restricted_exec_trans. eapply exec_until_weaken. eassumption.
+    eapply user_kernel_user_step_weaken. eassumption.
+    solve_refine_state.
 
 Qed.
 

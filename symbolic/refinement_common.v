@@ -178,9 +178,22 @@ Definition wf_entry_points cmem :=
     (exists sc, Symbolic.get_syscall table addr = Some sc /\
                 Symbolic.entry_tag sc = t) <->
     match PartMaps.get cmem addr with
-    | Some _@it => it == encode (ENTRY t)
+    | Some i@it => (i == encode_instr (Nop _)) && (it == encode (ENTRY t))
     | None => false
     end = true.
+
+Lemma wf_entry_points_if cmem addr sc :
+  wf_entry_points cmem ->
+  Symbolic.get_syscall table addr = Some sc ->
+  PartMaps.get cmem addr = Some (encode_instr (Nop _))@(encode (ENTRY (Symbolic.entry_tag sc))).
+Proof.
+  move => WFENTRYPOINTS GETCALL.
+  have: exists sc', Symbolic.get_syscall table addr = Some sc' /\
+                    Symbolic.entry_tag sc' = Symbolic.entry_tag sc by eauto.
+  move/WFENTRYPOINTS.
+  case: (PartMaps.get cmem addr) => [[i it]|] //.
+  move/andP => [H1 H2]. move/eqP: H1 => ->. by move/eqP : H2 => ->.
+Qed.
 
 Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
   in_user st' = true /\
@@ -241,6 +254,7 @@ Proof.
     { now rewrite MEM. }
     intros ?. subst addr'.
     assert (EQ : t'' = encode (USER t)) by congruence. subst.
+    move/andP: H => [_ H].
     by move/eqP/encode_inj: H.
   - apply WF. clear WF.
     destruct (PartMaps.get cmem' addr') as [[v'' t'']|] eqn:GET'; try discriminate.
@@ -249,7 +263,7 @@ Proof.
     intros ?. subst addr'.
     erewrite PartMaps.get_upd_eq in GET'; eauto using Concrete.mem_axioms.
     assert (EQ : t''= encode (USER t')) by congruence. subst.
-    simpl in H.
+    move/andP: H => [_ H].
     by move/eqP/encode_inj: H.
 Qed.
 
@@ -435,6 +449,7 @@ Lemma analyze_cache cache cmvec crvec op :
    | None => fun _ => False
    end (Symbolic.mkMVec op) \/
    exists t,
+     op = NOP /\
      Concrete.cti cmvec = encode (ENTRY t) /\
      crvec = Concrete.mkRVec (encode KERNEL) (encode KERNEL)).
 Proof.
@@ -582,8 +597,27 @@ Definition is_syscall_return (cst cst' : Concrete.state mt) :=
     do! di <- decode_instr (common.val i);
     Some (di == Jump _ (@ra mt ops)))).
 
-Definition visible cst cst' := 
+Definition visible cst cst' :=
   (in_user cst && in_user cst') || is_syscall_return cst cst'.
+
+(* Returns true iff our machine is at the beginning of a system call
+and the cache says it is allowed to execute. To simplify this
+definition, we assume that system calls are only allowed to begin with
+Nop, which is consistent with how we've defined our symbolic handler
+in rules.v. *)
+Definition cache_allows_syscall (cst : Concrete.state mt) : bool :=
+  match Symbolic.get_syscall table (common.val (Concrete.pc cst)) with
+  | Some sc =>
+    (* and the cache allows the system call to be executed *)
+    let cmvec := Concrete.mkMVec (op_to_word NOP)
+                                 (common.tag (Concrete.pc cst)) (encode (ENTRY (Symbolic.entry_tag sc)))
+                                 Concrete.TNone Concrete.TNone Concrete.TNone in
+    match Concrete.cache_lookup _ (Concrete.cache cst) masks cmvec with
+    | Some _ => true
+    | None => false
+    end
+  | None => false
+  end.
 
 Class kernel_code_correctness : Prop := {
 
@@ -647,10 +681,6 @@ Class kernel_code_correctness : Prop := {
                         old_pc)
       st';
 
-(* BCP: I think if we choose variant (2) of system calls that we've
-   been discussing, then these properties (at least, the mvec part)
-   will need to change... *)
-
   syscalls_correct_allowed_case :
   forall amem areg apc tpc int
          amem' areg' apc' tpc' int'
@@ -676,6 +706,13 @@ Class kernel_code_correctness : Prop := {
     (* and running sc on the current abstract machine state reaches a
        new state with primes on everything... *)
     Symbolic.run_syscall sc (Symbolic.State amem areg apc@tpc int) = Some (Symbolic.State amem' areg' apc'@tpc' int') ->
+    let cst := Concrete.mkState cmem
+                                creg
+                                cache
+                                apc@(encode (USER tpc)) epc in
+
+    cache_allows_syscall cst ->
+
     (* THEN if we start the concrete machine in kernel mode at the
        beginning of the corresponding system call code and let it run
        until it reaches a user-mode state with primes on everything... *)
@@ -683,10 +720,7 @@ Class kernel_code_correctness : Prop := {
     (* TODO: ADD HYPOTHESIS ABOUT NOT FAULTING *)
 
     exists cmem' creg' cache' epc',
-      user_kernel_user_step (Concrete.mkState cmem
-                                              creg
-                                              cache
-                                              apc@(encode (USER tpc)) epc)
+      user_kernel_user_step cst
                             (Concrete.mkState cmem' creg' cache'
                                               apc'@(encode (USER tpc')) epc') /\
       (* then the new concrete state is in the same relation as before
@@ -712,12 +746,12 @@ Class kernel_code_correctness : Prop := {
     wf_entry_points cmem ->
     Symbolic.get_syscall table apc = Some sc ->
     Symbolic.run_syscall sc (Symbolic.State amem areg apc@tpc int) = None ->
-    (* CH: could write handler_correct_disallowed_case in the same way *)
-    ~ user_kernel_user_step (Concrete.mkState cmem
-                                              creg
-                                              cache
-                                              apc@(encode (USER tpc)) epc)
-                            cst'
+    let cst := Concrete.mkState cmem
+                                creg
+                                cache
+                                apc@(encode (USER tpc)) epc in
+    cache_allows_syscall cst ->
+    ~ user_kernel_user_step cst cst'
 
 }.
 

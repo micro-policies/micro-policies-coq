@@ -359,9 +359,9 @@ Definition rvec_of_urvec (rvec : Symbolic.RVec user_tag) : Symbolic.RVec tag :=
      Symbolic.tr   := USER (Symbolic.tr rvec) |}.
 
 (* This is the handler that should be implemented concretely by the
-   fault handler. Notice that this only takes care of the tagging
-   behavior on regular user instructions, and doesn't include anything
-   about system calls. *)
+   fault handler. Notice that we are only allowed to enter system
+   calls when the first instruction is a NOP. This is only meant to
+   make stating the correctness lemma for system calls easier. *)
 
 Definition handler (mvec : Concrete.MVec (word t)) : option (Symbolic.RVec tag) :=
   match mvec with
@@ -388,7 +388,7 @@ Definition handler (mvec : Concrete.MVec (word t)) : option (Symbolic.RVec tag) 
         end process ts
       | None => None
       end
-    | Some op, Some (USER tpc), Some (ENTRY ti) =>
+    | Some NOP, Some (USER tpc), Some (ENTRY ti) =>
       match uhandler (Symbolic.mkMVec SERVICE tpc ti (Vector.nil _)) with
       | Some _ =>  Some (Symbolic.mkRVec KERNEL KERNEL)
       | None => None

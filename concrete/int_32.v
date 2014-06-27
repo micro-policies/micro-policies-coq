@@ -258,6 +258,7 @@ Proof.
       intros; destruct i; rewrite unpack_pack; try reflexivity.
       apply pack3_unpack3_hideous_Const.
       apply pack3_unpack3_hideous_Bnz.
+  - admit.
   - vm_compute; inversion 1.
   - reflexivity.
   - simpl. apply repr_signed.
