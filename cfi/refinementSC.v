@@ -497,6 +497,9 @@ Definition cmachine := Conc.concrete_cfi_machine valid_jmp masks.
 
 Context {kcc : kernel_code_correctness ki stable}. (*should this go to the top?*)
 
+Definition visible := @refinement_common.visible mt ops sym_params cp e.
+
+
 Program Instance cfi_refinementSC  : 
   (machine_refinement smachine cmachine) := {
     refine_state st st' := refine_state st st';
@@ -507,44 +510,64 @@ Next Obligation.
 Proof.
   unfold refine_state in REF.
   destruct REF as [UREF | KREF].
-  - split.
-    { (*Visible steps*)
+  - (*starting from a user state*)
+    split.
+    { (*Visible step starting from a user state*)
       intro VIS.
-      unfold visible in VIS.
-      apply andb_true_iff in VIS.
-      destruct VIS as [VIS VIS'].
-      assert (HIT: @hit_step mt ops sym_params cp e cst cst')
-        by (constructor; auto).
-      destruct (hit_simulation UREF HIT) as [sst' [SSTEP REF']].
-      unfold refine_state, refine_state_weak.
-      eexists; split; eauto.
+      unfold visible, refinement_common.visible in VIS.
+      apply orb_true_iff in VIS.
+      destruct VIS as [VIS | CONTRA].
+      - apply andb_true_iff in VIS.
+        destruct VIS as [VIS VIS'].
+        assert (HIT: @hit_step mt ops sym_params cp e cst cst')
+          by (constructor; auto).
+        destruct (hit_simulation UREF HIT) as [sst' [SSTEP REF']].
+        unfold refine_state, refine_state_weak.
+        eexists; split; eauto.
+      - unfold is_syscall_return in CONTRA.
+        apply andb_true_iff in CONTRA.
+        destruct CONTRA as [CONTRA ?].
+        apply andb_true_iff in CONTRA.
+        destruct CONTRA as [CONTRA ?].
+        destruct UREF as [USER ?].
+        apply (@in_user_in_kernel mt ops sym_params cp e) in USER.
+        rewrite USER in CONTRA. discriminate.
     }
-    { (*cst' invisible*)
+    { (*invisible step starting a from user state*)
       intro INVIS.
-      apply andb_false_iff in INVIS.
-      destruct INVIS as [CONTRA | INVIS].
+      unfold visible, refinement_common.visible in INVIS.
+      apply orb_false_iff in INVIS.
+      destruct INVIS as [NUSER NOCALL].
+      apply andb_false_iff in NUSER.
+      destruct NUSER as [CONTRA | NUSER].
       - unfold refinement_common.refine_state in UREF.
         destruct UREF as [USER ?].
-        unfold in_user in CONTRA.
         rewrite USER in CONTRA. discriminate.
       - (*user to not user step*)
         right. exists cst; exists cst'.
         repeat (split; auto).
         unfold kernel_exec.
-        destruct (user_into_kernel UREF STEP INVIS).
+        destruct (user_into_kernel UREF STEP NUSER).
         eapply re_refl; eauto.
     }
-  - split.
-    { 
+  - (*starting from a kernel state*)
+    split.
+    { (*and taking a visible step*)
       intro VIS.
-      apply andb_true_iff in VIS.
-      destruct VIS as [VIS VIS'].
-      destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
-      unfold kernel_exec in KEXEC.
-      apply restricted_exec_snd in KEXEC.
-      unfold in_user in VIS.
-      apply (@in_user_in_kernel mt ops sym_params cp e) in VIS.
-      rewrite VIS in KEXEC. discriminate.
+      unfold visible, refinement_common.visible in VIS.
+      apply orb_true_iff in VIS.
+      destruct VIS as [VIS | ISCALL].
+      - apply andb_true_iff in VIS.
+        destruct VIS as [VIS VIS'].
+        destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
+        unfold kernel_exec in KEXEC.
+        apply restricted_exec_snd in KEXEC.
+        unfold in_user in VIS.
+        apply (@in_user_in_kernel mt ops sym_params cp e) in VIS.
+        rewrite VIS in KEXEC. discriminate.
+      - (*syscall return case*)
+        unfold is_syscall_return in ISCALL.
+        a
     }
     { intros INVIS. apply andb_false_iff in INVIS.
       destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
