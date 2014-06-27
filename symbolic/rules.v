@@ -129,6 +129,8 @@ Definition masks : Masks :=
         | SERVICE => mk_mask (false,false,false,false,false) (None,None)
       end
     else
+      (* CH: at least this part should be a parameter the policy
+         programmer can set differently for each policy *)
       match opcode with
         | NOP => mk_mask (false,false,true,true,true) (None,None)
         | CONST =>  mk_mask (false,false,false,true,true) (None,None)
