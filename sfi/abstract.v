@@ -1350,6 +1350,7 @@ Proof.
 Qed.
 Hint Resolve good_state_preserved.
 
+(* TODO Typo in the theorem statement!  Eek! *)
 Theorem permitted_pcs : forall `(STEP : step MM MM') c,
   good_state MM = true ->
   compartments MM ⊢ pc MM ∈ c ->
