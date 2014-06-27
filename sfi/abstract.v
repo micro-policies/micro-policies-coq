@@ -179,9 +179,7 @@ Definition add_to_shared_memory :=
                     shared_memory
                     (fun S' c => let '<<A,J,_>> := c in <<A,J,S'>>) |}.
 
-Variable othercalls : list syscall.
-Let table := isolate :: add_to_jump_targets :: add_to_shared_memory ::
-             othercalls.
+Let table := [isolate; add_to_jump_targets; add_to_shared_memory].
 
 Definition get_syscall (addr : value) : option syscall :=
   List.find (fun sc => address sc == addr) table.
@@ -900,9 +898,6 @@ Hint Resolve in_unique_compartment.
 
 (*** Proofs about `good_syscall' and `get_syscall'. ***)
 
-Hypothesis good_othercalls : forall MM,
-  forallb (fun sc => good_syscall sc MM) othercalls = true.
-
 Theorem isolate_good : forall MM, good_syscall isolate MM = true.
 Proof.
   clear - t ops spec; unfold isolate, good_syscall; intros MM; simpl.
@@ -920,7 +915,8 @@ Proof.
                   | |- match (do! _ <- ?GET;   _) with _ => _ end = true =>
                     let def_var := fresh "def_" var in
                     destruct GET as [var|] eqn:def_var
-                  | |- match (match ?COND with true => _ | false => None end) with _ => _ end = true =>
+                  | |- match (match ?COND with true => _ | false => None end)
+                       with _ => _ end = true =>
                     destruct COND eqn:var
                 end; simpl; [|reflexivity]
   in rewrite ->ICO; simpl;
@@ -1273,8 +1269,9 @@ Proof.
   match goal with ST : State _ _ _ _ = State _ ?R' ?M' ?C' |- _ =>
     inversion ST; subst
   end; repeat f_equal.
-  match goal with |- (match ?b1 == 0 with true => 1 | false => imm_to_word ?x1 end) =
-                     (match ?b2 == 0 with true => 1 | false => imm_to_word ?x2 end) =>
+  match goal with
+      |- (match ?b1 == 0 with true => 1 | false => imm_to_word ?x1 end) =
+         (match ?b2 == 0 with true => 1 | false => imm_to_word ?x2 end) =>
     replace b2 with b1 by congruence; replace x2 with x1 by congruence
   end; reflexivity.
 Qed.
@@ -1355,7 +1352,8 @@ Theorem permitted_pcs : forall `(STEP : step MM MM') c,
   compartments MM ⊢ pc MM ∈ c ->
   In (pc MM') (address_space c) \/ In (pc MM') (jump_targets c).
 Proof.
-  intros until 1; destruct STEP; intros c0 GOOD_STATE IC_c0; simpl in *;
+  clear S; intros MM MM' STEP; destruct STEP; intros c0 GOOD_STATE IC_c0;
+    simpl in *;
     try solve
       [ (* Intra-compartment *)
         destruct STEP; left;
@@ -1366,9 +1364,95 @@ Proof.
         eauto 2;
         apply in_app_iff in VALID; destruct VALID as [IN_A | IN_J]; eauto 3 ].
   (* Syscalls *)
-  admit.
-  (* I'm not sure what the right behavior here is -- it'll depend on the other
-     theorems I end up trying to prove. *)
+  unfold get_syscall in *; subst table; simpl in *.
+  repeat match type of GETSC with
+    | (if ?COND then Some _ else _) ?= _ =>
+      destruct COND
+    | Some _ ?= _ =>
+      inversion GETSC; subst; clear GETSC
+    | None ?= _ =>
+      discriminate
+  end; simpl in *.
+  - (* isolate *)
+    let DO var :=
+        match type of CALL with
+          | (do! _ <- ?GET; _) ?= _ =>
+            let def_var := fresh "def_" var in
+            destruct GET as [var|] eqn:def_var
+          | (do! guard ?COND; _) ?= _ =>
+            destruct COND eqn:var
+        end;
+        simpl in CALL; [|discriminate]
+    in DO c1; DO pA; DO pJ; DO pS; destruct c1 as [A J S];
+       DO A'; DO SUBSET_A'; DO NONEMPTY_A';
+       DO J'; DO SUBSET_J';
+       DO S'; DO SUBSET_S';
+       DO NEXT;
+       inversion CALL; subst; clear CALL; simpl in *;
+       left.
+    apply in_compartment_opt_correct in def_c1; [|solve [eauto]].
+    destruct c0 as [A0 J0 S0]; simpl in *.
+    apply in_unique_compartment with (c1 := <<A,J,S>>) in IC_c0;
+      [ inversion IC_c0; subst A0 J0 S0; subst; clear IC_c0
+      | solve [eauto] | solve [eauto]].
+    assert (SET_A : is_set A). {
+      apply good_state__good_compartments in GOOD_STATE;
+        simpl in *;
+        apply good_compartments__all_good_compartment in GOOD_STATE;
+        rewrite ->forallb_forall in GOOD_STATE.
+      eapply good_compartment_decomposed__is_set_address_space;
+        eapply GOOD_STATE, in_compartment_spec; eassumption.
+    }
+    apply set_elem_true, set_difference_spec in NEXT;
+      solve [tauto | eauto using isolate_create_set_is_set].
+  - (* add_to_jump_targets *)
+    let DO var :=
+        match type of CALL with
+          | (do! _ <- ?GET; _) ?= _ =>
+            let def_var := fresh "def_" var in
+            destruct GET as [var|] eqn:def_var
+          | (do! guard ?COND; _) ?= _ =>
+            destruct COND eqn:var
+        end;
+        simpl in CALL; [|discriminate]
+    in DO c1; DO p; DO ELEM_p; DO NEXT;
+       inversion CALL; subst; clear CALL; simpl in *;
+       left.
+    apply in_compartment_opt_correct in def_c1; [|solve [eauto]].
+    apply in_unique_compartment with (c1 := c1) in IC_c0;
+      [ subst | solve [eauto] | solve [eauto]].
+    assert (GOOD_c0 : good_compartment c0). {
+      apply good_state__good_compartments in GOOD_STATE;
+        simpl in *;
+        apply good_compartments__all_good_compartment in GOOD_STATE;
+        rewrite ->forallb_forall in GOOD_STATE;
+        eauto.
+    }
+    apply set_elem_true in NEXT; auto.
+  - (* add_to_shared_memory *)
+    let DO var :=
+        match type of CALL with
+          | (do! _ <- ?GET; _) ?= _ =>
+            let def_var := fresh "def_" var in
+            destruct GET as [var|] eqn:def_var
+          | (do! guard ?COND; _) ?= _ =>
+            destruct COND eqn:var
+        end;
+        simpl in CALL; [|discriminate]
+    in DO c1; DO p; DO ELEM_p; DO NEXT;
+       inversion CALL; subst; clear CALL; simpl in *;
+       left.
+    apply in_compartment_opt_correct in def_c1; [|solve [eauto]].
+    apply in_unique_compartment with (c1 := c1) in IC_c0;
+      [ subst | solve [eauto] | solve [eauto]].
+    assert (GOOD_c0 : good_compartment c0). {
+      apply good_state__good_compartments in GOOD_STATE;
+        simpl in *;
+        apply good_compartments__all_good_compartment in GOOD_STATE;
+        rewrite ->forallb_forall in GOOD_STATE;
+        eauto.
+    }
+    apply set_elem_true in NEXT; auto.
 Qed.
 
 Theorem permitted_modifications : forall `(STEP : step MM MM') c,
