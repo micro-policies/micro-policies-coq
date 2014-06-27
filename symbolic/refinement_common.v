@@ -717,8 +717,6 @@ Class kernel_code_correctness : Prop := {
        beginning of the corresponding system call code and let it run
        until it reaches a user-mode state with primes on everything... *)
 
-    (* TODO: ADD HYPOTHESIS ABOUT NOT FAULTING *)
-
     exists cmem' creg' cache' epc',
       user_kernel_user_step cst
                             (Concrete.mkState cmem' creg' cache'
