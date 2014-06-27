@@ -567,58 +567,22 @@ Proof.
         rewrite VIS in KEXEC. discriminate.
       - (*syscall return case*)
         unfold is_syscall_return in ISCALL.
-        a
+        apply andb_true_iff in ISCALL. 
+        destruct ISCALL as [KU ISCALL].
+        apply andb_true_iff in KU.
+        destruct KU as [KERNEL USER'].
+        (*something about system calls*)
+        admit.
     }
-    { intros INVIS. apply andb_false_iff in INVIS.
-      destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
-      assert (INKERNEL := restricted_exec_snd KEXEC). simpl in INKERNEL.
-      clear INVIS.
-      destruct (in_user cst') eqn:INUSER.
-      - unfold refine_state, refine_state_weak.
-        destruct ast as [mem regs [pc tpc] int].
-        destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
-        - destruct (Symbolic.run_syscall s (Symbolic.State mem regs pc@tpc int)) eqn:RUNCALL.
-          (*case system call is allowed*)
-          assert (INUSERUST: @refinement_common.in_user mt ops sym_params cp e ust = true).
-            by (destruct UREF; assumption).
-          assert (KUEXEC: kernel_user_exec kst cst').
-          { econstructor; eauto. apply (@in_user_in_kernel mt ops sym_params cp e).
-            unfold in_user in INUSER.  assumption. }
-          assert (UKU1: @user_kernel_user_step mt ops sym_params cp e ust cst').
-            by (econstructor; eauto).
-          destruct ust as [cmem cregs cache [cpc ctpc] epc].
-          destruct UREF as [USTUSER [? [TPC [REFM [REFR [CACHE [MVEC [RA [WF KI]]]]]]]]].
-          destruct s0 as [mem0 regs0 [pc0 tpc0] int0]. subst.
-          destruct (syscalls_correct_allowed_case cpc tpc int epc KI REFM REFR CACHE MVEC GETCALL RUNCALL)
-            as [cmem' [creg' [cache' [epc' [UKU2 [REFM' [REFR' [CACHE' [MVEC' [RA' [WF' KI']]]]]]]]]]].
-          left. 
-          destruct (rules.decode ctpc) eqn:DECODE.
-          - destruct t; try contradiction. subst.
-            apply rules.encodeK in DECODE.
-            rewrite DECODE in UKU2.
-            assert (EQ := user_kernel_user_step_determ UKU1 UKU2).
-            subst.
-            
-
-Arguments ki, table, amem, areg, amem', areg', apc', tpc', int', cmem, creg,
-cache, sc are implicit
-Arguments mt, ops, ap, cp, e, kernel_code_correctness are implicit and
-maximally inserted
-Argument scopes are
-
-
-        (*
-        
-
-    destruct (backward.backwards_simulation REF STEP) as [CONTRA | [ast' [SSTEP]]].
-    - unfold refine_state_weak in CONTRA.
-      destruct CONTRA as [CONTRA | CONTRA].
-      + unfold refinement_common.refine_state in CONTRA.
-        destruct ast, cst'.
-        destruct [
-      
-      
-   
+    { (*and taking an invisible step*)
+      intro VIS.
+      assert (REFW : @refine_state_weak mt ops sym_params cp e ki stable ast cst)
+        by (right; auto).
+      assert (REFW' := kernel_simulation_strong REFW STEP VIS).
+      assumption.
+    }
+Qed.
+     
 End Refinement.
         
   
