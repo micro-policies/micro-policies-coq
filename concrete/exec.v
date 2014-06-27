@@ -81,10 +81,7 @@ Definition step (st : state mt) : option (state mt) :=
   | AddRule =>
     let mvec := mvec TNone TNone TNone in
     next_state _ masks st mvec (fun rvec =>
-      (* BCP/AAA: Was
-            do! cache' <- add_rule ops cache masks (is_kernel_tag _ tpc) mem;
-      *)
-      do! cache' <- add_rule ops cache masks false mem;
+      do! cache' <- add_rule ops cache masks mem;
       Some (mkState mem reg cache' (pc.+1)@(ctrpc rvec) epc))
   | GetTag r1 r2 =>
     let v1 := TotalMaps.get reg r1 in

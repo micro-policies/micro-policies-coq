@@ -168,7 +168,7 @@ Record state := mkState {
 
 (* Need to do this masking both on lookup, and on rule add, right?
    This is optional; the software could do it *)
-Definition add_rule (cache : rules) (masks : Masks) (kmode : bool) (mem : memory) : option rules :=
+Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rules :=
   do! aop   <- PartMaps.get mem Mop;
   do! atpc  <- PartMaps.get mem Mtpc;
   do! ati   <- PartMaps.get mem Mti;
@@ -178,7 +178,7 @@ Definition add_rule (cache : rules) (masks : Masks) (kmode : bool) (mem : memory
   do! atrpc <- PartMaps.get mem Mtrpc;
   do! atr   <- PartMaps.get mem Mtr;
   do! op    <- word_to_op (val aop);
-  let dcm := dc (masks kmode op) in
+  let dcm := dc (masks false op) in
   Some ((mask_dc dcm (mkMVec (val aop) (val atpc)
                              (val ati) (val at1) (val at2) (val at3)),
          mkRVec (val atrpc) (val atr)) :: cache).
@@ -346,11 +346,7 @@ Inductive step (st st' : state) : Prop :=
         mkMVec (op_to_word ADDRULE) tpc ti TNone TNone TNone in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        (* BCP/AAA: This was
-               do! cache' <- add_rule cache masks (is_kernel_tag tpc) mem;
-           but that seems wrong: it will add the rule using the kernel-mode
-           masks, but it will be executed with user-mode masks! *)
-        do! cache' <- add_rule cache masks false mem;
+        do! cache' <- add_rule cache masks mem;
         Some (mkState mem reg cache' (pc.+1)@(ctrpc rvec) epc)) = Some st'),
       step st st'
 | step_gettag :
