@@ -46,8 +46,8 @@ Notation astate  := (@Abs.state t ap).
 Notation astate' := (@AbsSlow.state t ap).
 Notation sstate  := (@Symbolic.state t sym_sfi).
 
-Notation astep  := (Abs.step []).
-Notation astep' := (AbsSlow.step []).
+Notation astep  := Abs.step.
+Notation astep' := AbsSlow.step.
 Notation sstep  := Sym.step.
 
 Notation satom  := (atom word stag).

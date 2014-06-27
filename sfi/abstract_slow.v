@@ -18,37 +18,37 @@ Context (t   : machine_types)
 
 Definition state := option (@Abs.state t ap).
 
-Inductive step (othercalls : list (@Abs.syscall t ap)) (s s' : state) : Prop :=
+Inductive step (s s' : state) : Prop :=
 | step_go   : forall MM MM'
                      (PREV : s  = Some MM)
                      (NEXT : s' = Some MM')
-                     (STEP : Abs.step othercalls MM MM'),
-                step othercalls s s'
+                     (STEP : Abs.step MM MM'),
+                step s s'
 | step_stop : forall MM
                      (PREV : s  = Some MM)
                      (NEXT : s' = None)
-                     (STOP : forall MM', ~ Abs.step othercalls MM MM'),
-                step othercalls s s'.
+                     (STOP : forall MM', ~ Abs.step MM MM'),
+                step s s'.
 
-Theorem slow_same : forall othercalls MM MM',
-  step othercalls (Some MM) (Some MM') <-> Abs.step othercalls MM MM'.
+Theorem slow_same : forall MM MM',
+  step (Some MM) (Some MM') <-> Abs.step MM MM'.
 Proof.
-  move=> oc MM MM'; split.
+  move=> MM MM'; split.
   - by move=> [? ? [<-] [<-]|].
   - by move=> ?; eapply step_go.
 Qed.
 
-Theorem slow_stops_late : forall othercalls MM,
-  step othercalls (Some MM) None <-> forall MM', ~ Abs.step othercalls MM MM'.
+Theorem slow_stops_late : forall MM,
+  step (Some MM) None <-> forall MM', ~ Abs.step MM MM'.
 Proof.
-  move=> oc MM; split.
+  move=> MM; split.
   - by move=> [|? [<-]].
   - by move=> NO; apply: step_stop.
 Qed.
 
-Theorem slow_stopped : forall othercalls s',
-  ~ step othercalls None s'.
-Proof. by move=> oc s' []. Qed.
+Theorem slow_stopped : forall s',
+  ~ step None s'.
+Proof. by move=> s' []. Qed.
 
 Definition good_state (s : state) : bool :=
   match s with
