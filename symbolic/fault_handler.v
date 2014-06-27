@@ -46,7 +46,7 @@ Context (fhp : fault_handler_params).
 
    USER ut  -> | ut   | 0 | 1 |
    KERNEL   -> | 0..0 | 0 | 0 |
-   ENTRY ut -> | ut   | 1 | 0 | 
+   ENTRY ut -> | ut   | 1 | 0 |
 
    (where "ENTRY ut" means that the entry point carries a specific
    tag, which might be used by the transfer function) *)
@@ -188,8 +188,27 @@ Section invariant.
 
 Context {s : machine_ops_spec ops}
         {ap : Symbolic.symbolic_params}
-        {e : encodable (Symbolic.tag mt)}
-        {pinv : Concrete.memory mt -> Symbolic.internal_state mt -> Prop}.
+        {e : encodable (Symbolic.tag mt)}.
+
+Record policy_invariant : Type := {
+  policy_invariant_statement :> Concrete.memory mt -> Symbolic.internal_state mt -> Prop;
+
+  policy_invariant_upd_mem :
+    forall mem mem' addr w1 ut w2 int
+           (PINV : policy_invariant_statement mem int)
+           (GET : PartMaps.get mem addr = Some w1@(encode (USER ut)))
+           (UPD : PartMaps.upd mem addr w2 = Some mem'),
+      policy_invariant_statement mem' int;
+
+  policy_invariant_store_mvec :
+    forall mem mem' mvec int
+           (KINV : policy_invariant_statement mem int)
+           (MVEC : Concrete.store_mvec ops mem mvec = Some mem'),
+    policy_invariant_statement mem' int
+
+}.
+
+Variable pinv : policy_invariant.
 
 Let invariant (mem : Concrete.memory _)
               (regs : Concrete.registers _)
@@ -246,7 +265,7 @@ Proof.
       apply encode_inj in EQ. discriminate.
     + erewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
-  - admit. (* TODO: Add hypotheses about policy invariant *)
+  - by eapply policy_invariant_upd_mem; eauto.
 Qed.
 
 Lemma invariant_upd_reg :
@@ -295,7 +314,7 @@ Proof.
     eapply MEM.
     + eapply nth_error_Some; eauto.
     + apply in_or_app. now eauto.
-  - admit. (* TODO: Add hypothesis about policy invariant *)
+  - by eapply policy_invariant_store_mvec; eauto.
 Qed.
 
 Definition fault_handler_invariant : kernel_invariant := {|
