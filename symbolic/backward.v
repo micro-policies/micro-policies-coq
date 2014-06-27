@@ -381,9 +381,8 @@ Definition refine_state_weak ast cst :=
    and for CFI *)
 Lemma kernel_simulation_strong ast cst cst' :
   refine_state_weak ast cst ->
-  Symbolic.get_syscall table (common.val (Symbolic.pc ast)) = None ->
   Concrete.step _ masks cst cst' ->
-  in_kernel cst \/ in_kernel cst' ->
+  visible cst cst' = false ->
   refine_state_weak ast cst'.
 Admitted.
 

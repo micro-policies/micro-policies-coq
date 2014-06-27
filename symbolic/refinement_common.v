@@ -568,6 +568,27 @@ Definition user_regs_unchanged cregs cregs' :=
     TotalMaps.get cregs r = w@(encode (USER t)) <->
     TotalMaps.get cregs' r = w@(encode (USER t)).
 
+Import DoNotation.
+
+Definition option_bool_to_bool (ob : option bool) :=
+  match ob with
+  | Some true => true
+  | _ => false
+  end.
+
+(* Could not find an instance for "PartMaps.partial_map 
+                                  (Concrete.memory mt) 
+                                  (word mt) (word mt)" in environment:
+Definition is_syscall_return (cst cst' : Concrete.state mt) :=
+  in_kernel cst && in_user cst' && (option_bool_to_bool (
+    do! i <- PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst));
+    do! di <- decode_instr i;
+    Some (di == Jump _ (@ra mt ops)))).
+*)
+
+Definition visible cst cst' := 
+  (in_user cst && in_user cst') (* || is_syscall_return cst cst' *).
+
 Class kernel_code_correctness : Prop := {
 
 (* BCP: Added some comments -- please check! *)

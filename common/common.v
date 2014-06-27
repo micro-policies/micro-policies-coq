@@ -104,7 +104,7 @@ Proof. by do !case. Qed.
 Record machine_types := {
   word : eqType;
   reg : eqType;
-  imm : Type
+  imm : eqType
 }.
 
 Section instr.
@@ -127,6 +127,33 @@ Inductive instr : Type :=
 | GetTag : reg t -> reg t -> instr
 | PutTag : reg t -> reg t -> reg t -> instr
 | Halt : instr.
+
+Definition instr_eq (i1 i2 : instr) : bool :=
+  match i1, i2 with
+  | Nop, Nop => true
+  | Const x1 y1, Const x2 y2 => eq_op x1 x2 && eq_op y1 y2
+  | Mov x1 y1, Mov x2 y2 => eq_op x1 x2 && eq_op y1 y2
+  | Binop o1 x1 y1 z1, Binop o2 x2 y2 z2 =>
+    eq_op o1 o2 && eq_op x1 x2 && eq_op y1 y2 && eq_op z1 z2
+  | Load x1 y1, Load x2 y2 => eq_op x1 x2 && eq_op y1 y2
+  | Store x1 y1, Store x2 y2 => eq_op x1 x2 && eq_op y1 y2
+  | Jump x1, Jump x2 => eq_op x1 x2
+  | Bnz x1 y1, Bnz x2 y2 => eq_op x1 x2 && eq_op y1 y2
+  | Jal x1, Jal x2 => eq_op x1 x2
+  | JumpEpc, JumpEpc => true
+  | AddRule, AddRule => true
+  | GetTag x1 y1, GetTag x2 y2 => eq_op x1 x2 && eq_op y1 y2
+  | PutTag x1 y1 z1, PutTag x2 y2 z2 =>
+    eq_op x1 x2 && eq_op y1 y2 && eq_op z1 z2
+  | Halt, Halt => true
+  | _, _ => false
+  end.
+
+Lemma instr_eqP : Equality.axiom instr_eq.
+Admitted.
+
+Definition instr_eqMixin := EqMixin instr_eqP.
+Canonical instr_eqType := Eval hnf in EqType instr instr_eqMixin.
 
 Definition opcode_of (i : instr) : opcode :=
   match i with

@@ -492,9 +492,6 @@ Qed.
 
 Definition in_user := @in_user mt ops sym_params cp e.
 
-Definition visible cst cst' := 
-  in_user cst && in_user cst'.
-
 Definition smachine := Sym.symbolic_cfi_machine stable.
 Definition cmachine := Conc.concrete_cfi_machine valid_jmp masks.
 
