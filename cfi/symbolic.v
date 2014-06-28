@@ -26,10 +26,9 @@ Import PartMaps.
 
 Context {memory : Type}
         {sm : partial_map memory (word t) (atom (word t) (@cfi_tag t))}
-        {smems : axioms sm}.
-
-Context {registers : Type}.
-Context {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
+        {smems : axioms sm}
+        {registers : Type}
+        {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
@@ -445,6 +444,9 @@ Definition initial (s : Symbolic.state t) :=
   instructions_tagged (Symbolic.mem s) /\
   valid_jmp_tagged (Symbolic.mem s) /\ entry_points_tagged (Symbolic.mem s).
 
+Definition stopping xs :=
+  exists s, xs = [s] /\ ~ exists s', Symbolic.step table s s'.
+
 Program Instance symbolic_cfi_machine : cfi_machine := {|
   state := Symbolic.state t;
   initial s := initial s;
@@ -452,11 +454,10 @@ Program Instance symbolic_cfi_machine : cfi_machine := {|
   step := Symbolic.step table;
   step_a := step_a;
   
-  succ := ssucc      
+  succ := ssucc;
+  stopping := stopping  
  |}.
 
-Definition S xs :=
-  exists s, xs = [s] /\ ~ exists s', Symbolic.step table s s'.
 
 
 End WithClasses.

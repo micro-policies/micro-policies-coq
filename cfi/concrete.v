@@ -20,10 +20,17 @@ Module Conc.
 Section ConcreteSection.
 
 Context {t : machine_types}
-        {cp : Concrete.concrete_params t}
-        {sp : Concrete.params_spec cp}
         {ops : machine_ops t}
+        {cp : Concrete.concrete_params t}
+        {csp : Concrete.params_spec cp}
         {e : @rules.encodable (@rules.cfi_tag_eqType t) t ops}.
+
+Import PartMaps.
+Context {memory : Type}
+        {sm : partial_map memory (word t) (atom (word t) (@cfi_tag t))}
+        {smems : axioms sm}
+        {registers : Type}
+        {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
 
 Variable valid_jmp : word t -> word t -> bool.
 (*allow attacker to change only things tagged USER DATA! all the rest should be equiv*)
@@ -101,10 +108,24 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
     | None => false
   end.
 
-(* pct = USER DATA, memory tagged "correctly"*)
-Definition cinitial (s : Concrete.state t) := True.
+Definition sp := @Sym.sym_cfi t _ _ _ _ valid_jmp.
+
+Variable ki : (@refinement_common.kernel_invariant t ops sp cp e).
+
+Variable stable : list (@Symbolic.syscall t sp).
+
+Definition cinitial (cs : Concrete.state t) := 
+  exists ss, Sym.initial stable ss /\ refine_state ki stable ss cs.
 
 Variable masks : Concrete.Masks.
+
+Definition in_user := @in_user t ops sp cp e.
+
+Definition stopping (ss : list (Concrete.state t)) : Prop :=
+  exists s1 s2 tl,
+    ss = s1 :: s2 :: tl /\
+    in_user s1 /\ in_kernel s2 /\
+    forall s, In s tl -> in_kernel s.
 
 Program Instance concrete_cfi_machine : cfi_machine := {|
   state := Concrete.state t;
@@ -113,7 +134,8 @@ Program Instance concrete_cfi_machine : cfi_machine := {|
   step s1 s2 := Concrete.step ops masks s1 s2;
   step_a := step_a;
 
-  succ := csucc
+  succ := csucc;
+  stopping := stopping
  |}.
 
 End ConcreteSection.

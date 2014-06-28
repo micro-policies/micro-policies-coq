@@ -20,7 +20,8 @@ Class cfi_machine := {
   step : state -> state -> Prop;
   step_a : state -> state -> Prop;
 
-  succ : state -> state -> bool       
+  succ : state -> state -> bool;
+  stopping : list state -> Prop
 }.
 
 Context (cfim : cfi_machine).
@@ -33,10 +34,6 @@ Definition intermstep := interm cfi_step.
 Definition intermrstep := intermr cfi_step.
 
 Definition zero_one_step := zero_one cfi_step.
-
-(* CH: Move this to cfi_machine Class, with a better name like stopping? *)
-(* Execution will stop *)
-Variable S : list state -> Prop.
 
 (* Old definition of CFI (Abadi)
 Definition trace_has_cfi' (trace : list state) := 
@@ -58,7 +55,7 @@ Definition trace_has_at_most_one_violation (trace : list state) :=
                          /\ (step s'' s''' /\ succ s'' s''' = false)
                          /\ trace_has_cfi (hs ++ [s''])
                          /\ trace_has_cfi (s''' :: tl)
-                         /\ S(s''' :: tl).
+                         /\ stopping(s''' :: tl).
 
 Definition cfi := 
   forall s s' xs

@@ -179,6 +179,9 @@ Definition succ (st : state) (st' : state) : bool :=
 Definition initial (s : state) := 
   cont s = true.
 
+Definition stopping (xs : list state) :=
+  exists s, xs = [s] /\ ~ exists s', step s s'.
+
 Program Instance abstract_cfi_machine : cfi_machine := {|
   state := state;
   initial s := initial s;
@@ -186,11 +189,10 @@ Program Instance abstract_cfi_machine : cfi_machine := {|
   step := step;
   step_a := step_a;
 
-  succ := succ
+  succ := succ;
+  stopping := stopping
  |}.
 
-Definition S (xs : list state) :=
-  exists s, xs = [s] /\ ~ exists s', step s s'.
 
 Lemma step_succ_violation ast ast' :
    succ ast ast' = false ->
@@ -215,7 +217,7 @@ Proof.
   inversion STEP; subst. reflexivity.
 Qed.
 
-Theorem cfi : cfi abstract_cfi_machine S.
+Theorem cfi : cfi abstract_cfi_machine.
 Proof.
   unfold cfi. intros.
   apply interm_equiv_intermrev in INTERM.
@@ -238,7 +240,7 @@ Proof.
         simpl; repeat (split;auto).
         intros ? ? IN2. destruct IN2.
         intros ? ? IN2. destruct IN2.
-        unfold S. exists s'. split; auto.
+        unfold stopping. exists s'. split; auto.
         intro CONTRA. destruct CONTRA as [s'' CONTRA].
         assert (FLAG := step_succ_violation SUCC STEP).
         inv CONTRA; simpl in FLAG; discriminate.
@@ -278,7 +280,7 @@ Proof.
         simpl; rewrite <- app_assoc. repeat (split; auto).
         intros ? ? IN2.
         destruct IN2.
-        unfold S. exists s''. split; [reflexivity | idtac].
+        unfold stopping. exists s''. split; [reflexivity | idtac].
         intro CONTRA. destruct CONTRA as [s''' CONTRA].
         assert (FLAG := step_succ_violation SUCC STEP).
         inv CONTRA; simpl in FLAG; discriminate.
@@ -286,7 +288,7 @@ Proof.
     { (*Case a violation occurs in the trace*)
      induction xs using rev_ind; [inversion INTERM | subst; clear IHxs].
      destruct VIOLATION as [LST [VIO [T1 [T2 STOPS]]]].
-     rewrite LST in INTERM. unfold S in STOPS.
+     rewrite LST in INTERM. unfold stopping in STOPS.
      destruct STOPS as [sv2' [EQ IRRED]].
      destruct tl; [simpl; inversion EQ; subst | inversion EQ].
      change [sv1;sv2'] with ([sv1] ++ [sv2']) in INTERM.
