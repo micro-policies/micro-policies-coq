@@ -566,6 +566,9 @@ Qed.
 
 Import ListNotations.
 
+(* AAA: Not quite right now, since we've implemented the other solution
+for managing syscalls, where the concrete machine at the beginning of
+a syscall *is* a refinement of a symbolic state *)
 (*rough statement of a lemma, should polish and ask Arthur on how to prove*)
 Lemma user_mode_no_syscall asi asj csi csj sc :
   refinement_common.refine_state ki stable asi csi ->
@@ -577,6 +580,24 @@ Lemma user_mode_no_syscall asi asj csi csj sc :
 Proof.
   Admitted.
 
+Lemma kernel_step cst cst' ast kst cst0 :
+  refinement_common.refine_state ki stable ast cst0 ->
+  Concrete.step ops rules.masks cst0 kst ->
+  kernel_exec kst cst ->
+  Concrete.step _ masks cst cst' ->
+  in_kernel cst = true ->
+  in_user cst' = false ->
+  in_kernel cst' = true.
+Proof.
+  intros REF STEP EXEC STEP' INKERNEL INUSER.
+  assert (REFW: @refine_state_weak _ _ _ _ _ ki stable ast cst).
+  { right. eauto. }
+  generalize (backwards_simulation REFW STEP').
+  intros [[REF' | (? & ? & ? & ? & KEXEC')] | (? & _ & REF')].
+  - destruct REF'. unfold in_user in INUSER. congruence.
+  - by apply restricted_exec_snd in KEXEC'.
+  - destruct REF'. unfold in_user in INUSER. congruence.
+Qed.
 
 (*This is a helper lemma to instantiate CFI refinement between 
   symbolic and concrete*)
