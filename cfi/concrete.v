@@ -122,9 +122,9 @@ Variable masks : Concrete.Masks.
 Definition in_user := @in_user t ops sp cp e.
 
 Definition stopping (ss : list (Concrete.state t)) : Prop :=
-  exists s1 s2 tl,
-    ss = s1 :: s2 :: tl /\
-    in_user s1 /\ in_kernel s2 /\
+  exists hd tl,
+    ss = hd :: tl /\
+    in_user hd /\
     forall s, In s tl -> in_kernel s.
 
 Program Instance concrete_cfi_machine : cfi_machine := {|
