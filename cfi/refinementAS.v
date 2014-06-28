@@ -1060,69 +1060,6 @@ Proof.
   }
 Qed.
 
-(* NOTE: Do not remove*)
-(*This is a helper lemma to instantiate CFI refinement between 
-  symbolic and concrete*)
-(*Lemma attacker_no_v : forall si sj,
-                 Sym.ssucc si sj = false ->
-                 Symbolic.step stable si sj ->
-                 Sym.step_a si sj ->
-                 False.
-Proof.
-  intros si sj SUCC STEP STEPA.
-  inversion STEPA. subst.
-  inversion STEP; 
-   repeat (
-      match goal with
-        | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
-          unfold Symbolic.next_state_pc in H
-        | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
-          unfold Symbolic.next_state_reg in H
-        | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
-          unfold Symbolic.next_state_reg_and_pc in H
-        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
-          unfold Symbolic.next_state in H; simpl in H; match_inv
-      end); subst;
-   unfold Sym.ssucc in SUCC; simpl in SUCC;
-   inversion ST; try subst;
-
-   try match goal with
-     | [H: (?Pc + 1)%w = ?Pc |- _] => 
-       rewrite H in SUCC; try subst mem' reg' int; try subst mem reg
-  end;
-   try rewrite PC in SUCC; try rewrite INST in SUCC;
-   try match goal with 
-     | [H: Some _ = Some _ |- _] => simpl in H; inversion H
-   end;
-   try match goal with
-     | [H: (?Pc + 1)%w = ?Pc |- _] => 
-       rewrite H in SUCC; rewrite eqxx in SUCC; discriminate
-   end. 
-  (*jump case*)
-  rewrite FETCH in PC.  inversion PC; subst.
-  assert (JMPTG := jump_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
-  congruence.
-  (*bnz case*)
-  destruct (w == 0%w).
-  * subst mem' reg'.
-    rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
-    rewrite H2 in SUCC. rewrite FETCH in SUCC.
-    rewrite INST in SUCC.
-    apply orb_false_iff in SUCC. destruct SUCC.
-    rewrite H2 in H. rewrite eqxx in H. discriminate.
-  * subst mem' reg'.
-    rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
-    rewrite H2 in SUCC. rewrite FETCH in SUCC.
-    rewrite INST in SUCC.
-    apply orb_false_iff in SUCC. destruct SUCC.
-    rewrite H2 in H0. rewrite eqxx in H0. discriminate.
- (*jal case*)
-  rewrite FETCH in PC. inversion PC; subst.
-  assert (JMPTG := jal_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
-  congruence.
-Admitted. *)
-
-
 End Refinement.
 
 End RefinementAS.

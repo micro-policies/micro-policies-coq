@@ -176,19 +176,12 @@ Next Obligation.
   eexists; eauto.
 Qed.
 
-(* Stopping Conditions for the two machines*)  
-Definition astop (xs : list (@property.state amachine )) :=
-  Abs.S atable valid_jmp xs.
-
-Definition sstop (xs : list (@property.state smachine)) := 
-  Sym.S stable xs.
-
 Import ListNotations.
 
 Require Import Classical.
 
 Program Instance cfi_refinementAS_specs :
-  machine_refinement_specs astop sstop cfi_refinementAS.
+  machine_refinement_specs cfi_refinementAS.
 Next Obligation. (*step or no step*)
   by apply classic. 
 Qed.
@@ -213,7 +206,7 @@ Next Obligation.
   destruct csj as [mem' regs' [spc' tpc'] int'].
   destruct H as [REFI [REFD [REFR [REFPC ?]]]].
   destruct H0 as [REFI' [REFD' [REFR' [REFPC' ?]]]].
-  unfold Abs.succ in H1.
+  unfold Abs.succ in H2.
   unfold RefinementAS.refine_pc in REFPC; simpl in REFPC; 
   destruct REFPC as [? TPC];
   unfold RefinementAS.refine_pc in REFPC'; simpl in REFPC'; 
@@ -304,8 +297,8 @@ Next Obligation.
   }
 Qed.
 Next Obligation.
-  unfold astop in H0. unfold Abs.S in H0.
-  unfold sstop. unfold Sym.S.
+  unfold Abs.stopping in H0.
+  unfold Sym.stopping.
   destruct H0 as [s [EQ NOSTEP]].
   inversion EQ; subst.
   inversion H; subst.

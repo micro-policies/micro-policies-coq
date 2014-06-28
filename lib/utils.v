@@ -1347,7 +1347,29 @@ Proof.
         + right; auto.
     }
 Qed.
-    
+
+Lemma In2_inv xs xmid xs' :
+  In2 (xs ++ xmid :: xs') ->
+  In2 (xs ++ [xmid]) \/
+  In2 (xmid :: xs').
+Proof.
+  intros IN2.
+  induction xs.
+  - rewrite app_nil_l in IN2.
+    right; trivial.
+  - destruct xs.
+    + destruct IN2 as [[E1 E2] | IN2].
+      * subst.
+        left; simpl; auto.
+      * right; assumption.
+    + destruct IN2 as [[E1 E2] | IN2].
+      * subst. left; simpl; auto.
+      * apply IHxs in IN2.
+        destruct IN2 as [IN2 | IN2].
+        { left. simpl; right; auto. }
+        { right. trivial. }
+Qed.
+        
 End In2. 
 
 Section exec.

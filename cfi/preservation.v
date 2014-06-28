@@ -18,10 +18,6 @@ Context {t : machine_types}
 Variable amachine : cfi_machine.
 Variable cmachine : cfi_machine.
 
-Variable AS : (list (@state amachine)) -> Prop.
-
-Variable CS : (list (@state cmachine)) -> Prop.
-
 (* General notion of refinement between two machines*)
 Class machine_refinement (amachine : cfi_machine) (cmachine : cfi_machine) := {
   refine_state : (@state amachine) -> (@state cmachine) -> Prop;
@@ -86,7 +82,8 @@ Class machine_refinement_specs := {
     initial cst ->
     exists (ast : @state amachine), initial ast /\ refine_state ast cst;
 
-  cfg_nocheck : forall csi csj,
+  cfg_nocheck : forall asi csi csj,
+    refine_state asi csi ->
     step csi csj ->
     check csi csj = false ->
     succ csi csj = true;
@@ -94,6 +91,7 @@ Class machine_refinement_specs := {
   cfg_equiv : forall (asi asj : @state amachine) csi csj,
     refine_state asi csi ->
     refine_state asj csj ->
+    step asi asj -> (*needed to strengthen this for syscalls*)
     succ asi asj = true ->
     succ csi csj = true;
 
@@ -118,8 +116,8 @@ Class machine_refinement_specs := {
      possible with the new way to define backwards_refinement_normal *)
   as_implies_cs : forall axs cxs,
     refine_traces axs cxs ->
-    AS axs ->
-    CS cxs
+    stopping axs ->
+    stopping cxs
 
 }.
 
@@ -218,83 +216,6 @@ Proof.
   }
 Qed.
 
-(*
-Lemma refine_traces_weaken_backward : forall axs cxs,
-  refine_traces axs cxs ->
-    (forall csi csj,
-       In2 csi csj cxs ->
-       step csi csj ->
-       check csi csj = true ->
-         exists asi asj,
-           In2 asi asj axs /\ step asi asj
-           /\ refine_state asi csi /\ refine_state asj csj).
-Proof.
-  intros axs cxs RTRACE csi csj IN2 CSTEP CHECK.
-  induction RTRACE
-    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF REF' RTRACE' |
-        ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
-        ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst.
-  - destruct IN2.
-  - destruct IN2 as [[? ?] | IN2]; subst.
-    + congruence.
-    + auto.
-  - destruct IN2 as [[? ?] | IN2]; subst.
-    + exists ast; exists ast'; repeat(split;simpl;auto).
-    + apply IHRTRACE' in IN2.
-      destruct IN2 as [asi [asj [IN2' [ASTEP [REFI REFJ]]]]].
-      exists asi; exists asj.
-      split. simpl. right. auto.
-      repeat(split;auto).
-  - destruct IN2 as [[? ?] | IN2]; subst.
-    + tauto.
-    + apply IHRTRACE' in IN2.
-      destruct IN2 as [asi' [asj' [IN2' [? [? ?]]]]].
-      exists asi'; exists asj'.
-      split. simpl; right; auto.
-      repeat (split; auto).
-Qed.
-
-Lemma refine_traces_weaken_forward : forall axs cxs,
-  refine_traces axs cxs ->
-  forall asi asj,
-    In2 asi asj axs ->
-    step asi asj ->
-    succ asi asj = false ->
-    exists csi csj,
-      In2 csi csj cxs /\ step csi csj /\ check csi csj = true
-      /\ refine_state asi csi /\ refine_state asj csj.
-Proof.
-  intros axs cxs RTRACE asi asj IN2 ASTEP SUCC.
-  induction RTRACE
-    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF REF' RTRACE' |
-        ast ast' cst cst' axs cxs STEP VIS ASTEP' REF REF' RTRACE'|
-        ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst.
-  - destruct IN2.
-  - destruct (RTRACE' IN2) as [csi [csj [IN2' [STEP' [REFI REFJ]]]]].
-    exists csi; exists csj. split.
-    change (cst :: cst' :: cxs') with ([cst] ++ (cst' :: cxs')).
-    apply in2_strengthen. now assumption.
-    repeat(split; auto).
-  - destruct IN2 as [[? ?] | IN2]; subst.
-    * exists cst; exists cst'.
-      split. simpl; auto.
-      repeat (split; auto).
-    * destruct (IHRTRACE' IN2) as [csi [csj [IN2' [STEP' [REFI REFJ]]]]].
-      exists csi; exists csj.
-      split. change (cst :: cst' :: cxs) with ([cst] ++ (cst' :: cxs)).
-      apply in2_strengthen. now assumption.
-      repeat (split; auto).
-  - destruct IN2 as [[? ?] | IN2]; subst.
-    * destruct (av_no_attacker _ _ SUCC ASTEP). now assumption.
-    * apply IHRTRACE' in IN2.
-      destruct IN2 as [csi [csj [IN2' [STEPN [REFI REFJ]]]]].
-      exists csi; exists csj.
-      split. change (cst :: cst' :: cxs) with ([cst] ++ (cst' :: cxs)).
-      apply in2_strengthen. now assumption.
-      repeat (split; auto).
-Qed.
-*)
-
 Lemma refine_traces_preserves_cfi_trace : forall axs cxs,
   refine_traces axs cxs ->
   trace_has_cfi amachine axs ->
@@ -302,17 +223,17 @@ Lemma refine_traces_preserves_cfi_trace : forall axs cxs,
 Proof.
   intros axs cxs RTRACE TSAFE csi csj IN2 CSTEP.
   induction RTRACE
-    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS ASTEP' REF RTRACE' |
+    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS REF REF' RTRACE' |
         ast ast' cst cst' axs cxs STEP ASTEP' REF REF' RTRACE'|
         ast ast' cst cst' axs cxs NSTEP STEP ASTEP' REF REF' RTRACE']; subst.
   - destruct IN2.
   - destruct IN2 as [[? ?] | IN2]; subst.
-    * apply (cfg_nocheck _ _ CSTEP VIS).
+    * apply (cfg_nocheck _ _ _ REF CSTEP VIS).
     * apply IHRTRACE'; assumption.
   - destruct IN2 as [[? ?] | IN2]; subst.
     * assert (SUCC: succ ast ast' = true).
       { apply TSAFE; simpl; auto. }
-      apply (cfg_equiv _ _ _ _ REF REF' SUCC).
+      apply (cfg_equiv _ _ _ _ REF REF' ASTEP' SUCC).
     * apply IHRTRACE'.
       destruct axs.
       + intros ? ? CONTRA; destruct CONTRA.
@@ -342,7 +263,6 @@ Lemma refine_traces_split axs ahd atl asi asj cxs :
   succ asi asj = false ->
   exists chd csi csj ctl,
     step csi csj /\
-    (*check csi csj = true /\*)
     refine_state asi csi /\
     refine_state asj csj /\
     refine_traces (ahd ++ [asi]) (chd ++ [csi]) /\
@@ -380,15 +300,9 @@ Qed.
 
 (*Preservation Theorem*)
 
-Lemma In2_inv {X} xs xmid xs' (x1 x2 : X) :
-  In2 x1 x2 (xs ++ xmid :: xs') ->
-  In2 x1 x2 (xs ++ [xmid]) \/
-  In2 x1 x2 (xmid :: xs').
-Admitted.
-
 Theorem backwards_refinement_preserves_cfi :
-  cfi amachine AS ->
-  cfi cmachine CS.
+  cfi amachine ->
+  cfi cmachine.
 Proof.
   intros CFI1 cst cst' cxs INIT2 INTERM2.
   destruct (initial_refine cst INIT2) as [ast [INIT1 INITREF]].
@@ -434,10 +348,10 @@ Proof.
     induction cxs; intros.
     - destruct IN2.
     - destruct IN2 as [[? ?] | IN2]; subst.
-      * inversion RTRACE; subst.
-        apply (cfg_nocheck _ _ H4 H5).
-      * inversion RTRACE; subst.
-        now apply (IHcxs _ H8 IN2).
+      * inversion RTRACE as [|? ? ? ? ? STEP CHECK REF REF' RTRACE'| |]; subst.
+        apply (cfg_nocheck _ _ _ REF STEP CHECK).
+      * inversion RTRACE as [|? ? ? ? ? STEP CHECK REF REF' RTRACE'| |]; subst.
+        now apply (IHcxs _ RTRACE' IN2).
   }
 Qed.
 

@@ -366,6 +366,8 @@ Proof.
         inversion MEQUIV 
           as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
         * inv EQ1.
+          apply andb_true_iff in SCALL.
+          destruct SCALL as [? SCALL].
           move/eqP/rules.encode_inj: SCALL => CONTRA.
           inversion CONTRA.
         * simpl in *. inv EQ. assumption.
@@ -380,6 +382,8 @@ Proof.
         inversion MEQUIV 
           as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
         * inv EQ2.
+          apply andb_true_iff in CALL.
+          destruct CALL as [? CALL].
           move/eqP/rules.encode_inj: CALL => CONTRA.
           inversion CONTRA.
         * simpl in *. inv EQ. apply INV in CALL.
@@ -447,6 +451,8 @@ Proof.
               by (eexists; eauto).
             apply WFENTRY in SCALL.
             apply REFM in FETCH. rewrite FETCH in SCALL.
+            apply andb_true_iff in SCALL.
+            destruct SCALL as [? SCALL].
             move/eqP/rules.encode_inj: SCALL => SCALL.
             inversion SCALL.
           }
@@ -479,11 +485,11 @@ Qed.
 Definition in_user := @in_user mt ops sym_params cp e.
 
 Definition smachine := Sym.symbolic_cfi_machine stable.
-Definition cmachine := Conc.concrete_cfi_machine valid_jmp masks.
+Definition cmachine := Conc.concrete_cfi_machine ki stable masks.
 
 Context {kcc : kernel_code_correctness ki stable}. (*should this go to the top?*)
 
-Definition check := @refinement_common.visible mt ops sym_params cp e.
+Definition check st st' := in_user st && in_user st'.
 
 Program Instance cfi_refinementSC  : 
   (machine_refinement smachine cmachine) := {
@@ -499,36 +505,33 @@ Proof.
     split.
     { (*Visible step starting from a user state*)
       intro VIS.
-      unfold visible, refinement_common.visible in VIS.
-      apply orb_true_iff in VIS.
-      destruct VIS as [VIS | CONTRA].
-      - apply andb_true_iff in VIS.
-        destruct VIS as [VIS VIS'].
-        assert (HIT: @hit_step mt ops sym_params cp e cst cst')
+      unfold check in VIS.
+      apply andb_true_iff in VIS.
+      destruct VIS as [VIS VIS'].
+      assert (HIT: @hit_step mt ops sym_params cp e cst cst')
           by (constructor; auto).
-        destruct (hit_simulation UREF HIT) as [sst' [SSTEP REF']].
-        unfold refine_state, refine_state_weak.
-        eexists; split; eauto.
-      - unfold is_syscall_return in CONTRA.
-        apply andb_true_iff in CONTRA.
-        destruct CONTRA as [CONTRA ?].
-        apply andb_true_iff in CONTRA.
-        destruct CONTRA as [CONTRA ?].
-        destruct UREF as [USER ?].
-        apply (@in_user_in_kernel mt ops sym_params cp e) in USER.
-        rewrite USER in CONTRA. discriminate.
+      destruct (cache_hit_simulation UREF HIT) as [sst' [SSTEP REF']].
+      unfold refine_state, refine_state_weak.
+      eexists; split; eauto.
+      (* - unfold is_syscall_return in CONTRA. *)
+      (*   apply andb_true_iff in CONTRA. *)
+      (*   destruct CONTRA as [CONTRA ?]. *)
+      (*   apply andb_true_iff in CONTRA. *)
+      (*   destruct CONTRA as [CONTRA ?]. *)
+      (*   destruct UREF as [USER ?]. *)
+      (*   apply (@in_user_in_kernel mt ops sym_params cp e) in USER. *)
+      (*   rewrite USER in CONTRA. discriminate. *)
     }
     { (*invisible step starting a from user state*)
       intro INVIS.
-      unfold visible, refinement_common.visible in INVIS.
-      apply orb_false_iff in INVIS.
-      destruct INVIS as [NUSER NOCALL].
-      apply andb_false_iff in NUSER.
-      destruct NUSER as [CONTRA | NUSER].
+      unfold check in INVIS.
+      apply andb_false_iff in INVIS.
+      destruct INVIS as [CONTRA | NUSER].
       - unfold refinement_common.refine_state in UREF.
-        destruct UREF as [USER ?].
+        destruct UREF as [USER ?]. unfold in_user in CONTRA.
         rewrite USER in CONTRA. discriminate.
       - (*user to not user step*)
+        left.
         right. exists cst; exists cst'.
         repeat (split; auto).
         unfold kernel_exec.
@@ -539,35 +542,204 @@ Proof.
     split.
     { (*and taking a visible step*)
       intro VIS.
-      unfold visible, refinement_common.visible in VIS.
-      apply orb_true_iff in VIS.
-      destruct VIS as [VIS | ISCALL].
-      - apply andb_true_iff in VIS.
-        destruct VIS as [VIS VIS'].
-        destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
-        unfold kernel_exec in KEXEC.
-        apply restricted_exec_snd in KEXEC.
-        unfold in_user in VIS.
-        apply (@in_user_in_kernel mt ops sym_params cp e) in VIS.
-        rewrite VIS in KEXEC. discriminate.
-      - (*syscall return case*)
-        unfold is_syscall_return in ISCALL.
-        apply andb_true_iff in ISCALL. 
-        destruct ISCALL as [KU ISCALL].
-        apply andb_true_iff in KU.
-        destruct KU as [KERNEL USER'].
-        (*something about system calls*)
-        admit.
+      unfold check in VIS.
+      apply andb_true_iff in VIS.
+      destruct VIS as [VIS VIS'].
+      destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
+      unfold kernel_exec in KEXEC.
+      apply restricted_exec_snd in KEXEC.
+      unfold in_user in VIS.
+      apply (@in_user_in_kernel mt ops sym_params cp e) in VIS.
+      rewrite VIS in KEXEC. discriminate.
     }
     { (*and taking an invisible step*)
       intro VIS.
       assert (REFW : @refine_state_weak mt ops sym_params cp e ki stable ast cst)
         by (right; auto).
       assert (REFW' := kernel_simulation_strong REFW STEP VIS).
-      assumption.
+      left. auto.
     }
 Qed.
-     
+Next Obligation.
+  apply (backwards_simulation_attacker REF STEPA).
+Qed.
+
+Import ListNotations.
+
+(*rough statement of a lemma, should polish and ask Arthur on how to prove*)
+Lemma user_mode_no_syscall asi asj csi csj sc :
+  refinement_common.refine_state ki stable asi csi ->
+  refinement_common.refine_state ki stable asj csj ->
+  Symbolic.step stable asi asj ->
+  (* Concrete.step _ masks csi csj -> *) (*we can have this if needed*)
+  Symbolic.get_syscall stable (common.val (Symbolic.pc asi)) = Some sc ->
+  False.
+Proof.
+  Admitted.
+
+
+(*This is a helper lemma to instantiate CFI refinement between 
+  symbolic and concrete*)
+Lemma attacker_no_v : forall si sj,
+                 Sym.ssucc stable si sj = false ->
+                 Symbolic.step stable si sj ->
+                 Sym.step_a stable si sj ->
+                 False.
+Proof.
+  intros si sj SUCC STEP STEPA.
+  inversion STEPA. subst.
+  inversion STEP; 
+   repeat (
+      match goal with
+        | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+          unfold Symbolic.next_state_pc in H
+        | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+          unfold Symbolic.next_state_reg in H
+        | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+          unfold Symbolic.next_state_reg_and_pc in H
+        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          unfold Symbolic.next_state in H; simpl in H; match_inv
+      end); subst;
+   unfold Sym.ssucc in SUCC; simpl in SUCC;
+   inversion ST; try subst;
+
+   try match goal with
+     | [H: (?Pc + 1)%w = ?Pc |- _] => 
+       rewrite H in SUCC; try subst mem' reg' int; try subst mem reg
+  end;
+   try rewrite PC in SUCC; try rewrite INST in SUCC;
+   try match goal with 
+     | [H: Some _ = Some _ |- _] => simpl in H; inversion H
+   end;
+   try match goal with
+     | [H: (?Pc + 1)%w = ?Pc |- _] => 
+       rewrite H in SUCC; rewrite eqxx in SUCC; discriminate
+   end. 
+  (*jump case*)
+  rewrite FETCH in PC. inversion PC; subst.
+  (*
+  assert (JMPTG := jump_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
+  congruence. *)
+  admit.
+  (*bnz case*)
+  destruct (w == 0%w).
+  * subst mem' reg'.
+    rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
+    rewrite H2 in SUCC. rewrite FETCH in SUCC.
+    rewrite INST in SUCC.
+    apply orb_false_iff in SUCC. destruct SUCC.
+    rewrite H2 in H. rewrite eqxx in H. discriminate.
+  * subst mem' reg'.
+    rewrite H2 in FETCH. rewrite FETCH in PC. inversion PC; subst i.
+    rewrite H2 in SUCC. rewrite FETCH in SUCC.
+    rewrite INST in SUCC.
+    apply orb_false_iff in SUCC. destruct SUCC.
+    rewrite H2 in H0. rewrite eqxx in H0. discriminate.
+ (*jal case*)
+  rewrite FETCH in PC. inversion PC; subst.
+  (*
+  assert (JMPTG := jal_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
+  congruence.*)
+  admit.
+  (*syscall case*)
+  rewrite GETCALL in SUCC. discriminate.
+Admitted. 
+
+Require Import Classical.
+
+Program Instance cfi_refinementAS_specs :
+  machine_refinement_specs cfi_refinementSC.
+Next Obligation. (*step or no step*)
+  by apply classic. 
+Qed.
+Next Obligation. (*initial states*)
+  unfold Conc.cinitial in H.
+  destruct H as [ast [INIT REF]].
+  eexists; split; [eassumption | left; assumption].
+Qed.
+Next Obligation. 
+  unfold check in H1.
+  apply andb_false_iff in H1.
+  destruct H1 as [CONTRA | NUSER].
+  - destruct H. 
+    + destruct H.
+      unfold in_user in CONTRA. rewrite H in CONTRA. 
+      discriminate.
+    + destruct H as [? [? [? [? KEXEC]]]].
+      apply restricted_exec_snd in KEXEC.
+      unfold Conc.csucc. rewrite KEXEC.
+      by reflexivity.
+  - destruct H.
+    + assert (KERNEL' := user_into_kernel H H0 NUSER).
+      unfold Conc.csucc. rewrite KERNEL'.
+      rewrite orb_true_r. reflexivity.
+    + destruct H as [? [? [? [? KEXEC]]]].
+      apply restricted_exec_snd in KEXEC.
+      unfold Conc.csucc. rewrite KEXEC.
+      by reflexivity.
+Qed.
+Next Obligation. (*symbolic-concrete cfg relation*)
+  destruct asi as [smemi sregi [spci tpci] inti] eqn:ASI,
+           asj as [smemj sregj [spcj tpcj] intj] eqn:ASJ.
+  destruct csi as [cmemi cregi cachei [cpci ctpci] epci] eqn:CSI,
+           csj as [cmemj cregj cachej [cpcj ctpcj] epcj] eqn:CSJ.
+  destruct H as [UREFI | KREFI].
+  - destruct H0 as [UREFJ | KREFJ].
+    + destruct UREFI as [USERI [PC [TPC [REFM [REFR [CACHE [MVEC [C1 [C2 KI]]]]]]]]],
+                        UREFJ as [USERJ [PC' [TPC' [REFM' [REFR' [C3 [C4 [C5 [C6 C7]]]]]]]]].
+      subst spcj. subst spci.
+      assert (NKERNEL : in_kernel csi || in_kernel csj = false).
+      { apply (@in_user_in_kernel mt ops sym_params cp e) in USERI.
+        apply (@in_user_in_kernel mt ops sym_params cp e) in USERJ.
+        apply orb_false_iff. split; subst; auto.
+      }
+      unfold Conc.csucc.
+      rewrite <- CSI. rewrite <- CSJ. rewrite NKERNEL.
+      unfold Sym.ssucc in H2.
+      rewrite <- ASI in H2. rewrite <- ASJ in H2.
+      destruct (get (Symbolic.mem asi) (common.val (Symbolic.pc asi))) eqn:GET.
+      * destruct a as [v tg].
+        specialize (REFM (common.val (Symbolic.pc asi)) v tg).
+        rewrite ASI in GET. simpl in GET.
+        rewrite ASI in REFM. simpl in REFM. apply REFM in GET.
+        rewrite CSI. simpl.
+        rewrite GET. simpl.
+        destruct tg.
+        { (*if tagged instruction*)
+          destruct (decode_instr v).
+          - (*if valid instruction*)
+            destruct i; subst; simpl; simpl in H1; trivial.
+          - (*If invalid instruction*)
+            discriminate.
+        }
+        { (*if tagged data*)
+          discriminate.
+        }
+      * (*symbolic syscall case, must contradict*)
+        rewrite ASI in H2. simpl in H2.
+        destruct (Symbolic.get_syscall stable cpci) eqn:GETCALL.
+          { exfalso. 
+            apply user_mode_no_syscall 
+            with (asi := asi) (asj := asj) (csi := csi) (csj := csj) (sc := s); 
+              subst;
+              repeat(split; auto); auto. }
+          { rewrite GETCALL in H2. discriminate. }
+    + destruct KREFJ as [? [? [? [? KEXEC]]]].
+      apply restricted_exec_snd in KEXEC.
+      unfold Conc.csucc. rewrite KEXEC.
+      simpl. rewrite orb_true_r. reflexivity.
+  - destruct KREFI as [? [? [? [? KEXEC]]]].
+    apply restricted_exec_snd in KEXEC.
+    unfold Conc.csucc. rewrite KEXEC.
+    by reflexivity.
+Qed.
+Next Obligation. (*symbolic no attacker on violation*)
+Admitted.
+Next Obligation. (*symolic violation implies concrete violation*)
+Admitted.
+Next Obligation. (*symbolic stopping implies concrete stopping*)
+Admitted.
+
 End Refinement.
         
   
