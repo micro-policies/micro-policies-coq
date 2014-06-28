@@ -424,7 +424,8 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VSealed p s0). split; now trivial. (* extra split *)
     eexists. exists km. split.
-    + eapply Abs.step_seal; try eassumption; [reflexivity | reflexivity].
+    + eapply Abs.step_seal; try eassumption; [reflexivity | | reflexivity].
+      * unfold Abs.decode. rewrite PC. reflexivity.
     + split4; now trivial.
     }
     + {(* unseal -- very similar to seal *)
@@ -455,7 +456,8 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData p). reflexivity.
     eexists. exists km. split.
-    + eapply Abs.step_unseal; try eassumption; [reflexivity | | reflexivity].
+    + eapply Abs.step_unseal; try eassumption; [reflexivity | | | reflexivity].
+      * unfold Abs.decode. rewrite PC. reflexivity.
       (* here we use injectivity *)
       destruct rins as [_ [_ rins3]].
       repeat match goal with

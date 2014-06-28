@@ -139,10 +139,7 @@ Inductive step (st st' : state) : Prop :=
     (NEXT : st' = State mem reg' pc ((mkkey_f ks) :: ks)),   step st st'
 | step_seal : forall mem reg reg' pc ks payload key
     (ST   : st = State mem reg seal_addr ks)
-(* TODO: This (and the one below) is needed, but adding it breaks the 
-   refinement proof slightly -- Catalin, can you fix?
     (INST : decode mem seal_addr = None)
-*)
     (R1   : get reg syscall_arg1 =? VData payload)
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VSealed payload key) =? reg')
@@ -150,9 +147,7 @@ Inductive step (st st' : state) : Prop :=
     (NEXT : st' = State mem reg' pc ks),   step st st'
 | step_unseal : forall mem reg reg' pc ks payload key
     (ST   : st = State mem reg unseal_addr ks)
-(*
     (INST : decode mem unseal_addr = None)
-*)
     (R1   : get reg syscall_arg1 =? VSealed payload key)
     (R2   : get reg syscall_arg2 =? VKey key)
     (UPD  : upd reg syscall_ret (VData payload) =? reg')
@@ -286,6 +281,3 @@ End Abs.
 Arguments Abs.state t {_ _}.
 Arguments Abs.memory t {_ _}.
 Arguments Abs.registers t {_ _}.
-
-
-
