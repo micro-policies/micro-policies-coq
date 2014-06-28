@@ -44,6 +44,9 @@ Definition no_violation (cst : Concrete.state t) :=
        ti = INSTR (Some dst) /\ valid_jmp src dst = true).
 
 (*Defined in terms of atom_equiv for symbolic tags*)
+(* TODO: as a sanity check, please prove reflexivity for this and
+   the other attacker relations. That will ensure that the attacker
+   can at least keep things the same. *)
 Inductive atom_equiv : atom (word t) (word t) -> atom (word t) (word t) 
                        -> Prop :=
   | user_equiv : forall a a' v v' ut ut', 
