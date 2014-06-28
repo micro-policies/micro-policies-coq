@@ -75,7 +75,8 @@ Definition masks := symbolic.rules.masks. (*is this right?*)
 
 
 Definition refine_state (sst : @Symbolic.state mt sym_params) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sym_params cp e ki stable sst cst.
+  @refine_state_weak mt ops sym_params cp e ki stable sst cst /\
+  Sym.invariants stable sst.
 
 Definition is_user (x : atom (word mt) (word mt)) := 
   rules.word_lift (fun t => rules.is_user t) (common.tag x).

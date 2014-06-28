@@ -439,10 +439,14 @@ Proof.
   simpl in H; congruence.
 Qed.
 
+Definition invariants st := 
+  instructions_tagged (Symbolic.mem st) /\
+  valid_jmp_tagged (Symbolic.mem st) /\ 
+  entry_points_tagged (Symbolic.mem st).
+
 Definition initial (s : Symbolic.state t) := 
   (common.tag (Symbolic.pc s)) = DATA /\
-  instructions_tagged (Symbolic.mem s) /\
-  valid_jmp_tagged (Symbolic.mem s) /\ entry_points_tagged (Symbolic.mem s).
+  invariants s.
 
 Definition stopping xs :=
   exists s, xs = [s] /\ ~ exists s', Symbolic.step table s s'.
