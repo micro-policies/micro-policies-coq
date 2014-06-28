@@ -114,6 +114,7 @@ Variable ki : (@refinement_common.kernel_invariant t ops sp cp e).
 
 Variable stable : list (@Symbolic.syscall t sp).
 
+(* This is basically the initial_refine assumption on preservation *)
 Definition cinitial (cs : Concrete.state t) := 
   exists ss, Sym.initial stable ss /\ refine_state ki stable ss cs.
 
