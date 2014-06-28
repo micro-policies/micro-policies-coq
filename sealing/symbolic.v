@@ -32,6 +32,8 @@ Class sealing_key := {
 
 Context {sk : sealing_key}.
 
+(* We represent keys as tags on dummy values instead of payloads
+  because this eliminates conversions from keys to words and back. *)
 Inductive stag :=
 | DATA   :        stag
 | KEY    : key -> stag
