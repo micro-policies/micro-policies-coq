@@ -179,8 +179,17 @@ Definition succ (st : state) (st' : state) : bool :=
 Definition initial (s : state) := 
   cont s = true.
 
-Definition stopping (xs : list state) :=
+Definition stopping (xs : list state) : Prop :=
   exists s, xs = [s] /\ ~ exists s', step s s'.
+
+Definition all_attacker (xs : list state) : Prop :=
+  forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~step x1 x2. 
+
+Definition all_stuck (xs : list state) : Prop :=
+  forall x, In x xs -> ~ exists s, step x s.
+
+Definition stopping' (xs : list state) : Prop :=
+  all_attacker xs /\ all_stuck xs.
 
 Program Instance abstract_cfi_machine : cfi_machine := {|
   state := state;

@@ -51,11 +51,11 @@ Definition trace_has_cfi (trace : list state) :=
 
 Definition trace_has_at_most_one_violation (trace : list state) :=
   trace_has_cfi trace \/
-  exists s'' s''' hs tl, trace = hs ++ s'' :: s''' :: tl
-                         /\ (step s'' s''' /\ succ s'' s''' = false)
-                         /\ trace_has_cfi (hs ++ [s''])
-                         /\ trace_has_cfi (s''' :: tl)
-                         /\ stopping(s''' :: tl).
+  exists si sj hs tl, trace = hs ++ si :: sj :: tl
+                         /\ (step si sj /\ succ si sj = false)
+                         /\ trace_has_cfi (hs ++ [si])
+                         /\ trace_has_cfi (sj :: tl)
+                         /\ stopping(sj :: tl).
 
 Definition cfi := 
   forall s s' xs

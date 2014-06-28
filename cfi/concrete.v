@@ -122,11 +122,27 @@ Variable masks : Concrete.Masks.
 
 Definition in_user := @in_user t ops sp cp e.
 
+Import ListNotations.
 Definition stopping (ss : list (Concrete.state t)) : Prop :=
-  exists hd tl,
+  (exists s, ss = [s] /\ in_user s)
+  \/
+  (exists hd tl,
     ss = hd :: tl /\
     in_user hd /\
-    forall s, In s tl -> in_kernel s.
+    forallb in_kernel tl).
+
+(* TODO: sanity check: stopping is non-empty prefix closed *)
+
+Definition all_attacker (xs : list (Concrete.state t)) : Prop :=
+  forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~Concrete.step _ masks x1 x2. 
+
+Definition stopping' (ss : list (Concrete.state t)) : Prop :=
+  (all_attacker ss /\ forallb in_user ss)
+  \/
+  (exists user kernel,
+    ss = user ++ kernel /\
+    all_attacker user /\ forallb in_user user /\ 
+    forallb in_kernel kernel).
 
 Program Instance concrete_cfi_machine : cfi_machine := {|
   state := Concrete.state t;
