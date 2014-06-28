@@ -598,7 +598,7 @@ Definition is_syscall_return (cst cst' : Concrete.state mt) :=
     Some (di == Jump _ (@ra mt ops)))).
 
 Definition visible cst cst' :=
-  (in_user cst && in_user cst') || is_syscall_return cst cst'.
+  in_user cst && in_user cst'.
 
 (* Returns true iff our machine is at the beginning of a system call
 and the cache says it is allowed to execute. To simplify this

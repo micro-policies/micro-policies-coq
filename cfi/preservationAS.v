@@ -162,7 +162,7 @@ Program Instance cfi_refinementAS  :
   (machine_refinement amachine smachine) := {
     refine_state st st' := RefinementAS.refine_state stable st st';
 
-    visible st st' := true
+    check st st' := true
 }.
 Next Obligation.
   split; 
@@ -312,12 +312,12 @@ Next Obligation.
   - exists cst. split; auto.
     intro CONTRA. destruct CONTRA as [s' CONTRA].
     destruct (backwards_refinement_normal _ _ _ H2 CONTRA).
-    unfold visible in H1. simpl in H1.
+    unfold check in H1. simpl in H1.
     destruct (H1 erefl) as [ast' [ASTEP REF]].
     assert (ESTEP : exists s', Abs.step atable valid_jmp s s')
       by (eexists; eauto).
     auto.
-  - unfold visible in H4. simpl in H4. discriminate.
+  - unfold check in H4. simpl in H4. discriminate.
 Qed.
         
 End Refinement.

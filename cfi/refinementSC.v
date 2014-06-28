@@ -73,18 +73,6 @@ Variable ki : (@refinement_common.kernel_invariant mt ops sym_params cp e).
 
 Definition masks := symbolic.rules.masks. (*is this right?*)
 
-(* Definition refine_user_state (sst : Symbolic.state mt) (cst : Concrete.state mt) := *)
-(*   refinement_common.refine_state ki stable sst cst. *)
-
-(* Definition refine_kernel_state (st : Symbolic.state mt) (kst : Concrete.state mt) := *)
-(*   refinement_common.in_kernel kst = true /\ *)
-(*   exists (ust : Concrete.state mt),  *)
-(*     (@refinement_common.in_user mt ops sym_params cp e) ust = true /\ *)
-(*     exists kst', Concrete.step _ masks ust kst' /\  *)
-(*                 restricted_exec (fun s s' => Concrete.step _ masks s s')  *)
-(*                                 (fun s => refinement_common.in_kernel s = true)  *)
-(*                                 kst' kst /\ *)
-(*                 refine_user_state st ust. *)
 
 Definition refine_state (sst : @Symbolic.state mt sym_params) (cst : Concrete.state mt) :=
   @refine_state_weak mt ops sym_params cp e ki stable sst cst.
@@ -401,7 +389,6 @@ Proof.
   }
 Qed.
 
-
 (*Q: Do we want to prove anything about this? Maybe using the other assumptions
    on ki?*)
 Hypothesis ki_preserved_by_equiv :
@@ -466,7 +453,6 @@ Proof.
         }
         { left.
           unfold refinement_common.refine_state.
-          (*need to prove invariants are preserved by attacker/equiv*)
           repeat (split; eauto).
           rewrite DECODE. reflexivity.
         }
@@ -497,14 +483,13 @@ Definition cmachine := Conc.concrete_cfi_machine valid_jmp masks.
 
 Context {kcc : kernel_code_correctness ki stable}. (*should this go to the top?*)
 
-Definition visible := @refinement_common.visible mt ops sym_params cp e.
-
+Definition check := @refinement_common.visible mt ops sym_params cp e.
 
 Program Instance cfi_refinementSC  : 
   (machine_refinement smachine cmachine) := {
     refine_state st st' := refine_state st st';
 
-    visible st st' := visible st st'
+    check st st' := check st st'
 }.
 Next Obligation.
 Proof.
