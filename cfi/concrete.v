@@ -91,22 +91,50 @@ Inductive step_a : Concrete.state t ->
 
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 Local Open Scope word_scope.
+
 Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
   let pc_s := common.val (Concrete.pc st) in
   let pc_s' := common.val (Concrete.pc st') in
   if in_kernel st || in_kernel st' then true else
   match (get (Concrete.mem st) pc_s) with
     | Some i =>
-      match decode_instr (common.val i) with
-        | Some (Jump r) => valid_jmp pc_s pc_s'
-        | Some (Jal r) => valid_jmp pc_s pc_s'
-        | Some (Bnz r imm) => 
-          (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+      match (decode (common.tag i)) with
+        | Some (USER DATA) => false
+        | Some (USER (INSTR _)) =>
+          match decode_instr (common.val i) with
+            | Some (Jump r) => valid_jmp pc_s pc_s'
+            | Some (Jal r) => valid_jmp pc_s pc_s'
+            | Some (Bnz r imm) => 
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+            | None => false
+            | _ => pc_s' == pc_s .+1
+          end
+        | Some KERNEL => false (* this says that if cst,cst' is in user mode then it's
+                                  not sensible to point to kernel memory.. think about it*)
+        | Some (ENTRY _) => false
         | None => false
-        | _ => pc_s' == pc_s .+1
       end
     | None => false
   end.
+(*
+Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
+  let pc_s := common.val (Concrete.pc st) in
+  let pc_s' := common.val (Concrete.pc st') in
+  if in_kernel st || in_kernel st' then true else
+  match (get (Concrete.mem st) pc_s) with
+    | Some i =>
+      if (common.tag i) == encode (USER DATA) then false
+      else
+        match decode_instr (common.val i) with
+          | Some (Jump r) => valid_jmp pc_s pc_s'
+          | Some (Jal r) => valid_jmp pc_s pc_s'
+          | Some (Bnz r imm) => 
+            (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+          | None => false
+          | _ => pc_s' == pc_s .+1
+      end
+    | None => false
+  end. *)
 
 Definition sp := @Sym.sym_cfi t _ _ _ _ valid_jmp.
 

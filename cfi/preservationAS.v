@@ -247,7 +247,7 @@ Next Obligation.
     - destruct (get dmem spc); discriminate.
 Qed.
 Next Obligation.
-  assert (ST := Abs.step_succ_violation H H0).
+  assert (ST := Abs.step_succ_violation H0 H1).
   intro CONTRA.
   destruct CONTRA. discriminate.
 Qed.

@@ -439,10 +439,37 @@ Proof.
   simpl in H; congruence.
 Qed.
 
+Hint Resolve itags_preserved_by_step : invariant_db.
+Hint Resolve itags_preserved_by_step_a : invariant_db.
+Hint Resolve entry_point_tags_preserved_by_step : invariant_db.
+Hint Resolve entry_point_tags_preserved_by_step_a : invariant_db.
+Hint Resolve valid_jmp_tagged_preserved_by_step : invariant_db.
+Hint Resolve valid_jmp_tagged_preserved_by_step_a : invariant_db.
+
 Definition invariants st := 
   instructions_tagged (Symbolic.mem st) /\
   valid_jmp_tagged (Symbolic.mem st) /\ 
   entry_points_tagged (Symbolic.mem st).
+
+Lemma invariants_preserved_by_step st st' :
+  invariants st ->
+  Symbolic.step table st st' ->
+  invariants st'.
+Proof.
+  intros INV STEP.
+  destruct INV as [ITG [VTG ETG]]. 
+  split; eauto with invariant_db.
+Qed.
+
+Lemma invariants_preserved_by_step_a st st' :
+  invariants st ->
+  step_a st st' ->
+  invariants st'.
+Proof.
+  intros INV STEP.
+  destruct INV as [ITG [VTG ETG]]. 
+  split; eauto with invariant_db.
+Qed.
 
 Definition initial (s : Symbolic.state t) := 
   (common.tag (Symbolic.pc s)) = DATA /\

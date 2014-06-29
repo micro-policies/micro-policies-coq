@@ -73,6 +73,27 @@ Variable ki : (@refinement_common.kernel_invariant mt ops sym_params cp e).
 
 Definition masks := symbolic.rules.masks. (*is this right?*)
 
+(*Used for our invariants*)
+Hypothesis syscall_preserves_instruction_tags :
+  forall sc st st',
+    Sym.instructions_tagged valid_jmp (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.instructions_tagged valid_jmp (Symbolic.mem st').
+
+Hypothesis syscall_preserves_valid_jmp_tags :
+  forall sc st st',
+    Sym.valid_jmp_tagged stable (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.valid_jmp_tagged stable (Symbolic.mem st').
+
+Hypothesis syscall_preserves_entry_tags :
+  forall sc st st',
+    Sym.entry_points_tagged stable (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.entry_points_tagged stable (Symbolic.mem st').
+
+Definition refine_state_no_inv (sst : @Symbolic.state mt sym_params) (cst : Concrete.state mt) :=
+  @refine_state_weak mt ops sym_params cp e ki stable sst cst.
 
 Definition refine_state (sst : @Symbolic.state mt sym_params) (cst : Concrete.state mt) :=
   @refine_state_weak mt ops sym_params cp e ki stable sst cst /\
@@ -407,12 +428,12 @@ Hint Resolve mvec_in_kernel_preserved_by_equiv.
 Hint Resolve ra_in_user_preserved_by_equiv.
 Hint Resolve wf_entry_points_preserved_by_equiv.
 
-Theorem backwards_simulation_attacker sst cst cst' :
-  refine_state sst cst ->
+Lemma backwards_simulation_attacker_aux sst cst cst' :
+  refine_state_no_inv sst cst ->
   Conc.step_a valid_jmp cst cst' ->
   exists sst',
     Sym.step_a stable sst sst' /\
-    refine_state sst' cst'.
+    refine_state_no_inv sst' cst'.
 Proof. 
   intros REF STEP.
   inversion STEP; subst.
@@ -429,7 +450,8 @@ Proof.
       * subst.
         destruct (mem_refinement_equiv REFM MEQUIV) as [smem' [REFM' SMEQUIV]].
         destruct (reg_refinement_equiv REFR REQUIV) as [sreg' [REFR' SREQUIV]].
-        eexists; split. 
+        eexists;
+        split. 
         { econstructor; eauto.
           unfold Sym.no_violation.
           apply rules.encodeK in DECODE;
@@ -481,6 +503,20 @@ Proof.
     congruence.
 Qed.
 
+Theorem backwards_simulation_attacker sst cst cst' :
+  refine_state sst cst ->
+  Conc.step_a valid_jmp cst cst' ->
+  exists sst',
+    Sym.step_a stable sst sst' /\
+    refine_state sst' cst'.
+Proof. 
+  intros REF STEP.
+  destruct REF as [REF INV];
+  destruct (backwards_simulation_attacker_aux REF STEP) as [sst' [SSTEP REF']];
+  eexists; split; [eassumption | split];
+  eauto using Sym.invariants_preserved_by_step_a.
+Qed.
+
 (* Preservation related stuff, probably move to other file*)
 
 Definition in_user := @in_user mt ops sym_params cp e.
@@ -501,6 +537,7 @@ Program Instance cfi_refinementSC  :
 Next Obligation.
 Proof.
   unfold refine_state in REF.
+  destruct REF as [REF INV].
   destruct REF as [UREF | KREF].
   - (*starting from a user state*)
     split.
@@ -513,15 +550,9 @@ Proof.
           by (constructor; auto).
       destruct (cache_hit_simulation UREF HIT) as [sst' [SSTEP REF']].
       unfold refine_state, refine_state_weak.
-      eexists; split; eauto.
-      (* - unfold is_syscall_return in CONTRA. *)
-      (*   apply andb_true_iff in CONTRA. *)
-      (*   destruct CONTRA as [CONTRA ?]. *)
-      (*   apply andb_true_iff in CONTRA. *)
-      (*   destruct CONTRA as [CONTRA ?]. *)
-      (*   destruct UREF as [USER ?]. *)
-      (*   apply (@in_user_in_kernel mt ops sym_params cp e) in USER. *)
-      (*   rewrite USER in CONTRA. discriminate. *)
+      eexists; split. eauto.
+      split;  
+      eauto using Sym.invariants_preserved_by_step.
     }
     { (*invisible step starting a from user state*)
       intro INVIS.
@@ -533,11 +564,13 @@ Proof.
         rewrite USER in CONTRA. discriminate.
       - (*user to not user step*)
         left.
+        unfold refine_state. split.
         right. exists cst; exists cst'.
         repeat (split; auto).
         unfold kernel_exec.
         destruct (user_into_kernel UREF STEP NUSER).
         eapply re_refl; eauto.
+        eauto using Sym.invariants_preserved_by_step.
     }
   - (*starting from a kernel state*)
     split.
@@ -558,7 +591,7 @@ Proof.
       assert (REFW : @refine_state_weak mt ops sym_params cp e ki stable ast cst)
         by (right; auto).
       assert (REFW' := kernel_simulation_strong REFW STEP VIS).
-      left. auto.
+      left; split; auto.
     }
 Qed.
 Next Obligation.
@@ -598,17 +631,69 @@ Proof.
   - destruct REF'. unfold in_user in INUSER. congruence.
   - by apply restricted_exec_snd in KEXEC'.
   - destruct REF'. unfold in_user in INUSER. congruence.
+
+Lemma in_user_no_kernel cst cst' v ctg:
+  @cache_correct mt ops sym_params e (Concrete.cache cst) ->
+  in_user cst = true ->
+  in_user cst' = true ->
+  Concrete.step _ masks cst cst' ->
+  get (Concrete.mem cst) (common.val (Concrete.pc cst)) = Some v@ctg ->
+  ~ ctg = rules.encode rules.KERNEL.
+Proof.
+  intros CACHE USER USER' STEP GET CTG.
+  inversion STEP; subst;
+  repeat (
+        match goal with
+          | [H: Concrete.next_state_pc _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_pc in H
+          | [H: Concrete.next_state_reg _ _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_reg in H
+          | [H: Concrete.next_state_reg_and_pc _ _ _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_reg_and_pc in H
+          | [H: Concrete.next_state _ _ _ _ _ = Some _ |- _] =>
+            unfold Concrete.next_state in H; simpl in H
+        end);
+  destruct (Concrete.cache_lookup ops cache masks mvec) eqn:LOOKUP;
+  try match goal with
+    | [H: Concrete.cache_lookup _ _ _ ?Mvec = Some ?R |- _] =>
+      specialize (CACHE Mvec R USER LOOKUP);
+        destruct CACHE as [rvec [RENC HANDLER]]
+  end;
+  simpl in GET; rewrite PC in GET; inversion GET;
+  try match goal with
+    | [H: rules.handler _ _ = Some _, H': _ = rules.encode _ |- _] =>
+      unfold rules.handler in H; simpl in H;
+      rewrite op_to_wordK in H; rewrite H' in H;
+      rewrite rules.decodeK in HANDLER; match_inv
+  end;
+ try match goal with
+    | [H: Concrete.miss_state _ _ _ = Some _ |- _] =>
+      unfold Concrete.miss_state in H; simpl in H; match_inv;
+      inversion H
+  end; 
+  try match goal with 
+    | [H: in_user cst' = true, H1: _ = cst' |- _] =>
+      unfold in_user in H; unfold refinement_common.in_user in H;
+      unfold rules.word_lift in H; simpl in H; rewrite <- H1 in H;
+      simpl in H;
+      rewrite rules.encode_kernel_tag in H; rewrite rules.decodeK in H;
+      unfold rules.is_user in H
+      end;
+  try discriminate.
+>>>>>>> [minor] cfi: some progress and changes to be reviewed
 Qed.
 
 (*This is a helper lemma to instantiate CFI refinement between 
   symbolic and concrete*)
 Lemma attacker_no_v : forall si sj,
+                 Sym.invariants stable si ->
                  Sym.ssucc stable si sj = false ->
                  Symbolic.step stable si sj ->
                  Sym.step_a stable si sj ->
                  False.
 Proof.
-  intros si sj SUCC STEP STEPA.
+  intros si sj INV SUCC STEP STEPA.
+  destruct INV as [ITG [VTG ETG]].
   inversion STEPA. subst.
   inversion STEP; 
    repeat (
@@ -639,10 +724,9 @@ Proof.
    end. 
   (*jump case*)
   rewrite FETCH in PC. inversion PC; subst.
-  (*
-  assert (JMPTG := jump_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
-  congruence. *)
-  admit.
+  unfold Sym.instructions_tagged in ITG.
+  specialize (ITG pc0 i0 s FETCH). simpl in ITG. subst.
+  congruence.
   (*bnz case*)
   destruct (w == 0%w).
   * subst mem' reg'.
@@ -659,13 +743,12 @@ Proof.
     rewrite H2 in H0. rewrite eqxx in H0. discriminate.
  (*jal case*)
   rewrite FETCH in PC. inversion PC; subst.
-  (*
-  assert (JMPTG := jal_tagged pc0 mem0 FETCH INST). inversion JMPTG; subst.
-  congruence.*)
-  admit.
+  unfold Sym.instructions_tagged in ITG.
+  specialize (ITG pc0 i0 s FETCH). simpl in ITG. subst.
+  congruence.
   (*syscall case*)
   rewrite GETCALL in SUCC. discriminate.
-Admitted. 
+Qed.
 
 Require Import Classical.
 
@@ -677,25 +760,28 @@ Qed.
 Next Obligation. (*initial states*)
   unfold Conc.cinitial in H.
   destruct H as [ast [INIT REF]].
-  eexists; split; [eassumption | left; assumption].
+  eexists; split; [eassumption | split].
+  - left; assumption.
+  - destruct INIT as [? INV]; by assumption.
 Qed.
 Next Obligation. 
   unfold check in H1.
   apply andb_false_iff in H1.
   destruct H1 as [CONTRA | NUSER].
-  - destruct H. 
-    + destruct H.
-      unfold in_user in CONTRA. rewrite H in CONTRA. 
-      discriminate.
-    + destruct H as [? [? [? [? KEXEC]]]].
+  - destruct H as [REF INV].
+    destruct REF as [[USER ?]| REF].
+    + unfold in_user in CONTRA. rewrite USER in CONTRA. 
+        by discriminate.
+    + destruct REF as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
       unfold Conc.csucc. rewrite KEXEC.
       by reflexivity.
-  - destruct H.
-    + assert (KERNEL' := user_into_kernel H H0 NUSER).
+  - destruct H as [REF INV].
+    destruct REF as [REF | REF].
+    + assert (KERNEL' := user_into_kernel REF H0 NUSER).
       unfold Conc.csucc. rewrite KERNEL'.
       rewrite orb_true_r. reflexivity.
-    + destruct H as [? [? [? [? KEXEC]]]].
+    + destruct REF as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
       unfold Conc.csucc. rewrite KEXEC.
       by reflexivity.
@@ -705,8 +791,10 @@ Next Obligation. (*symbolic-concrete cfg relation*)
            asj as [smemj sregj [spcj tpcj] intj] eqn:ASJ.
   destruct csi as [cmemi cregi cachei [cpci ctpci] epci] eqn:CSI,
            csj as [cmemj cregj cachej [cpcj ctpcj] epcj] eqn:CSJ.
-  destruct H as [UREFI | KREFI].
-  - destruct H0 as [UREFJ | KREFJ].
+  destruct H as [REF INV].
+  destruct REF as [UREFI | KREFI].
+  - destruct H0 as [REF' INV'].
+    destruct REF' as [UREFJ | KREFJ].
     + destruct UREFI as [USERI [PC [TPC [REFM [REFR [CACHE [MVEC [C1 [C2 KI]]]]]]]]],
                         UREFJ as [USERJ [PC' [TPC' [REFM' [REFR' [C3 [C4 [C5 [C6 C7]]]]]]]]].
       subst spcj. subst spci.
@@ -728,15 +816,12 @@ Next Obligation. (*symbolic-concrete cfg relation*)
         rewrite GET. simpl.
         destruct tg.
         { (*if tagged instruction*)
+          rewrite rules.decodeK.
           destruct (decode_instr v).
-          - (*if valid instruction*)
-            destruct i; subst; simpl; simpl in H1; trivial.
-          - (*If invalid instruction*)
-            discriminate.
+          - destruct i; subst; simpl; simpl in H1; trivial.
+          - discriminate.
         }
-        { (*if tagged data*)
-          discriminate.
-        }
+        { discriminate. }
       * (*symbolic syscall case, must contradict*)
         rewrite ASI in H2. simpl in H2.
         destruct (Symbolic.get_syscall stable cpci) eqn:GETCALL.
@@ -756,9 +841,67 @@ Next Obligation. (*symbolic-concrete cfg relation*)
     by reflexivity.
 Qed.
 Next Obligation. (*symbolic no attacker on violation*)
-Admitted.
+  destruct H as [? INV].
+  eauto using attacker_no_v.
+Qed.
 Next Obligation. (*symolic violation implies concrete violation*)
-Admitted.
+  destruct H as [REF INV], H0 as [REF' INV']. clear INV INV'.
+  unfold check in H2.
+  apply andb_true_iff in H2.
+  destruct H2 as [USER USER'].
+  destruct REF as [REF | CONTRA].
+  - destruct REF' as [REF' | CONTRA'].
+    + apply in_user_in_kernel in USER.
+      apply in_user_in_kernel in USER'.
+      unfold Conc.csucc. rewrite USER USER'.
+      simpl.
+      destruct ast as [smem sreg [spc tpc] int] eqn:ASI,
+               ast' as [smem' sreg' [spc' tpc'] int'] eqn:ASJ.
+      destruct cst as [cmem creg cache [cpc ctpc] epc] eqn:CSI,
+               cst' as [cmem' creg' cache' [cpc' ctpc'] epc'] eqn:CSJ.
+      destruct REF as [USERT [PC [TPC [REFM [REFR [CACHE [MVEC [C1 [C2 KI]]]]]]]]],
+                        REF' as [USERT' [PC' [TPC' [REFM' [REFR' [C3 [C4 [C5 [C6 C7]]]]]]]]].
+      simpl. subst.
+      unfold Sym.ssucc in H1.
+      simpl in H1.
+      destruct (get smem cpc) eqn:GET.
+      { destruct a as [v utg].
+        destruct utg.
+        - rewrite GET in H1.
+          apply REFM in GET.
+          rewrite GET.
+          simpl.
+          rewrite rules.decodeK.
+          destruct (decode_instr v).
+          + (*is instruction*)
+            destruct i; trivial. 
+          + trivial.
+        - apply REFM in GET. rewrite GET.
+          simpl. rewrite rules.decodeK. reflexivity.
+      }
+      { destruct (get cmem cpc) eqn:GET'.
+        destruct a as [v ctg].
+        simpl.
+        destruct (rules.decode ctg) eqn:DECTG.
+        - destruct t.
+          + apply rules.encodeK in DECTG.
+            rewrite <- DECTG in GET'. 
+            apply REFM in GET'.
+            rewrite GET in GET'; discriminate.
+          + reflexivity.
+          + reflexivity.
+          + reflexivity.
+        - reflexivity.
+      }
+    + destruct CONTRA' as [? [? [? [? KEXEC]]]].
+      apply restricted_exec_snd in KEXEC.
+      apply in_user_in_kernel in USER'. rewrite KEXEC in USER'.
+      discriminate.
+  - destruct CONTRA as [? [? [? [? KEXEC]]]].
+      apply restricted_exec_snd in KEXEC.
+      apply in_user_in_kernel in USER. rewrite KEXEC in USER.
+      discriminate.
+Qed.
 Next Obligation. (*symbolic stopping implies concrete stopping*)
 Admitted.
 

@@ -97,7 +97,8 @@ Class machine_refinement_specs := {
 
   (* We discharge this for abstract and symbolic machine without
      making any assumptions on the shape of the CFG *)
-  av_no_attacker : forall (asi asj : @state amachine),
+  av_no_attacker : forall (asi asj : @state amachine) csi,
+    refine_state asi csi ->
     succ asi asj = false ->
     step asi asj ->
     ~ step_a asi asj;
@@ -107,6 +108,7 @@ Class machine_refinement_specs := {
     refine_state ast' cst' ->
     succ ast ast' = false ->
     check cst cst' = true ->
+    step cst cst' ->
     succ cst cst' = false;
 
   (* Q: Can this be simplified to if we were to show that
@@ -324,7 +326,8 @@ Proof.
       + right.
         exists csi; exists csj; exists chs; exists ctl.
         split. now assumption.
-        split. split; [assumption | apply (av_implies_cv asi asj csi csj REFI REFJ AV VIS)].
+        split. split; 
+               [assumption | apply (av_implies_cv asi asj csi csj REFI REFJ AV VIS CSTEP)].
         split. now apply (refine_traces_preserves_cfi_trace RHT TSAFE1).
         split. now apply (refine_traces_preserves_cfi_trace  RTT TSAFE2).
         apply (as_implies_cs RTT STOP1).
