@@ -306,7 +306,9 @@ Definition malloc_fun st : option (state t) :=
           let regs' := if @upd registers _ _ (@reg_map _) (regs st) syscall_ret ((block_base x)@V(PTR color)) is Some regs' then regs' else regs st in
           let color' := color + 1 in
           do! raddr <- get (regs st) ra;
-          Some (State mem' regs' raddr (color',info'))
+          if raddr is _@V(PTR _) then
+            Some (State mem' regs' raddr (color',info'))
+          else None
           else None
         | _ => None
       end
@@ -334,7 +336,9 @@ Definition free_fun (st : state t) : option (state t) :=
       let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
       in 
       do! raddr <- get (regs st) ra;
-      Some (State mem' (regs st) raddr (next_color,info'))
+      if raddr is _@V(PTR _) then
+        Some (State mem' (regs st) raddr (next_color,info'))
+      else None
     else None
   | _ => None
   end.
@@ -349,7 +353,9 @@ Definition ptr_fun (st : state t)
     do! x <- ohead [seq x <- inf | block_color x == Some color];
     do! regs' <- upd (regs st) syscall_ret (f x color);
     do! raddr <- get (regs st) ra;
-    Some (State (mem st) regs' raddr (next_color,inf))
+    if raddr is _@V(PTR _) then
+      Some (State (mem st) regs' raddr (next_color,inf))
+    else None
   | _ => None
   end.
 
@@ -369,7 +375,9 @@ Definition eqp_fun (st : state t) : option (state t) :=
              else Z_to_word 0%Z in
     do! regs' <- upd (regs st) syscall_ret b@V(DATA);
     do! raddr <- get (regs st) ra;
-    Some (State (mem st) regs' raddr (next_color,inf))
+    if raddr is _@V(PTR _) then
+      Some (State (mem st) regs' raddr (next_color,inf))
+    else None
   | _, _ => None
   end.
 

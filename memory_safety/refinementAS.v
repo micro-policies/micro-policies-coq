@@ -946,17 +946,13 @@ admit.
     case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
-  case: biP E H4 color_x=> [|bi ->] //.
-  move=> b col bi color_bi mi_b [fr [get_b size_fr]] E H4 color_x.
+  case: biP E H6 color_x=> [|bi ->] //.
+  move=> b col bi color_bi mi_b [fr [get_b size_fr]] E H6 color_x.
   have eq_col: col = s0 by congruence.
   rewrite eq_col in mi_b.
-  have eq_s1b: s1 = b.
-    inversion H2.
-    exact: (miIr miP H9 mi_b erefl).
-  have [rab eq_spcl']: exists rab, spcl' = V(PTR rab) by admit.
-  rewrite eq_spcl' in E1 *.
-  eapply (refine_registers_get_ptr rregs) in E1.
-  destruct E1 as ((? & ?) & ? & ?).
+  have eq_s1b: s4 = b.
+    inversion H4.
+    exact: (miIr miP H11 mi_b erefl).
 
   eexists; eexists; split.
   eapply Abstract.step_size.
@@ -966,7 +962,6 @@ admit.
   by eauto.
 
   by split; eassumption.
-
 
 (* Base *)
   admit.
