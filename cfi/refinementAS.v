@@ -173,11 +173,6 @@ Proof.
     * auto.
 Qed.
 
-Definition symbolic_invariants (mem : Symbolic.memory t) := 
-  Sym.instructions_tagged valid_jmp mem /\
-  Sym.valid_jmp_tagged stable mem /\
-  Sym.entry_points_tagged stable mem.
-
 Definition refine_state (ast : Abs.state t)
                         (sst : @Symbolic.state t sym_params) :=
   let '(Abs.State imem dmem aregs apc cont) := ast in
@@ -198,7 +193,7 @@ Definition refine_state (ast : Abs.state t)
        tpc = INSTR (Some src) ->
        exists dst, 
          (Symbolic.entry_tag sc) = INSTR (Some dst) /\ valid_jmp src dst))) /\
-  symbolic_invariants smem.
+  Sym.invariants stable sst.
 
 Definition refine_syscall acall scall :=
   forall ast sst,
@@ -655,33 +650,19 @@ Proof.
            end; auto;
     (*re-establishing invariants*)
     match goal with
-      | [H: Symbolic.step _ ?St ?St',
-         H1: Sym.instructions_tagged _ ?Mem,
-         H2: Sym.entry_points_tagged _ _,
-         H3: Sym.valid_jmp_tagged _ _ |- symbolic_invariants ?Mem'] =>
-        unfold symbolic_invariants;
-        assert (MEMRT: Mem = Symbolic.mem St)
-          by reflexivity;
-        assert (MERT': Mem' = Symbolic.mem St') 
-          by reflexivity;
-        rewrite MERT'; rewrite MEMRT in H1 H2 H3; split; [idtac | split]
+      | [|- Sym.invariants _ ?St'] =>
+        unfold Sym.invariants
     end;
+      repeat match goal with 
+        [ |- _ /\ _] => split
+             end;
     try match goal with
-      | [H: Sym.instructions_tagged _ _,
-         H': Symbolic.step _ _ _ |-
-         Sym.instructions_tagged _ _] =>
-        apply (Sym.itags_preserved_by_step 
-                 syscall_preserves_instruction_tags H H')
-      | [H: Sym.valid_jmp_tagged _ _,
-         H': Symbolic.step _ _ _ |-
-         Sym.valid_jmp_tagged _ _] =>
-        apply (Sym.valid_jmp_tagged_preserved_by_step 
-                 syscall_preserves_valid_jmp_tags H H')
-      | [H: Sym.entry_points_tagged _ _,
-         H': Symbolic.step _ _ _ |-
-         Sym.entry_points_tagged _ _] =>
-        apply (Sym.entry_point_tags_preserved_by_step 
-                 syscall_preserves_entry_tags H H') 
+      | [|- Sym.instructions_tagged _ _] =>
+        eauto using Sym.itags_preserved_by_step
+      | [ |- Sym.valid_jmp_tagged _ _] =>
+        eauto using Sym.valid_jmp_tagged_preserved_by_step
+      | [ |- Sym.entry_points_tagged _ _] =>
+        eauto using Sym.entry_point_tags_preserved_by_step
         end.         
   }
   { 
@@ -967,7 +948,6 @@ Proof.
     assert (EFETCH : exists id, get mem pc = Some i@(INSTR id)) by (eexists; eauto);
     apply REFI in EFETCH;
     exists (Abs.State imem dmem' aregs' pc true).
-    destruct INV as [ITAGGED [VTAGGED ETAGGED]].
     split; [econstructor(eauto) | split; auto].
     split; auto.
     split; auto.
@@ -1019,33 +999,7 @@ Proof.
           destruct EFETCH as [? CONTRA].
           rewrite CONTRA in H. congruence.
         + intros ?. reflexivity.
-      -  
-        match goal with
-          | [H: Sym.step_a _ ?St ?St',
-             H1: Sym.instructions_tagged _ ?Mem,
-             H2: Sym.entry_points_tagged _ _,
-             H3: Sym.valid_jmp_tagged _ _ |- symbolic_invariants ?Mem'] =>
-            unfold symbolic_invariants;
-              assert (MEMRT: Mem = Symbolic.mem St)
-                by reflexivity;
-              assert (MERT': Mem' = Symbolic.mem St') 
-                by reflexivity;
-              rewrite MERT'; rewrite MEMRT in H1 H2 H3; split; [idtac | split]
-        end;
-        try match goal with
-              | [H: Sym.instructions_tagged _ _,
-                  H': Sym.step_a _ _ _ |-
-                 Sym.instructions_tagged _ _] =>
-                apply (Sym.itags_preserved_by_step_a H H')
-      | [H: Sym.valid_jmp_tagged _ _,
-         H': Sym.step_a _ _ _ |-
-         Sym.valid_jmp_tagged _ _] =>
-        apply (Sym.valid_jmp_tagged_preserved_by_step_a H H')
-      | [H: Sym.entry_points_tagged _ _,
-         H': Sym.step_a _ _ _ |-
-         Sym.entry_points_tagged _ _] =>
-        apply (Sym.entry_point_tags_preserved_by_step_a H H') 
-        end.   
+      -  eauto using Sym.invariants_preserved_by_step_a.
     }
   }
   { (*case a violation has happened*)
