@@ -599,21 +599,7 @@ Next Obligation.
 Qed.
 
 Import ListNotations.
-
-(* AAA: Not quite right now, since we've implemented the other solution
-for managing syscalls, where the concrete machine at the beginning of
-a syscall *is* a refinement of a symbolic state *)
-(*rough statement of a lemma, should polish and ask Arthur on how to prove*)
-Lemma user_mode_no_syscall asi asj csi csj sc :
-  refinement_common.refine_state ki stable asi csi ->
-  refinement_common.refine_state ki stable asj csj ->
-  Symbolic.step stable asi asj ->
-  (* Concrete.step _ masks csi csj -> *) (*we can have this if needed*)
-  Symbolic.get_syscall stable (common.val (Symbolic.pc asi)) = Some sc ->
-  False.
-Proof.
-  Admitted.
-
+  
 Lemma kernel_step cst cst' ast kst cst0 :
   refinement_common.refine_state ki stable ast cst0 ->
   Concrete.step ops rules.masks cst0 kst ->
@@ -632,6 +618,9 @@ Proof.
   - by apply restricted_exec_snd in KEXEC'.
   - destruct REF'. unfold in_user in INUSER. congruence.
 Qed.
+
+(*These three lemmas could be replaced by one that actually
+  gave the *correct* tag instead of refuting the wrong ones*)
 
 Lemma in_user_no_kernel cst cst' v ctg:
   @cache_correct mt ops sym_params e (Concrete.cache cst) ->
@@ -682,6 +671,118 @@ Proof.
       end;
   try discriminate.
 Qed.
+
+Lemma in_user_no_entry cst cst' v ctg:
+  @cache_correct mt ops sym_params e (Concrete.cache cst) ->
+  in_user cst = true ->
+  in_user cst' = true ->
+  Concrete.step _ masks cst cst' ->
+  get (Concrete.mem cst) (common.val (Concrete.pc cst)) = Some v@ctg ->
+  ~ exists ut, ctg = rules.encode (rules.ENTRY ut).
+Proof.
+  intros CACHE USER USER' STEP GET CTG.
+  destruct CTG as [ut CTG].
+  inversion STEP; subst;
+  repeat (
+        match goal with
+          | [H: Concrete.next_state_pc _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_pc in H
+          | [H: Concrete.next_state_reg _ _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_reg in H
+          | [H: Concrete.next_state_reg_and_pc _ _ _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_reg_and_pc in H
+          | [H: Concrete.next_state _ _ _ _ _ = Some _ |- _] =>
+            unfold Concrete.next_state in H; simpl in H
+        end);
+  destruct (Concrete.cache_lookup ops cache masks mvec) eqn:LOOKUP;
+  try match goal with
+    | [H: Concrete.cache_lookup _ _ _ ?Mvec = Some ?R |- _] =>
+      specialize (CACHE Mvec R USER LOOKUP);
+        destruct CACHE as [rvec [RENC HANDLER]]
+  end;
+  simpl in GET; rewrite PC in GET; inversion GET;
+  try match goal with
+    | [H: rules.handler _ _ = Some _, H': _ = rules.encode _ |- _] =>
+      unfold rules.handler in H; simpl in H;
+      rewrite op_to_wordK in H; rewrite H' in H;
+      rewrite rules.decodeK in HANDLER; match_inv
+  end; 
+  try inversion HANDLER;
+  try match goal with
+        | [H: _ = ?Rvec, H1: _ = rules.encode_rvec ?Rvec |- _] => 
+          rewrite <- H in H1; rewrite H1 in NEXT; simpl in NEXT;
+          inversion NEXT
+      end;
+  try (subst cst'; unfold in_user, refinement_common.in_user in USER'; simpl in USER';
+       unfold rules.word_lift in USER'; rewrite rules.decodeK in USER';
+      unfold rules.is_user in USER');
+ try match goal with
+    | [H: Concrete.miss_state _ _ _ = Some _ |- _] =>
+      unfold Concrete.miss_state in H; simpl in H; match_inv;
+      inversion H
+  end; 
+  try match goal with
+    | [H: in_user cst' = true, H1: _ = cst' |- _] =>
+      unfold in_user in H; unfold refinement_common.in_user in H;
+      unfold rules.word_lift in H; simpl in H; rewrite <- H1 in H;
+      simpl in H;
+      rewrite rules.encode_kernel_tag in H; rewrite rules.decodeK in H;
+      unfold rules.is_user in H
+      end;
+  try discriminate.
+Qed.
+
+
+Lemma in_user_no_invalid cst cst' v ctg:
+  @cache_correct mt ops sym_params e (Concrete.cache cst) ->
+  in_user cst = true ->
+  in_user cst' = true ->
+  Concrete.step _ masks cst cst' ->
+  get (Concrete.mem cst) (common.val (Concrete.pc cst)) = Some v@ctg ->
+  ~ rules.decode ctg = None.
+Proof.
+  intros CACHE USER USER' STEP GET CTG.
+  inversion STEP; subst;
+  repeat (
+        match goal with
+          | [H: Concrete.next_state_pc _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_pc in H
+          | [H: Concrete.next_state_reg _ _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_reg in H
+          | [H: Concrete.next_state_reg_and_pc _ _ _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_reg_and_pc in H
+          | [H: Concrete.next_state _ _ _ _ _ = Some _ |- _] =>
+            unfold Concrete.next_state in H; simpl in H
+        end);
+  destruct (Concrete.cache_lookup ops cache masks mvec) eqn:LOOKUP;
+  try match goal with
+    | [H: Concrete.cache_lookup _ _ _ ?Mvec = Some ?R |- _] =>
+      specialize (CACHE Mvec R USER LOOKUP);
+        destruct CACHE as [rvec [RENC HANDLER]]
+  end;
+  simpl in GET; rewrite PC in GET; inversion GET; subst ctg;
+  try match goal with
+    | [H: rules.handler _ _ = Some _, H': rules.decode _ = None |- _] =>
+      unfold rules.handler in H; simpl in H;
+      rewrite op_to_wordK in H; rewrite H' in H;
+      match_inv
+  end;
+
+ try match goal with
+    | [H: Concrete.miss_state _ _ _ = Some _ |- _] =>
+      unfold Concrete.miss_state in H; simpl in H; match_inv
+  end; 
+  try match goal with
+    | [H: in_user _ = true |- _] =>
+      unfold in_user in H; unfold refinement_common.in_user in H;
+      unfold rules.word_lift in H; simpl in H;
+      rewrite rules.encode_kernel_tag in H; rewrite rules.decodeK in H;
+      unfold rules.is_user in H
+      end;
+  try discriminate.
+Qed.
+
+
 
 (*This is a helper lemma to instantiate CFI refinement between 
   symbolic and concrete*)
@@ -824,13 +925,39 @@ Next Obligation. (*symbolic-concrete cfg relation*)
         { discriminate. }
       * (*symbolic syscall case, must contradict*)
         rewrite ASI in H2. simpl in H2.
-        destruct (Symbolic.get_syscall stable cpci) eqn:GETCALL.
-          { exfalso. 
-            apply user_mode_no_syscall 
-            with (asi := asi) (asj := asj) (csi := csi) (csj := csj) (sc := s); 
-              subst;
-              repeat(split; auto); auto. }
-          { rewrite GETCALL in H2. discriminate. }
+        simpl.
+        destruct (get (Concrete.mem csi) (common.val (Concrete.pc csi))) eqn:GET'.
+        { destruct a as [v ctg]. simpl.
+          destruct (rules.decode ctg) eqn:DEC.
+          - destruct t.
+            + apply rules.encodeK in DEC.
+              rewrite <- DEC in GET'.
+              simpl in GET'. subst. apply REFM in GET'.
+              rewrite GET' in GET. discriminate.
+            + change cachei with (Concrete.cache (Concrete.mkState cmemi cregi cachei cpci@ctpci epci)) 
+                in CACHE.
+              rewrite CSI in GET'.
+              assert (CONTRA := in_user_no_kernel CACHE USERI USERJ H3 GET').
+              apply rules.encodeK in DEC. symmetry in DEC.
+              apply CONTRA in DEC. destruct DEC.
+            + (*case about entry*)
+              change cachei with (Concrete.cache (Concrete.mkState cmemi cregi cachei cpci@ctpci epci)) 
+                in CACHE.
+              rewrite CSI in GET'.
+              assert (CONTRA := in_user_no_entry CACHE USERI USERJ H3 GET').
+              apply rules.encodeK in DEC. symmetry in DEC.
+              assert (EDEC : exists ut, ctg = rules.encode (rules.ENTRY ut))
+                by (eexists; eassumption).
+              apply CONTRA in EDEC. destruct EDEC.
+          - change cachei with (Concrete.cache (Concrete.mkState cmemi cregi cachei cpci@ctpci epci)) 
+                in CACHE.
+              rewrite CSI in GET'.
+              assert (CONTRA := in_user_no_invalid CACHE USERI USERJ H3 GET').
+              destruct (CONTRA DEC).
+        }
+        { rewrite CSI in GET'. simpl in GET'. inversion H3;
+          inv ST; rewrite GET' in PC; discriminate.
+        }
     + destruct KREFJ as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
       unfold Conc.csucc. rewrite KEXEC.
@@ -903,8 +1030,23 @@ Next Obligation. (*symolic violation implies concrete violation*)
       discriminate.
 Qed.
 Next Obligation. (*symbolic stopping implies concrete stopping*)
+Proof.
+  unfold Sym.stopping in H0.
+  destruct H0 as [sst [AXS STUCK]].
+  subst.
+  unfold Conc.stopping.
+  induction H. 
+  - unfold preservation.refine_state in H. simpl in H.
+    unfold refine_state in H.
+    destruct H as [[UREF | KREF] INV].
+    + destruct UREF. unfold Conc.in_user. left. exists cst.
+      split; auto.
+    + destruct KREF as [cst0 [kst [REF [CSTEP KEXEC]]]].
+      (*case cst is in kernel, need to contradict it probably*)
+      admit.
+  - simpl in *. unfold check in H3.
 Admitted.
-
+      
 End Refinement.
         
   

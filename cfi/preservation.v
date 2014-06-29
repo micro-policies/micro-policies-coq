@@ -93,6 +93,7 @@ Class machine_refinement_specs := {
     refine_state asj csj ->
     step asi asj -> (*needed to strengthen this for syscalls*)
     succ asi asj = true ->
+    step csi csj ->
     succ csi csj = true;
 
   (* We discharge this for abstract and symbolic machine without
@@ -235,7 +236,7 @@ Proof.
   - destruct IN2 as [[? ?] | IN2]; subst.
     * assert (SUCC: succ ast ast' = true).
       { apply TSAFE; simpl; auto. }
-      apply (cfg_equiv _ _ _ _ REF REF' ASTEP' SUCC).
+      apply (cfg_equiv _ _ _ _ REF REF' ASTEP' SUCC STEP).
     * apply IHRTRACE'.
       destruct axs.
       + intros ? ? CONTRA; destruct CONTRA.
