@@ -964,7 +964,33 @@ admit.
   by split; eassumption.
 
 (* Base *)
-  admit.
+(*
+eapply (refine_registers_upd rregs) in E0; last first.
+; destruct UPD as (? & ? & ?))
+*)
+  move/(_ x _): (rist).
+  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
+    case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
+    by rewrite inE eqxx.
+  rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
+  case: biP E E0 color_x=> [|bi ->] //.
+  move=> b col bi color_bi mi_b [fr [get_b size_fr]] E E0 color_x.
+  have eq_col: col = s0 by congruence.
+  rewrite eq_col in mi_b.
+  eapply (refine_registers_upd rregs) in E0; last first.
+    by rewrite -[Sym.block_base bi]addw0; econstructor.
+  case: E0 => ? [? ?].
+  have eq_s1b: s4 = b.
+    inversion H4.
+    exact: (miIr miP H9 mi_b erefl).
+  eexists; eexists; split.
+  eapply Abstract.step_base.
+  by eauto.
+  by rewrite eq_s1b.
+  by eauto.
+
+  by split; eassumption.
+
 
 (* Eq *)
 admit.
