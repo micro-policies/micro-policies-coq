@@ -535,6 +535,43 @@ Ltac analyze_cache :=
     destruct (miss_state_not_user _ _ MISS INUSER)
   end.
 
+Lemma valid_initial_user_instr_tags cst cst' v ti :
+  cache_correct (Concrete.cache cst) ->
+  in_user cst = true ->
+  in_user cst' = true ->
+  Concrete.step _ masks cst cst' ->
+  PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) = Some v@ti ->
+  match decode ti with
+  | Some (USER _) => true
+  | _ => false
+  end.
+Proof.
+  intros CACHE INUSER INUSER' STEP GET;
+  inv STEP;
+  unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
+         Concrete.next_state_pc, Concrete.next_state,
+         Concrete.miss_state in *;
+  simpl in *;
+
+  match_inv;
+
+  try analyze_cache;
+
+  try match goal with
+  | H1 : PartMaps.get ?mem ?pc = Some _@?w1,
+    H2 : PartMaps.get ?mem ?pc = Some _@?w2 |- _ =>
+    let EQ := fresh "EQ" in
+    assert (EQ : w1 = w2) by congruence;
+    try (apply encode_inj in EQ; discriminate EQ);
+    subst
+  end;
+
+  by [
+      rewrite decodeK
+    | rewrite /in_user /word_lift ?encode_kernel_tag decodeK /= in INUSER'
+  ].
+Qed.
+
 Lemma valid_pcs st st' :
   Concrete.step _ masks st st' ->
   cache_correct (Concrete.cache st) ->
