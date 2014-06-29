@@ -73,8 +73,6 @@ Record block_info := mkBlockInfo {
   block_color : option word
 }.
 
-Section BlockInfoEq.
-
 Definition block_info_eq :=
   [rel u v : block_info | [&& block_base u == block_base v,
                            block_size u == block_size v &
@@ -88,8 +86,6 @@ Qed.
 
 Definition block_info_eqMixin := EqMixin block_info_eqP.
 Canonical block_info_eqType := Eval hnf in EqType block_info block_info_eqMixin.
-
-End BlockInfoEq.
 
 Section WithVectorNotations.
 Import Vector.VectorNotations.
@@ -144,9 +140,9 @@ Definition mvec_match {A B} op : forall (fs : mvec_operands A (nfields op))
 
 Definition rules (mvec : MVec tag) : option (RVec tag) :=
   match mvec with
+  | mkMVec SERVICE V(DATA) ti ts => Some (mkRVec V(DATA) V(DATA))
   | mkMVec op V(PTR b) ti ts =>
-    if op is SERVICE then Some (mkRVec V(DATA) V(DATA))
-    else if ti is M(b', DATA) then
+    if ti is M(b', DATA) then
     if b == b' then
       let ret tpc tr := Some (mkRVec tpc tr) in
       let retv tr := ret V(PTR b) tr in
@@ -223,7 +219,7 @@ Definition rules (mvec : MVec tag) : option (RVec tag) :=
                    end
                  | JUMPEPC as op | ADDRULE as op | GETTAG as op
                  | PUTTAG as op | HALT as op | SERVICE as op =>
-                     mvec_const_dest op None
+                     @mvec_const_dest tag (option (RVec tag)) op None
                  end
     else None else None
   | _ => None
@@ -387,6 +383,8 @@ Definition memsafe_syscalls : list (syscall t) :=
 Definition step := step memsafe_syscalls.
 
 End WithClasses.
+
+Canonical block_info_eqType.
 
 Arguments memory t {_}.
 Arguments registers t {_}.

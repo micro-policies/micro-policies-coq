@@ -327,19 +327,43 @@ Qed.
 
 *)
 
-Lemma refine_memory_upd qamem qamem'
+Inductive refine_block_info amem smem : Sym.block_info mt -> Prop :=
+| RefineBlockInfoLive : forall b col bi, Sym.block_color bi = Some col ->
+  mi b = Some (Sym.block_base bi, col) ->
+  (exists fr, PartMaps.get amem b = Some fr /\
+    word_to_Z (Sym.block_size bi) = Z.of_nat (length fr)) ->
+  refine_block_info amem smem bi
+| RefineBlockInfoFree : forall bi,
+  Sym.block_color bi = None ->
+  (forall off, word_to_Z off < word_to_Z (Sym.block_size bi) -> PartMaps.get smem (Sym.block_base bi + off) = None) ->
+  refine_block_info amem smem bi.
+
+(* TODO: export from Sym in symbolic.v *)
+Canonical Sym.block_info_eqType.
+
+Definition refine_internal_state amem smem (ist : word mt * list (Sym.block_info mt)) :=
+  let: (nextb, info) := ist in
+  forall x, x \in info -> refine_block_info amem smem x.
+
+Lemma refine_memory_upd smem smem' ist
                         w1 w2 pt ty n fr fr' x :
-         refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR n) ->
-         PartMaps.upd qamem w1 w2@M(n, ty) = Some qamem' ->
-         PartMaps.get amem (fst pt) = Some fr ->
-         update_list_Z (word_to_Z (snd pt)) x fr = Some fr' ->
-         refine_val x w2 ty ->
-         exists amem', PartMaps.upd amem (fst pt) fr' = Some amem'
-         /\ refine_memory amem' qamem'.
+  refine_memory amem smem ->
+  refine_internal_state amem smem ist ->
+  refine_val (Abstract.VPtr pt) w1 (PTR n) ->
+  PartMaps.upd smem w1 w2@M(n, ty) = Some smem' ->
+  PartMaps.get amem (fst pt) = Some fr ->
+  update_list_Z (word_to_Z (snd pt)) x fr = Some fr' ->
+  refine_val x w2 ty ->
+    exists amem', [/\ PartMaps.upd amem (fst pt) fr' = Some amem',
+      refine_memory amem' smem' & refine_internal_state amem' smem' ist].
 Proof.
-intros [miP rmem] rpt (* in_bounds_pt *) upd_w1 get_pt update_pt rx.
+case: ist => a info [miP rmem] rist rpt upd_w1 get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
-exists amem'; split; try assumption; split; first by eauto.
+exists amem'; split=> // [|t /(rist t)]; last first.
+  case=> [b col bi color_b mi_b|].
+admit.
+admit.
+split; first by eauto.
 intros b base nonce off mi_b.
 unfold Abstract.getv in *.
 have [eq_b|neq_b] := altP (b =P pt.1).
@@ -494,13 +518,14 @@ rewrite (PartMaps.get_upd_neq neq_rr' upd_r_qa).
 by apply rregs.
 Qed.
 
-Definition refine_state (ast : Abstract.state mt) (qast : Symbolic.state mt) :=
+Definition refine_state (ast : Abstract.state mt) (sst : Symbolic.state mt) :=
   let '(Abstract.mkState amem aregs apc) := ast in
-  match qast with
-  | Symbolic.State qamem qaregs w@V(ty) ist =>
-    [/\ refine_memory amem qamem,
-        refine_registers aregs qaregs &
-        refine_val apc w ty]
+  match sst with
+  | Symbolic.State smem sregs w@V(ty) ist =>
+    [/\ refine_memory amem smem,
+        refine_registers aregs sregs,
+        refine_val apc w ty &
+        refine_internal_state amem smem ist]
   | _ => False
   end.
 
@@ -766,6 +791,18 @@ rewrite /lift_binop in hyp.
 
 Admitted.
 
+(*
+Lemma extra_state_invariant :
+
+*)
+
+(*
+Lemma internal_state_step st st' :
+  internal_state_spec st -> Sym.step st st' -> internal_state_spec st'.
+admit.
+Qed.
+*)
+
 Ltac solve_pc rpci :=
   by eexists; eexists; split;
   [econstructor (by eauto) |
@@ -773,23 +810,36 @@ Ltac solve_pc rpci :=
   simpl; rewrite <-rpci, <-addwA; econstructor].
 
 Lemma backward_simulation ast mi sym_st sym_st' :
-  refine_state mi ast sym_st -> Sym.step sym_st sym_st' ->
+  refine_state mi ast sym_st -> (* internal_state_spec sym_st -> *)
+  Sym.step sym_st sym_st' ->
   exists ast' mi', Abstract.step ast ast' /\ refine_state mi' ast' sym_st'.
 Proof.
 case: ast => a_mem a_regs a_pc.
 case: sym_st => sym_mem sym_regs sym_pc // sym_ist rst.
-case: sym_st' => sym_mem' sym_regs' sym_pc' sym_ist' sym_step.
+case: sym_st' => sym_mem' sym_regs' [spcv' spcl'] sym_ist' sym_step.
 Coqlib.inv sym_step;
 case: ST => *; subst;
 destruct tpc as [[|]| |] => //;
-case: rst => rmem rregs rpc;
+case: rst => rmem rregs rpc rist;
 destruct a_pc as [|[pc_b pc_off]]; try (by inversion rpc);
 try subst mvec;
 try rewrite /Symbolic.next_state_pc /Symbolic.next_state_reg /Symbolic.next_state_reg_and_pc /Symbolic.next_state /= /Sym.mvec_match /= in NEXT;
 match_inv;
 repeat subst_beq;
 have [miP _] := rmem;
-have [rpcb [mi_apcb rpci]] := refine_pc_inv rpc;
+try have [rpcb [mi_apcb rpci]] := refine_pc_inv rpc;
+
+try match goal with
+| GETCALL : Symbolic.get_syscall _ _ = Some _,
+  CALL : Symbolic.run_syscall _ _ = Some _ |- _ =>
+  move: GETCALL CALL;
+  case: int rist => color info rist;
+  rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=;
+  (have->: s = pc by inversion rpc);
+  repeat case: ifP=> [/eqP <- /= [<-] /= | ? //];
+  rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.ptr_fun /= => CALL;
+  match_inv
+end;
 
 repeat match goal with
   | GET : PartMaps.get ?reg ?r = Some ?v@V(?ty) |- _ =>
@@ -846,7 +896,7 @@ match goal with
     match type_of mem with
     | Symbolic.memory _ =>
     destruct (valid_update IDX x) as (? & ?);
-    eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?)
+    eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ? & ?)
     end
   | |- _ => idtac
 end;
@@ -857,6 +907,13 @@ end;
 
 try solve_pc rpci.
 
+(* Store *)
+eexists; eexists; split.
+by econstructor (by eauto).
+split; try eassumption.
+by eauto.
+by simpl; rewrite <-rpci, <-addwA; econstructor.
+
 (* Jal *)
 simpl in E.
 eapply (refine_registers_upd rregs) in E; last first.
@@ -864,13 +921,63 @@ by rewrite <-rpci, <-addwA; econstructor.
 destruct E as (? & ? & ?).
 by solve_pc rpci.
 
+(*
+move: GETCALL CALL.
+  case: int rist => color info rist.
+  rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=.
+  (have->: s = pc by inversion rpc).
+  repeat case: ifP=> [/eqP <- /= [<-] /= | ? //].
+  rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.ptr_fun /= => CALL.
+  destruct spcl'; match_inv.
+
+*)
+
 (* Syscall *)
-move: GETCALL CALL; rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=.
-have [eq_pc [<-] /= | ?] := altP (malloc_addr =P pc).
-rewrite /Sym.malloc_fun /=.
-admit.
+
+(* Allocation *)
 admit.
 
+(* Free *)
+admit.
+
+(* Size *)
+  move/(_ x _): (rist).
+  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
+    case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
+    by rewrite inE eqxx.
+  rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
+  case: biP E H4 color_x=> [|bi ->] //.
+  move=> b col bi color_bi mi_b [fr [get_b size_fr]] E H4 color_x.
+  have eq_col: col = s0 by congruence.
+  rewrite eq_col in mi_b.
+  have eq_s1b: s1 = b.
+    inversion H2.
+    exact: (miIr miP H9 mi_b erefl).
+  have [rab eq_spcl']: exists rab, spcl' = V(PTR rab) by admit.
+  rewrite eq_spcl' in E1 *.
+  eapply (refine_registers_get_ptr rregs) in E1.
+  destruct E1 as ((? & ?) & ? & ?).
+
+  eexists; eexists; split.
+  eapply Abstract.step_size.
+  by eauto.
+  by rewrite eq_s1b.
+  by rewrite -size_fr word_to_ZK.
+  by eauto.
+
+  by split; eassumption.
+
+
+(* Base *)
+  admit.
+
+(* Eq *)
+admit.
+
+move: CALL.
+rewrite /= /Symbolic.run_syscall /=.
+case: (Symbolic.entry_tag sc) => // b [] //.
+by case: ifP.
 Qed.
 
 End refinement.
