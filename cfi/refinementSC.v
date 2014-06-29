@@ -631,6 +631,7 @@ Proof.
   - destruct REF'. unfold in_user in INUSER. congruence.
   - by apply restricted_exec_snd in KEXEC'.
   - destruct REF'. unfold in_user in INUSER. congruence.
+Qed.
 
 Lemma in_user_no_kernel cst cst' v ctg:
   @cache_correct mt ops sym_params e (Concrete.cache cst) ->
@@ -680,7 +681,6 @@ Proof.
       unfold rules.is_user in H
       end;
   try discriminate.
->>>>>>> [minor] cfi: some progress and changes to be reviewed
 Qed.
 
 (*This is a helper lemma to instantiate CFI refinement between 
