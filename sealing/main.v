@@ -695,9 +695,11 @@ Definition hello_world5 : @relocatable_segment t (list w) (instr concrete_int_32
     | _ => []
     end).
 
-(* Compute (runn 2000 hello_world5). *)
+(* Run tests like this:
 
-Compute (run_abs 2000 hello_world5). 
+Concrete Machine: Compute (runn 2000 hello_world5).
+
+Abstract Machine: Compute (run_abs 2000 hello_world5). *)
 
 (* TODO: Refinement proof from concrete to abstract instances *)
 
