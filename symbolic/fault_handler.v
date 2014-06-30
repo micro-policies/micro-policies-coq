@@ -150,8 +150,13 @@ Definition handler : code :=
            (* THEN: We are entering a system call routine.
                     Change opcode to SERVICE and invoke policy
                     fault handler. If call is allowed, put KERNEL
-                    tags in rvector. *)
-           ([Const _ (Z_to_imm (op_to_Z SERVICE)) rop] ++
+                    tags in rvector. NB: system calls are now
+                    required to begin with a Nop to simplify the
+                    specification of the fault handler. *)
+           ([Const _ (Z_to_imm (op_to_Z NOP)) ri4] ++
+            [Binop _ EQ ri4 rop ri4] ++
+            if_ ri4 [] [Halt _] ++
+            [Const _ (Z_to_imm (op_to_Z SERVICE)) rop] ++
             policy_handler ++
             load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)

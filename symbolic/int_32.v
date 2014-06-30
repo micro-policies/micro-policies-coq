@@ -76,17 +76,17 @@ Definition kernelize (seg : @relocatable_segment concrete_int_32_t w w)
   let (l,gen) := seg in
   (l, fun b rest => map (fun x => Atom x Concrete.TKernel) (gen b rest)).
 
+(* FIXME: right now, this definition works only for the sealing
+machine, whose system calls have trivial entry tags. Ideally, the
+system call should provide kernelize_syscall with a tag for its entry
+point. *)
 Definition kernelize_syscall (seg : @relocatable_segment concrete_int_32_t w w) 
                    : relocatable_segment w atom :=
   let (l,gen) := seg in
-  (l, fun b rest => 
-        match gen b rest with
-          [] => []
-        | entry::others =>
-               (* ENTRY tag with constant ut *)
-               (Atom entry (Z_to_word 2))
-            :: map (fun x => Atom x Concrete.TKernel) others
-        end).
+  (l, fun b rest =>
+        (* ENTRY tag with constant ut *)
+        (encode_instr (Nop _))@(Z_to_word 2) ::
+        map (fun x => x@Concrete.TKernel) (gen b rest)).
 
 Definition kernelize_user_tag t :=
   add (shl t (repr 2)) (repr 1).
