@@ -30,7 +30,8 @@ Context
   {spec         : machine_ops_spec ops}
   {ap           : abstract_params t}
   {ap_spec      : params_spec ap}
-  {sfi_syscalls : sfi_syscall_params t}
+  {scr          : @syscall_regs t}
+  {sfi_syscalls : sfi_syscall_addrs t}
   {smemory      : Type}
   {smem_class   : partial_map smemory (word t) (atom (word t) (@Sym.stag t))}
   {smem_axioms  : axioms smem_class}
@@ -149,7 +150,9 @@ Theorem refine_good : forall `(REFINE : refine_astate ast sst),
   Sym.good_state sst.
 Proof.
   clear S I.
-  intros [Apc AR AM AC] [SM SR [Spc Lpc] [Snext Sids]] [RPC RREGS RMEMS RCOMPS]
+  intros [Apc AR AM AC Aold]
+         [SM SR [Spc Lpc] [Snext Sids]]
+         [RPC RREGS RMEMS RCOMPS]
          GOOD;
     simpl in *;
     unfold refine_compartments in RCOMPS; simpl in RCOMPS;
@@ -200,7 +203,8 @@ Theorem backward_simulation : forall ast sst sst',
 Proof.
   clear S I; move=> ast sst sst' REFINE SSTEP.
   destruct REFINE as [sst NOT|ast sst REFINE]; [elim NOT; eauto|]; simpl in *.
-  destruct REFINE as [RPC RREGS RMEMS RCOMP], ast as [Apc AR AM AC]; simpl in *.
+  destruct REFINE as [RPC RREGS RMEMS RCOMP], ast as [Apc AR AM AC Aold];
+    simpl in *.
   destruct SSTEP; subst; try subst mvec;
     unfold Symbolic.next_state_reg, Symbolic.next_state_pc,
            Symbolic.next_state_reg_and_pc, Symbolic.next_state in *;
@@ -214,12 +218,13 @@ Proof.
     destruct tpc as [S cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
-    exists (Some (Abs.State (pc+1)%w AR AM AC)); split.
-    + eapply AbsSlow.step_go; try reflexivity.
+    generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
-        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
-      specialize RCTAGS with pc; rewrite PC in RCTAGS.
-      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
+      move: RCOMP => [RCOMPS [RCTAGS RCOK]] RCOMP.
+    specialize RCTAGS with pc; rewrite PC in RCTAGS.
+    destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
+    exists (Some (Abs.State (pc+1)%w AR AM AC c)); split.
+    + eapply AbsSlow.step_go; try reflexivity.
       eapply Abs.step_nop; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
@@ -238,14 +243,15 @@ Proof.
     destruct tpc as [S cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
+    generalize RCOMP;
+      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+      move: RCOMP => [RCOMPS [RCTAGS RCOK]] RCOMP.
+    specialize RCTAGS with pc; rewrite PC in RCTAGS.
+    destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
     evar (AR' : registers);
-      exists (Some (Abs.State (pc+1)%w AR' AM AC)); split;
+      exists (Some (Abs.State (pc+1)%w AR' AM AC c)); split;
       subst AR'.
     + eapply AbsSlow.step_go; try reflexivity.
-      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
-        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
-      specialize RCTAGS with pc; rewrite PC in RCTAGS.
-      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
       eapply Abs.step_const; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
@@ -275,19 +281,20 @@ Proof.
     destruct tpc as [S cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
+    generalize RCOMP;
+      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+      move: RCOMP => [RCOMPS [RCTAGS RCOK]] RCOMP.
+    specialize RCTAGS with pc; rewrite PC in RCTAGS.
+    destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
     rewrite /refine_registers /pointwise in RREGS.
     destruct (get AR r1) as [x1|] eqn:GET1;
       [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
     destruct (get AR r2) as [x2|] eqn:GET2;
       [| specialize RREGS with r2; rewrite OLD GET2 in RREGS; done].
     evar (AR' : registers);
-      exists (Some (Abs.State (pc+1)%w AR' AM AC)); split;
+      exists (Some (Abs.State (pc+1)%w AR' AM AC c)); split;
       subst AR'.
-    + rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
-        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
-      specialize RCTAGS with pc; rewrite PC in RCTAGS.
-      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
-      eapply AbsSlow.step_go; try reflexivity.
+    + eapply AbsSlow.step_go; try reflexivity.
       eapply Abs.step_mov; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
@@ -315,6 +322,11 @@ Proof.
     destruct tpc as [S cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
+    generalize RCOMP;
+      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+      move: RCOMP => [RCOMPS [RCTAGS RCOK]] RCOMP.
+    specialize RCTAGS with pc; rewrite PC in RCTAGS.
+    destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
     rewrite /refine_registers /pointwise in RREGS.
     destruct (get AR r1) as [x1|] eqn:GET1;
       [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
@@ -323,13 +335,9 @@ Proof.
     destruct (get AR r3) as [x3|] eqn:GET3;
       [| specialize RREGS with r3; rewrite OLD GET3 in RREGS; done].
     evar (AR' : registers);
-      exists (Some (Abs.State (pc+1)%w AR' AM AC)); split;
+      exists (Some (Abs.State (pc+1)%w AR' AM AC c)); split;
       subst AR'.
-    + rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
-        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
-      specialize RCTAGS with pc; rewrite PC in RCTAGS.
-      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
-      eapply AbsSlow.step_go; try reflexivity.
+    + eapply AbsSlow.step_go; try reflexivity.
       eapply Abs.step_binop; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
@@ -362,6 +370,11 @@ Proof.
     destruct tpc as [S cid'| |]; try discriminate;
       destruct ti as [|cid'' I'' W''|]; try discriminate.
     move/eqP in RPC; subst Apc.
+    generalize RCOMP;
+      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+      move: RCOMP => [RCOMPS [RCTAGS RCOK]] RCOMP.
+    specialize RCTAGS with pc; rewrite PC in RCTAGS.
+    destruct RCTAGS as [[ac [IN_ac IN_SAME]] [OK_I OK_W]].
     rewrite /refine_registers /refine_memory /pointwise  in RREGS RMEMS.
     destruct (get AR r1) as [x1|] eqn:GET1;
       [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
@@ -374,13 +387,9 @@ Proof.
     destruct (get AM w1) as [x2|] eqn:GETM1;
       [|specialize RMEMS with w1; rewrite MEM1 GETM1 in RMEMS; done].
     evar (AR' : registers);
-      exists (Some (Abs.State (pc+1)%w AR' AM AC)); split;
+      exists (Some (Abs.State (pc+1)%w AR' AM AC ac)); split;
       subst AR'.
-    + rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
-        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
-      specialize RCTAGS with pc; rewrite PC in RCTAGS.
-      destruct RCTAGS as [[ac [IN_ac IN_SAME]] [OK_I OK_W]].
-      eapply AbsSlow.step_go; try reflexivity.
+    + eapply AbsSlow.step_go; try reflexivity.
       eapply Abs.step_load; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
@@ -413,6 +422,11 @@ Proof.
     destruct tpc as [S cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
+    generalize RCOMP;
+      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+      move: RCOMP => [RCOMPS [RCTAGS RCOK]] RCOMP.
+    specialize RCTAGS with pc; rewrite PC in RCTAGS.
+    destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
     rewrite /refine_registers /pointwise in RREGS.
     destruct (get AR r) as [x|] eqn:GET;
       [| specialize RREGS with r; rewrite RW GET in RREGS; done].
@@ -422,13 +436,9 @@ Proof.
       subst x.
     evar (AR' : registers);
       exists (Some (Abs.State (pc + (if w == 0 then 1 else imm_to_word n))%w
-                              AR' AM AC)); split;
+                              AR' AM AC c)); split;
       subst AR'.
     + eapply AbsSlow.step_go; try reflexivity.
-      rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
-        move: RCOMP => [RCOMPS [RCTAGS RCOK]].
-      specialize RCTAGS with pc; rewrite PC in RCTAGS.
-      destruct RCTAGS as [[c [IN_c IN_SAME]] [OK_I OK_W]].
       eapply Abs.step_bnz; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;

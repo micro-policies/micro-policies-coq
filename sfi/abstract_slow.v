@@ -11,10 +11,11 @@ Section WithClasses.
 
 Set Implicit Arguments.
 
-Context (t   : machine_types)
-        {ops : machine_ops t}
-        {ap  : abstract_params t}
-        {sfi_syscalls : sfi_syscall_params t}.
+Context (t            : machine_types)
+        {ops          : machine_ops t}
+        {ap           : abstract_params t}
+        {scr          : @syscall_regs t}
+        {sfi_syscalls : sfi_syscall_addrs t}.
 
 Definition state := option (@Abs.state t ap).
 

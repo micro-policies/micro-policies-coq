@@ -68,16 +68,17 @@ Instance fhp : fault_handler.fault_handler_params t := {|
 Global Instance scr : @syscall_regs t := {|
   syscall_ret  := Int32.repr 16;
   syscall_arg1 := Int32.repr 17;
-  syscall_arg2 := Int32.repr 18
+  syscall_arg2 := Int32.repr 18;
+  syscall_arg3 := Int32.repr 19
 |}.
 
-Definition ruser1 := Int32.repr 19.
-Definition ruser2 := Int32.repr 20.
-Definition ruser3 := Int32.repr 21.
-Definition ruser4 := Int32.repr 22.
+Definition ruser1 := Int32.repr 20.
+Definition ruser2 := Int32.repr 21.
+Definition ruser3 := Int32.repr 22.
+Definition ruser4 := Int32.repr 23.
 
 Definition user_registers := 
-  [ra; syscall_ret; syscall_arg1; syscall_arg2; ruser1; 
+  [ra; syscall_ret; syscall_arg1; syscall_arg2; syscall_arg3; ruser1; 
    ruser2; ruser3; ruser4].
 Definition user_reg_max := last user_registers (Int32.repr 0).
 

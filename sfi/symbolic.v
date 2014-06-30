@@ -90,7 +90,8 @@ Import EnhancedDo.
 Context {t            : machine_types}
         {ops          : machine_ops t}
         {spec         : machine_ops_spec ops}
-        {sfi_syscalls : sfi_syscall_params t}.
+        {scr          : @syscall_regs t}
+        {sfi_syscalls : sfi_syscall_addrs t}.
 
 (* I want to use S and I as variables. *)
 Let S := Datatypes.S.
@@ -263,9 +264,9 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
     | Symbolic.State M R (pc @ (PC _ c)) si =>
       do! (c',si') <- fresh si;
       
-      do! pA @ _ <- get R rIsoA;
-      do! pJ @ _ <- get R rIsoJ;
-      do! pS @ _ <- get R rIsoS;
+      do! pA @ _ <- get R syscall_arg1;
+      do! pJ @ _ <- get R syscall_arg2;
+      do! pS @ _ <- get R syscall_arg3;
       
       do! A'       <- isolate_create_set (@val _ _) M pA;
       do! guard nonempty A';
@@ -282,8 +283,9 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
       do! (MS,siS) <- retag_set (fun c'' _ W => (c == c'') || set_elem c W)
                                 (fun c'' I W => DATA c'' I (insert_unique c' W))
                                 S' MJ siJ;
-
-      Some (Symbolic.State MS R ((pc + 1)%w @ (PC INTERNAL c)) siS)
+      
+      do! pc' @ _ <- get R ra;
+      Some (Symbolic.State MS R (pc' @ (PC INTERNAL c)) siS)
     | _ => None
   end.
 
@@ -291,12 +293,13 @@ Definition add_to_jump_targets (s : Symbolic.state t)
                                : option (Symbolic.state t) :=
   match s with
     | Symbolic.State M R (pc @ (PC _ c)) si =>
-      do! p @ _           <- get R rAdd;
+      do! p @ _           <- get R syscall_arg1;
       do! x @ DATA c' I W <- get M p;
       let I'              := insert_unique c I in
       do! si'             <- register_set I' si;
       do! M'              <- upd M p (x @ (DATA c' I' W));
-      Some (Symbolic.State M' R ((pc + 1)%w @ (PC INTERNAL c)) si')
+      do! pc' @ _         <- get R ra;
+      Some (Symbolic.State M' R (pc' @ (PC INTERNAL c)) si')
     | _ => None
   end.
 
@@ -304,12 +307,13 @@ Definition add_to_shared_memory (s : Symbolic.state t)
                                 : option (Symbolic.state t) :=
   match s with
     | Symbolic.State M R (pc @ (PC _ c)) si =>
-      do! p @ _           <- get R rAdd;
+      do! p @ _           <- get R syscall_arg1;
       do! x @ DATA c' I W <- get M p;
       let W'              := insert_unique c W in
       do! si'             <- register_set W' si;
       do! M'              <- upd M p (x @ (DATA c' I W'));
-      Some (Symbolic.State M' R ((pc + 1)%w @ (PC INTERNAL c)) si')
+      do! pc' @ _         <- get R ra;
+      Some (Symbolic.State M' R (pc' @ (PC INTERNAL c)) si')
     | _ => None
   end.
 
@@ -530,6 +534,7 @@ Proof.
      DO1 A'; DO1 NONEMPTY_A'; DO2 MA siA;
      DO1 J'; DO2 MJ siJ;
      DO1 S'; DO2 MS siS;
+     DO2 pc' Lpc';
      inversion ISOLATE; subst; clear ISOLATE; simpl.
   rewrite /good_state /= in GOOD; destruct GOOD as [TAGS INT].
   assert (GOOD_si' : good_internal si') by eauto 2 using fresh_preserves_good.
@@ -652,7 +657,7 @@ Proof.
   clear S I.
   intros [M R [pc [S c| |]] si] s' ADD GOOD; try discriminate; simpl in *.
   undo2 ADD p Lp; undo2 ADD x Lx; destruct Lx as [|c' I W|]; try discriminate;
-    undo1 ADD si'; undo1 ADD M'.
+    undo1 ADD si'; undo1 ADD M'; undo2 ADD pc' Lpc';
   inversion ADD; subst; simpl in *.
   destruct si as [next ids].
   rewrite /good_state /= in GOOD; destruct GOOD as [[MEM [REG _]] INT].
@@ -698,7 +703,7 @@ Proof.
   clear S I.
   intros [M R [pc [S c| |]] si] s' ADD GOOD; try discriminate; simpl in *.
   undo2 ADD p Lp; undo2 ADD x Lx; destruct Lx as [|c' I W|]; try discriminate;
-    undo1 ADD si'; undo1 ADD M'.
+    undo1 ADD si'; undo1 ADD M'; undo2 ADD pc' Lpc';
   inversion ADD; subst; simpl in *.
   destruct si as [next ids].
   rewrite /good_state /= in GOOD; destruct GOOD as [[MEM [REG _]] INT].

@@ -525,7 +525,8 @@ Context {t : machine_types}.
 Class syscall_regs := {
   syscall_ret  : reg t;
   syscall_arg1 : reg t;
-  syscall_arg2 : reg t
+  syscall_arg2 : reg t;
+  syscall_arg3 : reg t
 }.
 
 End SyscallRegs.

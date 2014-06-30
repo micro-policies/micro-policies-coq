@@ -19,18 +19,10 @@ Class params_spec `(ap : abstract_params t) :=
   { mem_axioms :> PartMaps.axioms (@mem_class t ap)
   ; reg_axioms :> PartMaps.axioms (@reg_class t ap) }.
 
-Class sfi_syscall_params (t : machine_types) := {
-  (* The registers ISOLATE reads from. *)
-  rIsoA : reg t; rIsoJ : reg t; rIsoS : reg t;
-  
-  (* The location of ISOLATE *)
-  isolate_addr : word t;
-  
-  (* The register the add-to-$SET syscalls read from. *)
-  rAdd : reg t;
-  
-  (* The addresses of the add-to-{J,S} syscalls *)
-  add_to_jump_targets_addr : word t; add_to_shared_memory_addr : word t
+Class sfi_syscall_addrs (t : machine_types) := {
+  isolate_addr              : word t;
+  add_to_jump_targets_addr  : word t;
+  add_to_shared_memory_addr : word t
 }.
 
 End WithClasses.
