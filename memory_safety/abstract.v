@@ -128,8 +128,7 @@ Definition lift_binop (f : binop) (x y : value) :=
          end
   end.
 
-Definition bool_to_word (b : bool) : word :=
-  Z_to_word (if b then 1%Z else 0%Z).
+Definition bool_to_word (b : bool) : word := if b then 1 else 0.
 
 Definition value_eq (x y : value) : bool :=
   match x, y with
