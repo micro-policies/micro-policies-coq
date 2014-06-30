@@ -286,7 +286,7 @@ Definition malloc_fun st : option (state t) :=
     | sz@V(DATA) =>
       match compare 0 sz with
         | Lt =>
-          if ohead [seq x <- info | ((sz <=? block_size x) && ~~ is_some (block_color x))%ordered] is Some x then
+          if ohead [seq x <- info | ((sz <=? block_size x) && (block_color x == None))%ordered] is Some x then
           let i := index x info in
           let block1 := mkBlockInfo (block_base x) sz (Some color) in
           let pre := take i info in
@@ -386,7 +386,7 @@ Definition memsafe_syscalls : list (syscall t) :=
    Syscall free_addr V(DATA) free_fun;
    Syscall size_addr V(DATA) sizeof_fun;
    Syscall base_addr V(DATA) basep_fun;
-   Syscall eq_addr V(DATA) malloc_fun].
+   Syscall eq_addr V(DATA) eqp_fun].
 
 Definition step := step memsafe_syscalls.
 

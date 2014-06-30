@@ -837,7 +837,7 @@ try match goal with
   rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=;
   (have->: s = pc by inversion rpc);
   repeat case: ifP=> [/eqP <- /= [<-] /= | ? //];
-  rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.ptr_fun /= => CALL;
+  rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
   match_inv
 end;
 
@@ -991,9 +991,38 @@ eapply (refine_registers_upd rregs) in E0; last first.
 
   by split; eassumption.
 
-
 (* Eq *)
-admit.
+
+  (* match_inv doesn't seem to be handling the commutative cut *)
+  case: ptr1 CALL E0 => // arg1v [[|arg1b]||] // CALL E0.
+  match_inv.
+
+  case/(refine_registers_get rregs): CALL=> arg1 [rarg1 ?].
+  case/(refine_registers_get rregs): E=> arg2 [rarg2 ?].
+  case/(refine_registers_get_ptr rregs): E1=> ? [? ?].
+  eapply (refine_registers_upd rregs) in E0; last by eauto.
+  case: E0=> ? [upd_ret ?].
+
+  eexists; eexists; split.
+  eapply Abstract.step_eq.
+  by eauto.
+  by eauto.
+  rewrite /Abstract.value_eq.
+  move: upd_ret.
+  inversion rarg1.
+  inversion rarg2.
+
+  have [eq_arg1b|neq_arg1b] := altP (arg1b =P s0).
+    have [/eqP-> ->]: b = b0 /\ base = base0.
+      by move: (miIr miP H5 H9 eq_arg1b) (H5) (H9) => -> -> [-> _]; split.
+    by rewrite (inj_eq (addwI base0)) => upd_ret.
+
+  have/negbTE->//: b != b0.
+  apply/eqP=> eq_b; move: H5 H9 neq_arg1b; rewrite eq_b => -> [_ ->].
+  by rewrite eqxx.
+  by eauto.
+
+  by split; eassumption.
 
 move: CALL.
 rewrite /= /Symbolic.run_syscall /=.
