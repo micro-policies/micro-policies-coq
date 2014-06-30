@@ -83,7 +83,7 @@ point. *)
 Definition kernelize_syscall (seg : @relocatable_segment concrete_int_32_t w w) 
                    : relocatable_segment w atom :=
   let (l,gen) := seg in
-  (l, fun b rest =>
+  ((l + 1)%nat, fun b rest =>
         (* ENTRY tag with constant ut *)
         (encode_instr (Nop _))@(Z_to_word 2) ::
         map (fun x => x@Concrete.TKernel) (gen b rest)).
