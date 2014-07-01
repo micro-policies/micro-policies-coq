@@ -318,6 +318,13 @@ Definition malloc_fun st : option (state t) :=
 Definition def_info : block_info :=
   mkBlockInfo 0 0 None.
 
+Fixpoint erase_block init base n : Symbolic.memory t :=
+  match n with
+  | O => init
+  | S p => if upd init (base + Z_to_word (Z.of_nat n)) (0@FREE) is Some mem then
+           erase_block mem base p else init
+  end.
+
 (* TODO: avoid memory fragmentation *)
 Definition free_fun (st : state t) : option (state t) :=
   let: (next_color,info) := internal st in
@@ -328,11 +335,7 @@ Definition free_fun (st : state t) : option (state t) :=
     do! x <- ohead [seq x <- info | block_color x == Some color];
     let i := index x info in
     if (block_base x <=? ptr <? block_base x + block_size x) then
-      let P := fun n => Symbolic.memory t in
-      let upd_fun := fun n acc =>
-        if upd acc (block_base x + Z_to_word (Z.of_nat n)) (0@FREE) is Some mem then mem else acc
-      in
-      let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z (block_size x))) in
+      let mem' := erase_block (mem st) (block_base x) (Z.to_nat (word_to_Z (block_size x))) in
       let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
       in 
       do! raddr <- get (regs st) ra;
@@ -396,6 +399,7 @@ Canonical block_info_eqType.
 
 Arguments memory t {_}.
 Arguments registers t {_}.
+Arguments def_info t {_}.
 
 Module Notations.
 
@@ -403,6 +407,7 @@ Notation DATA := (TypeData _).
 Notation PTR := TypePointer.
 Notation "V( ty )" := (TagValue ty) (at level 4).
 Notation "M( n , ty )" := (TagMemory n ty) (at level 4).
+Notation FREE := (TagFree _).
 
 End Notations.
 

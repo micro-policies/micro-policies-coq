@@ -42,7 +42,9 @@ Context {mt : machine_types}
         {a_allocP : Abstract.allocator_spec a_alloc}.
 *)
 
-Context `{syscall_regs mt} `{@Abstract.allocator mt block ap} `{@memory_syscall_addrs mt}.
+Context `{syscall_regs mt} `{a_alloc : @Abstract.allocator mt block ap}
+         {a_allocP : Abstract.allocator_spec a_alloc}
+        `{@memory_syscall_addrs mt}.
 
 Hypothesis binop_addDl : forall x y z,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
@@ -219,7 +221,7 @@ Definition refine_memory amem (qamem : Sym.memory mt) :=
   forall b base nonce off, mi b = Some (base,nonce) ->
   match Abstract.getv amem (b,off), PartMaps.get qamem (base+off)%w with
   | None, None => True
-  | Some v, Some w@M(nonce,ty) => refine_val v w ty
+  | Some v, Some w@M(nonce',ty) => nonce = nonce' /\ refine_val v w ty
   | _, _ => False
  end.
 
@@ -233,10 +235,11 @@ unfold refine_memory in rmem.
 destruct pt as [b' off'].
 (* Hit the too many names bug here too. *)
 inversion rpt as [ | b base nonce off mi_b eq_b eq_w1 eq_nonce (* eq_off *)].
-rewrite <-eq_nonce,<-eq_b,<-H2 in *.
+rewrite <-eq_nonce,<-eq_b,<-H1 in *.
 move/(_ b base nonce off mi_b): rmem => rmem.
 rewrite eq_w1 get_w in rmem.
 destruct (Abstract.getv amem (b, off)) eqn:get_b; try contradiction.
+case: rmem => _ rmem.
 by inversion rmem.
 Qed.
 
@@ -270,7 +273,7 @@ destruct pt as [b' off'].
 simpl in *.
 (* Too many names bug... *)
 inversion rpt as [|b base nonce off mi_b eq_b eq_w1 eq_nonce].
-rewrite <-eq_nonce,<-eq_b,<-H2 in *.
+rewrite <-eq_nonce,<-eq_b,<-H1 in *.
 move/(_ b base nonce off mi_b):rmem => rmem.
 rewrite <-eq_w1 in get_w.
 rewrite get_w in rmem.
@@ -328,14 +331,15 @@ Qed.
 *)
 
 Inductive refine_block_info amem smem : Sym.block_info mt -> Prop :=
-| RefineBlockInfoLive : forall b col bi, Sym.block_color bi = Some col ->
+| RefineBlockInfoLive : forall b col bi fr, Sym.block_color bi = Some col ->
   mi b = Some (Sym.block_base bi, col) ->
-  (exists fr, PartMaps.get amem b = Some fr /\
-    word_to_Z (Sym.block_size bi) = Z.of_nat (length fr)) ->
+  PartMaps.get amem b = Some fr ->
+  word_to_Z (Sym.block_size bi) = Z.of_nat (length fr) ->
   refine_block_info amem smem bi
 | RefineBlockInfoFree : forall bi,
   Sym.block_color bi = None ->
-  (forall off, word_to_Z off < word_to_Z (Sym.block_size bi) -> PartMaps.get smem (Sym.block_base bi + off) = None) ->
+  (forall off, word_to_Z off < word_to_Z (Sym.block_size bi) ->
+    exists v, PartMaps.get smem (Sym.block_base bi + off) = Some v@FREE) ->
   refine_block_info amem smem bi.
 
 (* TODO: export from Sym in symbolic.v *)
@@ -381,7 +385,7 @@ have [eq_b|neq_b] := altP (b =P pt.1).
       replace pt with (fst pt, snd pt) in rpt.
         by inversion rpt; congruence.
       by destruct pt.
-    congruence.
+    split; congruence.
   assert (neqw_off : word_to_Z off <> word_to_Z (snd pt)).
     by move/word_to_Z_inj.
   rewrite <-(update_list_Z_spec2 update_pt neqw_off).
@@ -434,6 +438,55 @@ destruct (PartMaps.upd_inv upd_w1) as [? get_w1].
   by rewrite get_w1 in rmem.
 by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
 Qed.
+
+Lemma refine_memory_free amem' smem nc info b bi col :
+  refine_memory amem smem ->
+  refine_internal_state amem smem (nc, info) ->
+  bi \in info ->
+  mi b = Some (Sym.block_base bi, col) ->
+  Sym.block_color bi = Some col ->
+  Abstract.free_fun amem b = Some amem' ->
+  let smem' :=
+    Sym.erase_block smem (Sym.block_base bi)
+      (Z.to_nat (word_to_Z (Sym.block_size bi)))
+  in
+  refine_memory amem' smem' /\
+  refine_internal_state amem' smem'
+     (nc,
+     set_nth (Sym.def_info mt) info (index bi info)
+       {|
+       Sym.block_base := Sym.block_base bi;
+       Sym.block_size := Sym.block_size bi;
+       Sym.block_color := None |}).
+Proof.
+admit.
+Qed.
+
+(*
+  PartMaps.get amem b = Some amem' ->
+  refine_memory mi amem'
+     (nat_rect (fun _ : nat => Sym.memory mt) mem
+        (fun (n : nat) (acc : Sym.memory mt) =>
+         match
+           PartMaps.upd acc (Sym.block_base x + Z_to_word (Z.of_nat n))
+             0@(Sym.TagFree mt)
+         with
+         | Some mem0 => mem0
+         | None => acc
+         end) (Z.to_nat (word_to_Z (Sym.block_size x))))
+
+
+                        w1 w2 pt ty n fr fr' x :
+  refine_memory amem smem ->
+  refine_internal_state amem smem ist ->
+  refine_val (Abstract.VPtr pt) w1 (PTR n) ->
+  PartMaps.upd smem w1 w2@M(n, ty) = Some smem' ->
+  PartMaps.get amem (fst pt) = Some fr ->
+  update_list_Z (word_to_Z (snd pt)) x fr = Some fr' ->
+  refine_val x w2 ty ->
+    exists amem', [/\ PartMaps.upd amem (fst pt) fr' = Some amem',
+      refine_memory amem' smem' & refine_internal_state amem' smem' ist].
+*)
 
 Definition refine_registers (aregs : Abstract.registers mt)
                             (qaregs : Sym.registers mt) :=
@@ -938,7 +991,33 @@ move: GETCALL CALL.
 admit.
 
 (* Free *)
-admit.
+
+(* PartMaps.get mem b = Some fr *)
+  move/(_ x _): (rist).
+  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
+    case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
+    by rewrite inE eqxx.
+  rewrite mem_filter => /andP [/eqP color_x in_x].
+  rewrite in_x => /(_ erefl) biP.
+  case: biP E E1 color_x in_x => [|bi ->] //.
+  move=> b col bi ? color_bi mi_b get_b size_fr E E1 color_x in_x.
+  have eq_col: col = s0 by congruence.
+  rewrite eq_col in mi_b.
+  have eq_s4b: s4 = b.
+    inversion H3.
+    exact: (miIr miP H8 mi_b erefl).
+  have [? get_s4]: exists fr, PartMaps.get a_mem s4 = Some fr by admit.
+  case: (Abstract.free_Some get_s4)=> ? free_b.
+
+  eexists; eexists; split.
+  eapply Abstract.step_free.
+  by eauto.
+  by eauto.
+  by eauto.
+
+  rewrite eq_s4b in free_b.
+  case: (refine_memory_free rmem rist in_x mi_b color_x free_b) => rmem' rist'.
+  by split; eassumption.
 
 (* Size *)
   move/(_ x _): (rist).
@@ -946,43 +1025,39 @@ admit.
     case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
-  case: biP E H6 color_x=> [|bi ->] //.
-  move=> b col bi color_bi mi_b [fr [get_b size_fr]] E H6 color_x.
+  case: biP E H5 color_x=> [|bi ->] //.
+  move=> b col bi ? color_bi mi_b get_b size_fr E H5 color_x.
   have eq_col: col = s0 by congruence.
   rewrite eq_col in mi_b.
-  have eq_s1b: s4 = b.
-    inversion H4.
-    exact: (miIr miP H11 mi_b erefl).
+  have eq_s4b: s4 = b.
+    inversion H3.
+    exact: (miIr miP H10 mi_b erefl).
 
   eexists; eexists; split.
   eapply Abstract.step_size.
   by eauto.
-  by rewrite eq_s1b.
+  by rewrite eq_s4b.
   by rewrite -size_fr word_to_ZK.
   by eauto.
 
   by split; eassumption.
 
 (* Base *)
-(*
-eapply (refine_registers_upd rregs) in E0; last first.
-; destruct UPD as (? & ? & ?))
-*)
   move/(_ x _): (rist).
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
     case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
   case: biP E E0 color_x=> [|bi ->] //.
-  move=> b col bi color_bi mi_b [fr [get_b size_fr]] E E0 color_x.
+  move=> b col bi ? color_bi mi_b get_b size_fr E E0 color_x.
   have eq_col: col = s0 by congruence.
   rewrite eq_col in mi_b.
   eapply (refine_registers_upd rregs) in E0; last first.
     by rewrite -[Sym.block_base bi]addw0; econstructor.
   case: E0 => ? [? ?].
   have eq_s1b: s4 = b.
-    inversion H4.
-    exact: (miIr miP H9 mi_b erefl).
+    inversion H3.
+    exact: (miIr miP H8 mi_b erefl).
   eexists; eexists; split.
   eapply Abstract.step_base.
   by eauto.
@@ -1014,11 +1089,11 @@ eapply (refine_registers_upd rregs) in E0; last first.
 
   have [eq_arg1b|neq_arg1b] := altP (arg1b =P s0).
     have [/eqP-> ->]: b = b0 /\ base = base0.
-      by move: (miIr miP H5 H9 eq_arg1b) (H5) (H9) => -> -> [-> _]; split.
+      by move: (miIr miP H4 H8 eq_arg1b) (H4) (H8) => -> -> [-> _]; split.
     by rewrite (inj_eq (addwI base0)) => upd_ret.
 
   have/negbTE->//: b != b0.
-  apply/eqP=> eq_b; move: H5 H9 neq_arg1b; rewrite eq_b => -> [_ ->].
+  apply/eqP=> eq_b; move: H4 H8 neq_arg1b; rewrite eq_b => -> [_ ->].
   by rewrite eqxx.
   by eauto.
 

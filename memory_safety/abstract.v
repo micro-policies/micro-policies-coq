@@ -79,6 +79,10 @@ Class allocator_spec (alloc : allocator) := {
 (* Similar requirements on upd_mem are not necessary because they follow from
    the above and PartMaps.axioms. *)
 
+  free_Some : forall mem b fr,
+    get mem b = Some fr ->
+    exists mem', free_fun mem b = Some mem';
+
   free_get_fail : forall mem mem' b,
     free_fun mem b = Some mem' -> get mem' b = None;
 
