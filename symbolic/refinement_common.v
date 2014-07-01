@@ -196,7 +196,7 @@ Proof.
 Qed.
 
 Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
-  in_user st' = true /\
+  in_user st' = true /\ (* AAA: Not needed anymore *)
   let '(Symbolic.State mem regs pc@tpc int) := st in
   let '(Concrete.mkState mem' regs' cache pc'@tpc' epc) := st' in
   pc = pc' /\
@@ -208,7 +208,7 @@ Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
   refine_registers regs regs' /\
   cache_correct cache /\
   mvec_in_kernel mem' /\
-  ra_in_user regs' /\
+  ra_in_user regs' /\ (* AAA: Not needed anymore *)
   wf_entry_points mem' /\
   ki mem' regs' cache int.
 
