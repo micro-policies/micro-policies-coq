@@ -99,11 +99,6 @@ Proof.
   eauto.
 Qed.
 
-Definition ra_in_user creg :=
-  word_lift (fun x => is_user x)
-            (common.tag (TotalMaps.get creg ra)).
-Hint Unfold ra_in_user.
-
 (* CH: kernel_invariant only holds when kernel starts executing, can
    be broken during kernel execution, but has to be restored before
    returning to user mode. It doesn't necessarily have to hold at all
@@ -196,7 +191,6 @@ Proof.
 Qed.
 
 Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
-  in_user st' = true /\ (* AAA: Not needed anymore *)
   let '(Symbolic.State mem regs pc@tpc int) := st in
   let '(Concrete.mkState mem' regs' cache pc'@tpc' epc) := st' in
   pc = pc' /\
@@ -208,9 +202,20 @@ Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
   refine_registers regs regs' /\
   cache_correct cache /\
   mvec_in_kernel mem' /\
-  ra_in_user regs' /\ (* AAA: Not needed anymore *)
   wf_entry_points mem' /\
   ki mem' regs' cache int.
+
+Lemma refine_state_in_user st st' :
+  refine_state st st' ->
+  in_user st'.
+Proof.
+  move: st st' => [smem sregs [spc spct] int]
+                  [cmem cregs cache [cpc cpct] epc] /=.
+  case E: (decode cpct) => [[ut | | ] | ]
+                           [? [H ?]] //=.
+  apply encodeK in E. subst.
+  by rewrite /in_user /word_lift /= decodeK //=.
+Qed.
 
 Lemma refine_memory_upd amem cmem cmem' addr v v' t t' :
   refine_memory amem cmem ->
@@ -366,18 +371,6 @@ Proof.
   - rewrite (TotalMaps.get_upd_neq (Concrete.reg_axioms (t := mt))); trivial.
     rewrite (PartMaps.get_upd_neq NEQ UPD).
     now apply REF.
-Qed.
-
-Lemma ra_in_user_upd creg r v t :
-  ra_in_user creg ->
-  ra_in_user (TotalMaps.upd creg r v@(encode (USER t))).
-Proof.
-  unfold ra_in_user.
-  have [EQ|/eqP NEQ] := altP (r =P ra); simpl in *; autounfold.
-  - subst r.
-    rewrite (TotalMaps.get_upd_eq (Concrete.reg_axioms (t := mt))).
-    simpl. unfold word_lift. now rewrite decodeK.
-  - rewrite (TotalMaps.get_upd_neq (Concrete.reg_axioms (t := mt))); try congruence.
 Qed.
 
 Inductive hit_step cst cst' : Prop :=
@@ -765,7 +758,6 @@ Class kernel_code_correctness : Prop := {
       refine_registers areg' creg' /\
       cache_correct cache' /\
       mvec_in_kernel cmem' /\
-      ra_in_user creg' /\
       wf_entry_points cmem' /\
       ki cmem' creg' cache' int';
 
@@ -789,25 +781,5 @@ Class kernel_code_correctness : Prop := {
     ~ user_kernel_user_step cst cst'
 
 }.
-
-Context {kcc : kernel_code_correctness}.
-
-Lemma user_regs_unchanged_ra_in_user creg creg' :
-  ra_in_user creg ->
-  user_regs_unchanged creg creg' ->
-  ra_in_user creg'.
-Proof.
-  unfold ra_in_user, word_lift.
-  intros RA H.
-  destruct (TotalMaps.get creg ra) as [v t] eqn:E.
-  simpl in RA.
-  destruct (decode t) as [t'|] eqn:E'; try discriminate.
-  unfold is_user in RA. destruct t'; try discriminate.
-  apply encodeK in E'. subst.
-  apply H in E.
-  rewrite E.
-  simpl.
-  now rewrite decodeK.
-Qed.
 
 End Refinement.

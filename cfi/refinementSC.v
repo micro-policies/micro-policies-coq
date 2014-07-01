@@ -337,37 +337,6 @@ Proof.
   - destruct MEQUIV.
 Qed.
     
-Lemma ra_in_user_preserved_by_equiv 
-      (reg reg' : Concrete.registers mt) :
-  @refinement_common.ra_in_user mt ops sym_params cp e reg ->
-  Conc.reg_equiv reg reg' ->
-  @refinement_common.ra_in_user mt ops sym_params cp e reg'.
-Proof.
-  intros INV REQUIV.
-  unfold refinement_common.ra_in_user, rules.word_lift.
-  destruct (TotalMaps.get reg' ra) eqn:GET'.
-  unfold Conc.reg_equiv in REQUIV.
-  specialize (REQUIV ra).
-  inversion REQUIV 
-    as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
-  - rewrite GET' in EQ2.
-    inv EQ2.
-    simpl. rewrite rules.decodeK.
-    simpl. constructor.
-  - unfold refinement_common.ra_in_user in INV.
-    unfold rules.word_lift in INV. 
-    rewrite <- EQ in GET'. rewrite GET' in INV.
-    simpl in *.
-    destruct (rules.decode tag) eqn:DECODE.
-         { destruct t.
-           - apply rules.encodeK in DECODE.
-             simpl in NEQ. assumption. 
-           - inversion INV.
-           - inversion INV.
-         }
-         { assumption. }
-Qed.
-
 Lemma wf_entry_points_preserved_by_equiv 
       (mem : Concrete.memory mt) (mem' : Concrete.memory mt) :
   refinement_common.wf_entry_points stable mem ->
@@ -425,7 +394,6 @@ Hypothesis ki_preserved_by_equiv :
     refinement_common.kernel_invariant_statement ki mem' reg' cache int. 
 
 Hint Resolve mvec_in_kernel_preserved_by_equiv.
-Hint Resolve ra_in_user_preserved_by_equiv.
 Hint Resolve wf_entry_points_preserved_by_equiv.
 
 Lemma backwards_simulation_attacker_aux sst cst cst' :
@@ -441,7 +409,7 @@ Proof.
   unfold refine_state in REF.
   destruct REF as [REF | CONTRA].
   - unfold refinement_common.refine_state in REF.
-    destruct REF as [? [PCV [PCT [REFM [REFR [? [? [? [WFENTRY ?]]]]]]]]];
+    destruct REF as [PCV [PCT [REFM [REFR [? [? [WFENTRY ?]]]]]]];
     unfold Conc.no_violation in NOV.
     destruct NOV as [NOV NOVSYS].
     apply REFM in FETCH.
@@ -548,7 +516,7 @@ Proof.
       destruct VIS as [VIS VIS'].
       assert (HIT: @hit_step mt ops sym_params cp e cst cst')
           by (constructor; auto).
-      destruct (cache_hit_simulation UREF HIT) as [sst' [SSTEP REF']].
+      destruct (cache_hit_simulation _ UREF HIT) as [sst' [SSTEP REF']].
       unfold refine_state, refine_state_weak.
       eexists; split. eauto.
       split;  
@@ -559,16 +527,16 @@ Proof.
       unfold check in INVIS.
       apply andb_false_iff in INVIS.
       destruct INVIS as [CONTRA | NUSER].
-      - unfold refinement_common.refine_state in UREF.
-        destruct UREF as [USER ?]. unfold in_user in CONTRA.
-        rewrite USER in CONTRA. discriminate.
+      - eapply @refine_state_in_user in UREF.
+        unfold in_user in CONTRA.
+        rewrite UREF in CONTRA. discriminate.
       - (*user to not user step*)
         left.
         unfold refine_state. split.
         right. exists cst; exists cst'.
         repeat (split; auto).
         unfold kernel_exec.
-        destruct (user_into_kernel UREF STEP NUSER).
+        destruct (user_into_kernel _ UREF STEP NUSER).
         eapply re_refl; eauto.
         eauto using Sym.invariants_preserved_by_step.
     }
@@ -614,9 +582,9 @@ Proof.
   { right. eauto. }
   generalize (backwards_simulation REFW STEP').
   intros [[REF' | (? & ? & ? & ? & KEXEC')] | (? & _ & REF')].
-  - destruct REF'. unfold in_user in INUSER. congruence.
+  - apply @refine_state_in_user in REF'. unfold in_user in INUSER. congruence.
   - by apply restricted_exec_snd in KEXEC'.
-  - destruct REF'. unfold in_user in INUSER. congruence.
+  - apply @refine_state_in_user in REF'. unfold in_user in INUSER. congruence.
 Qed.
 
 (*This is a helper lemma to instantiate CFI refinement between 
@@ -705,8 +673,8 @@ Next Obligation.
   apply andb_false_iff in H1.
   destruct H1 as [CONTRA | NUSER].
   - destruct H as [REF INV].
-    destruct REF as [[USER ?]| REF].
-    + unfold in_user in CONTRA. rewrite USER in CONTRA. 
+    move: REF => [/(@refine_state_in_user _) INUSER | REF].
+    + unfold in_user in CONTRA. rewrite INUSER in CONTRA. 
         by discriminate.
     + destruct REF as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
@@ -714,7 +682,7 @@ Next Obligation.
       by reflexivity.
   - destruct H as [REF INV].
     destruct REF as [REF | REF].
-    + assert (KERNEL' := user_into_kernel REF H0 NUSER).
+    + assert (KERNEL' := user_into_kernel _ REF H0 NUSER).
       unfold Conc.csucc. rewrite KERNEL'.
       rewrite orb_true_r. reflexivity.
     + destruct REF as [? [? [? [? KEXEC]]]].
@@ -731,8 +699,9 @@ Next Obligation. (*symbolic-concrete cfg relation*)
   destruct REF as [UREFI | KREFI].
   - destruct H0 as [REF' INV'].
     destruct REF' as [UREFJ | KREFJ].
-    + destruct UREFI as [USERI [PC [TPC [REFM [REFR [CACHE [MVEC [C1 [C2 KI]]]]]]]]],
-                        UREFJ as [USERJ [PC' [TPC' [REFM' [REFR' [C3 [C4 [C5 [C6 C7]]]]]]]]].
+    + move: (refine_state_in_user _ _ _ _ UREFI) (refine_state_in_user _ _ _ _ UREFJ) => USERI USERJ.
+      destruct UREFI as [PC [TPC [REFM [REFR [CACHE [MVEC [C2 KI]]]]]]],
+               UREFJ as [PC' [TPC' [REFM' [REFR' [C3 [C5 [C6 C7]]]]]]].
       subst spcj. subst spci.
       assert (NKERNEL : in_kernel csi || in_kernel csj = false).
       { apply (@in_user_in_kernel mt ops sym_params cp e) in USERI.
@@ -808,8 +777,9 @@ Next Obligation. (*symolic violation implies concrete violation*)
                ast' as [smem' sreg' [spc' tpc'] int'] eqn:ASJ.
       destruct cst as [cmem creg cache [cpc ctpc] epc] eqn:CSI,
                cst' as [cmem' creg' cache' [cpc' ctpc'] epc'] eqn:CSJ.
-      destruct REF as [USERT [PC [TPC [REFM [REFR [CACHE [MVEC [C1 [C2 KI]]]]]]]]],
-                        REF' as [USERT' [PC' [TPC' [REFM' [REFR' [C3 [C4 [C5 [C6 C7]]]]]]]]].
+      move: (refine_state_in_user _ _ _ _ REF) (refine_state_in_user _ _ _ _ REF') => USERT USERT'.
+      destruct REF as [PC [TPC [REFM [REFR [CACHE [MVEC [C2 KI]]]]]]],
+               REF' as [PC' [TPC' [REFM' [REFR' [C3 [C5 [C6 C7]]]]]]].
       simpl. subst.
       unfold Sym.ssucc in H1.
       simpl in H1.
@@ -861,8 +831,8 @@ Proof.
   - unfold preservation.refine_state in H. simpl in H.
     unfold refine_state in H.
     destruct H as [[UREF | KREF] INV].
-    + destruct UREF. unfold Conc.in_user. left. exists cst.
-      split; auto.
+    + unfold Conc.in_user. left. exists cst.
+      split; eauto using refine_state_in_user.
     + destruct KREF as [cst0 [kst [REF [CSTEP KEXEC]]]].
       (*case cst is in kernel, need to contradict it probably*)
       admit.
@@ -870,5 +840,3 @@ Proof.
 Admitted.
       
 End Refinement.
-        
-  

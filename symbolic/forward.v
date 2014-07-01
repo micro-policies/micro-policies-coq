@@ -176,21 +176,6 @@ Proof.
   destruct E as [? [? ?]]. congruence.
 Qed.
 
-(* Just for automation *)
-Let kernel_invariant_ra_upd mem regs cache int w t:
-  ki mem regs cache int ->
-  ra_in_user regs ->
-  ki mem (TotalMaps.upd regs ra w@(encode (USER t))) cache int.
-Proof.
-  intros KINV RA.
-  unfold ra_in_user, word_lift in RA.
-  destruct (TotalMaps.get regs ra) as [v t'] eqn:E.
-  simpl in *.
-  destruct (decode t') as [[t''| |]|] eqn:DEC; try discriminate.
-  apply encodeK in DEC. subst.
-  eapply kernel_invariant_upd_reg; eauto.
-Qed.
-
 Ltac solve_concrete_step :=
   match goal with
   | LOOKUP : Concrete.cache_lookup _ _ _ _ = _ |- _ =>
@@ -264,9 +249,8 @@ Ltac solve_refine_state :=
     split;
     eauto using user_mem_unchanged_refine_memory,
                 refine_registers_upd', user_regs_unchanged_refine_registers,
-                user_regs_unchanged_ra_in_user, ra_in_user_upd,
                 mvec_in_kernel_user_upd, wf_entry_points_user_upd,
-                no_syscall_no_entry_point, kernel_invariant_ra_upd
+                no_syscall_no_entry_point
   end.
 
 Ltac analyze_syscall :=
@@ -293,7 +277,7 @@ Proof.
   destruct ast as [amem aregs [apc tapc] int], cst as [cmem cregs cache [cpc cpct] epc].
   unfold refine_state. simpl.
   intros REF STEP.
-  destruct REF as (KER & ? & ? & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV).
+  destruct REF as (? & ? & REFM & REFR & CACHE & MVEC & WFENTRYPOINTS & KINV).
   destruct (decode cpct) as [[t| |]|] eqn:DEC; try solve [intuition].
   apply encodeK in DEC.
   subst cpc tapc cpct.

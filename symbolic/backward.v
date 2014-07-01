@@ -95,7 +95,7 @@ Proof.
   destruct ast as [amem areg [apc tapc] int].
   inv STEP; simpl in REF;
   destruct REF
-    as (_ & ? & ? & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV);
+    as (? & ? & REFM & REFR & CACHE & MVEC & WFENTRYPOINTS & KINV);
   subst apc;
   unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
          Concrete.next_state_pc, Concrete.next_state in *;
@@ -156,7 +156,7 @@ Proof.
                        | H : ?x = _ |- context[?x] =>
                          rewrite H; simpl; clear H
                        end; reflexivity]));
-         repeat (split; eauto using ra_in_user_upd); now rewrite decodeK].
+         repeat (split; eauto); now rewrite decodeK].
 
 Qed.
 
@@ -245,7 +245,7 @@ Proof.
   have KER : in_kernel kst = true.
   { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
   destruct ast as [amem areg [apc tapc] int], cst as [cmem cregs cache [cpc cpct] cepc].
-  destruct REF as (_ & ? & Ht & REFM & REFR & CACHECORRECT & MVEC & RA & WFENTRYPOINTS & KINV).
+  destruct REF as (? & Ht & REFM & REFR & CACHECORRECT & MVEC & WFENTRYPOINTS & KINV).
   destruct (decode cpct) as [[tpc' | | ]|] eqn:TAG; try solve [intuition].
   subst cpc tpc'.
   assert (NUSER : word_lift (fun t => is_user t) (common.tag (Concrete.pc kst)) = false).
@@ -262,7 +262,7 @@ Proof.
     destruct cst' as [cmem'' cregs'' cache' ? ?]. simpl in *. subst.
     unfold refine_state.
     repeat match goal with
-             | |- _ /\ _ => split; eauto using user_regs_unchanged_ra_in_user
+             | |- _ /\ _ => split; eauto
            end.
     + rewrite TAG //.
     + clear - ISUSER MVEC STORE REFM HMEM.
@@ -295,7 +295,7 @@ Proof.
   destruct
     ast as [amem aregs [apc atpc] int],
     cst as [cmem cregs cache [pc tpc] epc],
-    REF as (_ & ? & Ht & REFM & REFR & CACHE & MVEC & RA & WFENTRYPOINTS & KINV).
+    REF as (? & Ht & REFM & REFR & CACHE & MVEC & WFENTRYPOINTS & KINV).
   subst apc.
   destruct (decode tpc) as [[tpc'| |]|] eqn:DEC => //. subst tpc'.
   apply encodeK in DEC. subst tpc.
@@ -307,7 +307,7 @@ Proof.
     => [[amem' aregs' [pc' atpc'] int']|].
   - exploit syscalls_correct_allowed_case; eauto.
     intros (cmem' & creg' & cache' & pct' & EXEC' &
-            REFM' & REFR' & CACHE' & MVEC' & RA'' & WFENTRYPOINTS' & KINV').
+            REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
     generalize (user_kernel_user_step_determ STEP EXEC'). intros ?. subst.
     { exists (Symbolic.State amem' aregs' pc'@atpc' int'). split.
       - eapply Symbolic.step_syscall; eauto.
@@ -336,7 +336,8 @@ Proof.
   unfold in_user in NUSER.
   unfold in_kernel, Concrete.is_kernel_tag in NKERNEL.
   erewrite encode_kernel_tag in NKERNEL.
-  destruct REF as (INUSER & ? & ? & ? & ? & CACHE & ?).
+  move: (refine_state_in_user _ _ _ _ REF) => INUSER.
+  destruct REF as (? & ? & ? & ? & CACHE & ?).
   assert (PCS := valid_pcs STEP CACHE INUSER).
   unfold word_lift in *.
   destruct (decode (common.tag (Concrete.pc cst'))) as [[t| |]|] eqn:DEC;
@@ -371,7 +372,7 @@ Lemma backwards_simulation ast cst cst' :
     refine_state ki table ast' cst'.
 Proof.
   intros [REF | (cst0 & kst & REF & KSTEP & EXEC)] STEP.
-  - assert (USER : in_user cst = true) by (destruct cst, ast, REF; eauto).
+  - assert (USER : in_user cst = true) by (eapply refine_state_in_user; eauto).
     destruct (in_user cst') eqn:USER'.
     + right.
       eapply cache_hit_simulation; eauto.
@@ -379,7 +380,7 @@ Proof.
     + left. right. do 2 eexists. do 2 (split; eauto).
       constructor.
       by eapply user_into_kernel; eauto.
-  - assert (USER : in_user cst0 = true) by (destruct cst0, ast, REF; eauto).
+  - assert (USER : in_user cst0 = true) by (eapply refine_state_in_user; eauto).
     destruct (in_kernel cst') eqn:KER'.
     + left. right.
       do 2 eexists. do 2 (split; eauto).
