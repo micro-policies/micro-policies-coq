@@ -654,7 +654,55 @@ Proof.
   rewrite GETCALL in SUCC. discriminate.
 Qed.
 
+(*TODO: Move to more general file*)
+
+Definition khandler := @rules.handler cfi_tag_eqType mt ops e (@Symbolic.handler mt sym_params).
+Definition uhandler := @Symbolic.handler mt sym_params.
+
+Lemma uhandler_chandler_stop sst umvec :
+  Sym.build_mvec stable sst = Some umvec ->
+  uhandler umvec = None ->
+  khandler (rules.encode_mvec (rules.mvec_of_umvec umvec)) = None.
+Proof.
+  intros UMVEC UHANDLER.
+  unfold uhandler in UHANDLER. unfold Symbolic.handler in UHANDLER. simpl in UHANDLER.
+  destruct sst as [mem regs [pc tpc] int].
+  unfold Sym.build_mvec in UMVEC.
+  destruct (get mem pc) eqn:GET.
+  - destruct (decode_instr (common.val a)) eqn:INST.
+    + rewrite INST in UMVEC; 
+      destruct i eqn:OP; simpl in UMVEC; unfold bind in UMVEC;
+      repeat match goal with
+        | [H: match ?Expr with _ => _ end = _ |- _] => 
+          remember (Expr) as hexpr; destruct hexpr
+      end;
+      inv UMVEC;
+      unfold cfi_handler in UHANDLER; match_inv; subst;
+      unfold khandler; simpl; 
+      rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
+      simpl;
+      try match goal with
+        | [H : valid_jmp _ _ = false |- _] => rewrite H
+      end;
+       try reflexivity; repeat (rewrite rules.decodeK); try reflexivity.
+    + rewrite INST in UMVEC. discriminate.
+  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
+    + rewrite GETCALL in UMVEC. unfold cfi_handler in UHANDLER.
+      inv UMVEC.
+      match_inv; subst; simpl;
+      rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
+      simpl;
+      try match goal with
+        | [H : valid_jmp _ _ = false |- _] => rewrite H
+      end; try reflexivity.
+    + rewrite GETCALL in UMVEC. discriminate.
+Qed.
+      
 Require Import Classical.
+Import ListNotations.
+
+Open Scope list_scope.
+Close Scope seq_scope.
 
 Program Instance cfi_refinementAS_specs :
   machine_refinement_specs cfi_refinementSC.
@@ -821,22 +869,48 @@ Next Obligation. (*symolic violation implies concrete violation*)
       apply in_user_in_kernel in USER. rewrite KEXEC in USER.
       discriminate.
 Qed.
-Next Obligation. (*symbolic stopping implies concrete stopping*)
+Next Obligation. (*symbolic stopping implies concrete stopping*) 
 Proof.
-  unfold Sym.stopping in H0.
-  destruct H0 as [sst [AXS STUCK]].
+  unfold Sym.stopping in H1.
+  destruct H1 as [sst [AXS STUCK]].
   subst.
   unfold Conc.stopping.
-  induction H. 
-  - unfold preservation.refine_state in H. simpl in H.
-    unfold refine_state in H.
-    destruct H as [[UREF | KREF] INV].
-    + unfold Conc.in_user. left. exists cst.
-      split; eauto using refine_state_in_user.
-    + destruct KREF as [cst0 [kst [REF [CSTEP KEXEC]]]].
-      (*case cst is in kernel, need to contradict it probably*)
-      admit.
-  - simpl in *. unfold check in H3.
+  unfold check in H. 
+  apply andb_true_iff in H.
+  destruct H as [USERI USERJ].
+  destruct cxs.
+  - left; exists csj; unfold Conc.in_user; split; auto.
+  - assert (REF := refine_traces_single H0). right.
+    exists csj; exists (s :: cxs).
+    unfold Conc.in_user. unfold in_user in USERJ.
+    split; auto.
+    split; auto. apply forallb_forall.
+    intros x IN.
+    destruct IN as [EQ | IN]; subst.
+    + assert (IN2 : In2 csj x (csj :: x :: cxs))
+        by (simpl; auto).
+      specialize (REF csj x IN2).
+      simpl in REF.
+      unfold check in REF.
+      apply andb_false_iff in REF.
+      destruct REF as [CONTRA | NUSER].
+      * unfold in_user in CONTRA.
+        rewrite CONTRA in USERJ.
+        discriminate.
+      * inv H0; simpl in *.
+        { clear IN2.
+          destruct H7 as [REF ?].
+          destruct REF as [UREF | KREF].
+          - assert (KERNEL := user_into_kernel UREF H5 NUSER).
+            assumption.
+          - destruct KREF as [? [? [? [? KEXEC]]]].
+            apply restricted_exec_snd in KEXEC.
+            apply  (@in_user_in_kernel mt ops sym_params cp e) in USERJ.
+            congruence.
+        }
+        { 
+          
+      
 Admitted.
       
 End Refinement.

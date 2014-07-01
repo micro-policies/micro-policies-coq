@@ -72,6 +72,24 @@ Inductive refine_traces :
     refine_traces (ast' :: axs) (cst' :: cxs) ->
     refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs).
 
+Lemma refine_traces_single ast cst cst' cxs :
+  refine_traces [ast] (cst :: cst' :: cxs) ->
+  forall csi csj, 
+    In2 csi csj (cst :: cst' :: cxs) -> 
+    check csi csj = false.
+Proof.
+  intros REF csi csj IN2.
+  inv REF.
+  destruct IN2 as [[E1 E2] | IN2]; subst.
+  - assumption.
+  - induction (cst' :: cxs).
+    + destruct IN2.
+    + inv H8.
+      * destruct IN2.
+      * destruct IN2 as [[E1 E2] | IN2]; subst;
+        by auto.
+Qed.
+
 Class machine_refinement_specs := {
 
   step_classic : forall (cst cst': @state cmachine),
@@ -91,7 +109,7 @@ Class machine_refinement_specs := {
   cfg_equiv : forall (asi asj : @state amachine) csi csj,
     refine_state asi csi ->
     refine_state asj csj ->
-    step asi asj -> (*needed to strengthen this for syscalls*)
+    step asi asj -> (*needed to strengthen this for syscalls, may only need concrete step though*)
     succ asi asj = true ->
     step csi csj ->
     succ csi csj = true;
@@ -117,10 +135,13 @@ Class machine_refinement_specs := {
      Doesn't seem easy to state! *)
   (* CH: not clear how possible it was before, but this is clearly not
      possible with the new way to define backwards_refinement_normal *)
-  as_implies_cs : forall axs cxs,
-    refine_traces axs cxs ->
-    stopping axs ->
-    stopping cxs
+  as_implies_cs : forall axs cxs asi asj csi csj,
+    check csi csj = true ->
+    succ asi asj = false ->
+    refine_state asi csi ->
+    refine_traces (asj :: axs) (csj :: cxs) ->
+    stopping (asj :: axs) ->
+    stopping (csj :: cxs)
 
 }.
 
@@ -331,7 +352,7 @@ Proof.
                [assumption | apply (av_implies_cv asi asj csi csj REFI REFJ AV VIS CSTEP)].
         split. now apply (refine_traces_preserves_cfi_trace RHT TSAFE1).
         split. now apply (refine_traces_preserves_cfi_trace  RTT TSAFE2).
-        apply (as_implies_cs RTT STOP1).
+        apply (as_implies_cs asi csi VIS AV REFI RTT STOP1).
       + left.
         intros csi' csj' IN2' STEP'.
         subst cxs.
