@@ -896,132 +896,164 @@ Proof.
 Qed.
 
 (*Case 2*)
+
+(*The first part (if get smem pc = Some _) works.
+  The second part, should work as well however we will have to replay
+  things like 3 times and it's already too slow.
+  Stays as admit*)
 Lemma no_user_access_implies_halt sst cst cmvec :
   refinement_common.refine_state ki stable sst cst ->
   build_mvec stable sst = None ->
   build_cmvec mt cst = Some cmvec ->
   khandler cmvec = None. 
-Proof. (*Postpone proof until khandler rewrite*) Admitted.
+Proof.
   (*intros REF SMVEC CMVEC.
-  destruct sst as [smem sreg [spc stpc] int].
-  destruct cst as [mem reg cache [pc ctpc] epc].
-  destruct REF
-    as [USER [PC [TPC [REFM [REFR [CACHE [MVEC [RA [WF KI]]]]]]]]].
+  destruct REF as [smem sreg int mem reg cache epc pc stpc
+                        ? ? REFM REFR CACHE MVE WF KI].
   subst.
   unfold khandler.
-  unfold Sym.build_mvec in SMVEC.
-  destruct (rules.decode ctpc); 
-    [destruct t; try contradiction | contradiction].
-  subst.
-  apply in_user_ctpc in USER.
-  destruct USER as [? USER].
-  simpl in USER.
+  unfold build_mvec in SMVEC.
   destruct (get smem pc) eqn:SGET.
-  - destruct a as [w itg]. rewrite SGET in SMVEC.
+  - destruct a as [w itg].
     simpl in SMVEC.
-    destruct (decode_instr w) eqn:INST.
+    destruct (decode_instr w) eqn:INST. 
+    Opaque Symbolic.handler. Opaque cfi_handler. 
     + destruct i eqn:OP;
-      simpl in SMVEC;
+      simpl in SMVEC; try discriminate; (*nop case*)
       apply REFM in SGET;
-      unfold bind in SMVEC; 
+      unfold bind in SMVEC;
       repeat match goal with
         | [H: match ?Expr with _ => _ end = _ |- _] => 
           remember (Expr) as hexpr; destruct hexpr
         | [H: Some ?A = get _ _ |- _] => destruct A; symmetry in H
         | [H: None = get _ _ |- _] => symmetry in H
       end;
-      try discriminate; 
-      try match goal with
-               |[H: get sreg ?R = None |- _] =>
-                destruct (TotalMaps.get reg R) eqn:?
+      try discriminate;
+      unfold build_cmvec in CMVEC;
+      repeat match goal with
+               |[H: get sreg ?R = Some _ |- _] =>
+                apply REFR in H
+               |[H: get smem ?Addr = Some _ |- _] =>
+                apply REFM in H
              end;
-      try match goal with
-            |[H:TotalMaps.get _ _ = _@?Ctg |- _] =>
-             destruct (rules.decode Ctg) eqn:?
-          end; 
-      try  match goal with
-              |[H: get sreg ?R = None, 
-                H1: TotalMaps.get reg ?R = _@?Ctg,
-                H2: refine_registers _ _,
-                H3: rules.decode ?Ctg = Some _  |- _] =>
-               destruct (get_reg_no_user _ H2 H H1 H3)
-            end;
-      try match goal with
-            |[H:exists _, _ = rules.ENTRY _ |- _] => destruct H
-          end;
-      unfold Conc.build_mvec in CMVEC;
+      unfold bind in CMVEC;
       repeat match goal with
         | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
           rewrite H1 in H; simpl in H
-      end; inv CMVEC;
-      unfold rules.handler;
-      try rewrite USER;
-      try match goal with
-        | [|- match word_to_op (op_to_word _) with _ => _ end = _] =>
-          rewrite op_to_wordK
-           end;
-      try (rewrite rules.decodeK); 
-      try match goal with
-               | [H: TotalMaps.get _ ?R = _@?Ctg, 
-                     H1 : rules.decode ?Ctg = _ |- _] =>
-                  rewrite H; simpl; rewrite H1
              end;
-      try reflexivity. simpl.
-
-
-      
-      simpl.
-      (* repeat match goal with *)
-      (*   | [H:rules.decode ?Tag = _ |- context[rules.decode ?Tag]] =>  *)
-      (*     rewrite H *)
-      (*   | [ |- context[rules.decode (rules.encode _)]] =>  *)
-      (*       rewrite rules.decodeK *)
-      (*     end; simpl. *)
-      rewrite rules.decodeK. rewrite Heqy.
-      simpl. rewrite Heqo. simpl.
-      
-      
-      
-
-      destruct (get sreg s0) eqn:RW.
-      * destruct a. rewrite RW in SMVEC.
-        simpl in SMVEC. discriminate.
-      * unfold Conc.build_mvec in CMVEC.
-        simpl in CMVEC. 
-        apply REFM in SGET.
-        rewrite SGET in CMVEC.
-        rewrite INST in CMVEC. simpl in CMVEC.
-        destruct (TotalMaps.get reg s0) eqn:CRW.
-        destruct (rules.decode tag) eqn:T. 
-
-        { destruct t.
-          - apply rules.encodeK in T.
-            rewrite <- T in CRW.
-            apply REFR in CRW. 
-            rewrite RW in CRW. discriminate.
-          - unfold khandler; simpl.
-            unfold rules.handler.
-            inv CMVEC.
-            rewrite op_to_wordK.
-            rewrite rules.decodeK.
-            destruct (rules.decode ctpc).
-            + destruct t. simpl. rewrite T.
-              simpl. reflexivity. trivial. trivial. trivial.
-
-
-
-
-
-      unfold Conc.build_mvec;
-      apply REFM in SGET; rewrite SGET;
-      simpl; rewrite INST;
-      unfold bind in SMVEC;
+      try match goal with (*for memory accesses*)
+            |[H: match get mem (common.val (TotalMaps.get _ ?R)) with _ => _ end = _,
+                 H1: TotalMaps.get _ ?R = _ |- _] => rewrite H1 in H
+          end;
+      try match goal with (*for memory accesses*)
+            |[H: match get mem (common.val (TotalMaps.get ?Reg ?R)) with _ => _ end = _
+              |- _] => destruct (TotalMaps.get Reg R) eqn:?
+          end;
       repeat match goal with
-        | [H: match ?Expr with _ => _ end = _ |- _] => 
-          remember (Expr) as hexpr; destruct hexpr
-      end;
-      try discriminate. *)
-
+        | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
+          rewrite H1 in H; simpl in H
+             end; simpl in *;
+      try match goal with
+            | [H: get smem ?Addr = None, 
+                  H1: match get mem ?Addr with _ => _ end = _ |- _] =>
+              destruct (get mem Addr) as [[mval mtg] |] eqn:?;
+                [ idtac | discriminate]
+          end;
+      try match goal with
+               | [H: get smem ?Addr = None, H1: get mem ?Addr = Some _@?Mtg |- _] =>
+                 destruct (rules.decode Mtg) eqn:DECMTG;
+                   [ destruct (get_mem_no_user _ REFM H H1 DECMTG) | idtac]; clear H1
+          end;
+      try match goal with
+            | [ H1: match get mem ?Addr with _ => _ end = _ |- _] =>
+              destruct (get mem Addr) as [[mval2 mtg2] |] eqn:?;
+                 [destruct (rules.decode mtg2) as [[| |] | ] eqn:DECMTG2 | discriminate]
+          end;
+      inv CMVEC;
+      repeat match goal with 
+               | [H: TotalMaps.get ?Reg ?R = _ |- _] =>
+                 rewrite H
+             end;
+      repeat match goal with 
+               | [|- context[TotalMaps.get ?Reg ?R]] =>
+                 destruct (TotalMaps.get Reg R) eqn:?
+             end;
+      try match goal with
+               | [H: get sreg ?R = None, H1: TotalMaps.get reg ?R = _@?Ctg |- _] =>
+                 destruct (rules.decode Ctg) eqn:DECTG1;
+                   [ destruct (get_reg_no_user _ REFR H H1 DECTG1) | idtac]; clear H1
+          end;
+      try match goal with
+              | [H: TotalMaps.get reg ?R = _@?Ctg |- _] =>
+                destruct (rules.decode Ctg) as [[| |] |] eqn:DECTG2;
+                  clear H
+            end;
+        try match goal with
+              | [H: TotalMaps.get reg ?R = _@?Ctg |- _] =>
+                destruct (rules.decode Ctg) as [[| |] |] eqn:DECTG3;
+                  clear H
+            end;
+       repeat match goal with
+                | [H: exists _, _ = rules.ENTRY _ |- _] => destruct H
+              end;
+        subst;
+      simpl;
+      try rewrite op_to_wordK;  simpl;
+      try rewrite DECTG1;
+      try rewrite DECTG2;
+      try rewrite DECTG3;
+      try rewrite DECMTG;
+      try rewrite DECMTG2;
+      repeat rewrite (rules.decodeK); 
+      simpl;
+      try reflexivity. 
+    + unfold build_cmvec in CMVEC.
+      apply REFM in SGET. rewrite SGET in CMVEC.
+      rewrite INST in CMVEC.
+      by discriminate.
+  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
+    + discriminate.
+    + unfold build_cmvec in CMVEC.
+      destruct (get mem pc) eqn:GET.
+      * destruct a as [v ctg].
+        destruct (rules.decode ctg) eqn:DEC.
+        destruct (get_mem_no_user pc REFM SGET GET DEC); subst.
+        { simpl in CMVEC.
+          destruct (decode_instr v) eqn:INST.
+          - destruct i eqn:OP;
+              admit. 
+             (*these are all trivial (or can be solved as above but the way the handler is
+               a full case analysis must be done on all parts of the mvec resulting in a
+               very-very slow proof. I will leave this as admitted until we change the
+               handler and proof auxiliary lemmas that reduce the load*)
+          - discriminate.
+        }
+        { 
+          unfold wf_entry_points in WF.
+          destruct H as [ut TG]. subst.
+          specialize (WF pc ut).
+          rewrite GET in WF.
+          destruct (decode_instr v) eqn:INST.
+          + destruct i.
+            - apply common.encodeK in INST.
+              assert ((v == encode_instr (Nop mt)) && (ctg == rules.encode (rules.ENTRY ut)))
+                by admit.
+              apply WF in H.
+              destruct H as [? [CONTRA ?]].
+              rewrite CONTRA in GETCALL. discriminate.
+            - simpl in CMVEC.
+              rewrite INST in CMVEC.
+              admit. admit. admit. admit.
+              admit. admit. admit. admit.
+              admit. admit. admit. admit.
+              admit.
+          + rewrite INST in CMVEC. discriminate.
+        }
+        (*case decode ctg fails*)
+        admit. (*trivial*)
+      * discriminate. *)
+Admitted.
+            
 (*Case 3*)
 
 Lemma concrete_stuck cst :
