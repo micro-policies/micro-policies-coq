@@ -228,7 +228,6 @@ Inductive step (st st' : state) : Prop :=
     (PC : get mem pc = None)
     (GETCALL : get_syscall pc = Some sc)
     (CALL : run_syscall sc st = Some st'), step st st'.
-
 End WithClasses.
 
 End Symbolic.

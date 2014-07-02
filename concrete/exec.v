@@ -143,4 +143,74 @@ Proof.
     + rewrite M1. simpl. trivial.
 Qed.
 
+Import PartMaps.
+
+Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
+  let '(Concrete.mkState mem reg cache pc@tpc epc) := st in
+  match get mem pc with
+    | Some i =>
+      match decode_instr (val i) with
+        | Some op =>
+          let part := @Concrete.mkMVec (word mt) (op_to_word (opcode_of op)) 
+                                       tpc (common.tag i) in
+          match op  with
+            | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
+            | Const n r => 
+              fun part => 
+                let old := TotalMaps.get reg r in
+                  Some (part (common.tag old) Concrete.TNone Concrete.TNone)
+            | Mov r1 r2 => 
+              fun part =>
+                let v1 := TotalMaps.get reg r1 in
+                let v2 := TotalMaps.get reg r2 in
+                  Some (part (common.tag v1) (common.tag v2) Concrete.TNone)
+            | Binop _ r1 r2 r3 => fun part =>
+              let v1 := TotalMaps.get reg r1 in
+              let v2 := TotalMaps.get reg r2 in
+              let v3 := TotalMaps.get reg r3 in
+                Some (part (common.tag v1) (common.tag v2) (common.tag v3))
+            | Load r1 r2 => fun part =>
+              let w1 := TotalMaps.get reg r1 in
+              do! w2 <- get mem (val w1);
+              let old := TotalMaps.get reg r2 in
+                Some (part (common.tag w1) (common.tag w2) (common.tag old))
+            | Store r1 r2 => fun part =>
+              let w1 := TotalMaps.get reg r1 in
+              let w2 := TotalMaps.get reg r2 in
+                do! w3 <- get mem (val w1);
+                Some (part (common.tag w1) (common.tag w2) (common.tag w3))
+            | Jump r => fun part =>
+              let w := TotalMaps.get reg r in
+                Some (part (common.tag w) Concrete.TNone Concrete.TNone)
+            | Bnz r n => fun part =>
+              let w := TotalMaps.get reg r in
+                Some (part (common.tag w) Concrete.TNone Concrete.TNone)
+            | Jal r => fun part =>
+              let w := TotalMaps.get reg r in
+              let old := TotalMaps.get reg ra in
+                Some (part (common.tag w) (common.tag old) Concrete.TNone)
+            | JumpEpc => 
+              fun part => 
+                Some (part (common.tag epc) Concrete.TNone Concrete.TNone)
+            | AddRule => 
+              fun part =>
+                Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
+            | GetTag r1 r2 => 
+              fun part =>
+                let w1 := TotalMaps.get reg r1 in
+                let old := TotalMaps.get reg r2 in
+                Some (part (common.tag w1) (common.tag old) Concrete.TNone)
+            | PutTag r1 r2 r3 =>
+              fun part =>
+                let w1 := TotalMaps.get reg r1 in
+                let w2 := TotalMaps.get reg r2 in
+                let old := TotalMaps.get reg r3 in
+                Some (part (common.tag w1) (common.tag w2) (common.tag old))
+            | Halt => fun _ => None
+          end part
+        | None => None
+      end
+    | None => None 
+  end.
+
 End Masks.
