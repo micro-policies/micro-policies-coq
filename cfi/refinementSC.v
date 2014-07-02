@@ -817,6 +817,83 @@ Lemma unique_cmvec sst cst umvec cmvec :
   @refinement_common.refine_state mt ops sym_params cp e ki stable sst cst ->
   build_mvec stable sst = Some umvec ->
   build_cmvec mt cst = Some cmvec ->
+  rules.encode_mvec (rules.mvec_of_umvec_with_calls umvec) = cmvec.
+Proof.
+  intros REF UMVEC CMVEC.
+  destruct REF as [smem sreg int mem reg cache epc pc stpc
+                        ? ? REFM REFR CACHE MVE WF KI].
+  subst.
+  unfold build_mvec in UMVEC.
+  destruct (get smem pc) eqn:SGET.
+  - destruct a as [v tg]. simpl in UMVEC.
+    destruct (decode_instr v) eqn:DEC.
+    + destruct i eqn:OP;
+      unfold bind in UMVEC;
+      repeat match goal with
+               | [H: match ?Expr with _ => _ end = _|- _] => 
+                 remember (Expr) as hexpr; destruct hexpr
+             end;
+      repeat match goal with
+               | [H: Some ?A = get _ _ |- _] => destruct A; symmetry in H
+             end;
+      repeat match goal with
+               | [H : get sreg _ = Some _ |- _] => 
+                 apply REFR in H
+               | [H : get smem _ = Some _ |- _] => 
+                 apply REFM in H
+             end;
+      unfold build_cmvec, bind in CMVEC;
+      repeat match goal with
+               | [H: match ?Expr with _ => _ end = _, H': ?Expr = _ |- _] => 
+                 rewrite H' in H; simpl in H'
+             end;
+      inv CMVEC;
+      inv UMVEC;
+      repeat match goal with 
+               | [H: TotalMaps.get _ _ = _ |- _] => rewrite H
+             end;
+      unfold rules.mvec_of_umvec; simpl;
+      unfold rules.encode_mvec; simpl;
+      try reflexivity.
+      (*handling automation fails*)
+      * rewrite Heqhexpr in H0.
+        simpl in H0.
+        simpl in Heqhexpr0.
+        rewrite Heqhexpr0 in H0.
+        inv H0. rewrite Heqhexpr1.
+        reflexivity.
+      * rewrite Heqhexpr in H0.
+        simpl in H0. simpl in Heqhexpr1. rewrite Heqhexpr1 in H0.
+        inv H0.
+        rewrite Heqhexpr0.
+        reflexivity.
+    + discriminate.
+  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
+    { (*syscall case*)
+      inv UMVEC.
+      unfold rules.mvec_of_umvec. simpl.
+      unfold rules.encode_mvec. simpl.
+      remember (Symbolic.entry_tag s) as etag eqn:ETAG. symmetry in ETAG.
+      unfold wf_entry_points in WF.
+      specialize (WF pc etag).
+      assert (ECALL : (exists sc : Symbolic.syscall mt,
+          Symbolic.get_syscall stable pc = Some sc /\
+          Symbolic.entry_tag sc = etag))
+        by (eexists; eauto).
+      apply WF in ECALL.
+      destruct (get mem pc) eqn:GET.
+      - destruct a. apply andb_true_iff in ECALL.
+        destruct ECALL as [VAL TG].
+        move/eqP:VAL => VAL.
+        move/eqP:TG => TG.
+        unfold build_cmvec in CMVEC.
+        rewrite GET in CMVEC. simpl in CMVEC. rewrite VAL in CMVEC.
+        rewrite common.decodeK in CMVEC. inv CMVEC.
+        reflexivity.
+      - discriminate.
+    }
+    { discriminate. }
+Qed.
 
 (*Case 2*)
 Lemma no_user_access_implies_halt sst cst cmvec :
