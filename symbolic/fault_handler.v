@@ -192,7 +192,7 @@ Definition handler : code :=
 Section invariant.
 
 Context {s : machine_ops_spec ops}
-        {ap : Symbolic.symbolic_params}
+        {ap : Symbolic.symbolic_params mt}
         {e : encodable (Symbolic.tag mt)}.
 
 Record policy_invariant : Type := {

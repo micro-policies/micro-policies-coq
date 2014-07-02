@@ -25,9 +25,9 @@ Section Refinement.
 Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {ap : Symbolic.symbolic_params}
-        {memax : PartMaps.axioms (@Symbolic.sm mt ap)}
-        {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
+        {sp : Symbolic.symbolic_params mt}
+        {memax : PartMaps.axioms (@Symbolic.sm mt sp)}
+        {regax : PartMaps.axioms (@Symbolic.sr mt sp)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}
         {e : @encodable (Symbolic.tag mt) mt ops}
@@ -223,7 +223,7 @@ Qed.
 
 Let symbolic_handler_concrete_handler mvec rvec :
   Symbolic.handler mvec = Some rvec ->
-  handler [eta Symbolic.handler] (encode_mvec (mvec_of_umvec mvec))
+  handler [eta @Symbolic.handler mt _] (encode_mvec (mvec_of_umvec mvec))
   = Some (rvec_of_urvec rvec).
 Proof.
   intros H.
@@ -358,7 +358,7 @@ Proof.
     | context[Symbolic.handler ?mvec] =>
       destruct (Symbolic.handler mvec) eqn:HANDLER; last by []
     end.
-    assert (HANDLER' : handler Symbolic.handler cmvec = Some (Symbolic.mkRVec KERNEL KERNEL)).
+    assert (HANDLER' : handler (@Symbolic.handler mt sp) cmvec = Some (Symbolic.mkRVec KERNEL KERNEL)).
     { by rewrite /handler /= op_to_wordK 2!decodeK HANDLER. }
     destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE].
     pose proof (store_mvec_mvec_in_kernel _ _ STORE).

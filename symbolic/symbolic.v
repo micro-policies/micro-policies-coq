@@ -52,7 +52,7 @@ Open Scope bool_scope.
 
 Section WithClasses.
 
-Context {t : machine_types}
+Context (t : machine_types)
         {ops : machine_ops t}.
 
 Import PartMaps.

@@ -33,7 +33,7 @@ Context {memory : Type}
 
 Variable valid_jmp : word t -> word t -> bool.
 
-Program Instance sym_cfi : (Symbolic.symbolic_params) := {
+Program Instance sym_cfi : (Symbolic.symbolic_params t) := {
   tag := cfi_tag_eqType;
 
   handler := rules.cfi_handler valid_jmp;
