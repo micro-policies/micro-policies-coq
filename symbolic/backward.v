@@ -351,14 +351,6 @@ Definition refine_state_weak sst cst :=
     Concrete.step _ masks cst0 kst /\
     kernel_exec kst cst.
 
-(* TODO: remove this *)
-Lemma kernel_simulation_strong sst cst cst' :
-  refine_state_weak sst cst ->
-  Concrete.step _ masks cst cst' ->
-  visible cst cst' = false ->
-  refine_state_weak sst cst'.
-Admitted.
-
 Lemma backwards_simulation sst cst cst' :
   refine_state_weak sst cst ->
   Concrete.step _ masks cst cst' ->
