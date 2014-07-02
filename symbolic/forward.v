@@ -244,19 +244,16 @@ Ltac solve_refine_state :=
     H : TotalMaps.get ?cregs ?r = _ |- _ =>
     simpl in USERREGS; rewrite -> (USERREGS r) in H
   end;
-  repeat match goal with
-  | |- _ /\ _ =>
-    split;
-    eauto using user_mem_unchanged_refine_memory,
-                refine_registers_upd', user_regs_unchanged_refine_registers,
-                mvec_in_kernel_user_upd, wf_entry_points_user_upd,
-                no_syscall_no_entry_point
-  end.
+  econstructor;
+  eauto using user_mem_unchanged_refine_memory,
+              refine_registers_upd', user_regs_unchanged_refine_registers,
+              mvec_in_kernel_user_upd, wf_entry_points_user_upd,
+              no_syscall_no_entry_point.
 
 Ltac analyze_syscall :=
   match goal with
-  | H : Symbolic.run_syscall _ _ = Some ?ast' |- _ =>
-    destruct ast' as [amem' aregs' [apc' tapc'] int'];
+  | H : Symbolic.run_syscall _ _ = Some ?sst' |- _ =>
+    destruct sst' as [smem' sregs' [spc' sapc'] int'];
     exploit syscalls_correct_allowed_case; eauto;
     intros;
     repeat match goal with
@@ -267,20 +264,40 @@ Ltac analyze_syscall :=
     [apply user_kernel_user_step_weaken; eassumption|solve_refine_state]
   end.
 
-Lemma forward_simulation ast ast' cst :
-  refine_state ki table ast cst ->
-  Symbolic.step table ast ast' ->
+Ltac analyze_cache_miss :=
+  match goal with
+  | PC : PartMaps.get ?cmem ?pc = Some ?i@_,
+    INST : decode_instr ?i = Some _,
+    MVEC : mvec_in_kernel ?cmem,
+    KINV : kernel_invariant_statement _ ?cmem _ ?cache _,
+    CACHE : cache_correct ?cache,
+    LOOKUP : Concrete.cache_lookup _ ?cache _ (encode_mvec (mvec_of_umvec ?mvec)) = None,
+    HANDLER : Symbolic.handler ?mvec = Some _ |- _ =>
+    let cmvec := constr:(encode_mvec (mvec_of_umvec mvec)) in
+    let STORE := fresh "STORE" in
+    destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE];
+    pose proof (store_mvec_mvec_in_kernel _ _ STORE);
+    pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE);
+    let HANDLER' := constr:(symbolic_handler_concrete_handler _ HANDLER) in
+    destruct (handler_correct_allowed_case _ cmvec _ pc@(Concrete.ctpc cmvec) _ KINV HANDLER' STORE CACHE)
+      as ([? ? ? [? ?] ?] &
+          KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
+    simpl in PC'; inv PC';
+    match_data;
+    unfold encode_mvec, encode_rvec, rvec_of_urvec in *; simpl in *
+  end.
+
+Lemma forward_simulation sst sst' cst :
+  refine_state ki table sst cst ->
+  Symbolic.step table sst sst' ->
   exists cst',
     exec (Concrete.step _ masks) cst cst' /\
-    refine_state ki table ast' cst'.
+    refine_state ki table sst' cst'.
 Proof.
-  destruct ast as [amem aregs [apc tapc] int], cst as [cmem cregs cache [cpc cpct] epc].
-  unfold refine_state. simpl.
   intros REF STEP.
-  destruct REF as (? & ? & REFM & REFR & CACHE & MVEC & WFENTRYPOINTS & KINV).
-  destruct (decode cpct) as [[t| |]|] eqn:DEC; try solve [intuition].
-  apply encodeK in DEC.
-  subst cpc tapc cpct.
+  destruct REF as [smem sregs int cmem cregs cache epc pc tpc
+                   ? ? REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
+  subst sst cst.
   inv STEP;
   try match goal with
   | H : Symbolic.State _ _ _ _ = Symbolic.State _ _ _ _ |- _ =>
@@ -290,7 +307,7 @@ Proof.
   repeat autounfold in NEXT;
   match_inv;
 
-  try match goal with
+  match goal with
   | HANDLER : Symbolic.handler ?mvec = Some ?rvec |- _ =>
     destruct rvec;
     let cmvec := constr:(encode_mvec (mvec_of_umvec mvec)) in
@@ -308,23 +325,13 @@ Proof.
           || let op := current_instr_opcode in fail 3 "failed hit case" op
     |
       (* Cache miss case, fault handler will execute *)
-      let STORE := fresh "STORE" in
-      destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE];
-      pose proof (store_mvec_mvec_in_kernel _ _ STORE);
-      pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE);
-      let HANDLER' := constr:(symbolic_handler_concrete_handler _ HANDLER) in
-      try destruct (handler_correct_allowed_case _ cmvec _ pc@(encode (USER tpc)) _ KINV HANDLER' STORE CACHE)
-        as ([? ? ? [? ?] ?] &
-            KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
-      simpl in PC'; inv PC';
-      match_data;
-      unfold encode_mvec, encode_rvec, rvec_of_urvec in *; simpl in *;
+      analyze_cache_miss;
       try solve [eexists; split;
       [
         eapply re_step; trivial; [solve_concrete_step|];
         try (
           eapply restricted_exec_trans;
-          try solve [eapply exec_until_weaken; eapply KEXEC];
+          try solve [eapply exec_until_weaken; eassumption];
           try solve [eapply exec_one; solve_concrete_step]
         )
       | solve_refine_state ] ]
@@ -356,12 +363,12 @@ Proof.
     destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE].
     pose proof (store_mvec_mvec_in_kernel _ _ STORE).
     pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE).
-    try destruct (handler_correct_allowed_case _ cmvec _ pc@(encode (USER tpc)) _ KINV HANDLER' STORE CACHE)
+    destruct (handler_correct_allowed_case _ cmvec _ pc0@(Concrete.ctpc cmvec) _ KINV HANDLER' STORE CACHE)
       as ([? ? ? [? ?] ?] &
           KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'').
     simpl in PC'. inv PC'.
     match_data.
-    destruct ast' as [amem' aregs' [apc' tapc'] int'].
+    destruct sst' as [amem' aregs' [apc' tapc'] int'].
     match type of KEXEC with
     | kernel_user_exec _ ?cst' =>
       have ALLOWED : cache_allows_syscall table cst'

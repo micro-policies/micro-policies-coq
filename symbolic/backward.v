@@ -74,29 +74,33 @@ Ltac analyze_cache :=
     | _ \/ _ => destruct CACHEHIT as [CACHEHIT | CACHEHIT]
     | False => destruct CACHEHIT
     end;
-    subst mvec; simpl in *; subst;
+    try subst mvec; simpl in *; subst;
     try match goal with
     | H : context[decode (encode _)] |- _ =>
       rewrite decodeK in H; simpl in *; subst
+    end;
+    try match goal with
+    | H : encode _ = encode _ |- _ =>
+      apply encode_inj in H; simpl in H; try inv H; subst
     end
   | MISS   : Concrete.miss_state _ _ _ = Some ?st',
     INUSER : in_user ?st' = true |- _ =>
     destruct (miss_state_not_user _ _ MISS INUSER)
   end.
 
-Lemma cache_hit_simulation ast cst cst' :
-  refine_state ki table ast cst ->
+Lemma cache_hit_simulation sst cst cst' :
+  refine_state ki table sst cst ->
   hit_step cst cst' ->
-  exists ast',
-    Symbolic.step table ast ast' /\
-    refine_state ki table ast' cst'.
+  exists sst',
+    Symbolic.step table sst sst' /\
+    refine_state ki table sst' cst'.
 Proof.
-  intros REF [INUSER INUSER' STEP].
-  destruct ast as [amem areg [apc tapc] int].
-  inv STEP; simpl in REF;
-  destruct REF
-    as (? & ? & REFM & REFR & CACHE & MVEC & WFENTRYPOINTS & KINV);
-  subst apc;
+  move => [smem sregs int ? ? ? ? pc tpc ? ? REFM REFR ? MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
+  subst sst cst.
+  inv STEP; subst mvec;
+  try match goal with
+  | EQ : Concrete.mkState _ _ _ _ _ = Concrete.mkState _ _ _ _ _ |- _ => inv EQ
+  end;
   unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
          Concrete.next_state_pc, Concrete.next_state in *;
   simpl in *;
@@ -104,7 +108,7 @@ Proof.
 
   match_inv;
 
-  analyze_cache;
+  analyze_cache; simpl in *;
 
   try solve [rewrite /in_user /word_lift /= decodeK //= in INUSER'];
 
@@ -148,15 +152,18 @@ Proof.
     pose proof (in_user_no_system_call _ _ INUSER' (erefl _) WFENTRYPOINTS)
   end;
 
-  solve [eexists; split;
-         (try econstructor (
-                solve [eauto;
-                       repeat autounfold;
-                       repeat match goal with
-                       | H : ?x = _ |- context[?x] =>
-                         rewrite H; simpl; clear H
-                       end; reflexivity]));
-         repeat (split; eauto); now rewrite decodeK].
+  solve [
+        eexists; split;
+        [ econstructor (
+              solve [eauto;
+                     repeat autounfold;
+                     repeat match goal with
+                     | H : ?x = _ |- context[?x] =>
+                       rewrite H; simpl; clear H
+                     end; reflexivity]
+            )
+        | econstructor; eauto; now rewrite decodeK ]
+  ].
 
 Qed.
 
@@ -235,19 +242,18 @@ Qed.
 
 Import Vector.VectorNotations.
 
-Lemma cache_miss_simulation ast cst cst' :
-  refine_state ki table ast cst ->
+Lemma cache_miss_simulation sst cst cst' :
+  refine_state ki table sst cst ->
   ~~ cache_allows_syscall table cst ->
   user_kernel_user_step cst cst' ->
-  refine_state ki table ast cst'.
+  refine_state ki table sst cst'.
 Proof.
   move => REF NOTALLOWED [kst ISUSER STEP KEXEC].
   have KER : in_kernel kst = true.
   { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
-  destruct ast as [amem areg [apc tapc] int], cst as [cmem cregs cache [cpc cpct] cepc].
-  destruct REF as (? & Ht & REFM & REFR & CACHECORRECT & MVEC & WFENTRYPOINTS & KINV).
-  destruct (decode cpct) as [[tpc' | | ]|] eqn:TAG; try solve [intuition].
-  subst cpc tpc'.
+  destruct REF as [smem sregs int cmem cregs cache epc pc tpc
+                   ? ? REFM REFR CACHECORRECT  MVEC WFENTRYPOINTS KINV].
+  subst sst cst.
   assert (NUSER : word_lift (fun t => is_user t) (common.tag (Concrete.pc kst)) = false).
   { destruct (word_lift (fun t => is_user t) (common.tag (Concrete.pc kst))) eqn:EQ; trivial.
     rewrite /in_kernel in KER.
@@ -255,16 +261,13 @@ Proof.
   destruct (initial_handler_state ISUSER WFENTRYPOINTS NOTALLOWED NUSER CACHECORRECT STEP)
     as (cmem' & mvec & STORE & ?). subst. simpl in *.
   case HANDLER: (handler [eta Symbolic.handler] mvec) => [rvec|].
-  - destruct (handler_correct_allowed_case cmem mvec cregs apc@cpct int KINV HANDLER STORE CACHECORRECT)
+  - destruct (handler_correct_allowed_case cmem mvec cregs pc@(encode (USER tpc)) int
+                                           KINV HANDLER STORE CACHECORRECT)
       as (cst'' & KEXEC' & CACHE' & LOOKUP & MVEC' &
           HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
     assert (EQ := kernel_user_exec_determ KEXEC' KEXEC). subst cst''.
     destruct cst' as [cmem'' cregs'' cache' ? ?]. simpl in *. subst.
-    unfold refine_state.
-    repeat match goal with
-             | |- _ /\ _ => split; eauto
-           end.
-    + rewrite TAG //.
+    econstructor; eauto.
     + clear - ISUSER MVEC STORE REFM HMEM.
       intros addr w t. unfold user_mem_unchanged in *.
       rewrite <- HMEM. apply REFM.
@@ -284,62 +287,56 @@ Proof.
     destruct (handler_correct_disallowed_case cmem mvec int KINV HANDLER STORE ISUSER' KEXEC).
 Qed.
 
-Lemma syscall_simulation ast cst cst' :
-  refine_state ki table ast cst ->
+Lemma syscall_simulation sst cst cst' :
+  refine_state ki table sst cst ->
   cache_allows_syscall table cst ->
   user_kernel_user_step cst cst' ->
-  exists ast', Symbolic.step table ast ast' /\
-               refine_state ki table ast' cst'.
+  exists sst', Symbolic.step table sst sst' /\
+               refine_state ki table sst' cst'.
 Proof.
   intros REF ALLOWED STEP.
-  destruct
-    ast as [amem aregs [apc atpc] int],
-    cst as [cmem cregs cache [pc tpc] epc],
-    REF as (? & Ht & REFM & REFR & CACHE & MVEC & WFENTRYPOINTS & KINV).
-  subst apc.
-  destruct (decode tpc) as [[tpc'| |]|] eqn:DEC => //. subst tpc'.
-  apply encodeK in DEC. subst tpc.
+  destruct REF as [smem sregs int cmem cregs cache epc pc tpc
+                   ? ? REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
+  subst sst cst.
   have [sc GETCALL]: (exists sc, Symbolic.get_syscall table pc = Some sc).
   { rewrite /cache_allows_syscall in ALLOWED.
     case GETCALL: (Symbolic.get_syscall table pc) ALLOWED => [sc|//] ALLOWED.
     by eauto. }
-  case SCEXEC: (Symbolic.run_syscall sc (Symbolic.State amem aregs pc@atpc int))
-    => [[amem' aregs' [pc' atpc'] int']|].
+  case SCEXEC: (Symbolic.run_syscall sc (Symbolic.State smem sregs pc@tpc int))
+    => [[smem' sregs' [pc' tpc'] int']|].
   - exploit syscalls_correct_allowed_case; eauto.
     intros (cmem' & creg' & cache' & pct' & EXEC' &
             REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
     generalize (user_kernel_user_step_determ STEP EXEC'). intros ?. subst.
-    { exists (Symbolic.State amem' aregs' pc'@atpc' int'). split.
+    { exists (Symbolic.State smem' sregs' pc'@tpc' int'). split.
       - eapply Symbolic.step_syscall; eauto.
         eapply wf_entry_points_if in GETCALL; last by exact WFENTRYPOINTS.
-        case GET': (PartMaps.get amem pc) => [[? ?]|] //.
+        case GET': (PartMaps.get smem pc) => [[? ?]|] //.
         move/REFM: GET' => GET'.
         rewrite GETCALL in GET'.
         move: GET' => [[? H]].
         by apply encode_inj in H.
-      - unfold refine_state, in_user, word_lift. simpl.
-        rewrite decodeK. simpl.
-        repeat (split; eauto). }
+      - econstructor; eauto. }
   - destruct (syscalls_correct_disallowed_case _ _ KINV REFM REFR CACHE MVEC
                                                WFENTRYPOINTS GETCALL SCEXEC ALLOWED STEP).
 Qed.
 
-Lemma user_into_kernel ast cst cst' :
-  refine_state ki table ast cst ->
+Lemma user_into_kernel sst cst cst' :
+  refine_state ki table sst cst ->
   Concrete.step _ masks cst cst' ->
   in_user cst' = false ->
   in_kernel cst' = true.
 Proof.
-  destruct ast as [? ? [? ?]], cst as [? ? ? [? ?] ?].
   intros REF STEP NUSER.
+  move: (refine_state_in_user REF) => INUSER.
   destruct (in_kernel cst') eqn:NKERNEL; trivial.
   unfold in_user in NUSER.
   unfold in_kernel, Concrete.is_kernel_tag in NKERNEL.
   erewrite encode_kernel_tag in NKERNEL.
-  move: (refine_state_in_user _ _ _ _ REF) => INUSER.
-  destruct REF as (? & ? & ? & ? & CACHE & ?).
+  destruct REF as [? ? ? ? ? ? ? ? ? ? ? ? ? CACHE ? ? ?].
+  subst sst cst.
   assert (PCS := valid_pcs STEP CACHE INUSER).
-  unfold word_lift in *.
+  rewrite /word_lift in NUSER.
   destruct (decode (common.tag (Concrete.pc cst'))) as [[t| |]|] eqn:DEC;
   try discriminate; simpl in *;
   apply encodeK in DEC.
@@ -347,29 +344,28 @@ Proof.
   rewrite eq_tag_eq_word // in NKERNEL.
 Qed.
 
-Definition refine_state_weak ast cst :=
-  refine_state ki table ast cst \/
+Definition refine_state_weak sst cst :=
+  refine_state ki table sst cst \/
   exists cst0 kst,
-    refine_state ki table ast cst0 /\
+    refine_state ki table sst cst0 /\
     Concrete.step _ masks cst0 kst /\
     kernel_exec kst cst.
 
-(* This should be useful for proving backwards_simulation,
-   and for CFI *)
-Lemma kernel_simulation_strong ast cst cst' :
-  refine_state_weak ast cst ->
+(* TODO: remove this *)
+Lemma kernel_simulation_strong sst cst cst' :
+  refine_state_weak sst cst ->
   Concrete.step _ masks cst cst' ->
   visible cst cst' = false ->
-  refine_state_weak ast cst'.
+  refine_state_weak sst cst'.
 Admitted.
 
-Lemma backwards_simulation ast cst cst' :
-  refine_state_weak ast cst ->
+Lemma backwards_simulation sst cst cst' :
+  refine_state_weak sst cst ->
   Concrete.step _ masks cst cst' ->
-  refine_state_weak ast cst' \/
-  exists ast',
-    Symbolic.step table ast ast' /\
-    refine_state ki table ast' cst'.
+  refine_state_weak sst cst' \/
+  exists sst',
+    Symbolic.step table sst sst' /\
+    refine_state ki table sst' cst'.
 Proof.
   intros [REF | (cst0 & kst & REF & KSTEP & EXEC)] STEP.
   - assert (USER : in_user cst = true) by (eapply refine_state_in_user; eauto).
@@ -395,27 +391,27 @@ Proof.
       * left. left. by eapply cache_miss_simulation; eauto.
 Qed.
 
-Theorem backwards_refinement ast cst cst' :
-  refine_state ki table ast cst ->
+Theorem backwards_refinement sst cst cst' :
+  refine_state ki table sst cst ->
   exec (Concrete.step _ masks) cst cst' ->
   in_user cst' = true ->
-  exists ast',
-    exec (Symbolic.step table) ast ast' /\
-    refine_state ki table ast' cst'.
+  exists sst',
+    exec (Symbolic.step table) sst sst' /\
+    refine_state ki table sst' cst'.
 Proof.
   intros REF EXEC USER'.
-  have {REF} REF: refine_state_weak ast cst by left.
-  move: ast REF.
+  have {REF} REF: refine_state_weak sst cst by left.
+  move: sst REF.
   induction EXEC as [cst _|cst cst'' cst' _ STEP EXEC IH].
-  - move => ast [? | REF]; first by eauto.
+  - move => sst [? | REF]; first by eauto.
     destruct REF as (? & ? & ? & ? & EXEC).
     apply restricted_exec_snd in EXEC.
     apply in_user_in_kernel in USER'. congruence.
-  - move => ast REF.
+  - move => sst REF.
     exploit backwards_simulation; eauto.
-    intros [REF' | (ast' & ASTEP & REF')]; first by auto.
-    have {REF'} REF': refine_state_weak ast' cst'' by left.
-    move: (IH USER' _ REF') => {IH USER' REF'} [ast'' [EXEC' REF']].
+    intros [REF' | (sst' & SSTEP & REF')]; first by auto.
+    have {REF'} REF': refine_state_weak sst' cst'' by left.
+    move: (IH USER' _ REF') => {IH USER' REF'} [sst'' [EXEC' REF']].
     eexists. split; last by eauto.
     eapply re_step; trivial; eauto.
 Qed.

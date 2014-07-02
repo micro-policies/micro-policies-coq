@@ -190,30 +190,26 @@ Proof.
   move/andP => [H1 H2]. move/eqP: H1 => ->. by move/eqP : H2 => ->.
 Qed.
 
-Definition refine_state (st : Symbolic.state mt) (st' : Concrete.state mt) :=
-  let '(Symbolic.State mem regs pc@tpc int) := st in
-  let '(Concrete.mkState mem' regs' cache pc'@tpc' epc) := st' in
-  pc = pc' /\
-  match decode tpc' with
-  | Some (USER tpc') => tpc' = tpc
-  | _ => False
-  end /\
-  refine_memory mem mem' /\
-  refine_registers regs regs' /\
-  cache_correct cache /\
-  mvec_in_kernel mem' /\
-  wf_entry_points mem' /\
-  ki mem' regs' cache int.
+Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Prop :=
+| rs_intro :
+    forall smem sregs int
+           cmem cregs cache epc
+           pc tpc
+           (ES : sst = Symbolic.State smem sregs pc@tpc int)
+           (EC : cst = Concrete.mkState cmem cregs cache pc@(encode (USER tpc)) epc)
+           (REFM : refine_memory smem cmem)
+           (REFR : refine_registers sregs cregs)
+           (CACHE : cache_correct cache)
+           (MVEC : mvec_in_kernel cmem)
+           (WFENTRYPOINTS : wf_entry_points cmem)
+           (KINV : ki cmem cregs cache int),
+      refine_state sst cst.
 
-Lemma refine_state_in_user st st' :
-  refine_state st st' ->
-  in_user st'.
+Lemma refine_state_in_user sst cst :
+  refine_state sst cst ->
+  in_user cst.
 Proof.
-  move: st st' => [smem sregs [spc spct] int]
-                  [cmem cregs cache [cpc cpct] epc] /=.
-  case E: (decode cpct) => [[ut | | ] | ]
-                           [? [H ?]] //=.
-  apply encodeK in E. subst.
+  move => [] *. subst cst.
   by rewrite /in_user /word_lift /= decodeK //=.
 Qed.
 
