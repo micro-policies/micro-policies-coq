@@ -300,6 +300,7 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
 
   reg_class := {|
     TotalMaps.get regs r := Int32TMap.get r regs;
+    (* BCP/MD: Why isn't this called 'set'? *)
     TotalMaps.upd regs r x := Int32TMap.set r x regs
   |}
 |}.

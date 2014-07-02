@@ -85,24 +85,8 @@ Global Instance sk : Abs.sealing_key := {|
  mkkey_fresh := max_element_plus_one_is_distinct
 |}.
 
-Instance cp : Concrete.concrete_params t := {|
- memory    := Int32PMap.t atom;
- registers := Int32TMap.t atom;
-
- mem_class := {|
-   PartMaps.get mem i := Int32PMap.get i mem;
-   PartMaps.set mem i x := Int32PMap.set i x mem;
-   PartMaps.filter mem p := Int32PMap.filter mem p;
-   PartMaps.empty := @Int32PMap.empty _
- |};
-
- reg_class := {|
-   TotalMaps.get regs r := Int32TMap.get r regs;
-   (* BCP/MD: Why isn't this called 'set'? *)
-   TotalMaps.upd regs r x := Int32TMap.set r x regs
- |}
-|}.
-
+Instance cp : Concrete.concrete_params t :=
+  concrete_int_32_params.
 
 (* ---------------------------------------------------------------- *)
 
