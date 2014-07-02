@@ -49,7 +49,7 @@ Definition build_mvec st : option (Symbolic.MVec (Symbolic.tag t))  :=
               do! w1 <- get reg r1;
               do! w2 <- get reg r2;
               do! w3 <- get mem (common.val w1);
-              Some (part [(common.tag w1); (common.tag w1); (common.tag w3)])
+              Some (part [(common.tag w1); (common.tag w2); (common.tag w3)])
             | Jump  r => fun part =>
               do! w <- get reg r;
               Some (part [common.tag w])
