@@ -669,8 +669,9 @@ Proof.
   intros REF SMVEC.
   destruct sst as [smem sreg [spc stpc] int].
   destruct cst as [mem reg cache [pc ctpc] epc].
+  assert (USER := refinement_common.refine_state_in_user ki stable _ _ REF).
   destruct REF
-    as [USER [PC [TPC [REFM [REFR [CACHE [MVEC [RA [WF KI]]]]]]]]].
+    as [PC [TPC [REFM [REFR [CACHE [MVEC [WF KI]]]]]]].
   subst.
   unfold build_mvec in SMVEC.
   destruct (get smem pc) eqn:SGET.
