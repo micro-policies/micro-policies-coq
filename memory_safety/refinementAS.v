@@ -216,14 +216,17 @@ inversion rpt.
 congruence.
 Qed.
 
-Definition refine_memory amem (qamem : Sym.memory mt) :=
-  meminj_spec amem mi /\
-  forall b base nonce off, mi b = Some (base,nonce) ->
-  match Abstract.getv amem (b,off), PartMaps.get qamem (base+off)%w with
+Definition refine_memory_val v a col :=
+ match v, a with
   | None, None => True
-  | Some v, Some w@M(nonce',ty) => nonce = nonce' /\ refine_val v w ty
+  | Some v, Some w@M(col',ty) => col = col' /\ refine_val v w ty
   | _, _ => False
  end.
+
+Definition refine_memory amem (qamem : Sym.memory mt) :=
+  meminj_spec amem mi /\
+  forall b base col off, mi b = Some (base,col) ->
+    refine_memory_val (Abstract.getv amem (b,off)) (PartMaps.get qamem (base+off)%w) col.
 
 Lemma refine_memory_get_int qamem (w1 w2 w3 : word mt) pt :
          refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR w2) ->
@@ -279,7 +282,8 @@ rewrite <-eq_w1 in get_w.
 rewrite get_w in rmem.
 destruct (Abstract.getv amem (b, off)) eqn:get_b; try contradiction.
 destruct (getv_mem get_b) as (fr & ? & ?).
-exists fr; exists v; repeat split; easy.
+exists fr; exists v; repeat split=> //.
+by case: rmem.
 Qed.
 
 (*
@@ -439,6 +443,9 @@ destruct (PartMaps.upd_inv upd_w1) as [? get_w1].
 by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
 Qed.
 
+Definition mi_malloc newb base col b :=
+  if b == newb then Some (base, col) else mi b.
+
 Lemma refine_memory_free amem' smem nc info b bi col :
   refine_memory amem smem ->
   refine_internal_state amem smem (nc, info) ->
@@ -447,7 +454,7 @@ Lemma refine_memory_free amem' smem nc info b bi col :
   Sym.block_color bi = Some col ->
   Abstract.free_fun amem b = Some amem' ->
   let smem' :=
-    Sym.erase_block smem (Sym.block_base bi)
+    Sym.write_block smem (Sym.block_base bi) 0@FREE
       (Z.to_nat (word_to_Z (Sym.block_size bi)))
   in
   refine_memory amem' smem' /\
@@ -488,13 +495,12 @@ Qed.
       refine_memory amem' smem' & refine_internal_state amem' smem' ist].
 *)
 
+Definition refine_reg_val v a :=
+ match a with w@V(ty) => refine_val v w ty | _ => False end.
+
 Definition refine_registers (aregs : Abstract.registers mt)
                             (qaregs : Sym.registers mt) :=
-  forall n, match PartMaps.get aregs n, PartMaps.get qaregs n with
-  | None, None => True
-  | Some v, Some w@V(ty) => refine_val v w ty
-  | _, _ => False
-  end.
+  PartMaps.pointwise refine_reg_val aregs qaregs.
 
 Lemma refine_registers_val aregs qaregs r v : refine_registers aregs qaregs ->
   PartMaps.get qaregs r = Some v ->
@@ -549,13 +555,13 @@ Qed.
 
 Lemma refine_registers_upd aregs qaregs qaregs' r v w ty :
   refine_registers aregs qaregs ->
-  PartMaps.upd qaregs r w@V(ty) = Some qaregs' ->
   refine_val v w ty ->
+  PartMaps.upd qaregs r w@V(ty) = Some qaregs' ->
   exists areg',
     PartMaps.upd aregs r v = Some areg' /\
     refine_registers areg' qaregs'.
 Proof.
-intros rregs upd_r_qa rvw.
+intros rregs rvw upd_r_qa.
 assert (ref_r := rregs r).
 destruct (PartMaps.upd_inv upd_r_qa) as [v' get_r_qa].
 rewrite get_r_qa in ref_r.
@@ -612,6 +618,43 @@ Axiom refine_syscalls_get : forall asc qasc w sc, refine_syscalls mi asc qasc ->
 *)
 
 End memory_injections.
+
+Lemma refine_val_malloc mi amem sz amem' newb base col v w ty :
+  Abstract.malloc_fun amem sz = (amem', newb) ->
+  refine_val mi v w ty -> refine_val (mi_malloc mi newb base col) v w ty.
+Proof.
+admit.
+Qed.
+
+Lemma refine_registers_malloc mi aregs sregs amem amem' sz newb base col :
+  Abstract.malloc_fun amem sz = (amem', newb) ->
+  refine_registers mi aregs sregs ->
+  refine_registers (mi_malloc mi newb base col) aregs sregs.
+Proof.
+admit.
+Qed.
+
+Lemma refine_memory_malloc mi amem smem amem' sz newb base col :
+  refine_memory mi amem smem ->
+  Abstract.malloc_fun amem sz = (amem', newb) ->
+  let smem' := Sym.write_block smem base 0@M(col, DATA) (Z.to_nat (word_to_Z sz))
+  in
+  refine_memory (mi_malloc mi newb base col) amem' smem'.
+Proof.
+move=> rmem malloc /=.
+split; admit.
+Qed.
+
+Lemma refine_internal_state_malloc mi amem amem' smem info sz newb bi color :
+  Abstract.malloc_fun amem sz = (amem', newb) ->
+  refine_internal_state mi amem smem (color, info) ->
+  refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color) amem'
+     (Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA)
+        (Z.to_nat (word_to_Z sz)))
+     (color + 1, Sym.update_block_info info bi color sz).
+Proof.
+admit.
+Qed.
 
 (*
 Lemma refine_val_free mi b x w ty : refine_val mi x w ty ->
@@ -974,25 +1017,49 @@ by rewrite <-rpci, <-addwA; econstructor.
 destruct E as (? & ? & ?).
 by solve_pc rpci.
 
-(*
-move: GETCALL CALL.
-  case: int rist => color info rist.
-  rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=.
-  (have->: s = pc by inversion rpc).
-  repeat case: ifP=> [/eqP <- /= [<-] /= | ? //].
-  rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.ptr_fun /= => CALL.
-  destruct spcl'; match_inv.
-
-*)
-
 (* Syscall *)
 
 (* Allocation *)
-admit.
+
+  move: b Heqo E => bi Heqo E.
+  move/(_ bi _): (rist).
+  have: bi \in [seq x <- info
+              | (val <=? Sym.block_size x)%ordered
+              & Sym.block_color x == None].
+    case: [seq x <- info
+              | (val <=? Sym.block_size x)%ordered
+              & Sym.block_color x == None] Heqo => //= ? ? [->].
+    by rewrite inE eqxx.
+  rewrite mem_filter => /andP [/andP [lt_val /eqP color_bi in_bi]].
+  rewrite in_bi => /(_ erefl) biP.
+  case: biP Heqo E color_bi in_bi lt_val; first by move=> *; congruence.
+  move=> {bi} bi _ FREE Heqo E color_bi in_bi lt_val.
+
+
+  case malloc: (Abstract.malloc_fun a_mem val) => [amem' newb].
+  pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
+  have rnewb: refine_val mi' (Abstract.VPtr (newb, 0)) (Sym.block_base bi) (PTR color).
+    rewrite -[Sym.block_base bi]addw0; constructor.
+    by rewrite /mi' /mi_malloc eqxx.
+
+  move/(refine_registers_malloc (Sym.block_base bi) color malloc): rregs => rregs.
+  eapply (refine_registers_upd rregs rnewb) in E.
+  destruct E as (? & ? & ?).
+
+  eexists; exists (mi_malloc mi newb (Sym.block_base bi) color); split.
+  eapply Abstract.step_malloc.
+  by eauto.
+  by eauto.
+  by eauto.
+  by eauto.
+
+  split; try eassumption.
+  exact: (refine_memory_malloc _ _ rmem malloc).
+  exact: (refine_val_malloc _ _ malloc).
+  exact: (refine_internal_state_malloc malloc).
 
 (* Free *)
 
-(* PartMaps.get mem b = Some fr *)
   move/(_ x _): (rist).
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
     case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
@@ -1006,16 +1073,15 @@ admit.
   have eq_s4b: s4 = b.
     inversion H3.
     exact: (miIr miP H8 mi_b erefl).
-  have [? get_s4]: exists fr, PartMaps.get a_mem s4 = Some fr by admit.
-  case: (Abstract.free_Some get_s4)=> ? free_b.
+
+  case: (Abstract.free_Some get_b)=> ? free_b.
 
   eexists; eexists; split.
   eapply Abstract.step_free.
   by eauto.
-  by eauto.
+  by rewrite eq_s4b.
   by eauto.
 
-  rewrite eq_s4b in free_b.
   case: (refine_memory_free rmem rist in_x mi_b color_x free_b) => rmem' rist'.
   by split; eassumption.
 

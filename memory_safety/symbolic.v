@@ -279,6 +279,25 @@ Global Instance sym_memory_safety : symbolic_params t := {
   sr := reg_map
 }.
 
+
+Fixpoint write_block init base (v : atom) n : Symbolic.memory t :=
+  match n with
+  | O => init
+  | S p => if upd init (base + Z_to_word (Z.of_nat n)) 0@FREE is Some mem then
+           write_block mem base v p else init
+  end.
+
+Definition update_block_info info x color sz :=
+  let i := index x info in
+  let block1 := mkBlockInfo (block_base x) sz (Some color) in
+  let pre := take i info in
+  let post := drop (i+1) info in
+  if sz == block_size x then
+    pre ++ [block1] ++ post
+  else
+    let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
+    pre ++ [block1;block2] ++ post.
+        
 Definition malloc_fun st : option (state t) :=
   let: (color,info) := internal st in
   do! sz <- get (regs st) syscall_arg1;
@@ -287,27 +306,12 @@ Definition malloc_fun st : option (state t) :=
       match compare 0 sz with
         | Lt =>
           if ohead [seq x <- info | ((sz <=? block_size x) && (block_color x == None))%ordered] is Some x then
-          let i := index x info in
-          let block1 := mkBlockInfo (block_base x) sz (Some color) in
-          let pre := take i info in
-          let post := drop (i+1) info in
-          let info' :=
-              if sz == block_size x then
-                pre ++ [block1] ++ post
-              else
-                let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
-                pre ++ [block1;block2] ++ post
-          in
-          let P := fun n => memory in
-          let upd_fun := fun n acc =>
-            if @upd memory _ _ (@mem_map _) acc (block_base x + (Z_to_word (Z.of_nat n))) (0@M(color,DATA)) is Some mem then mem else acc
-          in
-          let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z sz)) in
-          let regs' := if @upd registers _ _ (@reg_map _) (regs st) syscall_ret ((block_base x)@V(PTR color)) is Some regs' then regs' else regs st in
+          let mem' := write_block (mem st) (block_base x) 0@M(color,DATA) (Z.to_nat (word_to_Z sz)) in
+          do! regs' <- upd (regs st) syscall_ret ((block_base x)@V(PTR color));
           let color' := color + 1 in
           do! raddr <- get (regs st) ra;
           if raddr is _@V(PTR _) then
-            Some (State mem' regs' raddr (color',info'))
+            Some (State mem' regs' raddr (color', update_block_info info x color sz))
           else None
           else None
         | _ => None
@@ -317,13 +321,6 @@ Definition malloc_fun st : option (state t) :=
 
 Definition def_info : block_info :=
   mkBlockInfo 0 0 None.
-
-Fixpoint erase_block init base n : Symbolic.memory t :=
-  match n with
-  | O => init
-  | S p => if upd init (base + Z_to_word (Z.of_nat n)) (0@FREE) is Some mem then
-           erase_block mem base p else init
-  end.
 
 (* TODO: avoid memory fragmentation *)
 Definition free_fun (st : state t) : option (state t) :=
@@ -335,7 +332,7 @@ Definition free_fun (st : state t) : option (state t) :=
     do! x <- ohead [seq x <- info | block_color x == Some color];
     let i := index x info in
     if (block_base x <=? ptr <? block_base x + block_size x) then
-      let mem' := erase_block (mem st) (block_base x) (Z.to_nat (word_to_Z (block_size x))) in
+      let mem' := write_block (mem st) (block_base x) 0@FREE (Z.to_nat (word_to_Z (block_size x))) in
       let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
       in 
       do! raddr <- get (regs st) ra;
