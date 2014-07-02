@@ -90,6 +90,30 @@ Proof.
         by auto.
 Qed.
 
+Lemma refine_traces_execution ast cst cst' cxs :
+  refine_traces [ast] (cst :: cxs) ->
+  In cst' (cst :: cxs) ->
+  exec step cst cst'.
+Proof.
+  intros RTRACES IN.
+  gdep cst.
+  induction cxs; intros.
+  - destruct IN as [? | CONTRA]; subst.
+    + econstructor(eauto).
+    + destruct CONTRA.
+  - destruct IN as [EQ | IN]; subst.
+    + econstructor(eauto).
+    + destruct IN as [? | IN]; subst.
+      inv RTRACES. 
+      eapply re_step; eauto; econstructor(auto).
+    + inv RTRACES.
+      assert (IN' : In cst' (a :: cxs)) by (right; auto).
+      specialize (IHcxs _ H8 IN').
+      eapply restricted_exec_trans; eauto.
+      eapply re_step; eauto.
+      econstructor(auto).
+Qed.
+      
 Class machine_refinement_specs := {
 
   step_classic : forall (cst cst': @state cmachine),
@@ -138,6 +162,7 @@ Class machine_refinement_specs := {
   as_implies_cs : forall axs cxs asi asj csi csj,
     check csi csj = true ->
     succ asi asj = false ->
+    step asi asj ->
     refine_state asi csi ->
     refine_traces (asj :: axs) (csj :: cxs) ->
     stopping (asj :: axs) ->
@@ -352,7 +377,7 @@ Proof.
                [assumption | apply (av_implies_cv asi asj csi csj REFI REFJ AV VIS CSTEP)].
         split. now apply (refine_traces_preserves_cfi_trace RHT TSAFE1).
         split. now apply (refine_traces_preserves_cfi_trace  RTT TSAFE2).
-        apply (as_implies_cs asi csi VIS AV REFI RTT STOP1).
+        apply (as_implies_cs asi csi VIS AV ASTEP REFI RTT STOP1).
       + left.
         intros csi' csj' IN2' STEP'.
         subst cxs.

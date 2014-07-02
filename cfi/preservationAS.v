@@ -297,20 +297,20 @@ Next Obligation.
   }
 Qed.
 Next Obligation.
-  unfold Abs.stopping in H3.
+  unfold Abs.stopping in H4.
   unfold Sym.stopping.
-  destruct H3 as [s [EQ NOSTEP]].
+  destruct H4 as [s [EQ NOSTEP]].
   inversion EQ; subst.
-  inversion H2; subst.
+  inversion H3; subst.
   - exists csj. split; auto.
     intro CONTRA. destruct CONTRA as [s' CONTRA].
-    destruct (backwards_refinement_normal _ _ _ H5 CONTRA).
-    unfold check in H3. simpl in H3.
-    destruct (H3 erefl) as [ast' [ASTEP REF]].
+    destruct (backwards_refinement_normal _ _ _ H6 CONTRA).
+    unfold check in H4. simpl in H4.
+    destruct (H4 erefl) as [ast' [ASTEP REF]].
     assert (ESTEP : exists s', Abs.step atable valid_jmp s s')
       by (eexists; eauto).
     auto.
-  - unfold check in H8. simpl in H8. discriminate.
+  - unfold check in H9. simpl in H9. discriminate.
 Qed.
         
 End Refinement.

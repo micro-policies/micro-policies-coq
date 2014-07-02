@@ -560,8 +560,13 @@ Proof.
       intro VIS.
       assert (REFW : @refine_state_weak mt ops sym_params cp e ki stable ast cst)
         by (right; auto).
-      assert (REFW' := kernel_simulation_strong REFW STEP VIS).
-      left; split; auto.
+      destruct (backwards_simulation REFW STEP) as [REFW' | [ast' [STEP' REF']]].
+      - left. split; auto.
+      - right. eexists; split; eauto.
+        unfold refine_state. 
+        split.
+        + left. assumption.
+        + eauto using Sym.invariants_preserved_by_step.
     }
 Qed.
 Next Obligation.
@@ -661,6 +666,8 @@ Qed.
 Definition khandler := @rules.handler cfi_tag_eqType mt ops e (@Symbolic.handler mt sym_params).
 Definition uhandler := @Symbolic.handler mt sym_params.
 
+(*Case 1: umvec = Some & cmvec = Some*)
+
 Lemma umvec_implies_cmvec sst cst smvec :
   refinement_common.refine_state ki stable sst cst ->
   build_mvec stable sst = Some smvec ->
@@ -724,6 +731,56 @@ Proof.
     + discriminate.
 Qed.
 
+(*not sure if useful*)    
+Lemma uhandler_chandler_stop sst umvec :
+  build_mvec stable sst = Some umvec ->
+  uhandler umvec = None ->
+  khandler (rules.encode_mvec (rules.mvec_of_umvec umvec)) = None.
+Proof. (*Postponted until khandler rewrite*)
+ (* intros UMVEC UHANDLER.
+  unfold uhandler in UHANDLER. unfold Symbolic.handler in UHANDLER. simpl in UHANDLER.
+  destruct sst as [mem regs [pc tpc] int].
+  unfold build_mvec in UMVEC.
+  destruct (get mem pc) eqn:GET.
+  - destruct (decode_instr (common.val a)) eqn:INST.
+    + destruct i eqn:OP; simpl in UMVEC; unfold bind in UMVEC;
+      repeat match goal with
+        | [H: match ?Expr with _ => _ end = _ |- _] => 
+          remember (Expr) as hexpr; destruct hexpr
+      end;
+      inv UMVEC;
+      unfold cfi_handler in UHANDLER; match_inv; subst;
+      unfold khandler; simpl; 
+      rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
+      simpl;
+      try match goal with
+        | [H : valid_jmp _ _ = false |- _] => rewrite H
+      end;
+       try reflexivity; repeat (rewrite rules.decodeK); try reflexivity.
+    + discriminate.
+  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
+    +  unfold cfi_handler in UHANDLER.
+      inv UMVEC.
+      match_inv; subst; simpl;
+      rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
+      simpl;
+      try match goal with
+        | [H : valid_jmp _ _ = false |- _] => rewrite H
+      end; try reflexivity.
+    +  discriminate.
+Qed.*)
+Admitted.
+
+Lemma unique_cmvec sst cst umvec cmvec :
+  @refinement_common.refine_state mt ops sym_params cp e ki stable sst cst ->
+  build_mvec stable sst = Some umvec ->
+  build_cmvec mt cst = Some cmvec ->
+  rules.encode_mvec (rules.mvec_of_umvec umvec) = cmvec.
+Proof.
+  Admitted.
+
+(*Case 2*)
+(*XXX: Move these to refinement_common*)
 Lemma get_reg_no_user sreg reg r v ctg t :
   @refinement_common.refine_registers mt ops sym_params cp e sreg reg ->
   get sreg r = None ->
@@ -741,7 +798,6 @@ Proof.
   - right; eexists; reflexivity.
 Qed.
 
-(*XXX: Move these two to refinement_common*)
 Lemma get_mem_no_user smem mem addr v ctg t :
   @refinement_common.refine_memory mt ops sym_params cp e smem mem ->
   get smem addr = None ->
@@ -901,52 +957,29 @@ Proof. (*Postpone proof until khandler rewrite*) Admitted.
       end;
       try discriminate. *)
 
-(*not sure if useful*)    
-Lemma uhandler_chandler_stop sst umvec :
-  build_mvec stable sst = Some umvec ->
-  uhandler umvec = None ->
-  khandler (rules.encode_mvec (rules.mvec_of_umvec umvec)) = None.
-Proof. (*Postponted until khandler rewrite*)
- (* intros UMVEC UHANDLER.
-  unfold uhandler in UHANDLER. unfold Symbolic.handler in UHANDLER. simpl in UHANDLER.
-  destruct sst as [mem regs [pc tpc] int].
-  unfold build_mvec in UMVEC.
-  destruct (get mem pc) eqn:GET.
-  - destruct (decode_instr (common.val a)) eqn:INST.
-    + destruct i eqn:OP; simpl in UMVEC; unfold bind in UMVEC;
-      repeat match goal with
-        | [H: match ?Expr with _ => _ end = _ |- _] => 
-          remember (Expr) as hexpr; destruct hexpr
-      end;
-      inv UMVEC;
-      unfold cfi_handler in UHANDLER; match_inv; subst;
-      unfold khandler; simpl; 
-      rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
-      simpl;
-      try match goal with
-        | [H : valid_jmp _ _ = false |- _] => rewrite H
-      end;
-       try reflexivity; repeat (rewrite rules.decodeK); try reflexivity.
-    + discriminate.
-  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
-    +  unfold cfi_handler in UHANDLER.
-      inv UMVEC.
-      match_inv; subst; simpl;
-      rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
-      simpl;
-      try match goal with
-        | [H : valid_jmp _ _ = false |- _] => rewrite H
-      end; try reflexivity.
-    +  discriminate.
-Qed.*)
-Admitted.
+(*Case 3*)
 
-(*Lemma state_refine_handler_equiv sst cst umvec :
-  refinement_common.refine_state ki stable sst cst ->
-  Sym.build_mvec stable sst = Some umvec ->
-  uhandler umvec = None ->
-  khandler cst = None.*)
-      
+Lemma concrete_stuck cst :
+  build_cmvec mt cst = None ->
+  ~exists cst', Concrete.step _ masks cst cst'.
+Proof. Admitted.
+
+(*Move to refinement_common?*)
+(*Again rough statement, subject to change*)
+Lemma fault_steps_at_kernel ast cst cst' cmvec :
+  refinement_common.refine_state ki stable ast cst ->
+  Concrete.step _ masks cst cst' ->
+  build_cmvec mt cst = Some cmvec ->
+  khandler cmvec = None ->
+  exists cmem',
+  Concrete.store_mvec ops (Concrete.mem cst) cmvec = Some cmem' /\
+  cst' = Concrete.mkState cmem'
+                          (Concrete.regs cst)
+                          (Concrete.cache cst)
+                          (Concrete.fault_handler_start _ (t := mt))@Concrete.TKernel
+                          (Concrete.pc cst).
+Proof. Admitted.
+
 Require Import Classical.
 Import ListNotations.
 
@@ -1120,13 +1153,52 @@ Next Obligation. (*symolic violation implies concrete violation*)
 Qed.
 Next Obligation. (*symbolic stopping implies concrete stopping*) 
 Proof.
-  unfold Sym.stopping in H3.
+  unfold Sym.stopping in H4.
   unfold Conc.stopping.
-  destruct H3 as [sst [AXS STUCK]].
-  subst.
+  destruct H4 as [sst [AXS STUCK]].
+  inv AXS.
   unfold check in H. 
   apply andb_true_iff in H.
-  destruct H as [USERI USERJ].
-  Admitted.
+  destruct H as [USERI USERJ]. 
+  destruct H2 as [WREF INV].
+  destruct WREF as [REF | CONTRA].
+  {
+    destruct (build_mvec stable sst) eqn:UMVEC.
+    { (*case the symbolic umvec exists*)
+      inv H3; simpl in *.
+      - (*case concrete trace is singleton*)
+        left. eexists; eauto.
+      - (*case the concrete trace is longer*)
+        unfold refine_state in H8. 
+        destruct H8 as [WREF ?].
+        destruct WREF as [REF' | CONTRA].
+        + destruct (umvec_implies_cmvec _ _ REF' UMVEC) as [cmvec CMVEC].
+          assert (UHANDLER := Sym.succ_false_handler INV H0 H1). 
+          unfold Sym.option_handler in UHANDLER.
+          rewrite UMVEC in UHANDLER.
+          assert (KHANDLER := uhandler_chandler_stop _ UMVEC UHANDLER).
+          assert (EQ := unique_cmvec _ _ REF' UMVEC CMVEC).
+          rewrite EQ in KHANDLER.
+          destruct csj as [cmem creg cache [cpc ctpc] epc].
+          destruct sst as [smem sreg [spc tpc] int].
+          destruct (fault_steps_at_kernel _ REF' H6 CMVEC KHANDLER) as [cmem' [STORE EQST]].
+          simpl in EQST.
+          destruct REF' as [PC [TPC [REFM [REFR [CACHE [MVEC [WF KI]]]]]]]. subst spc.
+          * right. eexists; exists (cst' :: cxs0). split.
+            reflexivity.
+            split. auto.
+            apply forallb_forall. intros kst IN.
+            destruct (in_kernel kst) eqn:KERNEL.
+            { reflexivity. }
+            { assert ( EXEC:=
+                      @handler_correct_disallowed_case mt ops sym_params cp e ki
+                                                       stable _ cmem cmem' cmvec creg
+                                                       cache (cpc@ctpc) int kst
+                                                       KI KHANDLER STORE KERNEL).
+             Admitted.
+              
+
+
+
       
 End Refinement.
