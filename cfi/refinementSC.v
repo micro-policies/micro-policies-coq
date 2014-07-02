@@ -776,9 +776,9 @@ Qed.
 Lemma uhandler_chandler_stop sst umvec :
   build_mvec stable sst = Some umvec ->
   uhandler umvec = None ->
-  khandler (rules.encode_mvec (rules.mvec_of_umvec umvec)) = None.
-Proof. (*Postponted until khandler rewrite*)
- (* intros UMVEC UHANDLER.
+  khandler (rules.encode_mvec (rules.mvec_of_umvec_with_calls umvec)) = None.
+Proof. (*Postponted until khandler rewrite - proved but ok.*)
+  intros UMVEC UHANDLER.
   unfold uhandler in UHANDLER. unfold Symbolic.handler in UHANDLER. simpl in UHANDLER.
   destruct sst as [mem regs [pc tpc] int].
   unfold build_mvec in UMVEC.
@@ -800,7 +800,7 @@ Proof. (*Postponted until khandler rewrite*)
        try reflexivity; repeat (rewrite rules.decodeK); try reflexivity.
     + discriminate.
   - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
-    +  unfold cfi_handler in UHANDLER.
+    + unfold cfi_handler in UHANDLER.
       inv UMVEC.
       match_inv; subst; simpl;
       rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
@@ -808,8 +808,8 @@ Proof. (*Postponted until khandler rewrite*)
       try match goal with
         | [H : valid_jmp _ _ = false |- _] => rewrite H
       end; try reflexivity.
-    +  discriminate.
-Qed.*)
+    + discriminate.
+(* Qed. *)
 Admitted.
 
 
@@ -817,85 +817,6 @@ Lemma unique_cmvec sst cst umvec cmvec :
   @refinement_common.refine_state mt ops sym_params cp e ki stable sst cst ->
   build_mvec stable sst = Some umvec ->
   build_cmvec mt cst = Some cmvec ->
-  rules.encode_mvec (rules.mvec_of_umvec umvec) = cmvec.
-Proof. Admitted. (*
-  intros REF UMVEC CMVEC.
-  destruct sst as [smem sreg [spc tpc] int].
-  destruct cst as [mem reg cache [pc ctpc] epc].
-  destruct REF as [PC [TPC [REFM [REFR [CACHE [MVEC [WF KI]]]]]]].
-  destruct (rules.decode ctpc) eqn:CTPC; try contradiction.
-  destruct t; try contradiction.
-  apply rules.encodeK in CTPC.
-  subst.
-  unfold build_mvec in UMVEC.
-  destruct (get smem pc) eqn:SGET.
-  - destruct a as [v tg]. simpl in UMVEC.
-    destruct (decode_instr v) eqn:DEC.
-    + destruct i eqn:OP;
-      unfold bind in UMVEC;
-      repeat match goal with
-               | [H: match ?Expr with _ => _ end = _|- _] => 
-                 remember (Expr) as hexpr; destruct hexpr
-             end;
-      repeat match goal with
-               | [H: Some ?A = get _ _ |- _] => destruct A; symmetry in H
-             end;
-      repeat match goal with
-               | [H : get sreg _ = Some _ |- _] => 
-                 apply REFR in H
-               | [H : get smem _ = Some _ |- _] => 
-                 apply REFM in H
-             end;
-      unfold build_cmvec, bind in CMVEC;
-      repeat match goal with
-               | [H: match ?Expr with _ => _ end = _, H': ?Expr = _ |- _] => 
-                 rewrite H' in H; simpl in H'
-             end;
-      inv CMVEC;
-      inv UMVEC;
-      repeat match goal with 
-               | [H: TotalMaps.get _ _ = _ |- _] => rewrite H
-             end;
-      unfold rules.mvec_of_umvec; simpl;
-      unfold rules.encode_mvec; simpl;
-      try reflexivity.
-      (*handling automation fails*)
-      * rewrite Heqhexpr in H0.
-        simpl in H0.
-        simpl in Heqhexpr0.
-        rewrite Heqhexpr0 in H0.
-        inv H0. rewrite Heqhexpr1.
-        reflexivity.
-      * rewrite Heqhexpr in H0.
-        simpl in H0. simpl in Heqhexpr1. rewrite Heqhexpr1 in H0.
-        inv H0.
-        rewrite Heqhexpr0.
-        reflexivity.
-    + discriminate.
-  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
-    { (*syscall case*)
-      inv UMVEC.
-      unfold rules.mvec_of_umvec. simpl.
-      unfold rules.encode_mvec. simpl.
-      remember (Symbolic.entry_tag s) as etag eqn:ETAG. symmetry in ETAG.
-      unfold wf_entry_points in WF.
-      specialize (WF pc etag).
-      assert (ECALL : (exists sc : Symbolic.syscall mt,
-          Symbolic.get_syscall stable pc = Some sc /\
-          Symbolic.entry_tag sc = etag))
-        by (eexists; eauto).
-      apply WF in ECALL.
-      destruct (get mem pc) eqn:GET.
-      destruct a. apply andb_true_iff in ECALL.
-      destruct ECALL as [VAL TG].
-      move/eqP:VAL => VAL.
-      move/eqP:TG => TG.
-      unfold build_cmvec in CMVEC.
-      rewrite GET in CMVEC. simpl in CMVEC. rewrite VAL in CMVEC.
-      rewrite common.decodeK in CMVEC. inv CMVEC.
-      Admitted.
-*)   
-
 
 (*Case 2*)
 Lemma no_user_access_implies_halt sst cst cmvec :

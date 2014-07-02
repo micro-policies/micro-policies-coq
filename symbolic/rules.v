@@ -346,14 +346,31 @@ Definition ground_rules : Concrete.rules (word t) :=
 
 Definition mvec_of_umvec (mvec : Symbolic.MVec user_tag) : Symbolic.MVec tag :=
   match mvec with
-  | Symbolic.mkMVec op tpc ti ts =>
+  | Symbolic.mkMVec op tpc ti ts => 
     Symbolic.mkMVec op (USER tpc) (USER ti)
-           (match Symbolic.nfields op as fs return Symbolic.mvec_operands user_tag fs ->
-                                          Symbolic.mvec_operands tag fs
-            with
-            | Some fs => fun ts => Vector.map (fun t => USER t) ts
-            | None => fun ts => ts
-            end ts)
+                    (match Symbolic.nfields op as fs return Symbolic.mvec_operands user_tag fs ->
+                                                            Symbolic.mvec_operands tag fs
+                     with
+                       | Some fs => fun ts => Vector.map (fun t => USER t) ts
+                       | None => fun ts => ts
+                     end ts)
+  end.
+
+Definition mvec_of_umvec_with_calls (mvec : Symbolic.MVec user_tag) : Symbolic.MVec tag :=
+  match mvec with
+  | Symbolic.mkMVec op tpc ti ts =>
+    match op with
+      | SERVICE =>
+        Symbolic.mkMVec NOP (USER tpc) (ENTRY ti) (Vector.nil _)
+      | _ => 
+        Symbolic.mkMVec op (USER tpc) (USER ti)
+                        (match Symbolic.nfields op as fs return Symbolic.mvec_operands user_tag fs ->
+                                                                Symbolic.mvec_operands tag fs
+                         with
+                           | Some fs => fun ts => Vector.map (fun t => USER t) ts
+                           | None => fun ts => ts
+                         end ts)
+    end
   end.
 
 Definition rvec_of_urvec (rvec : Symbolic.RVec user_tag) : Symbolic.RVec tag :=
