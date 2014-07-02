@@ -221,8 +221,10 @@ Context {t : machine_types}
 
 Definition nat_to_word (n : nat) : word t := Z_to_word (Z.of_nat n).
 Definition word_to_nat (w : word t) : nat := Z.to_nat (word_to_Z w).
+Definition word_to_imm (w : word t) : imm t := Z_to_imm (word_to_Z w).
 Arguments nat_to_word /.
 Arguments word_to_nat /.
+Arguments word_to_imm /.
 
 End Functions.
 

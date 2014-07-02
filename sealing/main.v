@@ -31,39 +31,15 @@ Import DoNotation.
 
 Module ConcreteSealing.
 
-(* BCP: These belong someplace central *)
-Definition Z_to_nat z := word_to_nat (Z_to_word z).
-Definition word_to_imm w := Z_to_imm (word_to_Z w).
-
 Section WithClasses.
 
 Definition t := concrete_int_32_t.
 Definition ops := concrete_int_32_ops.
+Definition fhp := concrete_int_32_fh.
 
-(* BCP/MD: There should be some proof obligations about -- at least --
-   these being pairwise distinct.  Some axioms must be false somewhere!   
-
-   (And they should be distinct from the user registers below, though
-   this should not cause axiom failures, just puzzling user program
-   errors.)
-
-   Also, it seems wrong to be making this decision here.  It should be
-   made once and for all in symbolic/int_32.v, I think! *)
-
-Instance fhp : fault_handler.fault_handler_params t := {|
-  rop := Int32.repr 1; 
-  rtpc := Int32.repr 2; 
-  rti := Int32.repr 3; rt1 := Int32.repr 4; rt2 := Int32.repr 5; 
-  rt3 := Int32.repr 6; 
-  rb := Int32.repr 7; 
-  ri1 := Int32.repr 8; ri2 := Int32.repr 9; ri3 := Int32.repr 10; 
-  ri4 := Int32.repr 11; ri5 := Int32.repr 12; 
-  rtrpc := Int32.repr 13; rtr := Int32.repr 14; 
-  raddr := Int32.repr 15; 
-
-  load_const := fun (x : word t) (r : reg t) =>
-    [Const _ (word_to_imm x) r]
-|}.
+(* BCP/MD: These should be distinct from monitor registers in
+   symbolic.int_32, though this should not cause axiom failures, just
+   puzzling user program errors.) *)
 
 Global Instance scr : @syscall_regs t := {|
   syscall_ret  := Int32.repr 16;
