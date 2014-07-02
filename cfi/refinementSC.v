@@ -812,12 +812,13 @@ Proof. (*Postponted until khandler rewrite*)
 Qed.*)
 Admitted.
 
+
 Lemma unique_cmvec sst cst umvec cmvec :
   @refinement_common.refine_state mt ops sym_params cp e ki stable sst cst ->
   build_mvec stable sst = Some umvec ->
   build_cmvec mt cst = Some cmvec ->
   rules.encode_mvec (rules.mvec_of_umvec umvec) = cmvec.
-Proof.
+Proof. Admitted. (*
   intros REF UMVEC CMVEC.
   destruct sst as [smem sreg [spc tpc] int].
   destruct cst as [mem reg cache [pc ctpc] epc].
@@ -893,7 +894,7 @@ Proof.
       rewrite GET in CMVEC. simpl in CMVEC. rewrite VAL in CMVEC.
       rewrite common.decodeK in CMVEC. inv CMVEC.
       Admitted.
-   
+*)   
 
 
 (*Case 2*)
