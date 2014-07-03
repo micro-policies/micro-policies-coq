@@ -321,16 +321,14 @@ Definition build_concrete_sealing_machine
 
 End WithClasses.
 
+
+
+
 (* ---------------------------------------------------------------- *)
 (* Symbolic machine *)
 
-(*
-Instance sp : Symbolic.symbolic_params t := {|
- tag := Sym.stag_eqType; (* ?? *)
-(*
- handler := 
- internal_state := 
-*)
+
+Instance sp : @Sym.params t := {|
 
  word_map  := Int32PMap.t;
  reg_map := Int32PMap.t;
@@ -350,16 +348,17 @@ Instance sp : Symbolic.symbolic_params t := {|
  |}
 |}.
 
+(* WIP...
 Definition build_symbolic_sealing_machine 
     (user_program : @relocatable_segment t (list w) (instr t))
-  : @Symbolic.state concrete_int_32_t sk sp * classes.sealing_syscall_addrs :=
+  : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing t sk_defs sp) * @classes.sealing_syscall_addrs t :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
  let: (_,base_addr,syscall_addrs) := build_concrete_sealing_machine user_program in
- let user_mem := 
+ let user_mem : relocatable_segment (list (word int_32.t)) sym_atom := 
        map_relocatable_segment 
-         ((@Abs.VData _ _) ∘ encode_instr)
+         ((fun v => common.Atom v Sym.DATA) ∘ encode_instr)
          user_program in
   let syscall_addr_rcd := 
       {| 
@@ -367,11 +366,14 @@ Definition build_symbolic_sealing_machine
         classes.seal_addr   := nth 1 syscall_addrs (Int32.repr 0);
         classes.unseal_addr := nth 2 syscall_addrs (Int32.repr 0)
       |} in
-  (Abs.abstract_initial_state
+  (symbolic_initial_state
     user_mem
     base_addr
     syscall_addrs
-    user_registers,
+    user_registers
+    (* initial_reg_value *)
+    (* initial_internal_state *)
+   ,
    syscall_addr_rcd).
 *)
 

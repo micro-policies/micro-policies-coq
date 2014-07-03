@@ -14,7 +14,9 @@ Require Import concrete.int_32.
 Require Import concrete.concrete.
 Require Import symbolic.rules.
 Require Import symbolic.fault_handler.
+Require Import symbolic.symbolic.
 Require Import eqtype.
+Require Import lib.partial_maps.
 
 Import DoNotation.
 Import Int32.
@@ -160,3 +162,41 @@ Program Definition concrete_initial_state
   start, syscall_addrs).
 
 (* TODO: Regularize naming of base addresses and system call stuff. *)
+
+Context {sp: Symbolic.symbolic_params t}.
+
+Locate val.
+Locate atom.
+
+About Symbolic.pc.
+
+Let sym_atom := @common.atom (word t) (Symbolic.tag t).
+
+Program Definition symbolic_initial_state 
+      (user_mem : relocatable_segment (list (word t)) sym_atom)
+      (base_addr : sym_atom) (syscall_addrs : list (word t))
+      (user_regs : list (reg t))
+      (initial_reg_value : sym_atom)
+      (initial_internal_state : Symbolic.internal_state t)
+      : @Symbolic.state t sp :=
+  let (_, gen) := user_mem in
+  let mem_contents := gen (common.val base_addr) syscall_addrs in 
+  let mem := 
+    snd (fold_left
+      (fun x c => let: (i,m) := x in 
+                  (add_word (Z_to_word 1) i, PartMaps.set m i c))
+      mem_contents
+      ((common.val base_addr), PartMaps.empty))
+      in
+  let regs := 
+        fold_left
+          (fun regs r => PartMaps.set regs r initial_reg_value)
+           user_regs
+           PartMaps.empty in
+  {|  
+    Symbolic.mem := mem;
+    Symbolic.regs := regs;
+    Symbolic.pc := base_addr;
+    Symbolic.internal := initial_internal_state
+  |}.
+
