@@ -1016,43 +1016,70 @@ Proof.
     + unfold build_cmvec in CMVEC.
       destruct (get mem pc) eqn:GET.
       * destruct a as [v ctg].
+        simpl in CMVEC.
         destruct (rules.decode ctg) eqn:DEC.
-        destruct (get_mem_no_user pc REFM SGET GET DEC); subst.
-        { simpl in CMVEC.
-          destruct (decode_instr v) eqn:INST.
-          - destruct i eqn:OP;
-              admit. 
-             (*these are all trivial (or can be solved as above but the way the handler is
-               a full case analysis must be done on all parts of the mvec resulting in a
-               very-very slow proof. I will leave this as admitted until we change the
-               handler and proof auxiliary lemmas that reduce the load*)
-          - discriminate.
+        { destruct (get_mem_no_user pc REFM SGET GET DEC); subst.
+          - unfold rules.handler.
+            destruct (decode_instr v) eqn:INST.
+            + destruct i eqn:OP; 
+              unfold bind in CMVEC;
+              try match goal with
+                      [H: match get mem ?Addr with _ => _ end = _ |- _] =>
+                      destruct (get mem Addr)
+            end; 
+              inv CMVEC; 
+              rewrite op_to_wordK;
+              try rewrite rules.decodeK;
+              rewrite DEC; reflexivity.
+            + discriminate.
+          - (*case fetched instr is tagged entry*)
+            destruct H as [ut H].
+            rewrite H in DEC. 
+            unfold wf_entry_points in WF.
+            unfold rules.handler.
+            destruct (decode_instr v) eqn:INST.
+            + destruct i eqn:OP; 
+              try (unfold bind in CMVEC;
+              try match goal with
+                      [H: match get mem ?Addr with _ => _ end = _ |- _] =>
+                      destruct (get mem Addr)
+            end; 
+              inv CMVEC; 
+              rewrite op_to_wordK;
+              try rewrite rules.decodeK;
+              rewrite DEC; reflexivity).
+              (*entry point and NOP, sc case*)
+              exfalso.
+              specialize (WF pc ut).
+              rewrite GET in WF.
+              apply encodeK in INST.
+              rewrite INST in WF.
+              apply rules.encodeK in DEC.
+              rewrite DEC in WF.
+              assert (CONTRA: (v == v) && (ctg == ctg) = true)
+                by (apply andb_true_iff; split; apply eqxx).
+              apply WF in CONTRA.
+              destruct CONTRA as [? [CONTRA ?]].
+              rewrite CONTRA in GETCALL.
+              by discriminate.
+            + discriminate.
         }
-        { 
-          unfold wf_entry_points in WF.
-          destruct H as [ut TG]. subst.
-          specialize (WF pc ut).
-          rewrite GET in WF.
+        { unfold rules.handler.
           destruct (decode_instr v) eqn:INST.
-          + destruct i.
-            - apply common.encodeK in INST.
-              assert ((v == encode_instr (Nop mt)) && (ctg == rules.encode (rules.ENTRY ut)))
-                by admit.
-              apply WF in H.
-              destruct H as [? [CONTRA ?]].
-              rewrite CONTRA in GETCALL. discriminate.
-            - simpl in CMVEC.
-              rewrite INST in CMVEC.
-              admit. admit. admit. admit.
-              admit. admit. admit. admit.
-              admit. admit. admit. admit.
-              admit.
-          + rewrite INST in CMVEC. discriminate.
+          + destruct i eqn:OP;
+            try (unfold bind in CMVEC;
+              try match goal with
+                      [H: match get mem ?Addr with _ => _ end = _ |- _] =>
+                      destruct (get mem Addr)
+            end; 
+              inv CMVEC; 
+              rewrite op_to_wordK;
+              try rewrite rules.decodeK;
+              rewrite DEC; reflexivity).
+          + discriminate.
         }
-        (*case decode ctg fails*)
-        admit. (*trivial*)
-      * discriminate. *)
-Admitted.
+      * discriminate.
+Qed.*) Admitted.
             
 (*Case 3*)
 
