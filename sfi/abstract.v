@@ -312,7 +312,7 @@ Inductive step (MM MM' : state) : Prop :=
                    (NEXT  : MM' = State (pc + (if b == 0
                                                then 1
                                                else imm_to_word x))
-                                        R M C JUMPED c),
+                                        R M C INTERNAL c),
                         step MM MM'
 
 (* We make JAL inter-compartmental, like JUMP, but things must be set up so that
