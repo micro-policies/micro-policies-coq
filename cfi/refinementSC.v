@@ -1077,6 +1077,7 @@ Proof.
   simpl in CMVEC. discriminate.
 Qed.
   
+
 (*Move to refinement_common?*)
 (*Again rough statement, subject to change*)
 Lemma fault_steps_at_kernel ast cst cst' cmvec :
@@ -1091,7 +1092,69 @@ Lemma fault_steps_at_kernel ast cst cst' cmvec :
                           (Concrete.cache cst)
                           (Concrete.fault_handler_start _ (t := mt))@Concrete.TKernel
                           (Concrete.pc cst).
-Proof. Admitted.
+Proof.
+  intros REF CSTEP CMVEC KHANDLER.
+  destruct REF as [smem sreg int cmem creg cache epc pc tpc
+                         ASI CSI REFM REFR CACHE MVEC WF KI].
+  inversion CSTEP; subst; inversion ST; unfold mvec in NEXT; subst; clear ST;
+      repeat (
+        match goal with
+          | [H: Concrete.next_state_pc _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_pc in H
+          | [H: Concrete.next_state_reg _ _ _ _ _ _ = _ |- _] => 
+            unfold Concrete.next_state_reg in H
+          | [H: Concrete.next_state_reg_and_pc _ _ _ _ _ _ _= _ |- _] => 
+            unfold Concrete.next_state_reg_and_pc in H
+          | [H: Concrete.next_state _ _ _ _ _ = Some _ |- _] =>
+            unfold Concrete.next_state in H; simpl in H
+        end);
+      match goal with 
+        | [H: match Concrete.cache_lookup ops ?Cache masks ?Mvec with _ => _ end = _ |- _] =>
+          destruct (Concrete.cache_lookup ops Cache masks Mvec) eqn:LOOKUP
+      end;
+  try match goal with
+        | [H:Concrete.cache_lookup _ ?Cache _ ?Mvec = Some ?R |- _] =>
+           (*lookup succeeds*)
+          specialize (CACHE Mvec R);
+            destruct CACHE as [? [? ?]];
+            auto
+        | [H:Concrete.miss_state ops ?ST1 ?ST2 = _ |- _] =>
+          unfold Concrete.miss_state in H (*lookup fails*)
+      end;
+  try match goal with (*to discharge premise to cache correctness*)
+          | [|- rules.word_lift _ _ = true] =>
+            unfold rules.word_lift, rules.is_user; simpl;
+            rewrite rules.decodeK; reflexivity
+      end;
+  try match goal with (*in case of a miss*)
+        | [H: match Concrete.store_mvec ops ?ST1 ?ST2 with _ => _ end = _ |- _] =>
+          destruct (Concrete.store_mvec ops ST1 ST2) eqn:?;
+            [idtac | discriminate]
+      end;
+    unfold build_cmvec in CMVEC;
+    repeat  match goal with
+             |[H: match ?Expr with _ => _ end = _, H1:?Expr = _ |- _] =>
+              rewrite H1 in H
+            end;
+      repeat match goal with
+                |[H1:TotalMaps.get reg ?R = _ |- _] =>
+                 rewrite H1 in CMVEC
+              end; simpl in NEXT;
+    unfold khandler in KHANDLER;
+    try rewrite -> REG in *;
+    try rewrite -> OLD in *;
+    try rewrite -> REG1 in *;
+    try rewrite -> REG2 in *;
+    simpl in CMVEC;
+    try rewrite ->  M1 in *;
+    inv CMVEC; inv NEXT;
+
+    try match goal with
+            | [H: rules.handler _ ?Mvec = Some _, H1: rules.handler _ ?Mvec = None |- _] =>
+              rewrite H in H1; discriminate
+          end;
+    eexists; split; eauto. 
+Qed.
 
 Require Import Classical.
 Import ListNotations.
