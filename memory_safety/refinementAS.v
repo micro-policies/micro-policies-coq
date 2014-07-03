@@ -44,7 +44,12 @@ Context {mt : machine_types}
 
 Context `{syscall_regs mt} `{a_alloc : @Abstract.allocator mt block ap}
          {a_allocP : Abstract.allocator_spec a_alloc}
-        `{@memory_syscall_addrs mt}.
+        `{@memory_syscall_addrs mt}
+        {meminj' : Type -> Type}
+        {meminj_map : TotalMaps.total_map meminj' (word mt)}
+        {meminjs : TotalMaps.axioms meminj_map}.
+
+Notation meminj := (meminj' (block * (word mt) (* base *))).
 
 Hypothesis binop_addDl : forall x y z,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
@@ -75,14 +80,14 @@ Definition size amem pt :=
      - w1 is the address of b's first memory location
      - w2 is b's pointer nonce
   *)
-Definition meminj := block -> option (word mt * word mt).
-
 Record meminj_spec (amem : Abstract.memory mt) (mi : meminj) := {
-    miIr : forall b b' base base' nonce nonce',
-                mi b = Some (base, nonce) ->
-                mi b' = Some (base', nonce') ->
-                nonce = nonce' -> b = b';
+    miIr : forall b col col' sz sz',
+                TotalMaps.get mi col = (b, sz) ->
+                TotalMaps.get mi col' = (b, sz') ->
+                col = col'
+
     (* Blocks are non overlapping: *)
+(*
     mi_disjoints : forall b b' base base' nonce nonce' off off' fr fr',
       mi b = Some (base,nonce) ->
       mi b' = Some (base',nonce') ->
@@ -92,6 +97,7 @@ Record meminj_spec (amem : Abstract.memory mt) (mi : meminj) := {
       word_to_Z off < Z.of_nat (length fr) ->
       word_to_Z off' < Z.of_nat (length fr') ->
       b = b'
+*)
   }.
 
 (* We could generalize update_list_Z to any size-preserving operator *)
@@ -104,6 +110,7 @@ Lemma meminj_update mi amem amem' b off fr fr' x :
 Proof.
 move=> miP get_b upd_off upd_b.
 constructor; first exact: miIr miP.
+(*
 move=> b1 b1' base base' nonce nonce' off1 off1' fr1 fr1'.
 have [->|/eqP neq_b1b] := altP (b1 =P b);
 have [->//|/eqP neq_b1'b] := altP (b1' =P b);
@@ -113,6 +120,7 @@ rewrite ?(PartMaps.get_upd_eq upd_b) !(PartMaps.get_upd_neq _ upd_b) //.
   move=> mi_b1 mi_b1' get_b1 [<-]; rewrite (length_update_list_Z upd_off).
   exact: (mi_disjoints miP mi_b1 mi_b1').
 + exact: mi_disjoints.
+*)
 Qed.
 
 Hint Resolve meminj_update.
@@ -141,8 +149,8 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
 
 Inductive refine_val : Abstract.value mt block -> word mt -> Sym.type mt -> Prop :=
   | RefineData : forall w, refine_val (Abstract.VData _ w) w DATA
-  | RefinePtr : forall b base nonce off, mi b = Some (base,nonce) ->
-                refine_val (Abstract.VPtr (b,off)) (base + off) (PTR nonce).
+  | RefinePtr : forall b base col off, TotalMaps.get mi col = (b,base) ->
+                refine_val (Abstract.VPtr (b,off)) (base + off) (PTR col).
 
 (*
 Lemma refine_binop f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
@@ -207,43 +215,51 @@ Qed.
 *)
 
 Lemma refine_ptr_inv w n b off base nonce :
+  meminj_spec amem mi ->
   refine_val (Abstract.VPtr (b,off)) w (PTR n) ->
-  mi b = Some (base, nonce) ->
+  TotalMaps.get mi nonce = (b, base) ->
   w = (base + off)%w.
 Proof.
-intros rpt mi_b.
+move=> miP rpt mi_b.
 inversion rpt.
-congruence.
+move: (mi_b) (H4).
+rewrite (miIr miP mi_b H4).
+by move=> -> [->].
 Qed.
+
+(*
+Inductive refine_memory_block mi b fr smem :=
+| RefineBlockLive : mi b = Some 
+| RefineBlockFree
 
 Definition refine_memory_val v a col :=
  match v, a with
   | None, None => True
+  | None, Some w@FREE => True
   | Some v, Some w@M(col',ty) => col = col' /\ refine_val v w ty
   | _, _ => False
  end.
+*)
 
-Definition refine_memory amem (qamem : Sym.word_map _) :=
-  meminj_spec amem mi /\
-  forall b base col off, mi b = Some (base,col) ->
-    refine_memory_val (Abstract.getv amem (b,off)) (PartMaps.get qamem (base+off)%w) col.
+Definition refine_memory amem (smem : Sym.word_map _) :=
+  meminj_spec amem mi /\ forall w1 w2 col ty,
+  PartMaps.get smem w1 = Some w2@M(col,ty) ->
+  let: (b,base) := TotalMaps.get mi col in
+  if Abstract.getv amem (b, w1 - base) is Some v then
+  refine_val v w2 ty else False.
 
 Lemma refine_memory_get_int qamem (w1 w2 w3 : word mt) pt :
          refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR w2) ->
          PartMaps.get qamem w1 = Some w3@M(w2,DATA) ->
          Abstract.getv amem pt = Some (Abstract.VData _ w3).
 Proof.
-intros [miP rmem] rpt get_w.
-unfold refine_memory in rmem.
-destruct pt as [b' off'].
-(* Hit the too many names bug here too. *)
-inversion rpt as [ | b base nonce off mi_b eq_b eq_w1 eq_nonce (* eq_off *)].
-rewrite <-eq_nonce,<-eq_b,<-H1 in *.
-move/(_ b base nonce off mi_b): rmem => rmem.
-rewrite eq_w1 get_w in rmem.
-destruct (Abstract.getv amem (b, off)) eqn:get_b; try contradiction.
-case: rmem => _ rmem.
-by inversion rmem.
+move=> [miP rmem] rpt get_w1.
+move/(_ _ _ _ _ get_w1): rmem.
+inversion rpt.
+rewrite H4.
+rewrite [base+off]addwC addwK.
+case: (Abstract.getv amem (b, off)) => // v rvw3.
+by inversion rvw3.
 Qed.
 
 Lemma getv_mem base off v : Abstract.getv amem (base, off) = Some v ->
@@ -264,26 +280,23 @@ unfold Abstract.getv.
 by simpl; rewrite get_base.
 Qed.
 
-Lemma refine_memory_get qamem (w1 w2 w3 w4 : word mt) pt ty :
+Lemma refine_memory_get qamem (w1 w2 w3 : word mt) pt ty :
          refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR w2) ->
-         PartMaps.get qamem w1 = Some (w3@M(w4,ty)) ->
+         PartMaps.get qamem w1 = Some (w3@M(w2,ty)) ->
          exists fr x, PartMaps.get amem (fst pt) = Some fr
          /\ index_list_Z (word_to_Z (snd pt)) fr = Some x
          /\ refine_val x w3 ty.
 Proof.
-intros [miP rmem] rpt get_w.
-destruct pt as [b' off'].
-simpl in *.
-(* Too many names bug... *)
-inversion rpt as [|b base nonce off mi_b eq_b eq_w1 eq_nonce].
-rewrite <-eq_nonce,<-eq_b,<-H1 in *.
-move/(_ b base nonce off mi_b):rmem => rmem.
-rewrite <-eq_w1 in get_w.
-rewrite get_w in rmem.
-destruct (Abstract.getv amem (b, off)) eqn:get_b; try contradiction.
-destruct (getv_mem get_b) as (fr & ? & ?).
-exists fr; exists v; repeat split=> //.
-by case: rmem.
+move=> [miP rmem] rpt get_w1.
+move/(_ _ _ _ _ get_w1): rmem.
+inversion rpt.
+rewrite H4.
+rewrite [base+off]addwC addwK.
+rewrite /Abstract.getv.
+case: (PartMaps.get amem b) => // fr get_off.
+exists fr; move: get_off.
+case: (index_list_Z (word_to_Z off) fr) => // v rvw3.
+by exists v.
 Qed.
 
 (*
@@ -334,6 +347,7 @@ Qed.
 
 *)
 
+(*
 Inductive refine_block_info (amem : Abstract.memory mt) (smem : Sym.word_map (atom (word mt) (Sym.tag mt))) : Sym.block_info mt -> Prop :=
 | RefineBlockInfoLive : forall b col bi fr, Sym.block_color bi = Some col ->
   mi b = Some (Sym.block_base bi, col) ->
@@ -345,6 +359,10 @@ Inductive refine_block_info (amem : Abstract.memory mt) (smem : Sym.word_map (at
   (forall off, word_to_Z off < word_to_Z (Sym.block_size bi) ->
     exists v, PartMaps.get smem (Sym.block_base bi + off) = Some v@FREE) ->
   refine_block_info amem smem bi.
+*)
+
+(* TODO: fix *)
+Definition refine_block_info (amem : Abstract.memory mt) (smem : Sym.word_map (atom (word mt) (Sym.tag mt))) : Sym.block_info mt -> Prop := fun _ => True.
 
 (* TODO: export from Sym in symbolic.v *)
 Canonical Sym.block_info_eqType.
@@ -359,93 +377,49 @@ Lemma refine_memory_upd smem smem' ist
   refine_internal_state amem smem ist ->
   refine_val (Abstract.VPtr pt) w1 (PTR n) ->
   PartMaps.upd smem w1 w2@M(n, ty) = Some smem' ->
-  PartMaps.get amem (fst pt) = Some fr ->
-  update_list_Z (word_to_Z (snd pt)) x fr = Some fr' ->
+  PartMaps.get amem pt.1 = Some fr ->
+  update_list_Z (word_to_Z pt.2) x fr = Some fr' ->
   refine_val x w2 ty ->
-    exists amem', [/\ PartMaps.upd amem (fst pt) fr' = Some amem',
+    exists amem', [/\ PartMaps.upd amem pt.1 fr' = Some amem',
       refine_memory amem' smem' & refine_internal_state amem' smem' ist].
 Proof.
-case: ist => a info [miP rmem] rist rpt upd_w1 get_pt update_pt rx.
+move=> [miP rmem] rist rpt upd_w1 get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
-exists amem'; split=> // [|t /(rist t)]; last first.
-  case=> [b col bi color_b mi_b|].
-admit.
-admit.
-split; first by eauto.
-intros b base nonce off mi_b.
-unfold Abstract.getv in *.
-have [eq_b|neq_b] := altP (b =P pt.1).
-  rewrite eq_b.
-  simpl; rewrite (PartMaps.get_upd_eq upd_pt).
-  have [->|/eqP neq_off] := altP (off =P snd pt).
-    rewrite (update_list_Z_spec update_pt).
-    assert (eq_w1 : (base + snd pt)%w = w1).
-      replace pt with (fst pt, snd pt) in rpt.
-        inversion rpt; congruence.
-      by destruct pt.
-    rewrite eq_w1.
-    rewrite (PartMaps.get_upd_eq upd_w1).
-    assert (eq_n : n = nonce).
-      replace pt with (fst pt, snd pt) in rpt.
-        by inversion rpt; congruence.
-      by destruct pt.
-    split; congruence.
-  assert (neqw_off : word_to_Z off <> word_to_Z (snd pt)).
-    by move/word_to_Z_inj.
-  rewrite <-(update_list_Z_spec2 update_pt neqw_off).
-  specialize (rmem b base nonce off mi_b).
-  simpl in rmem.
-  rewrite eq_b get_pt in rmem.
-  assert (neq_w1 : (base + off)%w <> w1).
-    destruct pt as [b' off']; simpl in *.
-    rewrite eq_b in mi_b.
-    rewrite (refine_ptr_inv rpt mi_b).
-    by intros eq_w1; apply addwI in eq_w1; congruence.
-  by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
-specialize (rmem b base nonce off mi_b).
-move/eqP: neq_b => neq_b.
-generalize (PartMaps.get_upd_neq neq_b upd_pt).
-unfold Abstract.frame. simpl.
-move->.
-simpl in *.
-(* Why does fold fail?
-fold (Abstract.getv amem (b,off)) in *.
-*)
-(*
-change (match PartMaps.get amem b with
-           | Some fr0 => index_list_Z (word_to_Z off) fr0
-           | None => None
-           end)
-with (Abstract.getv amem (b,off)) in *.
-*)
-
-have [eq_w1|/eqP neq_w1] := altP (base + off =P w1).
-  rewrite <-eq_w1 in upd_w1.
-  rewrite (PartMaps.get_upd_eq upd_w1).
-  destruct (PartMaps.get amem b) eqn:get_b.
-    destruct pt as [b' off']; simpl in *; revert eq_w1.
-    inversion rpt as [|? ? ? ? mi_pt].
-(*
-    assert (lt_off' : word_to_Z off' < size amem b').
-      by apply (size_update get_pt mi_pt update_pt).
-*)
-    intros overlap.
-    rewrite (mi_disjoints miP mi_b mi_pt get_b get_pt overlap) // in neq_b.
-
-(* We could use a reflection lemma here *)
-    generalize (@index_list_Z_Some _ (word_to_Z off) f).
-    case: (index_list_Z (word_to_Z off) f) rmem => [v _ /(_ v erefl) [] //|].
-    by have [? ->] := PartMaps.upd_inv upd_w1.
-  case: (update_list_Z_Some x fr (word_to_Z off')) => _.
-  by case=> //; eexists.
-destruct (PartMaps.upd_inv upd_w1) as [? get_w1].
-  by rewrite get_w1 in rmem.
-by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1).
+exists amem'; split=> //; split.
+  admit.
+move=> w0 w3 col ty'.
+have [->|/eqP neq_w0w1] := altP (w0 =P w1).
+  rewrite (PartMaps.get_upd_eq upd_w1) => [[<- <- <-]]. 
+  inversion rpt.
+  rewrite H4 [base+off]addwC addwK H1.
+  rewrite /Abstract.getv.
+  rewrite (PartMaps.get_upd_eq upd_pt).
+  by rewrite (update_list_Z_spec update_pt).
+rewrite (PartMaps.get_upd_neq neq_w0w1 upd_w1).
+move=> get_w0.
+move/(_ _ _ _ _ get_w0): rmem.
+inversion rpt.
+rewrite -H1 /= in get_pt upd_pt update_pt.
+have [->|neq_coln] := altP (col =P n).
+  rewrite H4 /Abstract.getv /=.
+  rewrite get_pt (PartMaps.get_upd_eq upd_pt).
+  have neq_off: word_to_Z (w0 - base) <> word_to_Z off.
+    move/word_to_Z_inj => eq_off.
+    by rewrite -eq_off addwC addwNK in H3.
+  by rewrite (update_list_Z_spec2 update_pt neq_off).
+case mi_col: (TotalMaps.get mi col) => [b' base'].
+rewrite /Abstract.getv /=.
+have neq_b: b' <> b.
+  move=> eq_bb'.
+  rewrite eq_bb' in mi_col.
+  by rewrite (miIr miP mi_col H4) eqxx in neq_coln.
+by rewrite (PartMaps.get_upd_neq neq_b upd_pt).
 Qed.
 
-Definition mi_malloc newb base col b :=
-  if b == newb then Some (base, col) else mi b.
+Definition mi_malloc b base col : meminj :=
+  TotalMaps.upd mi col (b,base).
 
+(*
 Lemma refine_memory_free amem' smem nc info b bi col :
   refine_memory amem smem ->
   refine_internal_state amem smem (nc, info) ->
@@ -468,6 +442,7 @@ Lemma refine_memory_free amem' smem nc info b bi col :
 Proof.
 admit.
 Qed.
+*)
 
 (*
   PartMaps.get amem b = Some amem' ->
@@ -619,12 +594,17 @@ Axiom refine_syscalls_get : forall asc qasc w sc, refine_syscalls mi asc qasc ->
 
 End memory_injections.
 
+(*
 Lemma refine_val_malloc mi amem sz amem' newb base col v w ty :
   Abstract.malloc_fun amem sz = (amem', newb) ->
   refine_val mi v w ty -> refine_val (mi_malloc mi newb base col) v w ty.
 Proof.
-admit.
+move=> malloc [w'|b base' col' off mi_b]; first by constructor.
+constructor; rewrite /mi_malloc; generalize (Abstract.malloc_get_fresh malloc), mi_b.
+have [<-|] := altP (b =P newb).
+
 Qed.
+*)
 
 Lemma refine_registers_malloc mi aregs sregs amem amem' sz newb base col :
   Abstract.malloc_fun amem sz = (amem', newb) ->
@@ -645,6 +625,7 @@ move=> rmem malloc /=.
 split; admit.
 Qed.
 
+(*
 Lemma refine_internal_state_malloc mi amem amem' smem info sz newb bi color :
   Abstract.malloc_fun amem sz = (amem', newb) ->
   refine_internal_state mi amem smem (color, info) ->
@@ -655,6 +636,7 @@ Lemma refine_internal_state_malloc mi amem amem' smem info sz newb bi color :
 Proof.
 admit.
 Qed.
+*)
 
 (*
 Lemma refine_val_free mi b x w ty : refine_val mi x w ty ->
@@ -682,9 +664,9 @@ Hint Resolve meminj_update.
 Hint Resolve mi_freeP.
 *)
 
-Lemma refine_pc_inv mi nonce apcb apci pc :
-  refine_val mi (Abstract.VPtr (apcb, apci)) pc (PTR nonce) ->
-  exists base, mi apcb = Some (base, nonce) /\ (base + apci)%w = pc.
+Lemma refine_pc_inv mi col apcb apci pc :
+  refine_val mi (Abstract.VPtr (apcb, apci)) pc (PTR col) ->
+  exists base, TotalMaps.get mi col = (apcb,base) /\ (base + apci)%w = pc.
 Proof.
 intros rpc; inversion rpc.
 by exists base; split.
@@ -852,6 +834,9 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
 + by rewrite binop_addDr; constructor.
 + by rewrite binop_addDl; constructor.
 + by rewrite binop_subDl; constructor.
+Admitted.
+
+(*
 + simpl in *.
   move: hyp.
   have [eq_nonce hyp|//] := altP (nonce1 =P nonce2).
@@ -886,6 +871,7 @@ rewrite /lift_binop in hyp.
 
 
 Admitted.
+*)
 
 (*
 Lemma extra_state_invariant :
@@ -1020,7 +1006,21 @@ by solve_pc rpci.
 (* Syscall *)
 
 (* Allocation *)
+admit.
 
+(* Free *)
+admit.
+
+(* Eq *)
+admit.
+
+(* Base *)
+admit.
+
+(* Eq *)
+admit.
+
+(*
   move: b Heqo E => bi Heqo E.
   move/(_ bi _): (rist).
   have: bi \in [seq x <- info
@@ -1073,7 +1073,6 @@ by solve_pc rpci.
   have eq_s4b: s4 = b.
     inversion H3.
     exact: (miIr miP H8 mi_b erefl).
-
   case: (Abstract.free_Some get_b)=> ? free_b.
 
   eexists; eexists; split.
@@ -1164,6 +1163,7 @@ by solve_pc rpci.
   by eauto.
 
   by split; eassumption.
+*)
 
 move: CALL.
 rewrite /= /Symbolic.run_syscall /=.
