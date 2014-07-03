@@ -4,7 +4,7 @@ Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils lib.partial_maps lib.ordered common.common.
-Require Import sfi.list_utils sfi.set_utils sfi.isolate_sets sfi.classes.
+Require Import sfi.list_utils sfi.set_utils sfi.isolate_sets sfi.common.
 
 Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.
@@ -110,31 +110,29 @@ Record state := State { pc           : value
                       ; regs         : registers
                       ; mem          : memory
                       ; compartments : list compartment
+                      ; step_kind    : where_from
                       ; previous     : compartment }.
-                        (* Initially, previous should just be the initial
-                           compartment *)
+                        (* Initially, step_kind should be INTERNAL and previous
+                           should just be the initial main compartment *)
 
-Definition good_state (MM : state) : bool :=
-  is_some (in_compartment_opt (compartments MM) (pc MM)) &&
-  elem (previous MM) (compartments MM)                   &&
-  good_compartments (compartments MM).
+Definition permitted_now_in (C : list compartment)
+                            (sk : where_from)
+                            (prev : compartment)
+                            (pc : word) : option compartment :=
+  do! c <- in_compartment_opt C pc;
+  do! guard (c == prev) || ((sk == JUMPED) && set_elem pc (jump_targets prev));
+  Some c.
+Arguments permitted_now_in C !sk prev pc /.
 
 Record syscall := Syscall { address   : word
                           ; semantics : state -> option state }.
 
-Definition good_syscall (sc : syscall) (MM : state) : bool :=
-  if good_state MM
-  then match semantics sc MM with
-         | Some MM' => good_state MM'
-         | None     => true
-       end
-  else true.
-
 Definition isolate_fn (MM : state) : option state :=
-  let '(State pc R M C c) := MM in
-  do! pA     <- get R syscall_arg1;
-  do! pJ     <- get R syscall_arg2;
-  do! pS     <- get R syscall_arg3;
+  let '(State pc R M C sk c) := MM in
+  do! c_sys <- permitted_now_in C sk c pc;
+  do! pA <- get R syscall_arg1;
+  do! pJ <- get R syscall_arg2;
+  do! pS <- get R syscall_arg3;
   let '<<A,J,S>> := c in
   do! A' <- isolate_create_set id M pA;
   do! guard subset A' A;
@@ -149,8 +147,8 @@ Definition isolate_fn (MM : state) : option state :=
   do! pc'    <- get R ra;
   do! c_next <- in_compartment_opt C' pc';
   do! guard c_upd == c_next;
-  do! c_sys  <- in_compartment_opt C' pc;
-  Some (State pc' R M C' c_sys).
+  do! guard set_elem pc' (jump_targets c_sys);
+  Some (State pc' R M C' JUMPED c_sys).
 
 Definition isolate :=
   {| address   := isolate_addr
@@ -165,7 +163,13 @@ Definition add_to_compartment_component
              (rd : compartment -> list value)
              (wr : list value -> compartment -> compartment)
              (MM : state) : option state :=
-  let '(State pc R M C c) := MM in
+  let '(State pc R M C sk c) := MM in
+  do! c_sys <- permitted_now_in C sk c pc;
+  (* Is this necessary?  We don't need it for `isolate' because we can prove it
+     there (due to non-emptiness constraints), but we can't prove it here.  It
+     should always be true, since syscalls live in one-address compartments, so
+     if they're entered via a JAL from elsewhere, we're fine. *)
+  do! guard c != c_sys;
   do! p <- get R syscall_arg1;
   do! guard set_elem p (set_union (address_space c) (rd c));
   let c' := wr (insert_unique p (rd c)) c in
@@ -173,8 +177,8 @@ Definition add_to_compartment_component
   do! pc'    <- get R ra;
   do! c_next <- in_compartment_opt C' pc';
   do! guard c' == c_next;
-  do! c_sys  <- in_compartment_opt C' pc;
-  Some (State pc' R M C' c_sys).
+  do! guard set_elem pc' (jump_targets c_sys);
+  Some (State pc' R M C' JUMPED c_sys).
 
 Definition add_to_jump_targets :=
   {| address   := add_to_jump_targets_addr
@@ -193,7 +197,42 @@ Let table := [isolate; add_to_jump_targets; add_to_shared_memory].
 Definition get_syscall (addr : value) : option syscall :=
   List.find (fun sc => address sc == addr) table.
 
-Notation simple_step C pc c := (C ⊢ pc, pc + 1 ∈ c).
+Definition user_address_space (M : memory) : compartment -> bool :=
+  forallb (is_some ∘ get M) ∘ address_space.
+Arguments user_address_space M !c /.
+
+Definition syscall_address_space (M : memory) (c : compartment) : bool :=
+  match address_space c with
+    | [sc] => ~~ is_some (get M sc) && elem sc (map address table)
+    | _    => false
+  end.
+Arguments syscall_address_space : simpl never.
+
+Definition syscalls_separated (M : memory) : list compartment -> bool :=
+  forallb (fun c => user_address_space M c || syscall_address_space M c).
+Arguments syscalls_separated M C /.
+
+Definition syscalls_present (C : list compartment) : bool :=
+  forallb (is_some ∘ (in_compartment_opt C) ∘ address) table.
+          
+Definition good_state (MM : state) : bool :=
+  elem (previous MM) (compartments MM) &&
+  good_compartments (compartments MM) &&
+  syscalls_separated (mem MM) (compartments MM) &&
+  syscalls_present (compartments MM).
+
+Definition good_syscall (sc : syscall) (MM : state) : bool :=
+  if good_state MM
+  then match in_compartment_opt (compartments MM) (pc MM) with
+         | Some c => if syscall_address_space (mem MM) c
+                     then match semantics sc MM with
+                            | Some MM' => good_state MM'
+                            | None     => true
+                          end
+                     else true
+         | None => true
+       end
+  else true.
 
 Definition decode M pc :=
   do! pc_val <- get M pc;
@@ -202,95 +241,94 @@ Definition decode M pc :=
 Notation "x ?= y" := (x = Some y) (at level 70, no associativity).
 
 Inductive step (MM MM' : state) : Prop :=
-| step_nop :     forall pc R M C old c
-                        (ST : MM = State pc R M C old)
+| step_nop :     forall pc R M C sk prev c
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Nop _)
-                   (STEP  : simple_step C pc c)
-                   (NEXT  : MM' = State (pc + 1) R M C c),
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
+                   (NEXT  : MM' = State (pc + 1) R M C INTERNAL c),
                         step MM MM'
 
-| step_const :   forall pc R M C old c x rdest R'
-                        (ST : MM = State pc R M C old)
+| step_const :   forall pc R M C sk prev c x rdest R'
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Const _ x rdest)
-                   (STEP  : simple_step C pc c)
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
                    (UPD   : upd R rdest (imm_to_word x) ?= R')
-                   (NEXT  : MM' = State (pc + 1) R' M C c),
+                   (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
-| step_mov   :   forall pc R M C old c rsrc rdest x R'
-                        (ST : MM = State pc R M C old)
+| step_mov   :   forall pc R M C sk prev c rsrc rdest x R'
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Mov _ rsrc rdest)
-                   (STEP  : simple_step C pc c)
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GET   : get R rsrc ?= x)
                    (UPD   : upd R rdest x ?= R')
-                   (NEXT  : MM' = State (pc + 1) R' M C c),
+                   (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
-| step_binop :   forall pc R M C old c op rsrc1 rsrc2 rdest x1 x2 R'
-                        (ST : MM = State pc R M C old)
+| step_binop :   forall pc R M C sk prev c op rsrc1 rsrc2 rdest x1 x2 R'
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Binop _ op rsrc1 rsrc2 rdest)
-                   (STEP  : simple_step C pc c)
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR1 : get R rsrc1 ?= x1)
                    (GETR2 : get R rsrc2 ?= x2)
                    (UPDR  : upd R rdest (binop_denote op x1 x2) ?= R')
-                   (NEXT  : MM' = State (pc + 1) R' M C c),
+                   (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
-| step_load  :   forall pc R M C old c rpsrc rdest p x R'
-                        (ST : MM = State pc R M C old)
+| step_load  :   forall pc R M C sk prev c rpsrc rdest p x R'
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Load _ rpsrc rdest)
-                   (STEP  : simple_step C pc c)
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR  : get R rpsrc ?= p)
                    (GETM  : get M p     ?= x)
                    (UPDR  : upd R rdest x ?= R')
-                   (NEXT  : MM' = State (pc + 1) R' M C c),
+                   (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
-| step_store :   forall pc R M C old c rsrc rpdest x p M'
-                        (ST : MM = State pc R M C old)
+| step_store :   forall pc R M C sk prev c rsrc rpdest x p M'
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Store _ rsrc rpdest)
-                   (STEP  : simple_step C pc c)
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETRS : get R rsrc   ?= x)
                    (GETRD : get R rpdest ?= p)
                    (VALID : In p (address_space c ++ shared_memory c))
                    (UPDR  : upd M p x ?= M')
-                   (NEXT  : MM' = State (pc + 1) R M' C c),
+                   (NEXT  : MM' = State (pc + 1) R M' C INTERNAL c),
                         step MM MM'
 
-| step_jump  :   forall pc R M C old c rtgt pc'
-                        (ST : MM = State pc R M C old)
+| step_jump  :   forall pc R M C sk prev c rtgt pc'
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Jump _ rtgt)
-                   (IN_C  : C ⊢ pc ∈ c)
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR  : get R rtgt ?= pc')
-                   (VALID : In pc' (address_space c ++ jump_targets c))
-                   (NEXT  : MM' = State pc' R M C c),
+                   (NEXT  : MM' = State pc' R M C JUMPED c),
                         step MM MM'
 
-| step_bnz   :   forall pc R M C old c rsrc x b
-                        (ST : MM = State pc R M C old)
+| step_bnz   :   forall pc R M C sk prev c rsrc x b
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Bnz _ rsrc x)
-                   (GETR  : get R rsrc ?= b),
-                   let pc' := pc + (if b == 0 then 1 else imm_to_word x)
-                   in forall
-                   (STEP  : C ⊢ pc,pc' ∈ c)
-                   (NEXT  : MM' = State pc' R M C c),
+                   (GETR  : get R rsrc ?= b)
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
+                   (NEXT  : MM' = State (pc + (if b == 0
+                                               then 1
+                                               else imm_to_word x))
+                                        R M C JUMPED c),
                         step MM MM'
 
 (* We make JAL inter-compartmental, like JUMP, but things must be set up so that
  * the return address is callable by the destination compartment.  However, see
  * [Note Fancy JAL] below. *)
-| step_jal   :   forall pc R M C c old rtgt pc' R'
-                        (ST : MM = State pc R M C old)
+| step_jal   :   forall pc R M C c sk prev rtgt pc' R'
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Jal _ rtgt)
-                   (IN_C  : C ⊢ pc ∈ c)
+                   (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR  : get R rtgt ?= pc')
-                   (VALID : In pc' (address_space c ++ jump_targets c))
                    (UPDR  : upd R ra (pc + 1) ?= R')
-                   (NEXT  : MM' = State pc' R' M C c),
+                   (NEXT  : MM' = State pc' R' M C INTERNAL c),
                         step MM MM'
 
-| step_syscall : forall pc R M C old sc
-                        (ST : MM = State pc R M C old)
+| step_syscall : forall pc R M C sk prev sc
+                        (ST : MM = State pc R M C sk prev)
                    (INST  : get M pc = None)
                    (GETSC : get_syscall pc ?= sc)
                    (CALL  : semantics sc MM ?= MM'),
@@ -311,6 +349,43 @@ Inductive step (MM MM' : state) : Prop :=
  * we don't get nesting. *)
 
 (***** PROOFS *****)
+
+(*** Proofs for `user_address_space' and `syscall_address_space' ***)
+
+Theorem user_address_space_same : forall M c c',
+  address_space c = address_space c' ->
+  user_address_space M c = user_address_space M c'.
+Proof. clear S; move=> M [A J S] [A' J' S'] /= -> //. Qed.
+
+Theorem syscall_address_space_same : forall M c c',
+  address_space c = address_space c' ->
+  syscall_address_space M c = syscall_address_space M c'.
+Proof. clear S; move=> M [A J S] [A' J' S'] /= -> //. Qed.
+
+Theorem user__not_syscall : forall M c,
+  user_address_space M c -> ~~ syscall_address_space M c.
+Proof.
+  clear S; move=> M [[|sc [|? ?]] J S] /=; try solve [auto];
+    move=> /andP [DEF _].
+  rewrite negb_andb; apply/orP; left.
+  rewrite DEF; auto.
+Qed.
+
+Theorem syscall___not_user : forall M c,
+  syscall_address_space M c -> ~~ user_address_space M c.
+Proof.
+  clear S; move=> M [[|sc [|? ?]] J S] /=; try solve [inversion 1];
+    move=> /andP [UNDEF _].
+  rewrite andb_true_r; assumption.
+Qed.
+
+Corollary not_user_and_syscall : forall M c,
+  ~~ (user_address_space M c && syscall_address_space M c).
+Proof.
+  intros; destruct (user_address_space M c) eqn:UAS; simpl.
+  - apply user__not_syscall; assumption.
+  - auto.
+Qed.
 
 (*** Proofs for `good_compartment' ***)
 
@@ -536,7 +611,8 @@ Ltac destruct_good_compartment_hyp_impl name GOOD :=
       let SET_JT_c := fresh "SET_JT_" name in
       let SET_SM_c := fresh "SET_SM_" name in
       assert (TEMP_c : good_compartment c = true) by exact GOOD;
-      unfold good_compartment in TEMP_c; repeat rewrite ->andb_true_iff in TEMP_c;
+      unfold good_compartment in TEMP_c;
+      repeat rewrite ->andb_true_iff in TEMP_c;
       destruct TEMP_c as [[SET_AS_c SET_JT_c] SET_SM_c]
     | _ => fail 1 GOOD "is not a `good_compartment' assertion"
   end.
@@ -905,26 +981,6 @@ Hint Resolve in_unique_compartment.
 (*** Proofs about `good_state' ***)
 
 (* For `auto' *)
-Lemma good_state__in_compartment_opt : forall MM,
-  good_state MM = true ->
-  is_some (in_compartment_opt (compartments MM) (pc MM)) = true.
-Proof.
-  unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.
-Qed.
-Hint Resolve good_state__in_compartment_opt.
-
-(* For `auto' *)
-Lemma good_state_decomposed__in_compartment_opt : forall pc R M C old,
-  good_state (State pc R M C old) = true ->
-  is_some (in_compartment_opt C pc) = true.
-Proof.
-  intros pc R M C old;
-    apply (good_state__in_compartment_opt (State pc R M C old)).
-Qed.
-Hint Resolve good_state_decomposed__in_compartment_opt.
-
-
-(* For `auto' *)
 Lemma good_state__previous_is_compartment : forall MM,
   good_state MM = true ->
   elem (previous MM) (compartments MM).
@@ -934,14 +990,35 @@ Qed.
 Hint Resolve good_state__previous_is_compartment.
 
 (* For `auto' *)
-Lemma good_state_decomposed__previous_is_compartment : forall pc R M C old,
-  good_state (State pc R M C old) = true ->
-  elem old C.
+Lemma good_state_decomposed__previous_is_compartment : forall pc R M C sk prev,
+  good_state (State pc R M C sk prev) = true ->
+  elem prev C.
 Proof.
-  intros pc R M C old;
-    apply (good_state__previous_is_compartment (State pc R M C old)).
+  intros pc R M C sk prev;
+    apply (good_state__previous_is_compartment (State pc R M C sk prev)).
 Qed.
 Hint Resolve good_state_decomposed__previous_is_compartment.
+
+(* For `auto' *)
+Lemma good_state__previous_is_good : forall MM,
+  good_state MM = true ->
+  good_compartment (previous MM).
+Proof.
+  intros; unfold good_state in *;
+    repeat rewrite ->andb_true_iff in *; repeat invh and;
+    destruct (elem _ _); simpl in *; eauto.
+Qed.
+Hint Resolve good_state__previous_is_good.
+
+(* For `auto' *)
+Lemma good_state_decomposed__previous_is_good : forall pc R M C sk prev,
+  good_state (State pc R M C sk prev) = true ->
+  good_compartment prev.
+Proof.
+  intros until 0; intros GOOD; apply good_state__previous_is_good in GOOD;
+    exact GOOD.
+Qed.
+Hint Resolve good_state_decomposed__previous_is_good.
 
 (* For `auto' *)
 Lemma good_state__good_compartments : forall MM,
@@ -952,23 +1029,98 @@ Qed.
 Hint Resolve good_state__good_compartments.
 
 (* For `auto' *)
-Lemma good_state_decomposed__good_compartments : forall pc R M C old,
-  good_state (State pc R M C old) = true -> good_compartments C = true.
+Lemma good_state_decomposed__good_compartments : forall pc R M C sk prev,
+  good_state (State pc R M C sk prev) = true -> good_compartments C = true.
 Proof.
-  intros pc R M C old;
-    apply (good_state__good_compartments (State pc R M C old)).
+  intros pc R M C sk prev;
+    apply (good_state__good_compartments (State pc R M C sk prev)).
 Qed.
 Hint Resolve good_state_decomposed__good_compartments.
+
+(* For `auto' *)
+Lemma good_state__syscalls_separated : forall MM,
+  good_state MM = true -> syscalls_separated (mem MM) (compartments MM) = true.
+Proof.
+  unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.
+Qed.
+Hint Resolve good_state__syscalls_separated.
+
+(* For `auto' *)
+Lemma good_state_decomposed__syscalls_separated : forall pc R M C sk prev,
+  good_state (State pc R M C sk prev) = true -> syscalls_separated M C = true.
+Proof.
+  intros pc R M C sk prev;
+    apply (good_state__syscalls_separated (State pc R M C sk prev)).
+Qed.
+Hint Resolve good_state_decomposed__syscalls_separated.
+
+(* For `auto' *)
+Lemma good_state__syscalls_present : forall MM,
+  good_state MM = true -> syscalls_present (compartments MM) = true.
+Proof.
+  unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.
+Qed.
+Hint Resolve good_state__syscalls_present.
+
+(* For `auto' *)
+Lemma good_state_decomposed__syscalls_present : forall pc R M C sk prev,
+  good_state (State pc R M C sk prev) = true -> syscalls_present C = true.
+Proof.
+  intros pc R M C sk prev;
+    apply (good_state__syscalls_present (State pc R M C sk prev)).
+Qed.
+Hint Resolve good_state_decomposed__syscalls_present.
+
+(*** Proofs for `permitted_now_in' ***)
+
+Theorem permitted_now_in_spec : forall C sk prev pc c,
+  good_compartments C ->
+  good_compartment prev ->
+  (permitted_now_in C sk prev pc ?= c <->
+   C ⊢ pc ∈ c /\ (c = prev \/ (sk = JUMPED /\ In pc (jump_targets prev)))).
+Proof.
+  intros C sk prev pc c GOODS GOOD; unfold permitted_now_in; simpl; split.
+  - intros PNI.
+    destruct (in_compartment_opt C pc) as [c'|] eqn:ICO; simpl in PNI;
+      [|discriminate].
+    destruct (_ || _) eqn:COND; simpl in PNI; [|discriminate].
+    inversion PNI; subst c'.
+    apply in_compartment_opt_correct in ICO; auto.
+    split; [assumption|].
+    move: COND => /orP [/eqP EQ | /andP [/eqP EQ /set_elem_true IN]]; auto.
+  - intros [IC COND].
+    apply in_compartment_opt_sound in IC; auto.
+    rewrite IC; simpl.
+    move: COND => [/eqP -> | [/eqP -> /set_elem_true ELEM]]; simpl.
+    + reflexivity.
+    + rewrite ELEM /=; auto; rewrite orb_true_r; reflexivity.
+Qed.
+
+Corollary permitted_now_in__in_compartment_opt : forall C sk prev pc c,
+  good_compartments C ->
+  good_compartment prev ->
+  permitted_now_in C sk prev pc ?= c ->
+  in_compartment_opt C pc ?= c.
+Proof.
+  intros C sk prev pc c GOODS GOOD PNI.
+  apply permitted_now_in_spec in PNI; try assumption.
+  move: PNI => [IC _]; apply in_compartment_opt_sound in IC; auto.
+Qed.
 
 (*** Proofs about `good_syscall' and `get_syscall'. ***)
 
 Theorem isolate_good : forall MM, good_syscall isolate MM = true.
 Proof.
-  clear - t ops spec; unfold isolate, good_syscall; intros MM; simpl.
-  destruct (good_state MM) eqn:GOOD, MM as [pc R M C c];
-    [unfold good_state in *; simpl in * | reflexivity].
+  clear S; unfold isolate, good_syscall; intros MM; simpl.
+  destruct (good_state MM) eqn:GOOD; [simpl|reflexivity].
+  destruct (in_compartment_opt _ _) as [c_sys0|] eqn:ICO_sys;
+    [simpl|reflexivity].
+  destruct (syscall_address_space _ _) eqn:SAS; [simpl|reflexivity].
+  destruct MM as [pc R M C sk c];
+    unfold good_state, isolate, isolate_fn;
+    rewrite (lock elem) (lock in_compartment_opt);
+    simpl in *.
   (* Now, compute in `isolate_fn'. *)
-  rewrite (lock elem).
   let (* Can't get the binder name, so we provide it *)
       DO var := match goal with
                   | |- match (do! _ <- ?GET;   _) with _ => _ end = true =>
@@ -978,27 +1130,32 @@ Proof.
                        with _ => _ end = true =>
                     destruct COND eqn:var
                 end; simpl; [|reflexivity]
-  in DO pA; DO pJ; DO pS;
+  in DO c_sys;
+     DO pA; DO pJ; DO pS;
      destruct c as [A J S] eqn:def_AJS; simpl;
      DO A'; DO SUBSET_A'; DO NONEMPTY_A';
      DO J'; DO SUBSET_J';
      DO S'; DO SUBSET_S';
-     DO pc'; DO c_next; DO SAME; DO c_sys;
+     DO pc'; DO c_next; DO SAME; DO RETURN_OK;
      set (c_upd := <<set_difference A A',J,S>>) in *;
      set (c'    := <<A',J',S'>>) in *;
-     repeat rewrite <-def_AJS in *;
-     rewrite def_c_next.
+     repeat rewrite <-def_AJS in *.
+  assert (c_sys0 = c_sys) by
+    (apply permitted_now_in__in_compartment_opt in def_c_sys;
+     solve [eauto 3 | congruence]);
+    subst c_sys0.
   unfold good_compartments in *; simpl;
     assert (TEMP : good_compartments C = true) by
-      (repeat rewrite ->andb_true_iff in GOOD; unfold good_compartments;
-       andb_true_split; tauto);
+      (rewrite /good_state /good_compartments /= in GOOD *;
+       repeat rewrite ->andb_true_iff in GOOD; andb_true_split; try tauto).
     move TEMP before GOOD; unfold good_compartments in TEMP;
     repeat rewrite ->andb_true_iff in TEMP; destruct TEMP as [[GOODS NOL] CC].
   assert (IN : In c C) by
-    (repeat rewrite ->andb_true_iff in GOOD; destruct (elem c C);
-     [assumption | repeat invh and; discriminate]).
+    (rewrite /good_state /= in GOOD; repeat rewrite ->andb_true_iff in GOOD;
+     destruct (elem c C); [assumption | repeat invh and; discriminate]).
   assert (NONEMPTY_A_A' : nonempty (set_difference A A') = true). {
     move/eqP in SAME; subst c_next.
+    rewrite <-(lock in_compartment_opt) in *; simpl in *.
     destruct (set_difference A A'); [simpl in *|reflexivity].
     subst c' c_upd; destruct (set_elem pc' A').
     - inversion def_c_next; subst; discriminate.
@@ -1022,26 +1179,49 @@ Proof.
       eassumption.
     - apply NOL. apply delete_in_iff in IN_ct; apply in_neq_in2; intuition.
   }
+  assert (NONEMPTY_A : nonempty A) by
+    (destruct A,A'; simpl in NONEMPTY_A_A'; solve [auto | discriminate]).
+  assert (NOT_SYSCALL_c : ~~ syscall_address_space M c). {
+    apply/negP; intro SAS'; subst c.
+    rewrite /syscall_address_space (lock elem) /= in SAS'.
+    destruct A as [|sc [|]]; auto.
+    apply permitted_now_in_spec in def_c_sys; eauto 3. 
+    move/id in def_c_sys; move/id in NONEMPTY_A_A'; move/id in SUBSET_A'.
+    assert (NIN_pc : ~ In sc A'). {
+      apply nonempty_iff_in in NONEMPTY_A_A'.
+      destruct NONEMPTY_A_A' as [a IN_diff].
+      apply set_difference_spec in IN_diff; auto; simpl in IN_diff.
+      move: IN_diff => [[-> | []] NIN] //.
+    }
+    rewrite ->subset_spec in SUBSET_A'; auto; simpl in SUBSET_A'.
+    destruct A' as [|a' A']; [discriminate|].
+    move: (SUBSET_A' a' (or_introl Logic.eq_refl)) => [EQ | []].
+    apply NIN_pc; rewrite EQ; auto.
+  }
+  assert (USER_c : user_address_space M c). {
+    assert (SS : syscalls_separated M C = true) by eauto; simpl in *.
+    rewrite ->forallb_forall in SS.
+    specialize (SS c IN).
+    move: SS => /orP [UAS | SAS'] //.
+    by rewrite SAS' in NOT_SYSCALL_c.
+  }
+  assert (DIFF : c <> c_sys). {
+    intro; subst c_sys.
+    by rewrite SAS in NOT_SYSCALL_c.
+  }
   unfold non_overlapping; repeat rewrite all_tail_pairs_tail; simpl in *.
   andb_true_split; auto;
     try (eapply forallb_impl; [|apply C'_DISJOINT]; cbv beta;
          simpl; intros c''; rewrite andb_true_iff; intros []; intros GOOD'';
          apply disjoint_subset; auto; simpl).
   - (* locked elem c_sys [:: c_upd, c' & delete c C] = true *)
-    rewrite <-(lock elem).
-    destruct (set_elem pc (set_difference A A')).
-    + inversion def_c_sys; subst c_sys; simpl.
-      destruct (eqType_EqDec compartment_eqType c_upd c_upd); [auto|congruence].
-    + destruct (set_elem pc A').
-      * inversion def_c_sys; subst c_sys; simpl.
-        destruct (eqType_EqDec compartment_eqType c_upd c'); [auto|].
-        destruct (eqType_EqDec compartment_eqType c' c'); [auto|congruence].
-      * apply in_compartment_opt_correct,in_compartment_spec in def_c_sys;
-          [simpl | auto using delete_preserves_forallb].
-        destruct (eqType_EqDec compartment_eqType c_upd c_sys); [auto|].
-        destruct (eqType_EqDec compartment_eqType c' c_sys); [auto|].
-        destruct (elem c_sys (delete c C)); [auto|].
-        destruct def_c_sys; contradiction.
+    assert (In c_sys (c_upd :: c' :: delete c C)). {
+      do 2 right. apply delete_in_iff; split; auto.
+      apply permitted_now_in_spec in def_c_sys; eauto 3.
+    }
+    rewrite <-(lock elem);
+      destruct (elem c_sys (c_upd :: c' :: delete c C)) eqn:ELEM;
+      rewrite ELEM; auto.
   - (* non_overlapping c_upd c' = true *)
     unfold disjoint; subst c c_upd c'; simpl in *.
     rewrite ->set_intersection_difference_distrib,
@@ -1163,6 +1343,54 @@ Proof.
         destruct CC as [c''' [IN_c''' IN_a_c''']].
       apply concat_in; exists (address_space c'''); split; auto.
       apply in_map_iff; eauto.
+  - (* user_address_space M c_upd || syscall_address_space M c_upd = true *)
+    subst c c_upd; simpl in *.
+    apply/orP; left.
+    eapply forallb_subset; [|apply USER_c].
+    intros a IN_diff.
+    apply set_difference_spec in IN_diff; tauto.
+  - (* user_address_space M c' || syscall_address_space M c' = true *)
+    subst c c_upd; simpl in *.
+    apply/orP; left.
+    eapply forallb_subset; [|apply USER_c].
+    intros a IN_A'.
+    eapply subset_spec in SUBSET_A'; eassumption.
+  - (* syscalls_separated (delete c C) *)
+    assert (SS : syscalls_separated M C = true) by eauto; simpl in *.
+    eauto using delete_preserves_forallb.
+  - (* syscalls_present *)
+    assert (SP : syscalls_present C) by eauto.
+    rewrite /syscalls_present /table /is_true in SP *.
+    rewrite ->forallb_forall in SP; rewrite ->forallb_forall.
+    intros sc IN_sc; specialize (SP sc IN_sc); cbv [compose] in *.
+    destruct sc as [sc sc_fn]; cbv [address] in *; clear IN_sc sc_fn.
+    destruct (in_compartment_opt C sc) as [c_sc|] eqn:ICO;
+      [clear SP | discriminate].
+    generalize ICO => ICO'.
+    apply in_compartment_opt_correct, in_compartment_spec in ICO'; auto;
+      destruct ICO' as [IN_c_sc IN_sc].
+    destruct (c_sc == c) eqn:EQ; move/eqP in EQ.
+    + subst; simpl in *.
+      assert (IN_sc' : In sc (set_difference A A') \/ In sc A'). {
+        apply set_union_spec.
+        rewrite set_union_difference_distrib; auto.
+        rewrite set_difference_self_annihilating set_difference_nil_r.
+        rewrite set_union_comm; auto.
+        rewrite set_union_subset_id; auto.
+        apply subset_spec; auto.
+      }
+      destruct IN_sc' as [IN_diff | IN_A'].
+      * apply set_elem_true in IN_diff; auto.
+        rewrite IN_diff; auto.
+      * apply set_elem_true in IN_A'; auto.
+        rewrite IN_A'; destruct (set_elem sc (set_difference A A')); auto.
+    + simpl.
+      destruct (set_elem sc (set_difference A A')); auto.
+      destruct (set_elem sc A'); auto.
+      assert (IN_c_sc' : In c_sc (delete c C)) by by apply delete_in_iff.
+      assert (IC' : delete c C ⊢ sc ∈ c_sc) by by apply in_compartment_spec.
+      apply in_compartment_opt_sound in IC'; auto.
+      rewrite IC'; auto.
 Qed.
 Hint Resolve isolate_good.
 
@@ -1224,50 +1452,82 @@ Lemma add_to_compartment_component_good : forall addr rd wr MM,
                shared_memory (wr X c) = X /\ rd c = shared_memory c) ->
   good_syscall (Syscall addr (add_to_compartment_component rd wr)) MM = true.
 Proof.
-  clear S table.
+  clear S.
   unfold good_syscall; simpl;
     intros _ rd wr MM ADDR rd_set wr_good eqJ eqS.
-  destruct (good_state MM) eqn:GOOD, MM as [pc R M C c];
-    [ unfold good_state in *; unfold add_to_compartment_component;
-      rewrite (lock in_compartment_opt); simpl in *
-    | reflexivity].
-  repeat rewrite ->andb_true_iff in GOOD; destruct GOOD as [[EICO OLD] GOOD].
-  destruct (get R syscall_arg1)  as [p|];   simpl; [|reflexivity].
-  destruct (set_elem p        _) eqn:ELEM;         [|reflexivity].
-  destruct (get R ra)            as [pc'|]; simpl; [|reflexivity].
+  destruct (good_state MM) eqn:GOOD; [simpl|reflexivity].
+  destruct (in_compartment_opt _ _) as [c_sys0|] eqn:ICO_pc;
+    [simpl|reflexivity].
+  destruct (syscall_address_space _ _) eqn:SAS; [simpl|reflexivity].
+  destruct MM as [pc R M C sk c];
+    unfold good_state, add_to_compartment_component;
+    rewrite (lock in_compartment_opt) (lock elem);
+    simpl in *.
+  generalize GOOD; rewrite /good_state /= =>
+    /andP [/andP [/andP [PREV GOODS] SS] SP].
+  destruct (permitted_now_in _ _ _ _) as [c_sys|] eqn:PNI; [simpl|reflexivity].
+  destruct (c != c_sys)               eqn:NEQ;             [simpl|reflexivity].
+  destruct (get R syscall_arg1)       as [p|];             [simpl|reflexivity].
+  destruct (set_elem p        _)      eqn:ELEM;            [simpl|reflexivity].
+  destruct (get R ra)                 as [pc'|];           [simpl|reflexivity].
   rewrite <-(lock in_compartment_opt);
     destruct (in_compartment_opt _ pc') as [c_next|] eqn:ICO_pc';
-    rewrite (lock in_compartment_opt);
     simpl; [|reflexivity].
   destruct (_ == c_next) eqn:EQ; move/eqP in EQ; simpl;
     [subst c_next | reflexivity].
-  rewrite <-(lock in_compartment_opt);
-    destruct (in_compartment_opt (_  :: _) pc) as [c_sys|] eqn:ICO_pc;
-    rewrite (lock in_compartment_opt) (lock elem);
-    simpl; [|reflexivity].
-  rewrite <-(lock in_compartment_opt), ICO_pc'; simpl.
+  destruct (set_elem pc' _) eqn:ELEM_pc'; simpl; [|reflexivity].
   assert (IN : In c C) by
     (repeat rewrite ->andb_true_iff in GOOD; destruct (elem c C);
      [assumption | repeat invh and; discriminate]).
   assert (GOOD_c : good_compartment c = true) by eauto.
-  apply in_compartment_opt_correct, in_compartment_spec in ICO_pc;
-    [|simpl; andb_true_split; auto].
+  assert (c_sys0 = c_sys) by
+    (apply permitted_now_in__in_compartment_opt in PNI; congruence);
+    subst c_sys0.
+  apply in_compartment_opt_correct, in_compartment_spec in ICO_pc; auto.
   rewrite <-(lock elem).
-  match goal with |- is_left ?ELEM && _ = true => destruct ELEM end;
-    [simpl | invh and; contradiction].
-  destruct c as [A J S]; simpl in *.
-  rewrite ->set_elem_true, ->set_union_spec in ELEM by
-    (apply set_union_preserves_set; eauto 2).
-  apply good_compartments_preserved_for_add_to_compartment_component; auto;
-    rewrite subset_spec; intros a; rewrite set_union_spec; simpl;
-    match goal with
-      | |- context[wr ?X ?c] =>
-        destruct (eqJ X c) as [eqWr | [eqWr eqRd]]; rewrite eqWr; auto
-      | |- context[wr ?X ?c] =>
-        destruct (eqS X c) as [eqWr | [eqWr eqRd]]; rewrite eqWr; auto
-    end;
-    rewrite ->insert_unique_spec, eqRd in *; simpl in *;
-    intros [-> | IN_a]; auto.
+  andb_true_split.
+  - move/eqP in NEQ.
+    assert (In c_sys (delete c C)) by (apply delete_in_iff; split; auto; tauto).
+    match goal with |- context[elem c_sys ?C'] =>
+      destruct (elem c_sys C') eqn:ELEM'; try rewrite ELEM'; auto
+    end.
+  - destruct c as [A J S]; simpl in *.
+    rewrite ->set_elem_true, ->set_union_spec in ELEM by
+      (apply set_union_preserves_set; eauto 2).
+    apply good_compartments_preserved_for_add_to_compartment_component; auto;
+      rewrite subset_spec; intros a; rewrite set_union_spec; simpl;
+      match goal with
+        | |- context[wr ?X ?c] =>
+          destruct (eqJ X c) as [eqWr | [eqWr eqRd]]; rewrite eqWr; auto
+        | |- context[wr ?X ?c] =>
+          destruct (eqS X c) as [eqWr | [eqWr eqRd]]; rewrite eqWr; auto
+      end;
+      rewrite ->insert_unique_spec, eqRd in *; simpl in *;
+      intros [-> | IN_a]; auto.
+  - rewrite (user_address_space_same M _ c); auto.
+    rewrite (syscall_address_space_same M _ c); auto.
+    unfold is_true in SS; rewrite ->forallb_forall in SS; auto.
+  - auto using delete_preserves_forallb.
+  - move/id in SP.
+    rewrite /syscalls_present /table /is_true in SP *.
+    rewrite ->forallb_forall in SP; rewrite ->forallb_forall.
+    intros sc IN_sc; specialize (SP sc IN_sc); cbv [compose] in *.
+    destruct sc as [sc sc_fn]; cbv [address] in *; clear IN_sc sc_fn.
+    simpl; rewrite <-ADDR.
+    destruct (in_compartment_opt C sc) as [c_sc|] eqn:ICO;
+      [clear SP | discriminate].
+    generalize ICO => ICO'.
+    apply in_compartment_opt_correct, in_compartment_spec in ICO'; auto;
+      destruct ICO' as [IN_c_sc IN_sc].
+    destruct (c_sc == c) eqn:EQ; move/eqP in EQ.
+    + subst; simpl in *.
+      destruct (set_elem sc (address_space c)) eqn:ELEM'; auto.
+      apply set_elem_false in ELEM'; auto.
+    + destruct (set_elem sc (address_space c)); auto.
+      assert (IN_c_sc' : In c_sc (delete c C)) by by apply delete_in_iff.
+      assert (IC' : delete c C ⊢ sc ∈ c_sc) by by apply in_compartment_spec.
+      apply in_compartment_opt_sound in IC'; auto.
+      rewrite IC'; auto.
 Qed.
 
 Theorem add_to_jump_targets_good : forall MM,
@@ -1326,7 +1586,7 @@ Theorem step_deterministic : forall MM0 MM1 MM2
 Proof.
   intros; destruct STEP1, STEP2; subst; try congruence;
     repeat match goal with pc' := _ |- _ => subst pc' end;
-    match goal with ST : State _ _ _ _ _ = State _ _ _ _ _ |- _ =>
+    match goal with ST : State _ _ _ _ _ _ = State _ _ _ _ _ _ |- _ =>
       inversion ST; subst
     end;
     try match goal with
@@ -1334,9 +1594,7 @@ Proof.
         INST' : get    ?M ?pc = None |- _
         => unfold decode in INST; rewrite INST' in INST; discriminate
     end;
-    repeat f_equal;
-    try congruence;
-    try (apply (@in_unique_compartment C0 pc1); try tauto; eauto).
+    repeat f_equal; try congruence.
   match goal with
     |- (match ?b1 == 0 with true => 1 | false => imm_to_word ?x1 end) =
        (match ?b2 == 0 with true => 1 | false => imm_to_word ?x2 end) =>
@@ -1344,71 +1602,217 @@ Proof.
   end; reflexivity.
 Qed.
 
-Lemma in_compartment_preserved : forall `(STEP : step MM MM'),
-  (* For syscalls *)
-  elem (previous MM) (compartments MM) ->
-  good_compartments (compartments MM) = true ->
-  is_some (in_compartment_opt (compartments MM)  (pc MM))  = true ->
-  is_some (in_compartment_opt (compartments MM') (pc MM')) = true.
+Lemma stepping_syscall_preserves_good : forall MM MM' sc,
+  get (mem MM) (pc MM)                                    = None       ->
+  pc MM                                                   = address sc ->
+  is_some (in_compartment_opt (compartments MM) (pc MM))  = true       ->
+  good_syscall sc MM                                      = true       ->
+  semantics sc MM                                        ?= MM'        ->
+  good_state MM                                           = true       ->
+  good_state MM'                                          = true.
 Proof.
-  clear S.
-  intros MM MM' STEP PREV GOOD_COMPARTMENTS; destruct STEP; simpl; intros GOOD;
-    try (destruct STEP; subst; simpl in *; eauto 2).
-  - (* Jump *)
-    subst; simpl in *.
-    apply in_app_or in VALID; destruct VALID as [VALID | VALID]; [eauto|].
-    assert (CC : contained_compartments C = true) by auto.
-    unfold contained_compartments in CC;
-      rewrite ->subset_spec in CC; specialize CC with pc';
-      rewrite ->in_app_iff in CC.
-    lapply CC; clear CC; [intros CC|].
-    + apply concat_in in CC; destruct CC as [A [IN_A IN_pc']].
-      apply in_map_iff in IN_A; destruct IN_A as [c' [EQ IN_c']]; subst.
-      apply in_compartment_opt_is_some with c', in_compartment_spec; auto.
-    + left. apply concat_in; exists (jump_targets c); split; auto.
-      apply in_map_iff; eauto.
-  - (* Jal *)
-    (* Exactly the same as above.  Not sure how to Ltac this. *)
-    subst; simpl in *.
-    apply in_app_or in VALID; destruct VALID as [VALID | VALID]; [eauto|].
-    assert (CC : contained_compartments C = true) by auto.
-    unfold contained_compartments in CC;
-      rewrite ->subset_spec in CC; specialize CC with pc';
-      rewrite ->in_app_iff in CC.
-    lapply CC; clear CC; [intros CC|].
-    + apply concat_in in CC; destruct CC as [A [IN_A IN_pc']].
-      apply in_map_iff in IN_A; destruct IN_A as [c' [EQ IN_c']]; subst.
-      apply in_compartment_opt_is_some with c', in_compartment_spec; auto.
-    + left. apply concat_in; exists (jump_targets c); split; auto.
-      apply in_map_iff; eauto.
-  - (* Syscall *)
-    assert (GOOD_STATE : good_state MM = true) by
-      (unfold good_state; simpl; andb_true_split; auto).
-    apply good_state__in_compartment_opt.
-    apply get_syscall_good with (MM := MM) in GETSC;
-      unfold good_syscall in GETSC; rewrite GOOD_STATE in GETSC.
-    destruct (semantics _ _); inversion CALL; subst; auto.
-Qed.    
-Hint Resolve in_compartment_preserved.
+  intros MM MM' sc INST PC ICO GOODSC CALL GOOD.
+  unfold good_syscall in GOODSC; rewrite GOOD CALL in GOODSC.
+  destruct MM as [pc R M C sk prev]; simpl in *; subst.
+  destruct (in_compartment_opt C _) as [c|] eqn:ICO';
+    [clear ICO; rename ICO' into ICO | discriminate].
+  destruct (syscall_address_space M c) eqn:SAS; [assumption | clear GOODSC].
+  apply in_compartment_opt_correct,in_compartment_spec in ICO; eauto 3;
+    destruct ICO as [IN IN'].
+  assert (SS : syscalls_separated M C = true) by eauto; simpl in *.
+  rewrite ->forallb_forall in SS.
+  specialize (SS c IN).
+  rewrite SAS orb_false_r /user_address_space /= in SS.
+  rewrite ->forallb_forall in SS.
+  specialize (SS (address sc) IN').
+  by rewrite INST in SS.
+Qed.
+
+Lemma syscall_step_preserves_good : forall MM MM' sc,
+  get (mem MM) (pc MM)  = None ->
+  get_syscall (pc MM)  ?= sc   ->
+  semantics sc MM      ?= MM'  ->
+  good_state MM         = true ->
+  good_state MM'        = true.
+Proof.
+  intros MM MM' sc INST GETSC CALL GOOD; generalize GETSC => GETSC'.
+  unfold get_syscall,table in GETSC; simpl in *.
+  assert (SP : syscalls_present (compartments MM)) by eauto.
+  unfold syscalls_present,is_true in SP; rewrite ->forallb_forall in SP.
+  unfold get_syscall,table in *; simpl in *.
+  specialize SP with sc; cbv [compose] in *.
+  repeat match type of GETSC with
+    | context[if ?COND then _ else _] =>
+        destruct COND eqn:EQ; [move/eqP in EQ | clear EQ]
+    | None ?= _ =>
+      discriminate
+    | Some _ ?= _ =>
+      lapply SP; [clear SP; intros SP; simpl in SP | solve [auto]];
+      clear CALL
+  end; inversion GETSC; subst; clear GETSC;
+  eapply stepping_syscall_preserves_good; try eassumption; eauto 3.
+  (* Have to repeat this thanks, I think, to evar unification timing *)
+  - rewrite <-EQ; auto.
+  - rewrite <-EQ; auto.
+  - rewrite <-EQ; auto.
+Qed.
 
 Lemma previous_compartment : forall `(STEP : step MM MM'),
   good_state MM = true -> (* This hypothesis only needed for syscalls *)
   elem (previous MM') (compartments MM').
 Proof.
-  clear S.
   intros MM MM' STEP GOOD; destruct STEP; try solve [
     subst; simpl in *;
-    try match goal with | STEP : _ ⊢ _,_ ∈ _ |- _ => destruct STEP end;
-    try match goal with
-      | IC : ?C ⊢ ?pc ∈ ?c |- context[elem ?c ?C] =>
-        destruct (elem c C); auto;
-        try (apply in_compartment_spec in IC; destruct IC; contradiction)
-    end].
+    match goal with
+      | STEP : permitted_now_in ?C ?sk ?prev ?pc ?= ?c |- context[elem ?c ?C] =>
+        apply permitted_now_in_spec in STEP; try (eauto 3);
+        destruct STEP as [IC _]; apply in_compartment_spec in IC;
+        destruct IC; destruct (elem c C); [auto | contradiction]
+    end
+  ].
   (* Syscalls *)
-  assert (GOODSC : good_syscall sc MM = true) by eauto.
   assert (GOOD' : good_state MM' = true) by
-    (unfold good_syscall in GOODSC; rewrite GOOD CALL in GOODSC; exact GOODSC).
-  unfold get_syscall in GETSC; subst table; simpl in GETSC.
+   (apply syscall_step_preserves_good with MM sc; subst; assumption);
+   auto.
+Qed.
+Hint Resolve previous_compartment.
+
+Lemma good_compartments_preserved : forall `(STEP : step MM MM'),
+  good_state MM = true -> (* Full strength only needed for syscalls *)
+  good_compartments (compartments MM') = true.
+Proof.
+  intros MM MM' STEP GOOD;
+    assert (GOODC : good_compartments (compartments MM) = true) by auto;
+    destruct STEP; try (subst; simpl in *; exact GOODC).
+  (* Syscalls *)
+  assert (GOOD' : good_state MM' = true) by
+   (apply syscall_step_preserves_good with MM sc; subst; assumption);
+   auto.
+Qed.
+Hint Resolve good_compartments_preserved.
+
+Lemma syscalls_separated_preserved : forall `(STEP : step MM MM'),
+  good_state MM = true ->
+  syscalls_separated (mem MM') (compartments MM') = true.
+Proof.
+  intros MM MM' STEP GOOD; destruct STEP;
+    try solve [subst; cbv [mem compartments]; eauto 2].
+  - (* Store *)
+    subst; assert (SS : syscalls_separated M C = true) by eauto; simpl in *.
+    rewrite ->forallb_forall in *.
+    intros c' IN; specialize (SS c' IN).
+    apply/orP; move/orP in SS.
+    clear S; destruct c' as [A J S]; simpl in *.
+    destruct SS as [UAS | SAS]; [left | right].
+    + eapply forallb_impl; [|apply UAS].
+      move=> /= a GET.
+      destruct (get M a) eqn:GET';
+        [clear GET; rename GET' into GET | discriminate].
+      eapply defined_preserved in GET; try eassumption.
+      * by destruct GET as [v GET']; rewrite GET'.
+      * apply mem_axioms.
+      * apply eqType_EqDec.
+    + unfold syscall_address_space in *; cbv [address_space] in *.
+      destruct A as [|sc [|]]; auto.
+      move/andP in SAS; apply/andP.
+      split; [move: SAS => [/negP NGET _]; apply/negP | tauto].
+      generalize UPDR => SET; unfold upd in SET.
+      destruct (get M p) as [old|] eqn:GET; [|discriminate].
+      assert (NEQ : sc <> p) by by intro; subst; rewrite GET in NGET.
+      assert (EQ : get M' sc = get M sc) by
+        (eapply get_upd_neq; try eassumption; apply mem_axioms).
+      rewrite EQ; assumption.
+  - (* Syscall *)
+    assert (GOOD' : good_state MM' = true) by
+      (apply syscall_step_preserves_good with MM sc; subst; assumption);
+      auto.
+Qed.
+
+Lemma syscalls_present_preserved : forall `(STEP : step MM MM'),
+  good_state MM = true ->
+  syscalls_present (compartments MM') = true.
+Proof.
+  intros MM MM' STEP GOOD; destruct STEP;
+    try solve [subst; simpl in *; eauto 2].
+  (* Syscall *)
+  assert (GOOD' : good_state MM' = true) by
+    (apply syscall_step_preserves_good with MM sc; subst; assumption);
+    auto.
+Qed.
+  
+
+Theorem good_state_preserved : forall `(STEP : step MM MM'),
+  good_state MM  = true ->
+  good_state MM' = true.
+Proof.
+  intros MM MM' STEP GOOD; unfold good_state; andb_true_split.
+  - eapply previous_compartment; eassumption.
+  - eapply good_compartments_preserved; eassumption.
+  - eapply syscalls_separated_preserved; eassumption.
+  - eapply syscalls_present_preserved; eassumption.
+Qed.
+Hint Resolve good_state_preserved.
+
+Lemma step__permitted_now_in : forall `(STEP : step MM MM'),
+  good_state MM ->
+  exists c, permitted_now_in (compartments MM)
+                             (step_kind MM)
+                             (previous MM)
+                             (pc MM)
+              ?= c.
+Proof.
+  clear S; intros MM MM' STEP GOOD; destruct STEP; subst; simpl in *;
+    try (eexists; eassumption).
+  (* Syscalls *)
+  unfold get_syscall in GETSC; unfold table in GETSC; simpl in GETSC.
+  repeat match type of GETSC with
+    | context[if ?EQ then _ else _] => destruct EQ
+    | None ?= _ => discriminate
+    | Some _ ?= _ => inversion GETSC; subst; clear GETSC;
+                     simpl in CALL;
+                     destruct (permitted_now_in C sk prev pc0);
+                     [eauto | discriminate]
+  end.
+Qed.    
+
+Theorem was_in_compartment : forall `(STEP : step MM MM'),
+  good_state MM ->
+  is_some (in_compartment_opt (compartments MM) (pc MM)).
+Proof.
+  clear S.
+  intros MM MM' STEP GOOD; apply step__permitted_now_in in STEP; auto.
+  move: STEP => [c /permitted_now_in_spec PNI].
+  repeat (lapply PNI; clear PNI; [intros PNI | auto]).
+  destruct PNI as [IC _].
+  apply in_compartment_opt_sound in IC; auto.
+  by rewrite IC.
+Qed.
+
+Theorem permitted_pcs : forall MM MM' MM''
+                               (STEP : step MM MM') (STEP' : step MM' MM''),
+  good_state MM = true ->
+  exists c, compartments MM ⊢ pc MM ∈ c /\
+            (In (pc MM') (address_space c) \/ In (pc MM') (jump_targets c)).
+Proof.
+  clear S; intros MM MM' MM'' STEP STEP' GOOD; generalize STEP => STEPPED;
+    destruct STEP;
+    subst; simpl in *;
+    try solve
+      [ apply permitted_now_in_spec in STEP; eauto 3;
+        apply step__permitted_now_in in STEP'; eauto 3;
+        destruct STEP' as [c' PNI];
+        destruct STEP as [IC STEP]; exists c; split; [exact IC|];
+        assert (good_compartment c) by eauto;
+        apply permitted_now_in_spec in PNI; simpl in *; eauto 3;
+        
+        destruct PNI as [IC' [-> | [EQ IN_J]]];
+          [|solve [discriminate | right; auto]];
+        left; apply in_compartment_spec in IC'; tauto ].
+  (* Syscalls *)
+  generalize GOOD =>
+    /andP /= [/andP [/andP [ELEM /andP [/andP [GOODS NOL] CC]] SS] SP].
+  unfold is_true in GOODS; rewrite ->forallb_forall in GOODS.
+  unfold get_syscall in GETSC; unfold table in GETSC; simpl in GETSC.
   repeat match type of GETSC with
     | context[if ?EQ then _ else _] => destruct EQ
     | None ?= _ => discriminate
@@ -1417,7 +1821,7 @@ Proof.
   - (* isolate *)
     unfold semantics,isolate,isolate_fn in CALL;
       rewrite (lock in_compartment_opt) in CALL;
-      simpl in CALL.
+      simpl in *.
     let (* Can't get the binder name, so we provide it *)
         DO var := match type of CALL with
                     | (do! _ <- ?GET;   _) ?= _ =>
@@ -1426,20 +1830,23 @@ Proof.
                     | (match ?COND with true => _ | false => None end) ?= _ =>
                       destruct COND eqn:var
                   end; simpl in CALL; [|discriminate]
-    in DO pA; DO pJ; DO pS;
-       destruct old as [A J S] eqn:def_AJS; simpl in CALL;
+    in DO c_sys; DO pA; DO pJ; DO pS;
+       destruct prev as [A J S] eqn:def_AJS; simpl in CALL;
        DO A'; DO SUBSET_A'; DO NONEMPTY_A';
        DO J'; DO SUBSET_J';
        DO S'; DO SUBSET_S';
-       DO pc'; DO c_next; DO SAME; DO c_sys;
+       DO pc'; DO c_next; DO SAME; DO RETURN_OK;
        set (c_upd := <<set_difference A A',J,S>>) in *;
        set (c'    := <<A',J',S'>>) in *;
        repeat rewrite <-def_AJS in *;
-       inversion CALL; subst; clear CALL;
-       rewrite (lock elem); simpl in *;
-       rewrite <-(lock in_compartment_opt), <-(lock elem) in *.
-    apply in_compartment_opt_correct,in_compartment_spec in def_c_sys; [|eauto].
-    unfold is_left; destruct (elem _ _); [auto | tauto].
+       inversion CALL; subst; clear CALL; simpl.
+    apply permitted_now_in__in_compartment_opt in def_c_sys; eauto 3.
+    exists c_sys; split.
+    + apply in_compartment_opt_correct; eauto.
+    + right; apply set_elem_true in RETURN_OK; [assumption|].
+      apply in_compartment_opt_correct, in_compartment_spec in def_c_sys;
+        [|eauto 3].
+      destruct def_c_sys as [IN IN']; specialize (GOODS c_sys IN); auto.
   - (* add_to_jump_targets *)
     unfold semantics,add_to_jump_targets,add_to_compartment_component in CALL;
       rewrite (lock in_compartment_opt) in CALL;
@@ -1452,15 +1859,20 @@ Proof.
                     | (match ?COND with true => _ | false => None end) ?= _ =>
                       destruct COND eqn:var
                   end; simpl in CALL; [|discriminate]
-    in DO p; DO ELEM;
+    in DO c_sys; DO NEQ;
+       DO p; DO ELEM_p;
        DO pc'; DO c_next;
-       destruct (_ == _) eqn:EQ; simpl in CALL; [|discriminate];
+       destruct (_ == c_next) eqn:EQ; simpl in CALL; [|discriminate];
+       DO RETURN_OK;
        move/eqP in EQ; rewrite EQ in def_c_next CALL;
-       DO c_sys;
-       inversion CALL; subst; rewrite (lock elem); simpl in *; clear CALL.
-    rewrite <-(lock in_compartment_opt), <-(lock elem) in *.
-    apply in_compartment_opt_correct,in_compartment_spec in def_c_sys; [|eauto].
-    unfold is_left; destruct (elem _ _); [auto | tauto].
+       inversion CALL; subst; simpl in *; clear CALL.
+    apply permitted_now_in__in_compartment_opt in def_c_sys; eauto 3.
+    exists c_sys; split.
+    + apply in_compartment_opt_correct; eauto.
+    + right; apply set_elem_true in RETURN_OK; [assumption|].
+      apply in_compartment_opt_correct, in_compartment_spec in def_c_sys;
+        [|eauto 3].
+      destruct def_c_sys as [IN IN']; specialize (GOODS c_sys IN); auto.
   - (* add_to_shared_memory *)
     unfold semantics,add_to_shared_memory,add_to_compartment_component in CALL;
       rewrite (lock in_compartment_opt) in CALL;
@@ -1473,158 +1885,20 @@ Proof.
                     | (match ?COND with true => _ | false => None end) ?= _ =>
                       destruct COND eqn:var
                   end; simpl in CALL; [|discriminate]
-    in DO p; DO ELEM;
+    in DO c_sys; DO NEQ;
+       DO p; DO ELEM_p;
        DO pc'; DO c_next;
-       destruct (_ == _) eqn:EQ; simpl in CALL; [|discriminate];
+       destruct (_ == c_next) eqn:EQ; simpl in CALL; [|discriminate];
+       DO RETURN_OK;
        move/eqP in EQ; rewrite EQ in def_c_next CALL;
-       DO c_sys;
-       inversion CALL; subst; rewrite (lock elem); simpl in *; clear CALL.
-    rewrite <-(lock in_compartment_opt), <-(lock elem) in *.
-    apply in_compartment_opt_correct,in_compartment_spec in def_c_sys; [|eauto].
-    unfold is_left; destruct (elem _ _); [auto | tauto].
-Qed.
-Hint Resolve previous_compartment.
-
-Lemma good_compartments_preserved : forall `(STEP : step MM MM'),
-  good_state MM = true -> (* Full strength only needed for syscalls *)
-  good_compartments (compartments MM') = true.
-Proof.
-  clear S.
-  intros MM MM' STEP GOOD;
-    assert (GOODC : good_compartments (compartments MM) = true) by auto;
-    destruct STEP; try (subst; simpl in *; exact GOODC).
-  (* Syscalls *)
-  apply get_syscall_good with (MM := MM) in GETSC;
-    unfold good_syscall in GETSC; rewrite GOOD in GETSC.
-  destruct (semantics _ _); inversion CALL; subst; auto.
-Qed.
-Hint Resolve good_compartments_preserved.
-
-Theorem good_state_preserved : forall `(STEP : step MM MM'),
-  good_state MM  = true ->
-  good_state MM' = true.
-Proof.
-  intros MM MM' STEP GOOD; generalize GOOD;
-    unfold good_state; repeat rewrite ->andb_true_iff;
-    intros [[ICO PREV] GOODC];
-    repeat split.
-  - eapply in_compartment_preserved; eassumption.
-  - apply previous_compartment in STEP; assumption.
-  - eapply good_compartments_preserved; eassumption.
-Qed.
-Hint Resolve good_state_preserved.
-
-Theorem permitted_pcs : forall `(STEP : step MM MM') c,
-  good_state MM = true ->
-  compartments MM ⊢ pc MM ∈ c ->
-  In (pc MM') (address_space c) \/ In (pc MM') (jump_targets c).
-Proof.
-  clear S; intros MM MM' STEP; destruct STEP; intros c0 GOOD_STATE IC_c0;
-    simpl in *;
-    try solve
-      [ (* Intra-compartment *)
-        destruct STEP; left;
-        apply in_unique_compartment with (c1 := c) in IC_c0;
-        subst; simpl in *; eauto 2
-      | (* Jump/Jal *)
-        apply in_unique_compartment with (c1 := c) in IC_c0; subst; simpl in *;
-        eauto 2;
-        apply in_app_iff in VALID; destruct VALID as [IN_A | IN_J]; eauto 3 ].
-  (* Syscalls *)
-  unfold get_syscall in *; subst table; simpl in *.
-  repeat match type of GETSC with
-    | (if ?COND then Some _ else _) ?= _ =>
-      destruct COND
-    | Some _ ?= _ =>
-      inversion GETSC; subst; clear GETSC
-    | None ?= _ =>
-      discriminate
-  end; simpl in *.
-  (* This theorem still holds if we require that each syscall (addr,fn) lies in
-     a unique compartment <<[addr],EVERYTHING,[]>> -- but I'm not sure what the
-     best way to formalize that is. *)
-  - admit. - admit. - admit.
-  (*
-  - (* isolate *)
-    let DO var :=
-        match type of CALL with
-          | (do! _ <- ?GET; _) ?= _ =>
-            let def_var := fresh "def_" var in
-            destruct GET as [var|] eqn:def_var
-          | (do! guard ?COND; _) ?= _ =>
-            destruct COND eqn:var
-        end;
-        simpl in CALL; [|discriminate]
-    in DO c1; DO pA; DO pJ; DO pS; destruct c1 as [A J S];
-       DO A'; DO SUBSET_A'; DO NONEMPTY_A';
-       DO J'; DO SUBSET_J';
-       DO S'; DO SUBSET_S';
-       DO NEXT;
-       inversion CALL; subst; clear CALL; simpl in *;
-       left.
-    apply in_compartment_opt_correct in def_c1; [|solve [eauto]].
-    destruct c0 as [A0 J0 S0]; simpl in *.
-    apply in_unique_compartment with (c1 := <<A,J,S>>) in IC_c0;
-      [ inversion IC_c0; subst A0 J0 S0; subst; clear IC_c0
-      | solve [eauto] | solve [eauto]].
-    assert (SET_A : is_set A). {
-      apply good_state__good_compartments in GOOD_STATE;
-        simpl in *;
-        apply good_compartments__all_good_compartment in GOOD_STATE;
-        rewrite ->forallb_forall in GOOD_STATE.
-      eapply good_compartment_decomposed__is_set_address_space;
-        eapply GOOD_STATE, in_compartment_spec; eassumption.
-    }
-    apply set_elem_true, set_difference_spec in NEXT;
-      solve [tauto | eauto using isolate_create_set_is_set].
-  - (* add_to_jump_targets *)
-    let DO var :=
-        match type of CALL with
-          | (do! _ <- ?GET; _) ?= _ =>
-            let def_var := fresh "def_" var in
-            destruct GET as [var|] eqn:def_var
-          | (do! guard ?COND; _) ?= _ =>
-            destruct COND eqn:var
-        end;
-        simpl in CALL; [|discriminate]
-    in DO c1; DO p; DO ELEM_p; DO NEXT;
-       inversion CALL; subst; clear CALL; simpl in *;
-       left.
-    apply in_compartment_opt_correct in def_c1; [|solve [eauto]].
-    apply in_unique_compartment with (c1 := c1) in IC_c0;
-      [ subst | solve [eauto] | solve [eauto]].
-    assert (GOOD_c0 : good_compartment c0). {
-      apply good_state__good_compartments in GOOD_STATE;
-        simpl in *;
-        apply good_compartments__all_good_compartment in GOOD_STATE;
-        rewrite ->forallb_forall in GOOD_STATE;
-        eauto.
-    }
-    apply set_elem_true in NEXT; auto.
-  - (* add_to_shared_memory *)
-    let DO var :=
-        match type of CALL with
-          | (do! _ <- ?GET; _) ?= _ =>
-            let def_var := fresh "def_" var in
-            destruct GET as [var|] eqn:def_var
-          | (do! guard ?COND; _) ?= _ =>
-            destruct COND eqn:var
-        end;
-        simpl in CALL; [|discriminate]
-    in DO c1; DO p; DO ELEM_p; DO NEXT;
-       inversion CALL; subst; clear CALL; simpl in *;
-       left.
-    apply in_compartment_opt_correct in def_c1; [|solve [eauto]].
-    apply in_unique_compartment with (c1 := c1) in IC_c0;
-      [ subst | solve [eauto] | solve [eauto]].
-    assert (GOOD_c0 : good_compartment c0). {
-      apply good_state__good_compartments in GOOD_STATE;
-        simpl in *;
-        apply good_compartments__all_good_compartment in GOOD_STATE;
-        rewrite ->forallb_forall in GOOD_STATE;
-        eauto.
-    }
-    apply set_elem_true in NEXT; auto.*)
+       inversion CALL; subst; simpl in *; clear CALL.
+    apply permitted_now_in__in_compartment_opt in def_c_sys; eauto 3.
+    exists c_sys; split.
+    + apply in_compartment_opt_correct; eauto.
+    + right; apply set_elem_true in RETURN_OK; [assumption|].
+      apply in_compartment_opt_correct, in_compartment_spec in def_c_sys;
+        [|eauto 3].
+      destruct def_c_sys as [IN IN']; specialize (GOODS c_sys IN); auto.
 Qed.
 
 Theorem permitted_modifications : forall `(STEP : step MM MM') c,
@@ -1638,14 +1912,14 @@ Proof.
     try (subst; simpl in *; congruence).
   - (* Store *)
     subst; simpl in *.
-    have [EQ|/eqP NE] := altP (a =P p).
-    + ssubst. apply in_app_iff. destruct STEP.
-      match goal with IC1 : ?C ⊢ ?pc ∈ ?c1, IC2 : ?C ⊢ ?pc ∈ ?c2 |- _ =>
-        replace c1 with c2 in * by eauto 3
-      end; assumption.
+    have [EQ|/eqP NE] := altP (a =P p); [subst|].
+    + apply permitted_now_in__in_compartment_opt,
+            in_compartment_opt_correct
+        in STEP; eauto 3.
+      apply in_app_iff; replace c0 with c in * by eauto 3; assumption.
     + rewrite (PartMaps.get_upd_neq NE UPDR) in DIFF; congruence.
   - (* Syscall *)
-    unfold get_syscall in *; subst table; simpl in *.
+    unfold get_syscall,table in *; simpl in *.
     repeat match type of GETSC with
       | (if ?COND then Some _ else _) ?= _ =>
         destruct COND

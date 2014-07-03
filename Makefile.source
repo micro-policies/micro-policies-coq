@@ -54,11 +54,10 @@ sfi/list_utils.v
 sfi/set_utils.v
 sfi/ranges.v
 sfi/isolate_sets.v
-sfi/classes.v
+sfi/common.v
 sfi/abstract.v
-sfi/abstract_slow.v
 sfi/symbolic.v
-sfi/refinementSA.v
+#sfi/refinementSA.v
 
 sealing/classes.v
 sealing/abstract.v
