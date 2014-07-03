@@ -1,10 +1,5 @@
 (*
-    make sure user registers are tagged USER at the beginning!
-
-    check that current behavior makes sense
-    write a less silly transfer function
-    write better testing stuff
-    fill in the syscall implementations
+TODO: write better testing support -- e.g. comparing final states
 *)
 
 Require Import List. Import ListNotations.
@@ -15,6 +10,7 @@ Require Import lib.utils lib.partial_maps common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import symbolic.int_32.
+Require Import symbolic.symbolic.
 Require Import sealing.symbolic.
 Require Import symbolic.fault_handler.
 Require Import sealing.abstract.
@@ -29,17 +25,28 @@ Unset Printing Implicit Defensive.
 
 Import DoNotation.
 
-Module ConcreteSealing.
+Module SealingInstances.
 
 Section WithClasses.
+
+(* ---------------------------------------------------------------- *)
+(* int32 instance *)
 
 Definition t := concrete_int_32_t.
 Definition ops := concrete_int_32_ops.
 Definition fhp := concrete_int_32_fh.
 
-(* BCP/MD: These should be distinct from monitor registers in
-   symbolic.int_32, though this should not cause axiom failures, just
-   puzzling user program errors.) *)
+Instance cp : Concrete.concrete_params t :=
+  concrete_int_32_params.
+
+(* ---------------------------------------------------------------- *)
+(* Generic definitions for building concrete machine instances *)
+
+(* TODO: Belongs in symbolic/int_32 *)
+
+(* BCP/MD: These should all be distinct from monitor registers in
+   symbolic.int_32, though this should not cause axiom failures --
+   just puzzling user program errors! *)
 
 Global Instance scr : @syscall_regs t := {|
   syscall_ret  := Int32.repr 16;
@@ -52,54 +59,10 @@ Definition ruser1 := Int32.repr 20.
 Definition ruser2 := Int32.repr 21.
 Definition ruser3 := Int32.repr 22.
 Definition ruser4 := Int32.repr 23.
-
 Definition user_registers := 
   [ra; syscall_ret; syscall_arg1; syscall_arg2; syscall_arg3; ruser1; 
    ruser2; ruser3; ruser4].
 Definition user_reg_max := last user_registers (Int32.repr 0).
-
-Definition keytype := [eqType of nat].
-
-Definition max_element (l : list keytype) : keytype :=
- fold_right maxn O l.
-
-Lemma max_element_plus_one_is_distinct :
- forall (l : list keytype),
-   ~(In (1 + max_element l) l).
-Proof.
- move => l.
- have MAX: forall x, In x l -> x <= max_element l.
- { elim: l => [|x' l IH] // x [-> | THERE] //=.
-   - by rewrite leq_max leqnn.
-   - by rewrite leq_max IH //= orb_true_r. }
- move => CONTRA.
- move: (MAX _ CONTRA).
- rewrite /addn /addn_rec.
- move/leP => LE.
- omega.
-Qed.
-
-Global Instance sk : Abs.sealing_key := {|
- key := keytype;
- mkkey_f := fun l => 1 + max_element l;
- mkkey_fresh := max_element_plus_one_is_distinct
-|}.
-
-Instance cp : Concrete.concrete_params t :=
-  concrete_int_32_params.
-
-(* ---------------------------------------------------------------- *)
-
-(* Encoding of tags
-
-      DATA      --> 0
-      KEY(k)    --> k*4+1
-      SEALED(k) --> k*4+3
-
- Questions:
-
-  - How should we really deal with user-code registers
-*)
 
 Definition kernel_data {X} l : @relocatable_segment t X w := 
  (length l, fun _ _ => l).
@@ -108,6 +71,33 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
  (length l, 
   fun _ _ => map encode_instr l).
 
+(* BCP: TODO: Arguably the second argument to f should be a list of
+   imm'ediates, not words... *)
+Definition user_code (f : w -> list w -> list (instr t))
+                  : @relocatable_segment t (list w) (instr t) := 
+ (* This is hideous.  Will totally break if we add more system calls. *)
+ (length (f (Z_to_word 0) [Z_to_word 0; Z_to_word 0; Z_to_word 0]), 
+  f).
+
+(* ---------------------------------------------------------------- *)
+(* Main definitions for concrete sealing machine *)
+
+(* TODO: THINGS TO CLEAN:
+    - move code generation macros out of fault_handler.v 
+      (into a new separate file?)
+    - make a switch macro
+    - check that there are no temp registers live across the transfer
+      function call from the fault handler
+    - the handling of the ut annotations on ENTRY tags
+*)
+
+(* Encoding of tags:
+      DATA      --> 0
+      KEY(k)    --> k*4+1
+      SEALED(k) --> k*4+3  
+*)
+
+(* TODO: Where should this really live? *)
 Instance sk_defs : Sym.sealing_key := {|
  key := int_eqType;
  max_key := Int32.repr 100;
@@ -123,24 +113,6 @@ Definition encode_sealing_tag (t : Sym.stag) : w :=
  | Sym.KEY k => add_word (Int32.repr 1) (Int32.shl k (Int32.repr 2))
  | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
  end.
-
-(* BCP: Arguably the second argument to f should be a list of immediates... *)
-Definition user_code (f : w -> list w -> list (instr t))
-                  : @relocatable_segment t (list w) (instr t) := 
- (* This is hideous.  Will totally break if we add more system calls. *)
- (length (f (Z_to_word 0) [Z_to_word 0; Z_to_word 0; Z_to_word 0]), 
-  f).
-
-(* ---------------------------------------------------------------- *)
-(* Main definitions *)
-
-(* TODO: THINGS TO CLEAN:
-    - move code generation macros out of fault_handler.v
-    - make a switch macro
-    - check that there are no temp registers live across the transfer
-      function call from the falut handler
-    - the handling of the ut annotations on ENTRY tags
-*)
 
 Definition DATA := encode_sealing_tag Sym.DATA.
 
@@ -335,7 +307,7 @@ Definition build_concrete_sealing_machine
     user code *)
  let user_mem := 
        map_relocatable_segment 
-         (fun x => Atom (encode_instr x) (encode_sealing_tag Sym.DATA)) 
+         (fun x => Atom (encode_instr x) DATA) 
          user_program in
  let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
  concrete_initial_state
@@ -343,14 +315,95 @@ Definition build_concrete_sealing_machine
    fault_handler
    syscalls
    user_mem
-   (encode_sealing_tag Sym.DATA)
+   DATA
    user_registers
-   (encode_sealing_tag Sym.DATA).
+   DATA.
 
 End WithClasses.
 
-(* ------------------------------------------------------------------------- *)
+(* ---------------------------------------------------------------- *)
+(* Symbolic machine *)
+
+(*
+Instance sp : Symbolic.symbolic_params t := {|
+ tag := Sym.stag_eqType; (* ?? *)
+(*
+ handler := 
+ internal_state := 
+*)
+
+ word_map  := Int32PMap.t;
+ reg_map := Int32PMap.t;
+
+ sw := {|
+   PartMaps.get V mem i := Int32PMap.get i mem;
+   PartMaps.set V mem i x := Int32PMap.set i x mem;
+   PartMaps.filter V mem p := Int32PMap.filter mem p;
+   PartMaps.empty V := Int32PMap.empty _ 
+ |};
+
+ sr := {|
+   PartMaps.get V regs r := Int32PMap.get r regs;
+   PartMaps.set V mem i x := Int32PMap.set i x mem;
+   PartMaps.filter V mem p := Int32PMap.filter mem p;
+   PartMaps.empty V := Int32PMap.empty _ 
+ |}
+|}.
+
+Definition build_symbolic_sealing_machine 
+    (user_program : @relocatable_segment t (list w) (instr t))
+  : @Symbolic.state concrete_int_32_t sk sp * classes.sealing_syscall_addrs :=
+ (* This list should be defined at the same place as the decoding
+    function that splits out the addresses for use when generating
+    user code *)
+ let: (_,base_addr,syscall_addrs) := build_concrete_sealing_machine user_program in
+ let user_mem := 
+       map_relocatable_segment 
+         ((@Abs.VData _ _) ∘ encode_instr)
+         user_program in
+  let syscall_addr_rcd := 
+      {| 
+        classes.mkkey_addr  := nth 0 syscall_addrs (Int32.repr 0);
+        classes.seal_addr   := nth 1 syscall_addrs (Int32.repr 0);
+        classes.unseal_addr := nth 2 syscall_addrs (Int32.repr 0)
+      |} in
+  (Abs.abstract_initial_state
+    user_mem
+    base_addr
+    syscall_addrs
+    user_registers,
+   syscall_addr_rcd).
+*)
+
+(* ---------------------------------------------------------------- *)
 (* Abstract machine *)
+
+Definition keytype := [eqType of nat].
+
+Definition max_element (l : list keytype) : keytype :=
+ fold_right maxn O l.
+
+Lemma max_element_plus_one_is_distinct :
+ forall (l : list keytype),
+   ~(In (1 + max_element l) l).
+Proof.
+ move => l.
+ have MAX: forall x, In x l -> x <= max_element l.
+ { elim: l => [|x' l IH] // x [-> | THERE] //=.
+   - by rewrite leq_max leqnn.
+   - by rewrite leq_max IH //= orb_true_r. }
+ move => CONTRA.
+ move: (MAX _ CONTRA).
+ rewrite /addn /addn_rec.
+ move/leP => LE.
+ omega.
+Qed.
+
+Global Instance sk : Abs.sealing_key := {|
+ key := keytype;
+ mkkey_f := fun l => 1 + max_element l;
+ mkkey_fresh := max_element_plus_one_is_distinct
+|}.
 
 (* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
   a different order from Int32PMap.get and Int32PMap.set?? *)
@@ -398,7 +451,8 @@ Definition build_abstract_sealing_machine
     user_registers,
    syscall_addr_rcd).
 
-(* ------------------------------------------------------------------------- *)
+(* --------------------------------------------------------------- *)
+(* Printing, mostly ... *)
 
 Open Scope Z_scope.
 
@@ -461,6 +515,7 @@ Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
 
 Require Import Coqlib. 
 
+(* TODO: Belongs in concrete/int_32, along with some of the above *)
 Definition summarize_concrete_state mem_count cache_count st :=
   let mem' := filter_Somes 
                (@enum _ _ _ 
@@ -546,6 +601,9 @@ Definition summarize_abstract_state mem_count st :=
       ss " | " +++ 
       mem)).
 
+(* ---------------------------------------------------------------- *)
+(* Tests... *)
+
 Definition runn n p := 
   let: (init,_,_) := build_concrete_sealing_machine p in
   let tr := utils.runn (step masks t) n init in
@@ -564,9 +622,6 @@ Definition run_abs n p :=
    map (summarize_abstract_state 8) tr
   ).
 
-
-(* ---------------------------------------------------------------------- *)
-(* Tests... *)
 
 Definition hello_world0 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [ 
@@ -663,5 +718,5 @@ Abstract Machine: Compute (run_abs 2000 hello_world5). *)
 
 (* TODO: Refinement proof from concrete to abstract instances *)
 
-End ConcreteSealing.
+End SealingInstances.
 
