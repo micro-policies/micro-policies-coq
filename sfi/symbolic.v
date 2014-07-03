@@ -136,11 +136,11 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Context {memory    : Type}
-        {sm        : partial_map memory (word t) (atom (word t) stag)}
-        {sma       : axioms sm}
-        {registers : Type}
-        {sr        : partial_map registers (reg t) (atom (word t) stag)}
+Context {word_map  : Type -> Type}
+        {sw        : partial_map word_map (word t)}
+        {swa       : axioms sw}
+        {reg_map   : Type -> Type}
+        {sr        : partial_map reg_map (reg t)}
         {sra       : axioms sr}.
 
 Section WithVectors.
@@ -204,10 +204,10 @@ Instance sym_sfi : Symbolic.symbolic_params t := {
   
   internal_state := sfi_internal;
   
-  memory := memory;
-  sm     := sm;
+  word_map := word_map;
+  sw       := sw;
   
-  registers := registers;
+  reg_map   := reg_map;
   sr        := sr
 }.
 
@@ -220,8 +220,8 @@ Definition fresh (si : sfi_internal) : option (word t * sfi_internal) :=
 Fixpoint retag_set (ok : word t -> list (word t) -> list (word t) -> bool)
                    (retag : word t -> list (word t) -> list (word t) -> stag)
                    (ps : list (word t))
-                   (M : memory)
-                   : option memory :=
+                   (M : Symbolic.memory t)
+                   : option (Symbolic.memory t) :=
   match ps with
     | []       => Some M
     | p :: ps' => do! x @ DATA c I W <-  get M p;
@@ -365,7 +365,7 @@ Proof.
     eapply IHps; try eassumption.
     intros p'; destruct (p == p') eqn:EQ_p_p'; move/eqP in EQ_p_p'.
     + subst p'.
-      apply get_upd_eq in def_M2; [rewrite def_M2 | exact sma].
+      apply get_upd_eq in def_M2; [rewrite def_M2 | exact swa].
       by apply/andP.
     + apply get_upd_neq with (key' := p') in def_M2; auto.
       rewrite def_M2; specialize MEM with p'.
@@ -419,7 +419,7 @@ Proof.
   move: GOOD => [[MEM [REG _]] _]; rewrite /good_state; repeat split; auto.
   intros p'; specialize MEM with p'; unfold good_memory_tag in *.
   destruct (p == p') eqn:EQ_P; move/eqP in EQ_P; [subst p'|].
-  - apply get_upd_eq in def_M'; [rewrite def_M' | exact sma].
+  - apply get_upd_eq in def_M'; [rewrite def_M' | exact swa].
     rewrite def_x_Lx in MEM; move: MEM => /andP [SET_I' SET_W]; apply/andP;
       auto.
   - apply get_upd_neq with (key' := p') in def_M'; auto; rewrite def_M'.
@@ -440,7 +440,7 @@ Proof.
   move: GOOD => [[MEM [REG _]] _]; rewrite /good_state; repeat split; auto.
   intros p'; specialize MEM with p'; unfold good_memory_tag in *.
   destruct (p == p') eqn:EQ_P; move/eqP in EQ_P; [subst p'|].
-  - apply get_upd_eq in def_M'; [rewrite def_M' | exact sma].
+  - apply get_upd_eq in def_M'; [rewrite def_M' | exact swa].
     rewrite def_x_Lx in MEM; move: MEM => /andP [SET_I SET_W']; apply/andP;
       auto.
   - apply get_upd_neq with (key' := p') in def_M'; auto; rewrite def_M'.

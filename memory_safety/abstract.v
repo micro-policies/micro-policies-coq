@@ -32,21 +32,24 @@ Definition frame := list value.
 Import PartMaps.
 
 Class abstract_params := {
-  memory : Type;
-  mem_map :> partial_map memory block frame;
-  registers : Type;
-  reg_map :> partial_map registers (reg t) value
+  word_map : Type -> Type;
+  word_map_class :> partial_map word_map block;
+  reg_map : Type -> Type;
+  reg_map_class :> partial_map reg_map (reg t)
 }.
 
 Class params_spec (ap : abstract_params) := {
 
-  mem_map_spec :> PartMaps.axioms (@mem_map ap);
+  mem_map_spec :> PartMaps.axioms (@word_map_class ap);
 
-  reg_map_spec :> PartMaps.axioms (@reg_map ap)
+  reg_map_spec :> PartMaps.axioms (@reg_map_class ap)
 
 }.
 
 Context {ap : abstract_params}.
+
+Definition memory := word_map frame.
+Definition registers := reg_map value.
 
 Open Scope word_scope.
 
@@ -96,7 +99,7 @@ Context `{syscall_regs t} `{allocator} `{memory_syscall_addrs t}.
 
 Definition syscall_addrs := [malloc_addr; free_addr].
 
-Definition getv mem (ptr : pointer) :=
+Definition getv (mem : memory) (ptr : pointer) :=
   match get mem (fst ptr) with
   | None => None
   | Some fr => index_list_Z (word_to_Z (snd ptr)) fr

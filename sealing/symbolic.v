@@ -40,15 +40,15 @@ Inductive stag :=
 | SEALED : key -> stag.
 
 Class params := {
-  memory : Type;
-  sm :> partial_map memory (word t) (atom (word t) stag);
-  registers : Type;
-  sr :> partial_map registers (reg t) (atom (word t) stag)
+  word_map : Type -> Type;
+  sw :> partial_map word_map (word t);
+  reg_map : Type -> Type;
+  sr :> partial_map reg_map (reg t)
 }.
 
 Class params_spec (sp : params) := {
-  mem_axioms :> PartMaps.axioms (@sm sp);
-  reg_axioms :> PartMaps.axioms (@sr sp)
+  word_map_axioms :> PartMaps.axioms (@sw sp);
+  reg_map_axioms :> PartMaps.axioms (@sr sp)
 }.
 
 Context {sp : params}.
@@ -99,10 +99,10 @@ Program Instance sym_sealing : (symbolic_params t) := {
 
   internal_state := key;  (* next key to generate *)
 
-  memory := memory;
-  sm := sm;
+  word_map := word_map;
+  sw := sw;
 
-  registers := registers;
+  reg_map := reg_map;
   sr := sr
 }.
 

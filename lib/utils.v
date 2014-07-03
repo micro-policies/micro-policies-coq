@@ -1166,18 +1166,18 @@ Module TotalMaps.
 
 Section total_maps.
 
-Variable M A B : Type.
+Variable (M : Type -> Type) (A : Type).
 
 Class total_map := {
-  get : M -> A -> B;
-  upd : M -> A -> B -> M
+  get : forall B, M B -> A -> B;
+  upd : forall B, M B -> A -> B -> M B
 }.
 
 Record axioms (tm : total_map) := mkAxioms {
 
-  get_upd_eq : forall m key val, get (upd m key val) key = val;
+  get_upd_eq : forall B m key (val : B), get (upd m key val) key = val;
 
-  get_upd_neq : forall m key key' val,
+  get_upd_neq : forall B m key key' (val : B),
                   key' <> key ->
                   get (upd m key val) key' = get m key'
 

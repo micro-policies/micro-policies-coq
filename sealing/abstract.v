@@ -42,18 +42,21 @@ Inductive value :=
 Import PartMaps.
 
 Class params := {
-  memory    : Type;
-  am :> partial_map memory (word t) value;
-  registers : Type;
-  ar :> partial_map registers (reg t) value
+  word_map    : Type -> Type;
+  aw :> partial_map word_map (word t);
+  reg_map : Type -> Type;
+  ar :> partial_map reg_map (reg t)
 }.
 
 Class params_spec (ap : params) := {
-  mem_axioms :> PartMaps.axioms (@am ap);
-  reg_axioms :> PartMaps.axioms (@ar ap)
+  word_map_axioms :> PartMaps.axioms (@aw ap);
+  reg_map_axioms :> PartMaps.axioms (@ar ap)
 }.
 
 Context {ap : params}.
+
+Definition memory := word_map value.
+Definition registers := reg_map value.
 
 Open Scope word_scope.
 

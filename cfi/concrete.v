@@ -26,11 +26,11 @@ Context {t : machine_types}
         {e : @rules.encodable (@rules.cfi_tag_eqType t) t ops}.
 
 Import PartMaps.
-Context {memory : Type}
-        {sm : partial_map memory (word t) (atom (word t) (@cfi_tag t))}
-        {smems : axioms sm}
-        {registers : Type}
-        {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
+Context {word_map : Type -> Type}
+        {sw : partial_map word_map (word t)}
+        {smems : axioms sw}
+        {reg_map : Type -> Type}
+        {sr : partial_map reg_map (reg t)}.
 
 Variable valid_jmp : word t -> word t -> bool.
 (*allow attacker to change only things tagged USER DATA! all the rest should be equiv*)
@@ -67,9 +67,9 @@ Inductive atom_equiv : atom (word t) (word t) -> atom (word t) (word t)
                     atom_equiv a a'.
 
 
-Definition equiv {M : Type} {Key : Type} 
-           {M_class : partial_map M Key (atom (word t) (word t))} :
-           M -> M -> Prop :=
+Definition equiv {M : Type -> Type} {Key : Type} 
+           {M_class : partial_map M Key} :
+           M (atom (word t) (word t))-> M (atom (word t) (word t))-> Prop :=
   pointwise atom_equiv.
 
 Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t) :=

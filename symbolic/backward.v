@@ -26,7 +26,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.symbolic_params mt}
-        {memax : PartMaps.axioms (@Symbolic.sm mt sp)}
+        {memax : PartMaps.axioms (@Symbolic.sw mt sp)}
         {regax : PartMaps.axioms (@Symbolic.sr mt sp)}
         {cp : Concrete.concrete_params mt}
         {cps : Concrete.params_spec cp}

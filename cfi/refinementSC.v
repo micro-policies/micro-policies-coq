@@ -25,14 +25,14 @@ Module MapTP.
   Import PartMaps.
 
 Section Mappable.
-  Variable M1 M2 K V1 V2 : Type.
+  Variable (M1 M2 : Type -> Type) (K V1 V2 : Type).
 
   
-  Class mappable (tm1 : total_map M1 K V1) (pm2 : partial_map M2 K V2) := {
+  Class mappable (tm1 : total_map M1 K) (pm2 : partial_map M2 K) := {
 
-    map : (V1 -> option V2) -> M1 -> M2;
+    map : (V1 -> option V2) -> M1 V1 -> M2 V2;
 
-    map_correctness: forall (f : V1 -> option V2) (m1 : M1) (k : K),
+    map_correctness: forall (f : V1 -> option V2) (m1 : M1 V1) (k : K),
                        PartMaps.get (map f m1) k = f (TotalMaps.get m1 k)
 
 
@@ -54,16 +54,16 @@ Context {mt : machine_types}
         {sp : Concrete.params_spec cp}
         {e : @rules.encodable (@rules.cfi_tag_eqType mt) mt ops}
 
-        {smemory : Type}
-        {sm : partial_map smemory (word mt) (atom (word mt) (@cfi_tag mt))}
-        {smems : axioms sm}
+        {sword_map: Type -> Type}
+        {sw : partial_map sword_map (word mt)} (* (atom (word mt) (@cfi_tag mt))} *)
+        {smems : axioms sw}
 
-        {sregisters : Type}
-        {sr : partial_map sregisters (reg mt) (atom (word mt) (@cfi_tag mt))}
+        {sreg_map : Type -> Type}
+        {sr : partial_map sreg_map (reg mt)} (* (atom (word mt) (@cfi_tag mt))}*)
         {sregs : axioms sr}
 
-        {cm_map : Map.mappable (@Concrete.mem_class mt cp) sm}
-        {cr_map : MapTP.mappable (@Concrete.reg_class mt cp) sr}.
+        {cm_map : Map.mappable (atom (word mt) (word mt)) (atom (word mt) (@cfi_tag mt)) (@Concrete.word_map_class mt cp) sw}
+        {cr_map : MapTP.mappable (atom (word mt) (word mt)) (atom (word mt) (@cfi_tag mt)) (@Concrete.reg_map_class mt cp) sr}.
 
 Variable valid_jmp : word mt -> word mt -> bool.
 
@@ -155,8 +155,8 @@ Proof.
     unfold Sym.equiv, pointwise.
     intro addr.
     unfold Conc.equiv in EQUIV. unfold pointwise in EQUIV.
-    specialize (EQUIV addr).
-    destruct (get smem addr) eqn:SGET.
+    specialize (EQUIV addr). simpl.
+    destruct (get smem addr) eqn:SGET; simpl in SGET; rewrite SGET.
     - destruct a as [v utg].
       unfold refinement_common.refine_memory in REF.
       specialize (REF addr v utg).
@@ -267,7 +267,7 @@ Proof.
     intro n.
     unfold Conc.reg_equiv in EQUIV.
     specialize (EQUIV n).
-    destruct (get sreg n) eqn:SGET.
+    destruct (get sreg n) eqn:SGET; simpl in SGET; rewrite SGET.
     - destruct a as [v utg].
       specialize (REF n v utg).
       destruct REF as [REFCS REFSC].

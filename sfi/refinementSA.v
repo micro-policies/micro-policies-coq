@@ -32,11 +32,11 @@ Context
   {ap_spec      : params_spec ap}
   {scr          : @syscall_regs t}
   {sfi_syscalls : sfi_syscall_addrs t}
-  {smemory      : Type}
-  {smem_class   : partial_map smemory (word t) (atom (word t) (@Sym.stag t))}
+  {smemory      : Type -> Type}
+  {smem_class   : partial_map smemory (word t)}
   {smem_axioms  : axioms smem_class}
-  {sregisters   : Type}
-  {sreg_class   : partial_map sregisters (reg t) (atom (word t) (@Sym.stag t))}
+  {sregisters   : Type -> Type}
+  {sreg_class   : partial_map sregisters (reg t)}
   {sreg_axioms  : axioms sreg_class}.
 
 Notation word    := (word t).
@@ -73,16 +73,16 @@ Definition refine_reg_b (ar : word) (sr : satom) : bool :=
     | _             => false
   end.
 
-Definition refine_memory : memory -> smemory -> Prop :=
+Definition refine_memory : memory t -> smemory _ -> Prop :=
   pointwise refine_mem_loc_b.
 
-Definition refine_registers : registers -> sregisters -> Prop :=
+Definition refine_registers : registers t -> sregisters _ -> Prop :=
   pointwise refine_reg_b.
 
 Section With_EqType_refine_compartment_b.
 Import Sym.
 Definition refine_compartment_b (c : Abs.compartment t)
-                                (smem : smemory) : bool :=
+                                (smem : smemory _) : bool :=
   is_some $
     let: Abs.Compartment A J S := c in
     do! sxs <- map_options (get smem) A;
@@ -228,7 +228,7 @@ Proof.
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
     specialize RCTAGS with pc; rewrite PC in RCTAGS.
     destruct RCTAGS as [[c [IN_c IN_SAME]] [SET_I SET_W]].
-    evar (AR' : registers);
+    evar (AR' : registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_const; try reflexivity.
@@ -245,10 +245,10 @@ Proof.
     + constructor; simpl; try done.
       rewrite /refine_registers /pointwise in RREGS *; intros r'.
       destruct (r == r') eqn:EQ_r; move/eqP in EQ_r; [subst r'|].
-      * erewrite get_set_eq, get_upd_eq by eauto using reg_axioms.
+      * erewrite get_set_eq, get_upd_eq by eauto using reg_map_axioms.
         by unfold refine_reg_b.
       * erewrite get_set_neq, get_upd_neq with (m' := regs')
-          by eauto using reg_axioms.
+          by eauto using reg_map_axioms.
         apply RREGS.
   - (* Mov *)
     undo1 NEXT rvec;
@@ -269,7 +269,7 @@ Proof.
       [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
     destruct (get AR r2) as [x2|] eqn:GET2;
       [| specialize RREGS with r2; rewrite OLD GET2 in RREGS; done].
-    evar (AR' : registers);
+    evar (AR' : registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_mov; try reflexivity.
@@ -284,10 +284,10 @@ Proof.
     + constructor; simpl; try done.
       rewrite /refine_registers /pointwise in RREGS *; intros r2'.
       destruct (r2 == r2') eqn:EQ_r2; move/eqP in EQ_r2; [subst r2'|].
-      * erewrite get_set_eq, get_upd_eq by eauto using reg_axioms.
+      * erewrite get_set_eq, get_upd_eq by eauto using reg_map_axioms.
         by specialize RREGS with r1; rewrite GET1 R1W /refine_reg_b in RREGS *.
       * erewrite get_set_neq, get_upd_neq with (m' := regs')
-          by eauto using reg_axioms.
+          by eauto using reg_map_axioms.
         apply RREGS.
   - (* Binop *)
     undo1 NEXT rvec;
@@ -310,7 +310,7 @@ Proof.
       [| specialize RREGS with r2; rewrite R2W GET2 in RREGS; done].
     destruct (get AR r3) as [x3|] eqn:GET3;
       [| specialize RREGS with r3; rewrite OLD GET3 in RREGS; done].
-    evar (AR' : registers);
+    evar (AR' : registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_binop; try reflexivity.
@@ -326,14 +326,14 @@ Proof.
     + constructor; simpl; try done.
       unfold upd; rewrite /refine_registers /pointwise in RREGS *; intros r3'.
       destruct (r3 == r3') eqn:EQ_r3; move/eqP in EQ_r3; [subst r3'|].
-      * erewrite get_set_eq, get_upd_eq by eauto using reg_axioms.
+      * erewrite get_set_eq, get_upd_eq by eauto using reg_map_axioms.
         { unfold refine_reg_b. apply/eqP; f_equal.
           - by specialize RREGS with r1;
                rewrite GET1 R1W /refine_reg_b in RREGS *; apply/eqP.
           - by specialize RREGS with r2;
                rewrite GET2 R2W /refine_reg_b in RREGS *; apply/eqP. }
       * erewrite get_set_neq, get_upd_neq with (m' := regs')
-          by eauto using reg_axioms.
+          by eauto using reg_map_axioms.
         apply RREGS.
   - (* Load *)
     undo1 NEXT rvec;
@@ -360,7 +360,7 @@ Proof.
       subst x1.
     destruct (get AM w1) as [x2|] eqn:GETM1;
       [|specialize RMEMS with w1; rewrite MEM1 GETM1 in RMEMS; done].
-    evar (AR' : registers);
+    evar (AR' : registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL ac); split;
       subst AR'.
     + eapply Abs.step_load; try reflexivity.
@@ -376,11 +376,11 @@ Proof.
     + constructor; simpl; try done.
       unfold upd; rewrite /refine_registers /pointwise in RREGS *; intros r2'.
       destruct (r2 == r2') eqn:EQ_r2; move/eqP in EQ_r2; [subst r2'|].
-      * erewrite get_set_eq, get_upd_eq by eauto using reg_axioms.
+      * erewrite get_set_eq, get_upd_eq by eauto using reg_map_axioms.
         by specialize RMEMS with w1;
            rewrite GETM1 MEM1 /refine_mem_loc_b /refine_reg_b in RMEMS *.
       * erewrite get_set_neq, get_upd_neq with (m' := regs')
-          by eauto using reg_axioms.
+          by eauto using reg_map_axioms.
         apply RREGS.
   - (* Store *)
     admit.
@@ -406,7 +406,7 @@ Proof.
       (by specialize RREGS with r;
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
-    evar (AR' : registers);
+    evar (AR' : registers t);
       exists (Abs.State (pc + (if w == 0 then 1 else imm_to_word n))%w
                         AR' AM AC INTERNAL c); split;
       subst AR'.

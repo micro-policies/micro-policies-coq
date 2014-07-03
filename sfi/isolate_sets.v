@@ -17,17 +17,18 @@ Section WithClasses.
 Context  {t            : machine_types}
          {ops          : machine_ops t}
          {spec         : machine_ops_spec ops}
-        `{pm           : partial_map Map (word t) V}
+        `{pm           : partial_map Map (word t)}
+         {V            : Type}
          (to_word      : V -> word t).
 
 Open Scope word_scope.
 
-Definition isolate_get_range (M : Map) (p : word t) : option (list (word t)) :=
+Definition isolate_get_range (M : Map V) (p : word t) : option (list (word t)) :=
   do! low  <- get M p;
   do! high <- get M (p + 1);
   Some (range (to_word low) (to_word high)).
 
-Fixpoint isolate_get_ranges (M : Map)
+Fixpoint isolate_get_ranges (M : Map V)
                             (p : word t)
                             (n : nat) : option (list (word t)) :=
   match n with
@@ -37,7 +38,7 @@ Fixpoint isolate_get_ranges (M : Map)
               Some (set_union here rest)
   end.
 
-Definition isolate_create_set (M : Map)
+Definition isolate_create_set (M : Map V)
                               (base : word t) : option (list (word t)) :=
   do! pairs <- get M base;
   isolate_get_ranges M (base + 1) (word_to_nat (to_word pairs)).

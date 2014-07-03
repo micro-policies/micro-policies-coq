@@ -288,7 +288,7 @@ Proof.
     erewrite GET, encode_kernel_tag in IN. simpl in IN.
     apply encode_inj in IN.
     discriminate.
-  - erewrite (TotalMaps.get_upd_neq (Concrete.reg_axioms (t := mt))); eauto.
+  - erewrite (TotalMaps.get_upd_neq (Concrete.reg_map_axioms (t := mt))); eauto.
 Qed.
 
 Lemma invariant_store_mvec mem mem' mvec regs cache int :
@@ -311,10 +311,10 @@ Proof.
       | H : False |- _ => inversion H
       end.
     + erewrite PartMaps.get_upd_list_nin; eauto.
-      eapply Concrete.mem_axioms; eauto.
+      eapply Concrete.word_map_axioms; eauto.
   - intros addr instr GET.
     erewrite PartMaps.get_upd_list_nin; eauto.
-    { eapply Concrete.mem_axioms; eauto. }
+    { eapply Concrete.word_map_axioms; eauto. }
     intros CONTRA.
     eapply MEM.
     + eapply nth_error_Some; eauto.

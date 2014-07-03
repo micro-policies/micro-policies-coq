@@ -47,15 +47,15 @@ Local Notation atom := (atom (word t) tag).
 Import PartMaps.
 
 Class abstract_params := {
-  memory : Type;
-  mem_map :> partial_map memory (word t) atom;
-  registers : Type;
-  reg_map :> partial_map registers (reg t) atom
+  word_map : Type -> Type;
+  word_map_class :> partial_map word_map (word t);
+  reg_map : Type -> Type;
+  reg_map_class :> partial_map reg_map (reg t)
 }.
 
 Class params_spec (ap : abstract_params) := {
-  mem_map_spec :> PartMaps.axioms (@mem_map ap);
-  reg_map_spec :> PartMaps.axioms (@reg_map ap)
+  mem_map_spec :> PartMaps.axioms (@word_map_class ap);
+  reg_map_spec :> PartMaps.axioms (@reg_map_class ap)
 }.
 
 Context `{ap : abstract_params}
@@ -232,8 +232,8 @@ Variable initial_block : block.
 (* Hypothesis: alloc never returns initial_block. *)
 
 Variable initial_pc : word.
-Variable initial_mem  : memory.
-Variable initial_registers : registers.
+Variable initial_mem  : word_map atom.
+Variable initial_registers : reg_map atom.
 Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial_block).
 
 Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_block)).
@@ -272,11 +272,11 @@ Global Instance sym_memory_safety : symbolic_params t := {
 
   internal_state := (word * list block_info)%type;
 
-  memory := memory;
-  sm := mem_map;
+  word_map := word_map;
+  sw := word_map_class;
 
-  registers := registers;
-  sr := reg_map
+  reg_map := reg_map;
+  sr := reg_map_class
 }.
 
 

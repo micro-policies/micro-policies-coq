@@ -49,10 +49,10 @@ Let atom := atom (word t) (word t).
 
 (* BCP/MD: Why is one total and the other partial?? *)
 Class concrete_params := {
-  memory : Type;
-  mem_class :> PartMaps.partial_map memory (word t) atom;
-  registers : Type;
-  reg_class :> TotalMaps.total_map registers (reg t) atom
+  word_map : Type -> Type;
+  word_map_class :> PartMaps.partial_map word_map (word t);
+  reg_map : Type -> Type;
+  reg_map_class :> TotalMaps.total_map reg_map (reg t)
 }.
 
 (* If we were doing good modularization, these would be abstract! *)
@@ -63,15 +63,15 @@ Definition TNone   : word t := Z_to_word 42.  (* Recognizable enough? *)
 Definition TKernel : word t := Z_to_word 0.
 
 Class params_spec (cp : concrete_params) := {
-  mem_axioms :> PartMaps.axioms (@mem_class cp);
-  reg_axioms :> TotalMaps.axioms (@reg_class cp)
+  word_map_axioms :> PartMaps.axioms (@word_map_class cp);
+  reg_map_axioms :> TotalMaps.axioms (@reg_map_class cp)
 }.
 
 Context {cp : concrete_params}
         {spops : machine_ops_spec ops}
         {sp : params_spec cp}.
 
-Lemma store_same_tag cmem cmem' addr addr' w tg :
+Lemma store_same_tag cmem cmem' addr addr' (w tg : word t) :
   (exists w, PartMaps.get cmem addr = Some w@tg) ->
   PartMaps.upd cmem addr' w@tg = Some cmem' ->
   exists w, PartMaps.get cmem' addr = Some w@tg.
@@ -79,9 +79,9 @@ Proof.
   move=> [w' GET] UPD.
   have [<-|/eqP neq_addr] := altP (addr' =P addr).
   - erewrite PartMaps.get_upd_eq; eauto.
-    apply mem_axioms.
+    apply word_map_axioms.
   - erewrite PartMaps.get_upd_neq; eauto.
-    apply mem_axioms.
+    apply word_map_axioms.
 Qed.
 
 Definition Mop : word t := add_word cache_line_addr (Z_to_word 0).
@@ -158,6 +158,9 @@ Definition cache_lookup (cache : rules)
   do! rv <- assoc_list_lookup cache (beq_mvec masked_mv);
   Some (copy mv rv (ct mask)).
 
+Definition memory := word_map atom.
+Definition registers := reg_map atom.
+
 Record state := mkState {
   mem   : memory;
   regs  : registers;
@@ -183,7 +186,7 @@ Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rule
                              (val ati) (val at1) (val at2) (val at3)),
          mkRVec (val atrpc) (val atr)) :: cache).
 
-Definition store_mvec (mem : memory) (mv : MVec) : option memory :=
+Definition store_mvec (mem : memory) (mv : MVec) : option (memory) :=
   PartMaps.upd_list mem
                     [(Mop, (cop mv)@TKernel);
                      (Mtpc, (ctpc mv)@TKernel);

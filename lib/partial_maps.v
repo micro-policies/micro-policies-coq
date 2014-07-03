@@ -11,24 +11,24 @@ Module PartMaps.
 
 Section maps.
 
-Variables M K V : Type.
+Variables (M : Type -> Type) (K : Type).
 
 Class partial_map := {
-  get : M -> K -> option V;
-  set : M -> K -> V -> M;
-  filter : (V -> bool) -> M -> M;
-  empty : M
+  get : forall V, M V -> K -> option V;
+  set : forall V, M V -> K -> V -> M V;
+  filter : forall V, (V -> bool) -> M V -> M V;
+  empty : forall V, M V
 }.
 
 Class axioms (pm : partial_map) := mkAxioms {
 
-  get_set_eq : forall km ak sk, get (set km ak sk) ak = Some sk;
+  get_set_eq : forall V km ak (sk : V) , get (set km ak sk) ak = Some sk;
 
-  get_set_neq : forall km ak ak' sk,
+  get_set_neq : forall V km ak ak' (sk : V),
                   ak' <> ak  ->
                   get (set km ak sk) ak' = get km ak';
 
-  filter_correctness: forall (f : V -> bool) (m : M) (k : K),
+  filter_correctness: forall V (f : V -> bool) (m : M V) (k : K),
                         get (filter f m) k = option_filter f (get m k)
 
   (* TODO: Need some axioms about empty! *)
@@ -38,9 +38,10 @@ Section with_classes.
 
 Context {pm : partial_map}
         {a : axioms pm}
-        {eqk : EqDec (eq_setoid K)}.
+        {eqk : EqDec (eq_setoid K)}
+        {V : Type}.
 
-Definition upd (m : M) (k : K) (v : V) : option M :=
+Definition upd (m : M V) (k : K) (v : V) : option (M V) :=
   match get m k with
   | Some _ => Some (set m k v)
   | None => None
@@ -81,7 +82,7 @@ Proof.
   by apply get_set_neq.
 Qed.
 
-Fixpoint upd_list (m : M) (ps : list (K * V)) : option M :=
+Fixpoint upd_list (m : M V) (ps : list (K * V)) : option (M V) :=
   match ps with
   | [] => Some m
   | (k, v) :: ps' =>
@@ -184,13 +185,13 @@ End maps.
 
 Section PartMapPointwise.
 
-Context {M1 M2 K V1 V2 : Type}
-        {pm1 : partial_map M1 K V1}
+Context {M1 M2 : Type -> Type} {K V1 V2 : Type}
+        {pm1 : partial_map M1 K}
         {pm1s : axioms pm1}
-        {pm2 : partial_map M2 K V2}
+        {pm2 : partial_map M2 K}
         {pm2s : axioms pm2}.
 
-Definition pointwise (P : V1 -> V2 -> Prop) (m1 : M1) (m2 : M2) : Prop :=
+Definition pointwise (P : V1 -> V2 -> Prop) (m1 : M1 V1) (m2 : M2 V2) : Prop :=
   forall k : K,
     match get m1 k, get m2 k with
     | None   , None   => True
@@ -234,16 +235,16 @@ End PartMapPointwise.
 
 Section PartMapPointwiseUpd.
 
-Context {M1 M2 V1 V2 : Type}
+Context {M1 M2 : Type -> Type} {V1 V2 : Type}
         {K : eqType} (* need key equality to reason about updates *)
-        {pm1 : partial_map M1 K V1}
+        {pm1 : partial_map M1 K}
         {pm1s : axioms pm1}
-        {pm2 : partial_map M2 K V2}
+        {pm2 : partial_map M2 K}
         {pm2s : axioms pm2}.
 
 Variable P : V1 -> V2 -> Prop.
 
-Lemma refine_upd_pointwise1 : forall m1 m2 m2' k v1 v2,
+Lemma refine_upd_pointwise1 : forall (m1 : M1 V1) (m2 m2' : M2 V2) k v1 v2,
   (pointwise P) m1 m2 ->
   P v1 v2 ->
   upd m2 k v2 = Some m2' ->
@@ -256,7 +257,7 @@ Proof.
   exists m1'. exact up''.
 Qed.
 
-Lemma refine_upd_pointwise2 : forall m1 m1' m2 m2' k v1 v2,
+Lemma refine_upd_pointwise2 : forall (m1 m1' : M1 V1) (m2 m2' : M2 V2) k v1 v2,
   (pointwise P) m1 m2 ->
   P v1 v2 ->
   upd m1 k v1 = Some m1' ->
@@ -267,14 +268,12 @@ Proof.
   intro k'. have [<-|/eqP neq_kk'] := altP (k =P k').
   - erewrite get_upd_eq; try eassumption.
     erewrite get_upd_eq; eassumption.
-  - erewrite (@get_upd_neq _ _ _ _ pm2s); [| | apply u2].
-    erewrite (@get_upd_neq _ _ _ _ pm1s); [| | apply u1].
+  - erewrite (@get_upd_neq _ _ _ pm2s); [| | apply u2]; try congruence.
+    erewrite (@get_upd_neq _ _ _ pm1s); [| | apply u1]; try congruence.
     by apply ref.
-    intro Hc; by apply neq_kk'.
-    intro Hc; by apply neq_kk'.
 Qed.
 
-Lemma refine_upd_pointwise : forall m1 m2 m2' k v1 v2,
+Lemma refine_upd_pointwise : forall (m1 : M1 V1) (m2 m2' : M2 V2) k v1 v2,
   (pointwise P) m1 m2 ->
   P v1 v2 ->
   upd m2 k v2 = Some m2' ->
@@ -290,28 +289,29 @@ End PartMapPointwiseUpd.
 
 Section PartMapExtend.
 
-Context {M1 M2 V1 V2 M K1 K2 : Type}
+Context {M1 M2 M : Type -> Type}
+        {V1 V2 K1 K2 : Type}
         {K : eqType} (* need key equality to reason about updates *)
-        {pm1 : partial_map M1 K V1}
+        {pm1 : partial_map M1 K}
         {pm1s : axioms pm1}
-        {pm2 : partial_map M2 K V2}
+        {pm2 : partial_map M2 K}
         {pm2s : axioms pm2}
-        {pmk : partial_map M K1 K2}
+        {pmk : partial_map M K1}
         {pmks : axioms pm2}.
 
 (* We show that if P km is closed under a key map transformation
    (e.g. extension) then so is any pointwise (P km) *)
 
-Variable P : M -> V1 -> V2 -> Prop.
-Variable f : M -> K1 -> K2 -> Prop. (* condition on key_map (e.g. freshness) *)
-Variable g : M -> K1 -> K2 -> M.    (* key_map operation ( e.g. set) *)
+Variable P : M K2 -> V1 -> V2 -> Prop.
+Variable f : M K2 -> K1 -> K2 -> Prop. (* condition on key_map (e.g. freshness) *)
+Variable g : M K2 -> K1 -> K2 -> M K2.    (* key_map operation ( e.g. set) *)
 
 Hypothesis p_extend_map : forall km k1 k2 v1 v2,
   f km k1 k2 ->
   P km v1 v2 ->
   P (g km k1 k2) v1 v2.
 
-Lemma refine_extend_map : forall km m1 m2 k1 k2,
+Lemma refine_extend_map : forall km (m1 : M1 V1) (m2 : M2 V2) k1 k2,
   f km k1 k2 ->
   (pointwise (P km)) m1 m2 ->
   (pointwise (P (g km k1 k2))) m1 m2.
@@ -324,18 +324,18 @@ Qed.
 End PartMapExtend.
 
 Section PartMapDomains.
-Variable M M' M'' K V V' V'' : Type.
+Variables (M M' M'' : Type -> Type) (K V V' V'' : Type).
 
-Context {pm : partial_map M K V}
+Context {pm : partial_map M K}
         {a : axioms pm}
 
-        {pm' : partial_map M' K V'}
+        {pm' : partial_map M' K}
         {a' : axioms pm'}
 
-        {pm'' : partial_map M'' K V''}
+        {pm'' : partial_map M'' K}
         {a'' : axioms pm''}.
 
-Lemma same_domain_trans (m : M) (m' : M') (m'' : M'') :
+Lemma same_domain_trans (m : M V) (m' : M' V') (m'' : M'' V'') :
   same_domain m m' ->
   same_domain m' m'' ->
   same_domain m m''.
@@ -347,7 +347,7 @@ Proof.
   destruct (get m k), (get m' k), (get m'' k); auto.
 Qed.
 
-Lemma same_domain_comm (m : M) (m' : M') :
+Lemma same_domain_comm (m : M V) (m' : M' V') :
   same_domain m m' ->
   same_domain m' m.
 Proof.
@@ -362,11 +362,11 @@ End PartMapDomains.
 
 Section Filter.
 
-Context {M K V : Type}
-        {pm : partial_map M K V}
+Context {M : Type -> Type} {K V : Type}
+        {pm : partial_map M K}
         {a : axioms pm}.
 
-Lemma filter_domains (f : V -> bool) (m : M) (m' : M) :
+Lemma filter_domains (f : V -> bool) (m : M V) (m' : M V) :
   same_domain(*s*) m m' ->
   (forall k, match get m k, get m' k with
                | Some v, Some v' => f v = f v'
@@ -385,6 +385,6 @@ Qed.
 
 End Filter.
 
-Arguments empty {_ _ _ _}. 
+Arguments empty {_ _ _ _}.
 
 End PartMaps.

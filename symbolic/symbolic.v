@@ -87,11 +87,11 @@ Class symbolic_params := {
 
   internal_state : Type;
 
-  memory : Type;
-  sm :> partial_map memory (word t) (atom (word t) tag);
+  word_map : Type -> Type;
+  sw :> partial_map word_map (word t);
 
-  registers : Type;
-  sr :> partial_map registers (reg t) (atom (word t) tag)
+  reg_map : Type -> Type;
+  sr :> partial_map reg_map (reg t)
 }.
 
 Context {sp : symbolic_params}.
@@ -101,6 +101,9 @@ Open Scope word_scope.
 Local Notation word := (word t).
 Let atom := (atom word tag).
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
+
+Definition memory := word_map atom.
+Definition registers := reg_map atom.
 
 Record state := State {
   mem : memory;

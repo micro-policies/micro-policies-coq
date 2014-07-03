@@ -77,7 +77,7 @@ Definition size amem pt :=
   *)
 Definition meminj := block -> option (word mt * word mt).
 
-Record meminj_spec amem (mi : meminj) := {
+Record meminj_spec (amem : Abstract.memory mt) (mi : meminj) := {
     miIr : forall b b' base base' nonce nonce',
                 mi b = Some (base, nonce) ->
                 mi b' = Some (base', nonce') ->
@@ -223,7 +223,7 @@ Definition refine_memory_val v a col :=
   | _, _ => False
  end.
 
-Definition refine_memory amem (qamem : Sym.memory mt) :=
+Definition refine_memory amem (qamem : Sym.word_map _) :=
   meminj_spec amem mi /\
   forall b base col off, mi b = Some (base,col) ->
     refine_memory_val (Abstract.getv amem (b,off)) (PartMaps.get qamem (base+off)%w) col.
@@ -334,7 +334,7 @@ Qed.
 
 *)
 
-Inductive refine_block_info amem smem : Sym.block_info mt -> Prop :=
+Inductive refine_block_info (amem : Abstract.memory mt) (smem : Sym.word_map (atom (word mt) (Sym.tag mt))) : Sym.block_info mt -> Prop :=
 | RefineBlockInfoLive : forall b col bi fr, Sym.block_color bi = Some col ->
   mi b = Some (Sym.block_base bi, col) ->
   PartMaps.get amem b = Some fr ->
@@ -499,7 +499,7 @@ Definition refine_reg_val v a :=
  match a with w@V(ty) => refine_val v w ty | _ => False end.
 
 Definition refine_registers (aregs : Abstract.registers mt)
-                            (qaregs : Sym.registers mt) :=
+                            (qaregs : Sym.reg_map _) :=
   PartMaps.pointwise refine_reg_val aregs qaregs.
 
 Lemma refine_registers_val aregs qaregs r v : refine_registers aregs qaregs ->

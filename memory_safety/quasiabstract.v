@@ -68,21 +68,24 @@ Notation "x @ t" := (mkatom x t) (at level 5, format "x '@' t").
 Import PartMaps.
 
 Class abstract_params := {
-  memory : Type;
-  mem_class :> partial_map memory (word t) atom;
-  registers : Type;
-  reg_class :> partial_map registers (reg t) atom
+  word_map : Type -> Type;
+  word_map_class :> partial_map word_map (word t);
+  reg_map : Type -> Type;
+  reg_map_class :> partial_map reg_map (reg t)
 }.
 
 Class params_spec (ap : abstract_params) := {
 
-  mem_axioms :> PartMaps.axioms (@mem_class ap);
+  mem_axioms :> PartMaps.axioms (@word_map_class ap);
 
-  reg_axioms :> PartMaps.axioms (@reg_class ap)
+  reg_axioms :> PartMaps.axioms (@reg_map_class ap)
 
 }.
 
 Context `{ap : abstract_params, syscall_regs t, memory_syscall_addrs t}.
+
+Definition memory := word_map atom.
+Definition registers := reg_map atom.
 
 Open Scope word_scope.
 
@@ -183,10 +186,10 @@ Definition malloc_fun st : option state :=
           in
           let P := fun n => memory in
           let upd_fun := fun n acc =>
-            if @upd memory _ _ (@mem_class _) acc (block_base x + (Z_to_word (Z.of_nat n))) (0@M(color,INT)) is Some mem then mem else acc
+            if upd acc (block_base x + (Z_to_word (Z.of_nat n))) (0@M(color,INT)) is Some mem then mem else acc
           in
           let mem' := nat_rect P (mem st) upd_fun (Z.to_nat (word_to_Z sz)) in
-          let regs' := if @upd registers _ _ (@reg_class _) (regs st) syscall_ret ((block_base x)@V(PTR color)) is Some regs' then regs' else regs st in
+          let regs' := if upd (regs st) syscall_ret ((block_base x)@V(PTR color)) is Some regs' then regs' else regs st in
           let color' := color + 1 in
           Some (mkState mem' regs' (color',info') (pcv.+1@pcl))
           else None

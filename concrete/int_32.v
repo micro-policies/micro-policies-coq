@@ -106,8 +106,8 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     end;
 
   encode_instr i :=
-    let pack_long := fun r im => 
-                       match unpack3 im with (i1,i2,i3) => 
+    let pack_long := fun r im =>
+                       match unpack3 im with (i1,i2,i3) =>
                          pack (opcode_of i) r i1 i2 i3 end in
     let pack := pack (opcode_of i) in
     match i with
@@ -118,7 +118,7 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     | Load r1 r2 => pack r1 r2 zero zero
     | Store r1 r2 => pack r1 r2 zero zero
     | Jump r => pack r zero zero zero
-    | Bnz r i => pack_long r i 
+    | Bnz r i => pack_long r i
     | Jal r => pack r zero zero zero
     | JumpEpc => pack zero zero zero zero
     | AddRule => pack zero zero zero zero
@@ -172,7 +172,7 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 
 (* Removing Program causes Coq not to find concrete_int_32_t *)
 
-(* BCP: This is surely false (if any of the inputs are 
+(* BCP: This is surely false (if any of the inputs are
    outside the expected range)... *)
 Lemma unpack_pack : forall x1 x2 x3 x4 x5,
   unpack (pack x1 x2 x3 x4 x5) = Some (x1,x2,x3,x4,x5).
@@ -288,20 +288,20 @@ Module Int32TMap := FiniteTotalMap Int32Indexed.
 Let atom := atom (word concrete_int_32_t) (word (concrete_int_32_t)).
 
 Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
-  memory    := Int32PMap.t atom;
-  registers := Int32TMap.t atom;
+  word_map    := Int32PMap.t;
+  reg_map := Int32TMap.t;
 
-  mem_class := {|
-    PartMaps.get mem i := Int32PMap.get i mem;
-    PartMaps.set mem i x := Int32PMap.set i x mem;
-    PartMaps.filter mem p := Int32PMap.filter mem p;
-    PartMaps.empty := @Int32PMap.empty _ 
+  word_map_class := {|
+    PartMaps.get V mem i := Int32PMap.get i mem;
+    PartMaps.set V mem i x := Int32PMap.set i x mem;
+    PartMaps.filter V mem p := Int32PMap.filter mem p;
+    PartMaps.empty V := @Int32PMap.empty _
   |};
 
-  reg_class := {|
-    TotalMaps.get regs r := Int32TMap.get r regs;
+  reg_map_class := {|
+    TotalMaps.get V regs r := Int32TMap.get r regs;
     (* BCP/MD: Why isn't this called 'set'? *)
-    TotalMaps.upd regs r x := Int32TMap.set r x regs
+    TotalMaps.upd V regs r x := Int32TMap.set r x regs
   |}
 |}.
 
@@ -310,18 +310,18 @@ Program Instance concrete_int_32_params_spec :
 Next Obligation.
   constructor.
   - (* get_set_eq *)
-    intros mem i x. by apply Int32PMap.gss.
+    intros V mem i x. by apply Int32PMap.gss.
   - (* get_set_neq *)
-    intros mem i i' x y. by apply Int32PMap.gso.
+    intros V mem i i' x y. by apply Int32PMap.gso.
   - (* filter_correctness *)
-    intros f m k. by apply Int32PMap.gfilter.
+    intros V f m k. by apply Int32PMap.gfilter.
 Qed.
 Next Obligation.
   constructor.
   - (* get_upd_eq *)
-    intros mem i x. simpl in *.
+    intros V mem i x. simpl in *.
     apply Int32TMap.gss.
-  - intros mem i i' x Hneq. simpl in *.
+  - intros V mem i i' x Hneq. simpl in *.
     apply Int32TMap.gso; assumption.
 Qed.
 
@@ -335,4 +335,3 @@ Instance p : printing concrete_int_32_t := {|
 |}.
 
 Definition format_instr := printing.format_instr.
-

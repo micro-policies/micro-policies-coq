@@ -16,14 +16,14 @@ Module Map.
   Import PartMaps.
 
 Section Mappable.
-  Variable M1 M2 K V1 V2 : Type.
+  Variable (M1 M2 : Type -> Type) (K V1 V2 : Type).
 
   
-  Class mappable (pm1 : partial_map M1 K V1) (pm2 : partial_map M2 K V2) := {
+  Class mappable (pm1 : partial_map M1 K) (pm2 : partial_map M2 K) := {
 
-    map : (V1 -> V2) -> M1 -> M2;
+    map : (V1 -> V2) -> M1 V1 -> M2 V2;
 
-    map_correctness: forall (f : V1 -> V2) (m1 : M1) (k : K),
+    map_correctness: forall (f : V1 -> V2) (m1 : M1 V1) (k : K),
                        get (map f m1) k = option_map f (get m1 k)
 
 
@@ -44,15 +44,18 @@ Context {t : machine_types}
         {ap : Abs.abstract_params t}
         {aps : Abs.params_spec ap}
 
-        {smemory : Type}
-        {sm : partial_map smemory (word t) (atom (word t) (@cfi_tag t))}
-        {smems : axioms sm}
-        {smemory_map : Map.mappable sm (@Abs.dmem_class t ap)}
+        {sword_map : Type -> Type}
+        {sw : partial_map sword_map (word t)}
+        {smems : axioms sw}
+        {smemory_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sw (@Abs.dword_map_class t ap)}
 
-        {sregisters : Type}
-        {sr : partial_map sregisters (reg t) (atom (word t) (@cfi_tag t))}
+        {sreg_map : Type -> Type}
+        {sr : partial_map sreg_map (reg t)}
         {sregs : axioms sr}
-        {sregs_map : Map.mappable sr (@Abs.reg_class t ap)}.
+        {sregs_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sr (@Abs.reg_map_class t ap)}.
+
+Definition smemory := sword_map (atom (word t) (@cfi_tag t)).
+Definition sregisters := sreg_map (atom (word t) (@cfi_tag t)).
 
 Variable valid_jmp : word t -> word t -> bool.
 
@@ -398,14 +401,14 @@ Proof.
     have [EQ|/eqP NEQ] := altP (addr =P w); [simpl in EQ | simpl in NEQ]; subst.
     * assert (CONTRA := PartMaps.get_upd_eq UPD).
       simpl in CONTRA. rewrite CONTRA in GET'. discriminate.
-    * eapply PartMaps.get_upd_neq in UPD; eauto.
+    * simpl in UPD. eapply PartMaps.get_upd_neq in UPD; eauto.
       simpl in UPD. rewrite UPD in GET'.
       eapply MEM; eauto.
   - intro GET'.
     apply MEM in GET'.
     have [EQ|/eqP NEQ] := altP (addr =P w); [simpl in EQ | simpl in NEQ]; subst.
     * simpl in GET. rewrite GET in GET'. destruct GET'; congruence.
-    * eapply PartMaps.get_upd_neq in UPD; eauto; simpl in UPD;
+    * simpl in UPD. eapply PartMaps.get_upd_neq in UPD; eauto; simpl in UPD;
       rewrite UPD; assumption.
 Qed.
 

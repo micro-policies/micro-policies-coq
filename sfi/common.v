@@ -7,15 +7,18 @@ Generalizable All Variables.
 Import PartMaps.
 
 Class abstract_params (t : machine_types) := {
-  memory    :  Type;
-  mem_class :> partial_map memory (word t) (word t);
-  registers :  Type;
-  reg_class :> partial_map registers (reg t) (word t)
+  word_map       :  Type -> Type;
+  word_map_class :> partial_map word_map (word t);
+  reg_map        :  Type -> Type;
+  reg_map_class  :> partial_map reg_map (reg t)
 }.
 
+Definition memory (t : machine_types) {ap : abstract_params t} := word_map (word t).
+Definition registers (t : machine_types) {ap : abstract_params t} := reg_map (word t).
+
 Class params_spec `(ap : abstract_params t) :=
-  { mem_axioms :> PartMaps.axioms (@mem_class t ap)
-  ; reg_axioms :> PartMaps.axioms (@reg_class t ap) }.
+  { word_map_axioms :> PartMaps.axioms (@word_map_class t ap)
+  ; reg_map_axioms :> PartMaps.axioms (@reg_map_class t ap) }.
 
 Class sfi_syscall_addrs (t : machine_types) := {
   isolate_addr              : word t;

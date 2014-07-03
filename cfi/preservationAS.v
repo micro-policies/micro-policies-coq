@@ -25,16 +25,19 @@ Context {t : machine_types}
         {ap : Abs.abstract_params t}
         {aps : Abs.params_spec ap}
 
-        {smemory : Type}
-        {sm : partial_map smemory (word t) (atom (word t) (@cfi_tag t))}
-        {smems : axioms sm}
-        {smemory_mapd : Map.mappable sm (@Abs.dmem_class t ap)}
-        {smemory_mapi : Map.mappable sm (@Abs.imem_class t ap)}
+        {sword_map : Type -> Type}
+        {sw : partial_map sword_map (word t)}
+        {smems : axioms sw}
+        {smemory_mapd : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sw (@Abs.dword_map_class t ap)}
+        {smemory_mapi : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sw (@Abs.iword_map_class t ap)}
 
-        {sregisters : Type}
-        {sr : partial_map sregisters (reg t) (atom (word t) (@cfi_tag t))}
+        {sreg_map : Type -> Type}
+        {sr : partial_map sreg_map (reg t)}
         {sregs : axioms sr}
-        {sregs_map : Map.mappable sr (@Abs.reg_class t ap)}.
+        {sregs_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sr (@Abs.reg_map_class t ap)}.
+
+Definition smemory := sword_map (atom (word t) (@cfi_tag t)).
+Definition sregisters := sreg_map (atom (word t) (@cfi_tag t)).
 
 Variable valid_jmp : word t -> word t -> bool.
 

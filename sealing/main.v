@@ -356,21 +356,21 @@ End WithClasses.
   a different order from Int32PMap.get and Int32PMap.set?? *)
 
 Instance ap : Abs.params t := {|
- memory    := Int32PMap.t (Abs.value t);
- registers := Int32PMap.t (Abs.value t);
+ word_map  := Int32PMap.t;
+ reg_map := Int32PMap.t;
 
- am := {|
-   PartMaps.get mem i := Int32PMap.get i mem;
-   PartMaps.set mem i x := Int32PMap.set i x mem;
-   PartMaps.filter mem p := Int32PMap.filter mem p;
-   PartMaps.empty := Int32PMap.empty _ 
+ aw := {|
+   PartMaps.get V mem i := Int32PMap.get i mem;
+   PartMaps.set V mem i x := Int32PMap.set i x mem;
+   PartMaps.filter V mem p := Int32PMap.filter mem p;
+   PartMaps.empty V := Int32PMap.empty _ 
  |};
 
  ar := {|
-   PartMaps.get regs r := Int32PMap.get r regs;
-   PartMaps.set mem i x := Int32PMap.set i x mem;
-   PartMaps.filter mem p := Int32PMap.filter mem p;
-   PartMaps.empty := Int32PMap.empty _ 
+   PartMaps.get V regs r := Int32PMap.get r regs;
+   PartMaps.set V mem i x := Int32PMap.set i x mem;
+   PartMaps.filter V mem p := Int32PMap.filter mem p;
+   PartMaps.empty V := Int32PMap.empty _ 
  |}
 |}.
 

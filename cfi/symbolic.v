@@ -25,11 +25,11 @@ Context {opss : machine_ops_spec ops}.
 
 Import PartMaps.
 
-Context {memory : Type}
-        {sm : partial_map memory (word t) (atom (word t) (@cfi_tag t))}
-        {smems : axioms sm}
-        {registers : Type}
-        {sr : partial_map registers (reg t) (atom (word t) (@cfi_tag t))}.
+Context {word_map : Type -> Type}
+        {sw : partial_map word_map (word t)}
+        {smems : axioms sw}
+        {reg_map : Type -> Type}
+        {sr : partial_map reg_map (reg t)}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
@@ -40,10 +40,10 @@ Program Instance sym_cfi : (Symbolic.symbolic_params t) := {
 
   internal_state := unit;
 
-  memory := memory;
-  sm := sm;
+  word_map := word_map;
+  sw := sw;
 
-  registers := registers;
+  reg_map := reg_map;
   sr := sr
 }.
 
@@ -77,9 +77,9 @@ Inductive atom_equiv : atom (word t) (@cfi_tag t) -> atom (word t) (@cfi_tag t)
                     a = a' ->
                     atom_equiv a a'.
 
-Definition equiv {M : Type} {Key : Type} 
-           {M_class : partial_map M Key (atom (word t) cfi_tag)} :
-           M -> M -> Prop :=
+Definition equiv {M : Type -> Type} {Key : Type} 
+           {M_class : partial_map M Key} :
+           M (atom (word t) (@cfi_tag t)) -> M (atom (word t) (@cfi_tag t)) -> Prop :=
   pointwise atom_equiv.
 
 Inductive step_a : Symbolic.state t ->
@@ -92,9 +92,9 @@ Inductive step_a : Symbolic.state t ->
                   step_a (Symbolic.State mem reg pc@tpc int)
                          (Symbolic.State mem' reg' pc@tpc int).
 
-Lemma equiv_same_domain {M : Type} {Key : Type} 
-           {M_class : partial_map M Key (atom (word t) cfi_tag)}
-           (m : M) (m' : M) :
+Lemma equiv_same_domain {M : Type -> Type} {Key : Type} 
+           {M_class : partial_map M Key }
+           (m : M (atom (word t) cfi_tag)) (m' : M (atom (word t) cfi_tag)) :
   equiv m m' ->
   same_domain m m'.
 Proof.
