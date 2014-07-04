@@ -167,11 +167,6 @@ Program Definition concrete_initial_state
 
 Context {sp: Symbolic.symbolic_params t}.
 
-Locate val.
-Locate atom.
-
-About Symbolic.pc.
-
 Let sym_atom := @common.atom (word t) (Symbolic.tag t).
 
 Program Definition symbolic_initial_state 
