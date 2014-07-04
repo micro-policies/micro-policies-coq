@@ -24,7 +24,7 @@ Context {t : machine_types}
 
 Class sealing_key := {
   key : eqType;
-  max_key : key;
+  max_key;
   inc_key : key -> key;
   ord_key :> Ordered key;
   ltb_inc : forall sk, sk <? max_key -> sk <? inc_key sk
