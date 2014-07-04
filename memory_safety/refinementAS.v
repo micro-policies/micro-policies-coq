@@ -138,17 +138,15 @@ Inductive refine_val : Abstract.value mt block -> word mt -> Sym.type mt -> Prop
   | RefinePtr : forall b base col off, TotalMaps.get mi col = (b,base) ->
                 refine_val (Abstract.VPtr (b,off)) (base + off) (PTR col).
 
-Lemma refine_ptr_inv w n b off base nonce :
+Lemma refine_ptr_inv w col b b' off base :
   meminj_spec amem mi ->
-  refine_val (Abstract.VPtr (b,off)) w (PTR n) ->
-  TotalMaps.get mi nonce = (b, base) ->
+  refine_val (Abstract.VPtr (b,off)) w (PTR col) ->
+  TotalMaps.get mi col = (b', base) ->
   w = (base + off)%w.
 Proof.
 move=> miP rpt mi_b.
 inversion rpt.
-move: (mi_b) (H4).
-rewrite (miIr miP mi_b H4).
-by move=> -> [->].
+congruence.
 Qed.
 
 Definition refine_memory amem (smem : Sym.memory mt) :=
@@ -228,14 +226,12 @@ Definition internal_state_spec smem (ist : word mt * list (Sym.block_info mt)) :
   let: (nextb, info) := ist in
   forall x, x \in info -> block_info_spec smem x.
 
-Lemma refine_memory_upd smem smem' ist (* old *)
-                        w1 w2 pt ty (* ty' *) n fr fr' x :
+Lemma refine_memory_upd smem smem' ist old
+                        w1 w2 pt ty ty' n fr fr' x :
   refine_memory amem smem ->
   internal_state_spec smem ist ->
   refine_val (Abstract.VPtr pt) w1 (PTR n) ->
-(*
   PartMaps.get smem w1 = Some old@M(n, ty') ->
-*)
   PartMaps.upd smem w1 w2@M(n, ty) = Some smem' ->
   PartMaps.get amem pt.1 = Some fr ->
   update_list_Z (word_to_Z pt.2) x fr = Some fr' ->
@@ -243,7 +239,7 @@ Lemma refine_memory_upd smem smem' ist (* old *)
     exists amem', [/\ PartMaps.upd amem pt.1 fr' = Some amem',
       refine_memory amem' smem' & internal_state_spec smem' ist].
 Proof.
-move=> [miP rmem] rist rpt (* get_w1 *) upd_w1 get_pt update_pt rx.
+move=> [miP rmem] rist rpt get_w1 upd_w1 get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
 exists amem'; split => //; last first.
   case: ist rist => nextcol infos rist.
@@ -254,32 +250,35 @@ exists amem'; split => //; last first.
     move=> off lt_off.
     case/(_ off lt_off): H2 => v /=.
     have [->|/eqP neq_w1] := altP (bi_base + off =P w1).
-      admit.
-      (* by rewrite get_w1. *)
+       by rewrite get_w1.
     by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1); move => ?; exists v.
   have [eq_coln|neq_coln] := altP (bi_col =P n).
     rewrite eq_coln in in_bi *.
     move/(_ _ in_bi): rist => biP.
     inversion biP => //.
-    apply: (BlockInfoLive _ H2) => //.
-    admit.
-  admit.
-(*
-move/(_ bi in_bi): rist => biP.
-
-move=> {bi in_bi} bi col b base.
-move=> color_bi mi_col get_bi.
-apply: (BlockInfoLive color_bi mi_col).
-
-
-
-move=> off lt_off.
-
-
-
-admit.*)
-split=> //.
-admit.
+    case: H1 => eq_col.
+    rewrite -eq_col in H2 H3.
+    apply: (BlockInfoLive _ H2) => //=.
+    move=> off lt_off.
+    case/(_ off lt_off): H3 => v [ty''].
+    destruct pt as [pt_b pt_off].
+    rewrite (refine_ptr_inv miP rpt H2) in get_w1 upd_w1.
+    have [->|/eqP neq_off] := altP (off =P pt_off).
+      by move=> _; rewrite (PartMaps.get_upd_eq upd_w1); eexists; eexists.
+    have neq_w1 : base + off <> base + pt_off.
+      by move/addwI.
+    by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1) => ?; eexists; eexists.
+  move/(_ _ in_bi): rist => biP.
+  inversion biP => //=.
+  case: H1 => eq_col.
+  rewrite -eq_col in H2 H3.
+  apply: (BlockInfoLive _ H2) => //.
+  move=> off lt_off.
+  case/(_ off lt_off): H3 => v [ty''].
+  have [->|/eqP neq_w1] := altP (base + off =P w1).
+    by rewrite get_w1 => [[_ eq_coln _]]; rewrite eq_coln eqxx in neq_coln.
+  by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1); move => ?; eexists; eexists.
+split; first by constructor; case: miP.
 move=> w0 w3 col ?.
 have [->|/eqP neq_w0w1] := altP (w0 =P w1).
   rewrite (PartMaps.get_upd_eq upd_w1) => [[<- <- <-]].
@@ -641,6 +640,7 @@ try match goal with
   match_inv
 end;
 
+
 repeat match goal with
   | GET : PartMaps.get ?reg ?r = Some ?v@V(?ty),
     rregs : refine_registers _ _ ?reg |- _ =>
@@ -655,6 +655,40 @@ repeat match goal with
             fail 5 "refine_registers_get" op GET
     end
   end;
+
+match goal with
+| GET : PartMaps.get ?mem ?w1 = Some _@M(?w2,?ty),
+(*  IDX : index_list_Z _ _ = Some _, *)
+  UPD : PartMaps.upd ?mem ?w1 _@_ = Some _,
+  rmem : refine_memory _ _ ?mem
+  (* rv : refine_val mi ?x ?v _*) |- _ =>
+    move: (GET) => GET2;
+    eapply (refine_memory_get rmem) in GET; [|by eauto]; destruct GET as (? & ? & ? & ? & ?)
+(*
+    destruct (valid_update IDX x) as (? & ?);
+    eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ? & ?)
+*)
+  | |- _ => idtac
+end;
+
+(*
+simpl in *.
+destruct (valid_update H6 x) as (? & ?).
+eapply (refine_memory_upd rmem) in E; [|by eauto|by eauto|by eauto|by eauto|by eauto|by eauto].
+destruct E as (? & ? & ?).
+*)
+
+match goal with
+| IDX : index_list_Z _ _ = Some _,
+  UPD : PartMaps.upd ?mem ?w1 ?v@_ = Some _,
+  rmem : refine_memory _ _ ?mem,
+  rv : refine_val mi ?x ?v _,
+  GET : PartMaps.get ?mem ?w1 = Some _ |- _ =>
+    destruct (valid_update IDX x) as (? & ?);
+    eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?);
+    clear GET
+  | |- _ => idtac
+end;
 
 repeat match goal with
   | GET : PartMaps.get ?mem ?w1 = Some ?v@M(_,?ty),
@@ -683,6 +717,7 @@ match goal with
   | |- _ => idtac
   end;
 
+(*
 match goal with
 | IDX : index_list_Z _ _ = Some _,
   UPD : PartMaps.upd ?mem ?w1 ?v@_ = Some _,
@@ -692,19 +727,13 @@ match goal with
     eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ? & ?)
   | |- _ => idtac
 end;
+*)
 
 repeat match goal with
   | def := _ |- _ => rewrite /def
 end;
 
 try solve_pc rpci.
-
-(* Store *)
-eexists; eexists; split.
-by econstructor (by eauto).
-split; try eassumption.
-by eauto.
-by simpl; rewrite <-rpci, <-addwA; econstructor.
 
 (* Jal *)
 simpl in E.
