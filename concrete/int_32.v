@@ -35,13 +35,19 @@ Qed.
 Definition int_eqMixin := EqMixin int_eqP.
 Canonical int_eqType := Eval hnf in EqType int int_eqMixin.
 
+Module Int32PMap := FiniteMap      Int32Indexed.
+Module Int32TMap := FiniteTotalMap Int32Indexed.
+
 (* These types will yield an incorrect (but still executable/useful) encoding *)
 (* CH: What's incorrect about it?  Is it the fact that you're
    abusing int instead of using a more precise type? *)
 Definition concrete_int_32_t : machine_types := {|
   word := int_eqType;
   reg := int_eqType; (* 5 bits *)
-  imm := int_eqType  (* 5 bits; CH: this is extremely little! *)
+  imm := int_eqType;  (* 5 bits; CH: this is extremely little! *)
+  word_map := Int32PMap.t;
+  reg_map := Int32PMap.t;
+  reg_tmap := Int32TMap.t
 |}.
 
 (* CH: x2-x5 are assumed to be all 5 bits,
@@ -167,7 +173,31 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 
   ord_word := int_ordered;
 
-  ra := repr 0
+  ra := repr 0;
+
+  word_map_class := {|
+    PartMaps.get V mem i := Int32PMap.get i mem;
+    PartMaps.set V mem i x := Int32PMap.set i x mem;
+    PartMaps.filter V mem p := Int32PMap.filter mem p;
+    PartMaps.map V1 V2 f mem := Int32PMap.map1 f mem;
+    PartMaps.empty V := @Int32PMap.empty _
+  |};
+
+  reg_map_class := {|
+    PartMaps.get V regs i := Int32PMap.get i regs;
+    PartMaps.set V regs i x := Int32PMap.set i x regs;
+    PartMaps.filter V regs p := Int32PMap.filter regs p;
+    PartMaps.map V1 V2 f regs := Int32PMap.map1 f regs;
+    PartMaps.empty V := @Int32PMap.empty _
+  |};
+
+  reg_tmap_class := {|
+    TotalMaps.get V regs r := Int32TMap.get r regs;
+    (* BCP/MD: Why isn't this called 'set'? *)
+    TotalMaps.upd V regs r x := Int32TMap.set r x regs
+  |}
+
+
 |}.
 
 (* Removing Program causes Coq not to find concrete_int_32_t *)
@@ -278,56 +308,57 @@ Proof.
     rewrite compare_signed signed_repr; last by
       (generalize (signed_range (repr 0)); omega).
     assumption.
+  - constructor.
+    + (* get_set_eq *)
+      intros V mem i x. by apply Int32PMap.gss.
+    + (* get_set_neq *)
+      intros V mem i i' x y. by apply Int32PMap.gso.
+    + (* filter_correctness *)
+      intros V f m k. by apply Int32PMap.gfilter.
+    + (* map_correctness *)
+      intros V1 V2 f m k. by apply Int32PMap.gmap1.
+    + (* empty_is_empty *)
+      intros V k. by apply Int32PMap.gempty.
+  - constructor.
+    + (* get_set_eq *)
+      intros V mem i x. by apply Int32PMap.gss.
+    + (* get_set_neq *)
+      intros V mem i i' x y. by apply Int32PMap.gso.
+    + (* filter_correctness *)
+      intros V f m k. by apply Int32PMap.gfilter.
+    + (* map_correctness *)
+      intros V1 V2 f m k. by apply Int32PMap.gmap1.
+    + (* empty_is_empty *)
+      intros V k. by apply Int32PMap.gempty.
+  - constructor.
+    +(* get_upd_eq *)
+      intros V mem i x. simpl in *.
+      apply Int32TMap.gss.
+    + intros V mem i i' x Hneq. simpl in *.
+      apply Int32TMap.gso; assumption.
 Defined.
 
 Import Concrete.
 
-Module Int32PMap := FiniteMap      Int32Indexed.
-Module Int32TMap := FiniteTotalMap Int32Indexed.
-
 Let atom := atom (word concrete_int_32_t) (word (concrete_int_32_t)).
 
 Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
-  word_map    := Int32PMap.t;
-  reg_map := Int32TMap.t;
+  word_map    := @common.word_map concrete_int_32_t;
+  reg_map := reg_tmap concrete_int_32_t;
 
-  word_map_class := {|
-    PartMaps.get V mem i := Int32PMap.get i mem;
-    PartMaps.set V mem i x := Int32PMap.set i x mem;
-    PartMaps.filter V mem p := Int32PMap.filter mem p;
-    PartMaps.map V1 V2 f mem := Int32PMap.map1 f mem;
-    PartMaps.empty V := @Int32PMap.empty _
-  |};
+  word_map_class := common.word_map_class;
 
-  reg_map_class := {|
-    TotalMaps.get V regs r := Int32TMap.get r regs;
-    (* BCP/MD: Why isn't this called 'set'? *)
-    TotalMaps.upd V regs r x := Int32TMap.set r x regs
-  |}
+  reg_map_class := reg_tmap_class
+
 |}.
 
 Program Instance concrete_int_32_params_spec :
   params_spec (concrete_int_32_params).
 Next Obligation.
-  constructor.
-  - (* get_set_eq *)
-    intros V mem i x. by apply Int32PMap.gss.
-  - (* get_set_neq *)
-    intros V mem i i' x y. by apply Int32PMap.gso.
-  - (* filter_correctness *)
-    intros V f m k. by apply Int32PMap.gfilter.
-  - (* map_correctness *)
-    intros V1 V2 f m k. by apply Int32PMap.gmap1.
-  - (* empty_is_empty *)
-    intros V k. by apply Int32PMap.gempty.
+  exact: common.word_map_axioms.
 Qed.
 Next Obligation.
-  constructor.
-  - (* get_upd_eq *)
-    intros V mem i x. simpl in *.
-    apply Int32TMap.gss.
-  - intros V mem i i' x Hneq. simpl in *.
-    apply Int32TMap.gso; assumption.
+  exact: common.reg_tmap_axioms.
 Qed.
 
 Open Scope string_scope.

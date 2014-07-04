@@ -3,7 +3,8 @@ Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.ordered.
 
-Require Import utils.
+Require Import lib.utils.
+Require Import lib.partial_maps.
 
 Import ListNotations.
 
@@ -104,7 +105,10 @@ Proof. by do !case. Qed.
 Record machine_types := {
   word : eqType;
   reg : eqType;
-  imm : eqType
+  imm : eqType;
+  word_map : Type -> Type;
+  reg_map : Type -> Type;
+  reg_tmap : Type -> Type
 }.
 
 Section instr.
@@ -211,7 +215,11 @@ Class machine_ops (t : machine_types) := {
   opp_word : word t -> word t;
   ord_word :> Ordered (word t);
 
-  ra : reg t
+  ra : reg t;
+
+  word_map_class :> PartMaps.partial_map (word_map t) (word t);
+  reg_map_class :> PartMaps.partial_map (reg_map t) (reg t);
+  reg_tmap_class :> TotalMaps.total_map (reg_tmap t) (reg t)
 }.
 
 Section Functions.
@@ -268,7 +276,12 @@ Class machine_ops_spec t (ops : machine_ops t) := {
     x <=> y = (word_to_Z x ?= word_to_Z y)%Z;
 
   lew_min : forall w, min_word <= w;
-  lew_max : forall w, w <= max_word
+  lew_max : forall w, w <= max_word;
+
+  word_map_axioms : PartMaps.axioms word_map_class;
+  reg_map_axioms : PartMaps.axioms reg_map_class;
+  reg_tmap_axioms : TotalMaps.axioms reg_tmap_class
+
 }.
 
 Section WordArith.
