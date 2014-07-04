@@ -361,6 +361,9 @@ Next Obligation.
   exact: common.reg_tmap_axioms.
 Qed.
 
+(* ---------------------------------------------------------------------- *)
+(* Printing concrete states *)
+
 Open Scope string_scope.
 Import printing.
 
@@ -371,3 +374,97 @@ Instance p : printing concrete_int_32_t := {|
 |}.
 
 Definition format_instr := printing.format_instr.
+
+Open Scope Z_scope.
+
+Require Import String.
+
+(* BCP: all this needs some fixing to live here...
+
+Definition format_atom atom :=
+  let: w1@w2 := atom in
+    match decode_instr w1 with
+      Some i => ss "(" +++ format_instr i +++ ss ")@" +++ format_word w2
+    | None => format_word w1 +++ ss "@" +++ format_word w2
+    end.
+
+Definition print_instr atom :=
+  let: w1@w2 := atom in (Int32.intval w1, decode_instr w1, Int32.intval w2).
+
+Definition print_atom atom :=
+  let: w1@w2 := atom in (Int32.intval w1, Int32.intval w2).
+
+Definition format_mvec l :=
+  let os := match (Z_to_op (word_to_Z (@Concrete.cop (word concrete_int_32_t) l))) with
+              Some o => format_opcode o
+            | None => ss "<BAD OPCODE>"
+            end in
+   os
+   +++ sspace +++
+   format_word (@Concrete.ctpc (word concrete_int_32_t) l)
+   +++ sspace +++
+   format_word (@Concrete.cti (word concrete_int_32_t) l)
+   +++ sspace +++
+   format_word (@Concrete.ct1 (word concrete_int_32_t) l)
+   +++ sspace +++
+   format_word (@Concrete.ct2 (word concrete_int_32_t) l)
+   +++ sspace +++
+   format_word (@Concrete.ct3 (word concrete_int_32_t) l).
+
+Definition format_rvec l :=
+   format_word (@Concrete.ctrpc (word concrete_int_32_t) l)
+   +++ sspace +++
+   format_word (@Concrete.ctr (word concrete_int_32_t) l).
+
+Definition format_whole_cache (c : Concrete.rules (word concrete_int_32_t)) :=
+  map (fun l => let: (m,r) := l in (format_mvec m +++ ss " => " +++ format_rvec r)) c.
+
+Definition format_cache (c : Concrete.rules (word concrete_int_32_t)) :=
+  format_whole_cache (take 3 c).
+
+Require Import Coqlib.
+
+Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) (n : nat) (i : Int32.int) :=
+  match n with
+  | O => []
+  | S p => (Int32.intval i, f (get map i)) :: enum map get f p (Int32.add i (Int32.repr 1))
+  end.
+
+Definition summarize_concrete_state mem_count cache_count st :=
+  let mem' := just_somes
+               (@enum _ _ _
+                 (@Concrete.mem concrete_int_32_t cp st)
+                 (@PartMaps.get _ Int32.int _ _)
+                 (@omap atom sstring format_atom)
+                 mem_count
+                 (Int32.repr 0)) in
+  let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
+  let regs' := @enum _ _ _
+                 (@Concrete.regs concrete_int_32_t cp st)
+                 (@TotalMaps.get _ Int32.int _ _)
+                 (fun a => format_atom a)
+                 (word_to_nat user_reg_max)
+                 (Int32.repr (word_to_Z (nat_to_word 0))) in
+  let regs := map (fun r =>
+                     let: (x,a) := r in
+                     ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a)
+               regs' in
+  let current_instr :=
+    let: addr@_ := Concrete.pc st in
+    match @PartMaps.get _ Int32.int _ _
+                    (@Concrete.mem t cp st)
+                    addr with
+      None => ss "(BAD ADDR)"
+    | Some i => format_atom i
+    end in
+  (to_string
+     (ss "PC=" +++ format_atom (Concrete.pc st) +++ ss "  "
+               +++ current_instr +++
+      ss " | " +++
+      ssconcat sspace regs +++
+      ss " | " +++
+      mem +++
+      ss " | " +++
+      ssconcat sspace (format_whole_cache
+                         (take cache_count (Concrete.cache st))))).
+*)

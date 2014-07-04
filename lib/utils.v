@@ -826,6 +826,13 @@ Definition is_some {T} (o : option T) :=
 Definition remove_none {T} (l : list (option T)) :=
   filter (@is_some _) l.
 
+Fixpoint just_somes {X Y} (l : list (X * option Y)) :=
+  match l with
+  | nil => nil
+  | (_, None) :: l' => just_somes l'
+  | (x, Some y) :: l' => (x,y) :: just_somes l'
+  end.
+
 Inductive with_silent {T:Type} := | E (e:T) | Silent.
 Notation "T +τ" := (@with_silent T) (at level 1).
 

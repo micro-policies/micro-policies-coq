@@ -42,7 +42,7 @@ Instance cp : Concrete.concrete_params t :=
 (* ---------------------------------------------------------------- *)
 (* Generic definitions for building concrete machine instances *)
 
-(* TODO: Belongs in symbolic/int_32 *)
+(* TODO: Belongs in symbolic/int_32, I think *)
 
 (* BCP/MD: These should all be distinct from monitor registers in
    symbolic.int_32, though this should not cause axiom failures --
@@ -79,6 +79,8 @@ Definition user_code (f : w -> list w -> list (instr t))
  (length (f (Z_to_word 0) [Z_to_word 0; Z_to_word 0; Z_to_word 0]),
   f).
 
+(* ---------------------------------------------------------------- *)
+(* ---------------------------------------------------------------- *)
 (* ---------------------------------------------------------------- *)
 (* Main definitions for concrete sealing machine *)
 
@@ -322,6 +324,8 @@ Definition build_concrete_sealing_machine
 End WithClasses.
 
 (* ---------------------------------------------------------------- *)
+(* ---------------------------------------------------------------- *)
+(* ---------------------------------------------------------------- *)
 (* Symbolic machine *)
 
 Instance sp : @Sym.params t := {|
@@ -368,10 +372,11 @@ Definition build_symbolic_sealing_machine
     syscall_addrs
     user_registers
     (common.Atom (Int32.repr 0) Sym.DATA)
-    (Int32.repr 0)  (* ARGH: What type conversion do I need here? *)
-   ,
+    (Int32.repr 0),
    syscall_addr_rcd).
 
+(* ---------------------------------------------------------------- *)
+(* ---------------------------------------------------------------- *)
 (* ---------------------------------------------------------------- *)
 (* Abstract machine *)
 
@@ -450,16 +455,14 @@ Definition build_abstract_sealing_machine
     user_registers,
    syscall_addr_rcd).
 
+(* ---------------------------------------------------------------- *)
+(* ---------------------------------------------------------------- *)
 (* --------------------------------------------------------------- *)
 (* Printing, mostly ... *)
 
-Open Scope Z_scope.
+(* TODO: Some of this belongs elsewhere, like in concrete/int_32 *)
 
-Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) (n : nat) (i : Int32.int) :=
-  match n with
-  | O => []
-  | S p => (Int32.intval i, f (get map i)) :: enum map get f p (Int32.add i (Int32.repr 1))
-  end.
+Open Scope Z_scope.
 
 Require Import String.
 Import printing.
@@ -505,18 +508,16 @@ Definition format_whole_cache (c : Concrete.rules (word t)) :=
 Definition format_cache (c : Concrete.rules (word t)) :=
   format_whole_cache (take 3 c).
 
-Fixpoint filter_Somes {X Y} (l : list (X * option Y)) :=
-  match l with
-    [] => []
-  | (_, None) :: l' => filter_Somes l'
-  | (x, Some y) :: l' => (x,y) :: filter_Somes l'
-  end.
-
 Require Import Coqlib.
 
-(* TODO: Belongs in concrete/int_32, along with some of the above *)
+Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) (n : nat) (i : Int32.int) :=
+  match n with
+  | O => []
+  | S p => (Int32.intval i, f (get map i)) :: enum map get f p (Int32.add i (Int32.repr 1))
+  end.
+
 Definition summarize_concrete_state mem_count cache_count st :=
-  let mem' := filter_Somes
+  let mem' := just_somes
                (@enum _ _ _
                  (@Concrete.mem t cp st)
                  (@PartMaps.get _ Int32.int _ _)
@@ -553,6 +554,61 @@ Definition summarize_concrete_state mem_count cache_count st :=
       ssconcat sspace (format_whole_cache
                          (take cache_count (Concrete.cache st))))).
 
+(* ---------------------------------------------------------------- *)
+(* Printing symbolic states *)
+
+(* ARGH: More trouble with types...
+
+   ??? in the next line should be the type of symbolic tags, but I'm
+   not sure what it's name is! 
+
+Definition format_symbolic_atom (pr_tag : ??? -> sstring) a :=
+  let: w1@t2 := a in
+    match decode_instr w1 with
+      Some i => ss "(" +++ format_instr i +++ ss ")@" +++ pr_tag t2
+    | None => format_word w1 +++ ss "@" +++ pr_tag t2
+    end.
+
+Definition summarize_symbolic_state mem_count st pr_tag :=
+  let mem' := just_somes
+               (@enum _ _ _
+                 (@Abs.mem t sk ap st)
+                 (@PartMaps.get _ Int32.int _ _)
+                 (@omap atom sstring (format_symbolic_atom pr_tag))
+                 mem_count
+                 (Int32.repr 0)) in
+  let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
+  let regs' := just_somes
+                 (@enum _ _ _
+                    (@Abs.regs t sk ap st)
+                    (@PartMaps.get _ Int32.int _ _)
+                    (@omap atom sstring (format_symbolic_atom pr_tag))
+                    (word_to_nat user_reg_max)
+                    (Int32.repr (word_to_Z (nat_to_word 0)))) in
+  let regs := map (fun r =>
+                     let: (x,a) := r in
+                     ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a)
+               regs' in
+  let current_instr :=
+    let: addr := Abs.pc st in
+    match @PartMaps.get _ Int32.int _ _
+                    (@Abs.mem t sk ap st)
+                    addr with
+      None => ss "(BAD ADDR)"
+    | Some i => format_symbolic_atom pr_tag i
+    end in
+  (to_string
+     (ss "PC=" +++ format_word (Abs.pc st) +++ ss "  "
+               +++ current_instr +++
+      ss " | " +++
+      ssconcat sspace regs +++
+      ss " | " +++
+      mem)).
+*)
+
+(* ---------------------------------------------------------------- *)
+(* Printing abstract states *)
+
 Definition format_value v :=
   match v with
   | Abs.VData w =>
@@ -565,7 +621,7 @@ Definition format_value v :=
   end.
 
 Definition summarize_abstract_state mem_count st :=
-  let mem' := filter_Somes
+  let mem' := just_somes
                (@enum _ _ _
                  (@Abs.mem t sk ap st)
                  (@PartMaps.get _ Int32.int _ _)
@@ -573,7 +629,7 @@ Definition summarize_abstract_state mem_count st :=
                  mem_count
                  (Int32.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
-  let regs' := filter_Somes
+  let regs' := just_somes
                  (@enum _ _ _
                     (@Abs.regs t sk ap st)
                     (@PartMaps.get _ Int32.int _ _)
