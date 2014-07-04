@@ -1,5 +1,4 @@
 Require Import List Arith Sorted Bool.
-Require Import Coq.Classes.SetoidDec.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
@@ -1421,7 +1420,7 @@ Proof.
     rewrite ->subset_spec in SUBSET_J,SUBSET_S;
       specialize (SUBSET_J a); specialize (SUBSET_S a);
       rewrite ->set_union_spec in SUBSET_J,SUBSET_S.
-    destruct (equiv_dec c' d); ssubst.
+    have [EQ | /eqP NEQ] := altP (c' =P d); ssubst.
     + specialize (CC c a IN); simpl in CC.
       destruct IN_a as [IN_a | IN_a];
         [apply SUBSET_J in IN_a | apply SUBSET_S in IN_a];
@@ -1429,14 +1428,14 @@ Proof.
         ; [ rewrite ->ADDR in IN_a; solve [eauto]
           | destruct CC as [d' [IN_d' IN'_a]];
             [ solve [auto]
-            | solve [ destruct (equiv_dec d' c);
+            | solve [ have [? | /eqP ?] := altP (d' =P c);
                       [ ssubst; rewrite ->ADDR in *; eauto
                       | exists d'; rewrite ->delete_in_iff; auto ]]]]).
     + destruct IN_d as [<- | IN_d]; [congruence|].
       specialize CC with d a. destruct CC as [d' [IN_d' IN'_a]].
       * apply delete_in_iff in IN_d; tauto.
       * exact IN_a.
-      * destruct (equiv_dec d' c); [ssubst; rewrite ->ADDR in *; eauto|].
+      * have [? | /eqP ?] := altP (d' =P c); [ssubst; rewrite ->ADDR in *; eauto|].
         exists d'; rewrite ->delete_in_iff; auto.
 Qed.
 
@@ -1711,7 +1710,6 @@ Proof.
       eapply defined_preserved in GET; try eassumption.
       * by destruct GET as [v GET']; rewrite GET'.
       * apply word_map_axioms.
-      * apply eqType_EqDec.
     + unfold syscall_address_space in *; cbv [address_space] in *.
       destruct A as [|sc [|]]; auto.
       move/andP in SAS; apply/andP.

@@ -1,6 +1,5 @@
 Require Import List. Import ListNotations.
 Require Import ssreflect ssrfun ssrbool eqtype.
-Require Import Coq.Classes.SetoidDec.
 Require Import lib.Coqlib lib.utils.
 
 Set Implicit Arguments.
@@ -43,7 +42,6 @@ Section with_classes.
 
 Context {pm : partial_map}
         {a : axioms pm}
-        {eqk : EqDec (eq_setoid K)}
         {V : Type}.
 
 Definition upd (m : M V) (k : K) (v : V) : option (M V) :=
@@ -87,6 +85,18 @@ Proof.
   by apply get_set_neq.
 Qed.
 
+End with_classes.
+
+End maps.
+
+Section upd_list.
+
+Context (M : Type -> Type)
+        (K : eqType)
+        {pm : partial_map M K}
+        {a : axioms pm}
+        {V : Type}.
+
 Fixpoint upd_list (m : M V) (ps : list (K * V)) : option (M V) :=
   match ps with
   | [] => Some m
@@ -106,19 +116,19 @@ Proof.
   induction ps as [|[k' v'] ps IH]; simpl; intros m' UPD GET.
   - simpl. inv UPD. auto.
   - destruct (upd_list m ps) as [m''|] eqn:UPD'; try discriminate.
-    destruct (equiv_dec k k') as [E|E]; simpl in E; subst.
+    have [EQ | /eqP NEQ] := altP (k =P k'); subst.
     + erewrite get_upd_eq in GET; eauto. inv GET. eauto.
-    + erewrite (get_upd_neq E) in GET; [|eauto].
+    + erewrite (get_upd_neq NEQ) in GET; [|eauto].
       specialize (IH m'' erefl GET). intuition.
 Qed.
 
-Lemma defined_preserved m m' key key' val val' :
+Lemma defined_preserved m m' key key' (val val' : V) :
   get m key = Some val ->
   upd m key' val' = Some m' ->
   exists val'', get m' key = Some val''.
 Proof.
   intros GET UPD.
-  destruct (equiv_dec key' key) as [E|E]; simpl in E; subst.
+  have [E | /eqP E] := altP (key =P key'); subst.
   - erewrite get_upd_eq; eauto.
   - erewrite get_upd_neq; eauto.
 Qed.
@@ -149,7 +159,7 @@ Proof.
   destruct IN as [EQ | IN].
   - subst k'. eexists. split; eauto.
     erewrite get_upd_eq; eauto.
-  - destruct (equiv_dec k' k) as [E|E]; simpl in E; subst.
+  - have [E | /eqP E] := altP (k =P k'); subst.
     + erewrite get_upd_eq; eauto.
     + erewrite get_upd_neq; eauto.
       destruct (IH m'' erefl IN) as (v' & IN' & GET).
@@ -184,9 +194,7 @@ Proof.
     eapply upd_defined; eauto.
 Qed.
 
-End with_classes.
-
-End maps.
+End upd_list.
 
 Section PartMapPointwise.
 

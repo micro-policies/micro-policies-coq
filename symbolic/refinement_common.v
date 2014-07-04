@@ -92,7 +92,6 @@ Proof.
   unfold mvec_in_kernel, in_mvec, Concrete.mvec_fields, Concrete.store_mvec, Concrete.memory.
   intros DEF.
   eapply PartMaps.upd_list_defined; eauto using Concrete.word_map_axioms.
-  apply eqType_EqDec.
   simpl map. intros addr IN.
   apply DEF in IN.
   destruct IN.
