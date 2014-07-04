@@ -564,11 +564,10 @@ Definition format_symbolic_atom (pr_tag : @Symbolic.tag t (@Sym.sym_sealing t sk
     | None => format_word w1 +++ ss "@" +++ pr_tag t2
     end.
 
-(*
 Definition summarize_symbolic_state mem_count st pr_tag :=
   let mem' := just_somes
                (@enum _ _ _
-                 (@Abs.mem t sk ap st)
+                 (@Symbolic.mem t Sym.sym_sealing st)
                  (@PartMaps.get _ Int32.int _ _)
                  (@omap _ sstring (format_symbolic_atom pr_tag))
                  mem_count
@@ -576,9 +575,9 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := just_somes
                  (@enum _ _ _
-                    (@Abs.regs t sk ap st)
+                    (@Symbolic.regs t Sym.sym_sealing st)
                     (@PartMaps.get _ Int32.int _ _)
-                    (@omap atom sstring (format_symbolic_atom pr_tag))
+                    (@omap _ sstring (format_symbolic_atom pr_tag))
                     (word_to_nat user_reg_max)
                     (Int32.repr (word_to_Z (nat_to_word 0)))) in
   let regs := map (fun r =>
@@ -586,21 +585,37 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
                      ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a)
                regs' in
   let current_instr :=
-    let: addr := Abs.pc st in
+    let: addr := Symbolic.pc st in
     match @PartMaps.get _ Int32.int _ _
-                    (@Abs.mem t sk ap st)
-                    addr with
+                    (@Symbolic.mem t Sym.sym_sealing st)
+                    (val addr) with
       None => ss "(BAD ADDR)"
     | Some i => format_symbolic_atom pr_tag i
     end in
   (to_string
-     (ss "PC=" +++ format_word (Abs.pc st) +++ ss "  "
+     (ss "PC=" +++ format_symbolic_atom pr_tag (Symbolic.pc st) +++ ss "  "
                +++ current_instr +++
       ss " | " +++
       ssconcat sspace regs +++
       ss " | " +++
       mem)).
+
+Definition format_int i :=
+  format_Z (Int32.intval i).
+
+(* ARGH: More type conversions...
+
+Definition format_sealing_tag t :=
+  match t with
+    Sym.DATA => ss "DATA"
+  | Sym.KEY k => ss "KEY(" +++ format_int k +++ ss ")"
+  | Sym.SEALED k => ss "SEALED(" +++ format_int k +++ ss ")"
+  end.
+
+Definition summarize_symbolic_sealing_state mem_count st :=
+  summarize_symbolic_state mem_count st format_sealing_tag.
 *)
+
 
 (* ---------------------------------------------------------------- *)
 (* Printing abstract states *)
@@ -612,8 +627,10 @@ Definition format_value v :=
         Some i => ss "(" +++ format_instr i +++ ss ")"
       | None => format_word w
       end
-  | Abs.VKey k => ss "KEY(" +++ format_nat k +++ ss ")"
-  | Abs.VSealed w k => ss "SEALED(" +++ format_word w +++ ss "," +++ format_nat k +++ ss ")"
+  | Abs.VKey k => 
+      ss "KEY(" +++ format_nat k +++ ss ")"
+  | Abs.VSealed w k => 
+      ss "SEALED(" +++ format_word w +++ ss "," +++ format_nat k +++ ss ")"
   end.
 
 Definition summarize_abstract_state mem_count st :=

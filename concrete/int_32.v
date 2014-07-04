@@ -45,6 +45,7 @@ Definition concrete_int_32_t : machine_types := {|
   word := int_eqType;
   reg := int_eqType; (* 5 bits *)
   imm := int_eqType;  (* 5 bits; CH: this is extremely little! *)
+                      (* BCP: Might be changed to 15 now? *)
   word_map := Int32PMap.t;
   reg_map := Int32PMap.t;
   reg_tmap := Int32TMap.t
