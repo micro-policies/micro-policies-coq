@@ -143,6 +143,7 @@ Definition next_state_pc (st : state) (mvec : MVec tag) x : option state :=
 
 Import Vector.VectorNotations.
 
+(* Consider renaming int to extra... *)
 Inductive step (st st' : state) : Prop :=
 | step_nop : forall mem reg pc tpc i ti int
     (ST   : st = State mem reg pc@tpc int)
@@ -184,14 +185,14 @@ Inductive step (st st' : state) : Prop :=
     (OLD  : get reg r2 = Some old@told),
     let mvec := mkMVec LOAD tpc ti [t1; t2; told] in forall
     (NEXT : next_state_reg st mvec r2 w2 = Some st'),    step st st'
-| step_store : forall mem reg pc i r1 r2 w1 w2 w3 tpc ti t1 t2 t3 int
+| step_store : forall mem reg pc i r1 r2 w1 w2 tpc ti t1 t2 old told int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Store _ r1 r2))
     (R1W  : get reg r1 = Some w1@t1)
     (R2W  : get reg r2 = Some w2@t2)
-    (OLD  : get mem w1 = Some w3@t3),
-    let mvec := mkMVec STORE tpc ti [t1; t2; t3] in forall
+    (OLD  : get mem w1 = Some old@told),
+    let mvec := mkMVec STORE tpc ti [t1; t2; told] in forall
     (NEXT : next_state st mvec (fun rvec =>
                  do! mem' <- upd mem w1 w2@(tr rvec);
                  Some (State mem' reg (pc.+1)@(trpc rvec) int)) = Some st'),
@@ -225,6 +226,92 @@ Inductive step (st st' : state) : Prop :=
     (PC : get mem pc = None)
     (GETCALL : get_syscall pc = Some sc)
     (CALL : run_syscall sc st = Some st'), step st st'.
+
+Definition stepf (st : state) : option state :=
+  let 'State mem reg pc@tpc extra := st in
+  match PartMaps.get mem pc with
+  | Some iti =>
+    let: i@ti := iti in
+    do! instr <- decode_instr i;
+    match instr with
+    | Nop =>
+      let mvec := mkMVec NOP tpc ti [] in
+      next_state_pc st mvec (pc.+1)
+    | Const n r =>
+      do! old <- PartMaps.get reg r;
+      let: _@told := old in
+      let mvec := mkMVec CONST tpc ti [told] in
+      next_state_reg st mvec r (imm_to_word n)
+    | Mov r1 r2 =>
+      do! a1 <- PartMaps.get reg r1;
+      let: w1@t1 := a1 in
+      do! a2 <- PartMaps.get reg r2;
+      let: _@told := a2 in
+      let mvec := mkMVec MOV tpc ti [t1;told] in
+      next_state_reg st mvec r2 w1
+    | Binop op r1 r2 r3 =>
+      do! a1 <- PartMaps.get reg r1;
+      let: w1@t1 := a1 in
+      do! a2 <- PartMaps.get reg r2;
+      let: w2@t2 := a2 in
+      do! a3 <- PartMaps.get reg r3;
+      let: _@told := a3 in
+      let mvec := mkMVec (BINOP op) tpc ti [t1;t2;told] in
+      next_state_reg st mvec r2 (binop_denote op w1 w2)
+    | Load r1 r2 =>
+      do! a1 <- PartMaps.get reg r1;
+      let: w1@t1 := a1 in
+      do! amem <- PartMaps.get mem w1;
+      let: w2@t2 := amem in
+      do! a2 <- PartMaps.get reg r2;
+      let: _@told := a2 in
+      let mvec := mkMVec LOAD tpc ti [t1;t2;told] in
+      next_state_reg st mvec r2 w2
+    | Store r1 r2 =>
+      do! a1 <- PartMaps.get reg r1;
+      let: w1@t1 := a1 in
+      do! amem <- PartMaps.get mem w1;
+      let: _@told := amem in
+      do! a2 <- PartMaps.get reg r2;
+      let: w2@t2 := a2 in
+      let mvec := mkMVec STORE tpc ti [t1;t2;told] in
+      next_state st mvec (fun rvec =>
+         do! mem' <- upd mem w1 w2@(tr rvec);
+         Some (State mem' reg (pc.+1)@(trpc rvec) extra))
+    | Jump r =>
+      do! a <- PartMaps.get reg r;
+      let: w@t1 := a in
+      let mvec := mkMVec JUMP tpc ti [t1] in
+      next_state_pc st mvec w
+    | Bnz r n =>
+      do! a <- PartMaps.get reg r;
+      let: w@t1 := a in
+      let pc' := add_word pc (if w == Z_to_word 0
+                              then Z_to_word 1 else imm_to_word n) in
+      let mvec := mkMVec BNZ tpc ti [t1] in
+      next_state_pc st mvec pc'
+    | Jal r =>
+      do! a <- PartMaps.get reg r;
+      let: w@t1 := a in
+      do! oldtold <- PartMaps.get reg ra;
+      let: _@told := oldtold in
+      let mvec := mkMVec JAL tpc ti [t1; told] in
+      next_state_reg_and_pc st mvec ra (pc.+1) w
+    | JumpEpc | AddRule | GetTag _ _ | PutTag _ _ _ | Halt => 
+      None
+    end
+  | None =>
+    match get mem pc with
+    | None => 
+      do! sc <- get_syscall pc;
+      run_syscall sc st
+    | Some _ => 
+      None
+    end
+  end.
+
+(* TODO: Prove correctness! *)
+
 End WithClasses.
 
 Notation memory t s := (word_map t (atom (word t) (@tag s))).

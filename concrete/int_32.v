@@ -433,7 +433,7 @@ Definition summarize_concrete_state mem_count cache_count st :=
     match @PartMaps.get _ Int32.int _ _
                     (@Concrete.mem t cp st)
                     addr with
-      None => ss "(BAD ADDR)"
+      None => ss "(UNDEF ADDR)"
     | Some i => format_atom i
     end in
   (to_string

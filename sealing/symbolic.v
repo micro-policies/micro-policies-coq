@@ -47,16 +47,16 @@ Import Coq.Vectors.Vector.VectorNotations.
 
 Definition sealing_handler (mv : MVec stag) : option (RVec stag) :=
   match mv with
-  | mkMVec NOP       _ DATA []              => Some (mkRVec none none)
-  | mkMVec CONST     _ DATA [_]             => Some (mkRVec none DATA)
-  | mkMVec MOV       _ DATA [tsrc; _]       => Some (mkRVec none tsrc)
-  | mkMVec (BINOP _) _ DATA [DATA; DATA; _] => Some (mkRVec none DATA)
-  | mkMVec LOAD      _ DATA [DATA; tmem; _] => Some (mkRVec none tmem)
-  | mkMVec STORE     _ DATA [DATA; tsrc; _] => Some (mkRVec none tsrc)
-  | mkMVec JUMP      _ DATA [DATA]          => Some (mkRVec none none)
-  | mkMVec BNZ       _ DATA [DATA]          => Some (mkRVec none none)
-  | mkMVec JAL       _ DATA [DATA; _]       => Some (mkRVec none DATA)
-  | mkMVec SERVICE   _ _    []              => Some (mkRVec none none)
+  | mkMVec NOP       _ DATA []              => Some (mkRVec DATA none)
+  | mkMVec CONST     _ DATA [_]             => Some (mkRVec DATA DATA)
+  | mkMVec MOV       _ DATA [tsrc; _]       => Some (mkRVec DATA tsrc)
+  | mkMVec (BINOP _) _ DATA [DATA; DATA; _] => Some (mkRVec DATA DATA)
+  | mkMVec LOAD      _ DATA [DATA; tmem; _] => Some (mkRVec DATA tmem)
+  | mkMVec STORE     _ DATA [DATA; tsrc; _] => Some (mkRVec DATA tsrc)
+  | mkMVec JUMP      _ DATA [DATA]          => Some (mkRVec DATA none)
+  | mkMVec BNZ       _ DATA [DATA]          => Some (mkRVec DATA none)
+  | mkMVec JAL       _ DATA [DATA; _]       => Some (mkRVec DATA DATA)
+  | mkMVec SERVICE   _ _    []              => Some (mkRVec DATA none)
   | mkMVec _         _ _ _                  => None
   end.
 

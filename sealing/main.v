@@ -641,15 +641,16 @@ Definition run_abs n p :=
    map (summarize_abstract_state 8) tr
   ).
 
-(*
 Definition run_sym n p :=
   let: (init,syscall_addrs) := build_symbolic_sealing_machine p in
-  let tr := utils.runn (fun x => Symbolic.stepf x) n init in
+  let tr := utils.runn (fun x => @Symbolic.stepf concrete_int_32_t concrete_int_32_ops
+                                 (@Sym.sym_sealing t sk_defs sp)
+                                 Sym.sealing_syscalls
+                                 x) n init in
   (
    summarize_symbolic_sealing_state 3000 init ::
    map (summarize_symbolic_sealing_state 8) tr
   ).
-*)
 
 Definition hello_world0 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [
@@ -741,6 +742,8 @@ Definition hello_world5 : @relocatable_segment t (list w) (instr concrete_int_32
 (* Run tests like this:
 
 Concrete Machine: Compute (runn 2000 hello_world5).
+
+Symbolic Machine: Compute (run_sym 2000 hello_world5). 
 
 Abstract Machine: Compute (run_abs 2000 hello_world5). *)
 
