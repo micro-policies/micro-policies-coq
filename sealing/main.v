@@ -321,15 +321,10 @@ Definition build_concrete_sealing_machine
 
 End WithClasses.
 
-
-
-
 (* ---------------------------------------------------------------- *)
 (* Symbolic machine *)
 
-
 Instance sp : @Sym.params t := {|
-
  word_map  := Int32PMap.t;
  reg_map := Int32PMap.t;
 
@@ -350,7 +345,7 @@ Instance sp : @Sym.params t := {|
  |}
 |}.
 
-(* WIP
+(*
 Definition build_symbolic_sealing_machine
     (user_program : @relocatable_segment t (list w) (instr t))
   : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing t sk_defs sp) * @classes.sealing_syscall_addrs t :=
@@ -373,12 +368,11 @@ Definition build_symbolic_sealing_machine
     base_addr@Sym.DATA
     syscall_addrs
     user_registers
-    (* initial_reg_value *)
-    (* initial_internal_state *)
+    (common.Atom (Int32.repr 0) Sym.DATA)
+    (Int32.repr 0)  (* ARGH: What type conversion do I need here? *)
    ,
    syscall_addr_rcd).
 *)
-
 
 (* ---------------------------------------------------------------- *)
 (* Abstract machine *)
