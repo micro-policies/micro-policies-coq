@@ -17,6 +17,7 @@ Class partial_map := {
   get : forall V, M V -> K -> option V;
   set : forall V, M V -> K -> V -> M V;
   filter : forall V, (V -> bool) -> M V -> M V;
+  map : forall V1 V2, (V1 -> V2) -> M V1 -> M V2;
   empty : forall V, M V
 }.
 
@@ -29,9 +30,13 @@ Class axioms (pm : partial_map) := mkAxioms {
                   get (set km ak sk) ak' = get km ak';
 
   filter_correctness: forall V (f : V -> bool) (m : M V) (k : K),
-                        get (filter f m) k = option_filter f (get m k)
+                        get (filter f m) k = option_filter f (get m k);
 
-  (* TODO: Need some axioms about empty! *)
+  map_correctness: forall V1 V2 (f : V1 -> V2) (m1 : M V1) (k : K),
+                     get (map f m1) k = option_map f (get m1 k);
+
+  empty_is_empty: forall V k, get (empty V) k = None
+
 }.
 
 Section with_classes.
@@ -134,7 +139,7 @@ Qed.
 
 Lemma get_upd_list_in m m' ps k :
   upd_list m ps = Some m' ->
-  In k (map (fun p => fst p) ps) ->
+  In k (List.map (fun p => fst p) ps) ->
   exists v,
     In (k, v) ps /\ get m' k = Some v.
 Proof.
@@ -153,7 +158,7 @@ Qed.
 
 Lemma get_upd_list_nin m m' ps k :
   upd_list m ps = Some m' ->
-  ~ In k (map (fun p => fst p) ps) ->
+  ~ In k (List.map (fun p => fst p) ps) ->
   get m' k = get m k.
 Proof.
   gdep m'.
@@ -166,7 +171,7 @@ Proof.
 Qed.
 
 Lemma upd_list_defined m ps :
-  (forall k, In k (map (fun p => fst p) ps) ->
+  (forall k, In k (List.map (fun p => fst p) ps) ->
              exists v, get m k = Some v) ->
   exists m', upd_list m ps = Some m'.
 Proof.

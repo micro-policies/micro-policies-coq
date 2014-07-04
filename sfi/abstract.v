@@ -79,8 +79,8 @@ Definition non_overlapping : list compartment -> bool :=
 (* BCP: Do we need this?  Can we get away with just having all user memory
    inside a compartment at all times?  [TODO] *)
 Definition contained_compartments (C : list compartment) : bool :=
-  subset (concat (map jump_targets C) ++ concat (map shared_memory C))
-         (concat (map address_space C)).
+  subset (concat (List.map jump_targets C) ++ concat (List.map shared_memory C))
+         (concat (List.map address_space C)).
 
 Definition good_compartments (C : list compartment) : bool :=
   forallb good_compartment C &&
@@ -203,7 +203,7 @@ Arguments user_address_space M !c /.
 
 Definition syscall_address_space (M : memory t) (c : compartment) : bool :=
   match address_space c with
-    | [sc] => ~~ is_some (get M sc) && elem sc (map address table)
+    | [sc] => ~~ is_some (get M sc) && elem sc (List.map address table)
     | _    => false
   end.
 Arguments syscall_address_space : simpl never.
@@ -1243,8 +1243,8 @@ Proof.
     }
     assert (As_same : forall a,
               In a (set_difference A A' ++ A' ++
-                    concat (map address_space (delete c C))) <->
-              In a (concat (map address_space C))). {
+                    concat (List.map address_space (delete c C))) <->
+              In a (concat (List.map address_space C))). {
       intros.
       repeat rewrite in_app_iff.
       rewrite <- or_assoc, <- A_separated.

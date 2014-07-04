@@ -295,6 +295,7 @@ Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
     PartMaps.get V mem i := Int32PMap.get i mem;
     PartMaps.set V mem i x := Int32PMap.set i x mem;
     PartMaps.filter V mem p := Int32PMap.filter mem p;
+    PartMaps.map V1 V2 f mem := Int32PMap.map1 f mem;
     PartMaps.empty V := @Int32PMap.empty _
   |};
 
@@ -315,6 +316,10 @@ Next Obligation.
     intros V mem i i' x y. by apply Int32PMap.gso.
   - (* filter_correctness *)
     intros V f m k. by apply Int32PMap.gfilter.
+  - (* map_correctness *)
+    intros V1 V2 f m k. by apply Int32PMap.gmap1.
+  - (* empty_is_empty *)
+    intros V k. by apply Int32PMap.gempty.
 Qed.
 Next Obligation.
   constructor.
