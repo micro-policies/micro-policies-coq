@@ -603,9 +603,7 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
 Definition format_int i :=
   format_Z (Int32.intval i).
 
-(* ARGH: More type conversions...
-
-Definition format_sealing_tag t :=
+Definition format_sealing_tag (t : @Symbolic.tag t (@Sym.sym_sealing t sk_defs _)):=
   match t with
     Sym.DATA => ss "DATA"
   | Sym.KEY k => ss "KEY(" +++ format_int k +++ ss ")"
@@ -614,8 +612,6 @@ Definition format_sealing_tag t :=
 
 Definition summarize_symbolic_sealing_state mem_count st :=
   summarize_symbolic_state mem_count st format_sealing_tag.
-*)
-
 
 (* ---------------------------------------------------------------- *)
 (* Printing abstract states *)
