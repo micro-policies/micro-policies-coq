@@ -557,24 +557,20 @@ Definition summarize_concrete_state mem_count cache_count st :=
 (* ---------------------------------------------------------------- *)
 (* Printing symbolic states *)
 
-(* ARGH: More trouble with types...
-
-   ??? in the next line should be the type of symbolic tags, but I'm
-   not sure what it's name is! 
-
-Definition format_symbolic_atom (pr_tag : ??? -> sstring) a :=
+Definition format_symbolic_atom (pr_tag : @Symbolic.tag t (@Sym.sym_sealing t sk_defs _) -> sstring) a :=
   let: w1@t2 := a in
     match decode_instr w1 with
       Some i => ss "(" +++ format_instr i +++ ss ")@" +++ pr_tag t2
     | None => format_word w1 +++ ss "@" +++ pr_tag t2
     end.
 
+(*
 Definition summarize_symbolic_state mem_count st pr_tag :=
   let mem' := just_somes
                (@enum _ _ _
                  (@Abs.mem t sk ap st)
                  (@PartMaps.get _ Int32.int _ _)
-                 (@omap atom sstring (format_symbolic_atom pr_tag))
+                 (@omap _ sstring (format_symbolic_atom pr_tag))
                  mem_count
                  (Int32.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
