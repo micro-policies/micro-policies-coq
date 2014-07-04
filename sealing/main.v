@@ -345,7 +345,6 @@ Instance sp : @Sym.params t := {|
  |}
 |}.
 
-(*
 Definition build_symbolic_sealing_machine
     (user_program : @relocatable_segment t (list w) (instr t))
   : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing t sk_defs sp) * @classes.sealing_syscall_addrs t :=
@@ -363,7 +362,7 @@ Definition build_symbolic_sealing_machine
         classes.seal_addr   := nth 1 syscall_addrs (Int32.repr 0);
         classes.unseal_addr := nth 2 syscall_addrs (Int32.repr 0)
       |} in
-  (@symbolic_initial_state Sym.sym_sealing
+  (@symbolic_initial_state (@Sym.sym_sealing t sk_defs sp)
     user_mem
     base_addr@Sym.DATA
     syscall_addrs
@@ -372,7 +371,6 @@ Definition build_symbolic_sealing_machine
     (Int32.repr 0)  (* ARGH: What type conversion do I need here? *)
    ,
    syscall_addr_rcd).
-*)
 
 (* ---------------------------------------------------------------- *)
 (* Abstract machine *)
