@@ -22,6 +22,8 @@ Import DoNotation.
 Import Int32.
 Import Concrete.
 
+Section WithClasses.
+
 Let t := concrete_int_32_t.
 
 Instance concrete_int_32_fh : fault_handler_params t := {
@@ -200,3 +202,4 @@ Program Definition symbolic_initial_state
     Symbolic.internal := initial_internal_state
   |}.
 
+End WithClasses.

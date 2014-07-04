@@ -33,8 +33,8 @@ Section WithClasses.
 (* int32 instance *)
 
 Definition t := concrete_int_32_t.
-Definition ops := concrete_int_32_ops.
-Definition fhp := concrete_int_32_fh.
+Instance ops : machine_ops t := concrete_int_32_ops.
+Instance fhp : fault_handler_params t := concrete_int_32_fh.
 
 Instance cp : Concrete.concrete_params t :=
   concrete_int_32_params.
@@ -348,7 +348,7 @@ Instance sp : @Sym.params t := {|
  |}
 |}.
 
-(* WIP...
+(* WIP 
 Definition build_symbolic_sealing_machine 
     (user_program : @relocatable_segment t (list w) (instr t))
   : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing t sk_defs sp) * @classes.sealing_syscall_addrs t :=
@@ -356,7 +356,7 @@ Definition build_symbolic_sealing_machine
     function that splits out the addresses for use when generating
     user code *)
  let: (_,base_addr,syscall_addrs) := build_concrete_sealing_machine user_program in
- let user_mem : relocatable_segment (list (word int_32.t)) sym_atom := 
+ let user_mem : @relocatable_segment t (list (word t)) _ := 
        map_relocatable_segment 
          ((fun v => common.Atom v Sym.DATA) ∘ encode_instr)
          user_program in
@@ -366,9 +366,9 @@ Definition build_symbolic_sealing_machine
         classes.seal_addr   := nth 1 syscall_addrs (Int32.repr 0);
         classes.unseal_addr := nth 2 syscall_addrs (Int32.repr 0)
       |} in
-  (symbolic_initial_state
+  (@symbolic_initial_state Sym.sym_sealing
     user_mem
-    base_addr
+    base_addr@Sym.DATA
     syscall_addrs
     user_registers
     (* initial_reg_value *)
@@ -376,6 +376,7 @@ Definition build_symbolic_sealing_machine
    ,
    syscall_addr_rcd).
 *)
+
 
 (* ---------------------------------------------------------------- *)
 (* Abstract machine *)
