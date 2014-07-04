@@ -85,13 +85,7 @@ Class symbolic_params := {
 
   handler : MVec tag -> option (RVec tag);
 
-  internal_state : Type;
-
-  word_map : Type -> Type;
-  sw :> partial_map word_map (word t);
-
-  reg_map : Type -> Type;
-  sr :> partial_map reg_map (reg t)
+  internal_state : Type
 }.
 
 Context {sp : symbolic_params}.
@@ -102,8 +96,8 @@ Local Notation word := (word t).
 Let atom := (atom word tag).
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
-Definition memory := word_map atom.
-Definition registers := reg_map atom.
+Local Notation memory := (word_map t atom).
+Local Notation registers := (reg_map t atom).
 
 Record state := State {
   mem : memory;
@@ -233,12 +227,12 @@ Inductive step (st st' : state) : Prop :=
     (CALL : run_syscall sc st = Some st'), step st st'.
 End WithClasses.
 
+Notation memory t s := (word_map t (atom (word t) (@tag s))).
+Notation registers t s := (reg_map t (atom (word t) (@tag s))).
+
 End Symbolic.
 
 Arguments Symbolic.state t {_}.
-Arguments Symbolic.memory t {_}.
-Arguments Symbolic.registers t {_}.
+Arguments Symbolic.State {_ _} _ _ _ _.
 Arguments Symbolic.syscall t {_}.
-Arguments Symbolic.tag t {_}.
-Arguments Symbolic.internal_state t {_}.
 Arguments Symbolic.mkMVec {T} op _ _ _.

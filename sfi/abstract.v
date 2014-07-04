@@ -23,18 +23,18 @@ Import PartMaps.
 Context (t            : machine_types)
         {ops          : machine_ops t}
         {spec         : machine_ops_spec ops}
-        {ap           : abstract_params t}
-        {ap_spec      : params_spec ap}
         {scr          : @syscall_regs t}
         {sfi_syscalls : sfi_syscall_addrs t}.
 
 Open Scope word_scope.
 Local Notation word  := (word t).
 Local Notation value := (eqtype.Equality.sort word).
+Local Notation memory := (word_map t word).
+Local Notation registers := (reg_map t word).
 
 Implicit Type pc : value.
-Implicit Type M : memory t.
-Implicit Type R : registers t.
+Implicit Type M : memory.
+Implicit Type R : registers.
 Implicit Type r rsrc rdest rpsrc rpdest rtgt : reg t.
 
 (* I want to use S as a variable. *)
@@ -106,8 +106,8 @@ Fixpoint in_compartment_opt (C : list compartment)
   end.
 
 Record state := State { pc           : value
-                      ; regs         : registers t
-                      ; mem          : memory t
+                      ; regs         : registers
+                      ; mem          : memory
                       ; compartments : list compartment
                       ; step_kind    : where_from
                       ; previous     : compartment }.
@@ -196,18 +196,18 @@ Let table := [isolate; add_to_jump_targets; add_to_shared_memory].
 Definition get_syscall (addr : value) : option syscall :=
   List.find (fun sc => address sc == addr) table.
 
-Definition user_address_space (M : memory t) : compartment -> bool :=
+Definition user_address_space (M : memory) : compartment -> bool :=
   forallb (is_some ∘ get M) ∘ address_space.
 Arguments user_address_space M !c /.
 
-Definition syscall_address_space (M : memory t) (c : compartment) : bool :=
+Definition syscall_address_space (M : memory) (c : compartment) : bool :=
   match address_space c with
     | [sc] => ~~ is_some (get M sc) && elem sc (List.map address table)
     | _    => false
   end.
 Arguments syscall_address_space : simpl never.
 
-Definition syscalls_separated (M : memory t) : list compartment -> bool :=
+Definition syscalls_separated (M : memory) : list compartment -> bool :=
   forallb (fun c => user_address_space M c || syscall_address_space M c).
 Arguments syscalls_separated M C /.
 
@@ -1939,5 +1939,8 @@ Proof.
 Qed.
 
 End WithClasses.
+
+Notation memory t := (word_map t (word t)).
+Notation registers t := (reg_map t (word t)).
 
 End Abs.

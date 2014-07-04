@@ -12,23 +12,23 @@ Section WithClasses.
 
 Context {t : machine_types}
         {ops : machine_ops t}
-        {sp : @Symbolic.symbolic_params t}.
+        {sp : Symbolic.symbolic_params}.
 
 Variable table : list (Symbolic.syscall t).
 
 Import Vector.VectorNotations.
 
-Definition build_mvec st : option (Symbolic.MVec (Symbolic.tag t))  :=
+Definition build_mvec st : option (Symbolic.MVec Symbolic.tag)  :=
   let '(Symbolic.State mem reg pc@tpc int) := st in
   match get mem pc with
     | Some i =>
       match decode_instr (common.val i) with
         | Some op =>
-          let part := @Symbolic.mkMVec (Symbolic.tag t) (opcode_of op) tpc (common.tag i) in
-          match op return (Symbolic.mvec_operands (Symbolic.tag t) (Symbolic.nfields (opcode_of op)) ->
-                           Symbolic.MVec (Symbolic.tag t)) -> option (Symbolic.MVec (Symbolic.tag t)) with
+          let part := @Symbolic.mkMVec Symbolic.tag (opcode_of op) tpc (common.tag i) in
+          match op return (Symbolic.mvec_operands Symbolic.tag (Symbolic.nfields (opcode_of op)) ->
+                           Symbolic.MVec Symbolic.tag) -> option (Symbolic.MVec Symbolic.tag) with
             | Nop => fun part => Some (part [])
-            | Const n r => fun part => 
+            | Const n r => fun part =>
                 do! old <- get reg r;
                 Some (part [common.tag old])
             | Mov r1 r2 => fun part =>
@@ -68,12 +68,12 @@ Definition build_mvec st : option (Symbolic.MVec (Symbolic.tag t))  :=
           end part
         | None => None
       end
-    | None => 
+    | None =>
       match Symbolic.get_syscall table pc with
         | Some sc =>
-          Some (@Symbolic.mkMVec (Symbolic.tag _) SERVICE tpc (Symbolic.entry_tag sc) (Vector.nil _))
+          Some (@Symbolic.mkMVec Symbolic.tag SERVICE tpc (Symbolic.entry_tag sc) (Vector.nil _))
         | None => None
-      end 
+      end
   end.
 
 End WithClasses.

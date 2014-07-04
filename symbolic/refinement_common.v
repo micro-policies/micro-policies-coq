@@ -24,19 +24,21 @@ Section Refinement.
 Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {ap : @Symbolic.symbolic_params mt}
-        {memax : PartMaps.axioms (@Symbolic.sw mt ap)}
-        {regax : PartMaps.axioms (@Symbolic.sr mt ap)}
-        {cp : Concrete.concrete_params mt}
-        {cps : Concrete.params_spec cp}
-        {e : @encodable (Symbolic.tag mt) mt ops}.
+        {sp : Symbolic.symbolic_params}
+        {e : @encodable Symbolic.tag mt ops}.
+(*
+Local Notation smemory := (word_map mt (atom (word mt) (@Symbolic.tag sp))).
+Local Notation cmemory := (word_map mt (atom (word mt) (word mt))).
+Local Notation sregisters := (reg_map mt (atom (word mt) (@Symbolic.tag sp))).
+Local Notation cregisters := (reg_tmap mt (atom (word mt) (word mt))).
+*)
 
-Definition refine_memory (amem : Symbolic.memory mt) (cmem : Concrete.memory mt) :=
+Definition refine_memory (amem : Symbolic.memory mt _) (cmem : Concrete.memory mt) :=
   forall w x t,
     PartMaps.get cmem w = Some x@(encode (USER t)) <->
     PartMaps.get amem w = Some x@t.
 
-Definition refine_registers (areg : Symbolic.registers mt) (creg : Concrete.registers mt) :=
+Definition refine_registers (areg : Symbolic.registers mt _) (creg : Concrete.registers mt) :=
   forall n x t,
     TotalMaps.get creg n = x@(encode (USER t)) <->
     PartMaps.get areg n = Some x@t.
@@ -89,9 +91,9 @@ Lemma mvec_in_kernel_store_mvec cmem mvec :
   exists cmem',
     Concrete.store_mvec ops cmem mvec = Some cmem'.
 Proof.
-  unfold mvec_in_kernel, in_mvec, Concrete.mvec_fields, Concrete.store_mvec, Concrete.memory.
+  unfold mvec_in_kernel, in_mvec, Concrete.mvec_fields, Concrete.store_mvec.
   intros DEF.
-  eapply PartMaps.upd_list_defined; eauto using Concrete.word_map_axioms.
+  eapply PartMaps.upd_list_defined; eauto using word_map_axioms.
   simpl map. intros addr IN.
   apply DEF in IN.
   destruct IN.
@@ -111,7 +113,7 @@ Record kernel_invariant : Type := {
   kernel_invariant_statement :> Concrete.memory mt ->
                                 Concrete.registers mt ->
                                 Concrete.rules (word mt) ->
-                                Symbolic.internal_state mt -> Prop;
+                                Symbolic.internal_state -> Prop;
 
   kernel_invariant_upd_mem :
     forall regs mem1 mem2 cache addr w1 ut w2 int
@@ -245,12 +247,12 @@ Lemma wf_entry_points_user_upd cmem cmem' addr v v' t t' :
   PartMaps.upd cmem addr v'@(encode (USER t')) = Some cmem' ->
   wf_entry_points cmem'.
 Proof.
-  unfold wf_entry_points, Concrete.memory.
+  unfold wf_entry_points.
   intros WF GET UPD addr'.
   split; intros H.
   - rewrite ->WF in H.
     destruct (PartMaps.get cmem addr') as [[v'' t'']|] eqn:MEM; try discriminate.
-    erewrite PartMaps.get_upd_neq; eauto using Concrete.word_map_axioms.
+    erewrite PartMaps.get_upd_neq; eauto using word_map_axioms.
     { now rewrite MEM. }
     intros ?. subst addr'.
     assert (EQ : t'' = encode (USER t)) by congruence. subst.
@@ -258,10 +260,10 @@ Proof.
     by move/eqP/encode_inj: H.
   - apply WF. clear WF.
     destruct (PartMaps.get cmem' addr') as [[v'' t'']|] eqn:GET'; try discriminate.
-    erewrite PartMaps.get_upd_neq in GET'; eauto using Concrete.word_map_axioms.
+    erewrite PartMaps.get_upd_neq in GET'; eauto using word_map_axioms.
     { now rewrite GET'. }
     intros ?. subst addr'.
-    erewrite PartMaps.get_upd_eq in GET'; eauto using Concrete.word_map_axioms.
+    erewrite PartMaps.get_upd_eq in GET'; eauto using word_map_axioms.
     assert (EQ : t''= encode (USER t')) by congruence. subst.
     move/andP: H => [_ H].
     by move/eqP/encode_inj: H.
@@ -293,7 +295,7 @@ Lemma mvec_in_kernel_kernel_upd cmem cmem' addr w :
 Proof.
   intros MVEC UPD addr' IN.
   have [?|/eqP NEQ] := altP (addr' =P addr); simpl in *; subst.
-  - erewrite PartMaps.get_upd_eq; eauto using Concrete.word_map_axioms.
+  - erewrite PartMaps.get_upd_eq; eauto using word_map_axioms.
   - erewrite (PartMaps.get_upd_neq NEQ UPD).
     now apply MVEC.
 Qed.
@@ -308,7 +310,7 @@ Proof.
   intros MEM UPD.
   destruct (PartMaps.upd_inv UPD) as [[w' t'] GET].
   apply MEM in GET.
-  eapply PartMaps.upd_defined in GET; auto using Concrete.word_map_axioms.
+  eapply PartMaps.upd_defined in GET; auto using word_map_axioms.
   destruct GET as [cmem' UPD'].
   eexists. split; eauto.
   intros addr' w'' t''.
@@ -338,13 +340,13 @@ Proof.
   eexists. split; eauto.
   intros r' v'' t''.
   have [EQ|/eqP NEQ] := altP (r' =P r); simpl in *; subst.
-  - rewrite (TotalMaps.get_upd_eq (Concrete.reg_map_axioms (t := mt))).
+  - rewrite TotalMaps.get_upd_eq; try apply reg_tmap_axioms.
     rewrite (PartMaps.get_upd_eq UPD).
     split; try congruence.
     intros ?.
     assert (USER t' = USER t''); try congruence.
     eapply encode_inj; congruence.
-  - rewrite (TotalMaps.get_upd_neq (Concrete.reg_map_axioms (t := mt))); trivial.
+  - rewrite TotalMaps.get_upd_neq; try apply reg_tmap_axioms; trivial.
     rewrite (PartMaps.get_upd_neq NEQ UPD).
     now apply REG.
 Qed.
@@ -357,13 +359,13 @@ Proof.
   intros REF UPD r' v' t'.
   have [EQ|/eqP NEQ] := altP (r' =P r); simpl in *.
   - subst r'.
-    rewrite (TotalMaps.get_upd_eq (Concrete.reg_map_axioms (t := mt))).
+    rewrite TotalMaps.get_upd_eq; try apply reg_tmap_axioms.
     rewrite (PartMaps.get_upd_eq UPD).
     split; try congruence.
     intros ?.
     assert (USER t' = USER t); try congruence.
     eapply encode_inj; try congruence.
-  - rewrite (TotalMaps.get_upd_neq (Concrete.reg_map_axioms (t := mt))); trivial.
+  - rewrite TotalMaps.get_upd_neq; try apply reg_tmap_axioms; trivial.
     rewrite (PartMaps.get_upd_neq NEQ UPD).
     now apply REF.
 Qed.
@@ -411,7 +413,7 @@ Lemma analyze_cache cache cmvec crvec op :
   word_lift (fun t => is_user t) (Concrete.ctpc cmvec) = true ->
   Concrete.cop cmvec = op_to_word op ->
   exists tpc, Concrete.ctpc cmvec = encode (USER tpc) /\
-  (match Symbolic.nfields op as fs return (_ -> _ -> Symbolic.mvec_operands (@Symbolic.tag mt ap) fs -> _) -> Prop with
+  (match Symbolic.nfields op as fs return (_ -> _ -> Symbolic.mvec_operands (@Symbolic.tag sp) fs -> _) -> Prop with
    | Some fs => fun mk =>
      exists ti (ts : Vector.t _ (fst fs)) trpc tr,
      Concrete.cti cmvec = encode (USER ti) /\

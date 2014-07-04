@@ -343,28 +343,6 @@ Import Concrete.
 
 Let atom := atom (word concrete_int_32_t) (word (concrete_int_32_t)).
 
-Instance concrete_int_32_params : concrete_params concrete_int_32_t := {|
-  word_map    := @common.word_map concrete_int_32_t;
-  reg_map := reg_tmap concrete_int_32_t;
-
-  word_map_class := common.word_map_class;
-
-  reg_map_class := reg_tmap_class
-
-|}.
-
-Program Instance concrete_int_32_params_spec :
-  params_spec (concrete_int_32_params).
-Next Obligation.
-  exact: common.word_map_axioms.
-Qed.
-Next Obligation.
-  exact: common.reg_tmap_axioms.
-Qed.
-
-(* ---------------------------------------------------------------------- *)
-(* Printing concrete states *)
-
 Open Scope string_scope.
 Import printing.
 

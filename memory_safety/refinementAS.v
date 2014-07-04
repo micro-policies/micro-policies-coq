@@ -32,10 +32,8 @@ Variable block : eqType.
 Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {ap : Abstract.abstract_params mt block}
-        {aps : Abstract.params_spec ap}
-        {qap : Sym.abstract_params mt}
-        {qaps : Sym.params_spec qap}.
+        {ap : Abstract.abstract_params block}
+        {aps : Abstract.params_spec ap}.
 (*
         {a_alloc : @Abstract.allocator _ block ap}
         {qa_alloc : @Sym.allocator _ qap}
@@ -229,7 +227,7 @@ Qed.
 
 (*
 Inductive refine_memory_block mi b fr smem :=
-| RefineBlockLive : mi b = Some 
+| RefineBlockLive : mi b = Some
 | RefineBlockFree
 
 Definition refine_memory_val v a col :=
@@ -241,7 +239,7 @@ Definition refine_memory_val v a col :=
  end.
 *)
 
-Definition refine_memory amem (smem : Sym.word_map _) :=
+Definition refine_memory amem (smem : Sym.memory mt) :=
   meminj_spec amem mi /\ forall w1 w2 col ty,
   PartMaps.get smem w1 = Some w2@M(col,ty) ->
   let: (b,base) := TotalMaps.get mi col in
@@ -362,7 +360,7 @@ Inductive refine_block_info (amem : Abstract.memory mt) (smem : Sym.word_map (at
 *)
 
 (* TODO: fix *)
-Definition refine_block_info (amem : Abstract.memory mt) (smem : Sym.word_map (atom (word mt) (Sym.tag mt))) : Sym.block_info mt -> Prop := fun _ => True.
+Definition refine_block_info (amem : Abstract.memory mt) (smem : Sym.memory mt) : Sym.block_info mt -> Prop := fun _ => True.
 
 (* TODO: export from Sym in symbolic.v *)
 Canonical Sym.block_info_eqType.
@@ -389,7 +387,7 @@ exists amem'; split=> //; split.
   admit.
 move=> w0 w3 col ty'.
 have [->|/eqP neq_w0w1] := altP (w0 =P w1).
-  rewrite (PartMaps.get_upd_eq upd_w1) => [[<- <- <-]]. 
+  rewrite (PartMaps.get_upd_eq upd_w1) => [[<- <- <-]].
   inversion rpt.
   rewrite H4 [base+off]addwC addwK H1.
   rewrite /Abstract.getv.
@@ -474,7 +472,7 @@ Definition refine_reg_val v a :=
  match a with w@V(ty) => refine_val v w ty | _ => False end.
 
 Definition refine_registers (aregs : Abstract.registers mt)
-                            (qaregs : Sym.reg_map _) :=
+                            (qaregs : Sym.registers mt) :=
   PartMaps.pointwise refine_reg_val aregs qaregs.
 
 Lemma refine_registers_val aregs qaregs r v : refine_registers aregs qaregs ->
@@ -552,7 +550,7 @@ rewrite (PartMaps.get_upd_neq neq_rr' upd_r_qa).
 by apply rregs.
 Qed.
 
-Definition refine_state (ast : Abstract.state mt) (sst : Symbolic.state mt) :=
+Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
   let '(Abstract.mkState amem aregs apc) := ast in
   match sst with
   | Symbolic.State smem sregs w@V(ty) ist =>
@@ -924,9 +922,8 @@ try match goal with
 end;
 
 repeat match goal with
-  | GET : PartMaps.get ?reg ?r = Some ?v@V(?ty) |- _ =>
-  match type_of reg with
-  | Symbolic.registers _ =>
+  | GET : PartMaps.get ?reg ?r = Some ?v@V(?ty),
+    rregs : refine_registers _ _ ?reg |- _ =>
     match ty with
     | DATA => eapply (refine_registers_get_int rregs) in GET; destruct GET as [? ?]
     | PTR _ =>
@@ -937,13 +934,11 @@ repeat match goal with
         || let op := current_instr_opcode in
             fail 5 "refine_registers_get" op GET
     end
-  end
   end;
 
 repeat match goal with
-  | GET : PartMaps.get ?mem ?w1 = Some ?v@M(_,?ty) |- _ =>
-  match type_of mem with
-  | Symbolic.memory _ =>
+  | GET : PartMaps.get ?mem ?w1 = Some ?v@M(_,?ty),
+    rmem : refine_memory _ _ ?mem |- _ =>
     match ty with
     | DATA => (eapply (refine_memory_get_int rmem) in GET; [|by eauto])
                     || fail 5 "refine_memory_get_int"
@@ -951,7 +946,6 @@ repeat match goal with
     (eapply (refine_memory_get rmem) in GET; [|by eauto]; destruct GET as (? & ? & ? & ? & ?)) || let op := current_instr_opcode in
             fail 5 "refine_memory_get" op GET
     end
-  end
   end;
 
 try match goal with
@@ -963,23 +957,19 @@ try match goal with
 end;
 
 match goal with
-  | UPD : PartMaps.upd ?reg ?r ?v = Some _ |- _ =>
-  match type_of reg with
-  | Symbolic.registers _ =>
+  | UPD : PartMaps.upd ?reg ?r ?v = Some _,
+    rreg : refine_registers _ _ ?reg |- _ =>
     (eapply (refine_registers_upd rregs) in UPD; [|by eauto]; destruct UPD as (? & ? & ?)) (* || let op := current_instr_opcode in fail 3 "refine_registers_upd" op UPD *)
-  end
   | |- _ => idtac
   end;
 
 match goal with
 | IDX : index_list_Z _ _ = Some _,
   UPD : PartMaps.upd ?mem ?w1 ?v@_ = Some _,
+  rmem : refine_memory _ _ ?mem,
   rv : refine_val mi ?x ?v _ |- _ =>
-    match type_of mem with
-    | Symbolic.memory _ =>
     destruct (valid_update IDX x) as (? & ?);
     eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ? & ?)
-    end
   | |- _ => idtac
 end;
 

@@ -21,8 +21,6 @@ Section ConcreteSection.
 
 Context {t : machine_types}
         {ops : machine_ops t}
-        {cp : Concrete.concrete_params t}
-        {csp : Concrete.params_spec cp}
         {e : @rules.encodable (@rules.cfi_tag_eqType t) t ops}.
 
 Import PartMaps.
@@ -117,9 +115,9 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
     | None => false
   end.
 
-Definition sp := @Sym.sym_cfi t _ _ _ _ valid_jmp.
+Definition sp := @Sym.sym_cfi t valid_jmp.
 
-Variable ki : (@refinement_common.kernel_invariant t ops sp cp e).
+Variable ki : (@refinement_common.kernel_invariant t ops sp e).
 
 Variable stable : list (@Symbolic.syscall t sp).
 
@@ -129,7 +127,7 @@ Definition cinitial (cs : Concrete.state t) :=
 
 Variable masks : Concrete.Masks.
 
-Definition in_user := @in_user t ops sp cp e.
+Definition in_user := @in_user t ops sp e.
 
 Import ListNotations.
 Definition stopping (ss : list (Concrete.state t)) : Prop :=

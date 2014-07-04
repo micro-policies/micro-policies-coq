@@ -136,13 +136,6 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Context {word_map  : Type -> Type}
-        {sw        : partial_map word_map (word t)}
-        {swa       : axioms sw}
-        {reg_map   : Type -> Type}
-        {sr        : partial_map reg_map (reg t)}
-        {sra       : axioms sr}.
-
 Section WithVectors.
 Import Symbolic Coq.Vectors.Vector.VectorNotations.
 
@@ -197,19 +190,16 @@ End WithVectors.
 
 Record sfi_internal := Internal { next_id : word t }.
 
-Instance sym_sfi : Symbolic.symbolic_params t := {
+Instance sym_sfi : Symbolic.symbolic_params := {
   tag := stag_eqType;
   
   handler := sfi_handler;
   
-  internal_state := sfi_internal;
-  
-  word_map := word_map;
-  sw       := sw;
-  
-  reg_map   := reg_map;
-  sr        := sr
+  internal_state := sfi_internal
 }.
+
+Local Notation memory := (word_map t (atom (word t) (@Symbolic.tag sym_sfi))).
+Local Notation registers := (reg_map t (atom (word t) (@Symbolic.tag sym_sfi))).
 
 Definition fresh (si : sfi_internal) : option (word t * sfi_internal) :=
   let 'Internal next := si in
@@ -220,8 +210,8 @@ Definition fresh (si : sfi_internal) : option (word t * sfi_internal) :=
 Fixpoint retag_set (ok : word t -> list (word t) -> list (word t) -> bool)
                    (retag : word t -> list (word t) -> list (word t) -> stag)
                    (ps : list (word t))
-                   (M : Symbolic.memory t)
-                   : option (Symbolic.memory t) :=
+                   (M : memory)
+                   : option memory :=
   match ps with
     | []       => Some M
     | p :: ps' => do! x @ DATA c I W <-  get M p;
@@ -295,7 +285,7 @@ Definition step := Symbolic.step syscalls.
 Definition good_internal (si : sfi_internal) : bool :=
   true.
 
-Definition good_memory_tag (M : Symbolic.memory t)
+Definition good_memory_tag (M : memory)
                            (p : word t) : bool :=
   match get M p with
     | Some (_ @ (DATA _ I W)) => is_set I && is_set W
@@ -303,7 +293,7 @@ Definition good_memory_tag (M : Symbolic.memory t)
     | None                    => true
   end.
 
-Definition good_register_tag (R : Symbolic.registers t) (r : reg t) : bool :=
+Definition good_register_tag (R : registers) (r : reg t) : bool :=
   match get R r with
     | Some (_ @ REG) => true
     | Some (_ @ _)   => false
@@ -365,9 +355,9 @@ Proof.
     eapply IHps; try eassumption.
     intros p'; destruct (p == p') eqn:EQ_p_p'; move/eqP in EQ_p_p'.
     + subst p'.
-      apply get_upd_eq in def_M2; [rewrite def_M2 | exact swa].
+      apply get_upd_eq in def_M2; [rewrite def_M2 | exact word_map_axioms].
       by apply/andP.
-    + apply get_upd_neq with (key' := p') in def_M2; auto.
+    + apply get_upd_neq with (key' := p') in def_M2; auto; try apply word_map_axioms.
       rewrite def_M2; specialize MEM with p'.
       by set GET_M_p' := get M p' in MEM *; 
          destruct GET_M_p' as [[? [|c'' I'' W''|]]|].
@@ -419,10 +409,10 @@ Proof.
   move: GOOD => [[MEM [REG _]] _]; rewrite /good_state; repeat split; auto.
   intros p'; specialize MEM with p'; unfold good_memory_tag in *.
   destruct (p == p') eqn:EQ_P; move/eqP in EQ_P; [subst p'|].
-  - apply get_upd_eq in def_M'; [rewrite def_M' | exact swa].
+  - apply get_upd_eq in def_M'; [rewrite def_M' | exact word_map_axioms].
     rewrite def_x_Lx in MEM; move: MEM => /andP [SET_I' SET_W]; apply/andP;
       auto.
-  - apply get_upd_neq with (key' := p') in def_M'; auto; rewrite def_M'.
+  - apply get_upd_neq with (key' := p') in def_M'; auto; try apply word_map_axioms. rewrite def_M'.
     set GET_M_p' := get M p' in MEM *;
       destruct GET_M_p' as [[? [|c'' I'' W''|]]|]; auto.
 Qed.
@@ -440,10 +430,10 @@ Proof.
   move: GOOD => [[MEM [REG _]] _]; rewrite /good_state; repeat split; auto.
   intros p'; specialize MEM with p'; unfold good_memory_tag in *.
   destruct (p == p') eqn:EQ_P; move/eqP in EQ_P; [subst p'|].
-  - apply get_upd_eq in def_M'; [rewrite def_M' | exact swa].
+  - apply get_upd_eq in def_M'; [rewrite def_M' | exact word_map_axioms].
     rewrite def_x_Lx in MEM; move: MEM => /andP [SET_I SET_W']; apply/andP;
       auto.
-  - apply get_upd_neq with (key' := p') in def_M'; auto; rewrite def_M'.
+  - apply get_upd_neq with (key' := p') in def_M'; auto; try apply word_map_axioms. rewrite def_M'.
     set GET_M_p' := get M p' in MEM *;
       destruct GET_M_p' as [[? [|c'' I'' W''|]]|]; auto.
 Qed.
@@ -475,8 +465,13 @@ Proof.
         | UPD : upd _ ?k _ = Some _ |- appcontext[?good_fn _] =>
           unfold good_fn;
           destruct (k' == k) eqn:EQ; move/eqP in EQ;
-          [ subst; apply get_upd_eq in UPD
-          | apply get_upd_neq with (key' := k') in UPD ];
+          [ subst; apply get_upd_eq in UPD;
+            try apply word_map_axioms;
+            try apply reg_map_axioms
+          | apply get_upd_neq with (key' := k') in UPD;
+            try apply word_map_axioms;
+            try apply reg_map_axioms
+          ];
           auto; rewrite UPD;
           [ auto
           | first [apply MEM | apply REG] ]
@@ -501,5 +496,8 @@ Proof.
 Qed.
 
 End WithClasses.
+
+Notation memory t := (Symbolic.memory t sym_sfi).
+Notation registers t := (Symbolic.registers t sym_sfi).
 
 End Sym.

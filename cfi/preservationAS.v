@@ -22,22 +22,9 @@ Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
         
-        {ap : Abs.abstract_params t}
-        {aps : Abs.params_spec ap}
-
-        {sword_map : Type -> Type}
-        {sw : partial_map sword_map (word t)}
-        {smems : axioms sw}
-        {smemory_mapd : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sw (@Abs.dword_map_class t ap)}
-        {smemory_mapi : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sw (@Abs.iword_map_class t ap)}
-
-        {sreg_map : Type -> Type}
-        {sr : partial_map sreg_map (reg t)}
-        {sregs : axioms sr}
-        {sregs_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sr (@Abs.reg_map_class t ap)}.
-
-Definition smemory := sword_map (atom (word t) (@cfi_tag t)).
-Definition sregisters := sreg_map (atom (word t) (@cfi_tag t)).
+        {smemory_mapd : Map.mappable (atom (word t) (@cfi_tag t)) (word t) word_map_class word_map_class}
+        {smemory_mapi : Map.mappable (atom (word t) (@cfi_tag t)) (word t) word_map_class word_map_class}
+        {sregs_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) reg_map_class reg_map_class}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
@@ -57,7 +44,7 @@ Hypothesis ref_sc_correct : refine_sc.
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    Abs.sem ac ast = Some ast' ->
+    @Abs.sem t ac ast = Some ast' ->
        let '(Abs.State imem _ _ _ b) := ast in
        let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
@@ -90,7 +77,7 @@ Definition backwards_simulation :=
 (* For initial states - may need to think a bit about how to structure 
    the whole thing*)
 Lemma untag_implies_reg_refinement reg :
-  RefinementAS.refine_registers (Map.map RefinementAS.untag_atom reg) reg.
+  RefinementAS.refine_registers valid_jmp (Map.map RefinementAS.untag_atom reg) reg.
 Proof.
    intros r v.
    split.
@@ -99,14 +86,14 @@ Proof.
      rewrite GET. reflexivity.
    - intros GET.
      rewrite Map.map_correctness in GET.
-     destruct (get reg r) eqn:GET'.
+     destruct (get reg r) eqn:GET'; rewrite GET'.
      + destruct a. simpl in GET. inv GET.
        eexists; reflexivity.
      + simpl in GET. congruence.
 Qed.
 
 Lemma untag_data_implies_dmem_refinement mem :
-  RefinementAS.refine_dmemory 
+  RefinementAS.refine_dmemory valid_jmp
     (Map.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)) mem.
 Proof.
    intros addr v.
@@ -118,7 +105,7 @@ Proof.
    - intros GET.
      rewrite Map.map_correctness in GET.
      rewrite filter_correctness in GET.
-     destruct (get mem addr) eqn:GET'.
+     destruct (get mem addr) eqn:GET'; rewrite GET'.
      + destruct a as [val tg]. 
        simpl in GET.
        destruct tg as [[id|]|]; simpl in GET.
@@ -135,7 +122,7 @@ Definition is_instr (a : atom (word t) (@cfi_tag t)) :=
   end.
 
 Lemma untag_instr_implies_imem_refinement mem :
-  RefinementAS.refine_imemory 
+  RefinementAS.refine_imemory valid_jmp
     (Map.map RefinementAS.untag_atom (filter is_instr mem)) mem.
 Proof.
    intros addr v.
@@ -147,7 +134,7 @@ Proof.
    - intros GET.
      rewrite Map.map_correctness in GET.
      rewrite filter_correctness in GET.
-     destruct (get mem addr) eqn:GET'.
+     destruct (get mem addr) eqn:GET'; rewrite GET'.
      + destruct a as [val tg]. 
        simpl in GET.
        destruct tg as [[id|]|]; simpl in GET.

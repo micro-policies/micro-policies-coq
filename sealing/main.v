@@ -36,9 +36,6 @@ Definition t := concrete_int_32_t.
 Instance ops : machine_ops t := concrete_int_32_ops.
 Instance fhp : fault_handler_params t := concrete_int_32_fh.
 
-Instance cp : Concrete.concrete_params t :=
-  concrete_int_32_params.
-
 (* ---------------------------------------------------------------- *)
 (* Generic definitions for building concrete machine instances *)
 
@@ -328,30 +325,9 @@ End WithClasses.
 (* ---------------------------------------------------------------- *)
 (* Symbolic machine *)
 
-Instance sp : @Sym.params t := {|
- word_map  := Int32PMap.t;
- reg_map := Int32PMap.t;
-
- sw := {|
-   PartMaps.get V mem i := Int32PMap.get i mem;
-   PartMaps.set V mem i x := Int32PMap.set i x mem;
-   PartMaps.filter V mem p := Int32PMap.filter mem p;
-   PartMaps.map V1 V2 f mem := Int32PMap.map1 f mem;
-   PartMaps.empty V := Int32PMap.empty _
- |};
-
- sr := {|
-   PartMaps.get V regs r := Int32PMap.get r regs;
-   PartMaps.set V mem i x := Int32PMap.set i x mem;
-   PartMaps.filter V mem p := Int32PMap.filter mem p;
-   PartMaps.map V1 V2 f regs := Int32PMap.map1 f regs;
-   PartMaps.empty V := Int32PMap.empty _
- |}
-|}.
-
 Definition build_symbolic_sealing_machine
     (user_program : @relocatable_segment t (list w) (instr t))
-  : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing t sk_defs sp) * @classes.sealing_syscall_addrs t :=
+  : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing sk_defs) * @classes.sealing_syscall_addrs t :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
@@ -366,7 +342,7 @@ Definition build_symbolic_sealing_machine
         classes.seal_addr   := nth 1 syscall_addrs (Int32.repr 0);
         classes.unseal_addr := nth 2 syscall_addrs (Int32.repr 0)
       |} in
-  (@symbolic_initial_state (@Sym.sym_sealing t sk_defs sp)
+  (@symbolic_initial_state (@Sym.sym_sealing sk_defs)
     user_mem
     base_addr@Sym.DATA
     syscall_addrs
@@ -410,30 +386,9 @@ Global Instance sk : Abs.sealing_key := {|
 (* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
   a different order from Int32PMap.get and Int32PMap.set?? *)
 
-Instance ap : Abs.params t := {|
- word_map  := Int32PMap.t;
- reg_map := Int32PMap.t;
-
- aw := {|
-   PartMaps.get V mem i := Int32PMap.get i mem;
-   PartMaps.set V mem i x := Int32PMap.set i x mem;
-   PartMaps.filter V mem p := Int32PMap.filter mem p;
-   PartMaps.map V1 V2 f mem := Int32PMap.map1 f mem;
-   PartMaps.empty V := Int32PMap.empty _
- |};
-
- ar := {|
-   PartMaps.get V regs r := Int32PMap.get r regs;
-   PartMaps.set V mem i x := Int32PMap.set i x mem;
-   PartMaps.filter V mem p := Int32PMap.filter mem p;
-   PartMaps.map V1 V2 f regs := Int32PMap.map1 f regs;
-   PartMaps.empty V := Int32PMap.empty _
- |}
-|}.
-
 Definition build_abstract_sealing_machine
     (user_program : @relocatable_segment t (list w) (instr t))
-  : @Abs.state concrete_int_32_t sk ap * classes.sealing_syscall_addrs :=
+  : @Abs.state concrete_int_32_t sk * classes.sealing_syscall_addrs :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
@@ -519,14 +474,14 @@ Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) 
 Definition summarize_concrete_state mem_count cache_count st :=
   let mem' := just_somes
                (@enum _ _ _
-                 (@Concrete.mem t cp st)
+                 (@Concrete.mem t st)
                  (@PartMaps.get _ Int32.int _ _)
                  (@omap atom sstring format_atom)
                  mem_count
                  (Int32.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := @enum _ _ _
-                 (@Concrete.regs t cp st)
+                 (@Concrete.regs t st)
                  (@TotalMaps.get _ Int32.int _ _)
                  (fun a => format_atom a)
                  (word_to_nat user_reg_max)
@@ -538,7 +493,7 @@ Definition summarize_concrete_state mem_count cache_count st :=
   let current_instr :=
     let: addr@_ := Concrete.pc st in
     match @PartMaps.get _ Int32.int _ _
-                    (@Concrete.mem t cp st)
+                    (@Concrete.mem t st)
                     addr with
       None => ss "(BAD ADDR)"
     | Some i => format_atom i
@@ -557,7 +512,7 @@ Definition summarize_concrete_state mem_count cache_count st :=
 (* ---------------------------------------------------------------- *)
 (* Printing symbolic states *)
 
-Definition format_symbolic_atom (pr_tag : @Symbolic.tag t (@Sym.sym_sealing t sk_defs _) -> sstring) a :=
+Definition format_symbolic_atom (pr_tag : @Symbolic.tag (@Sym.sym_sealing sk_defs) -> sstring) a :=
   let: w1@t2 := a in
     match decode_instr w1 with
       Some i => ss "(" +++ format_instr i +++ ss ")@" +++ pr_tag t2
@@ -603,7 +558,7 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
 Definition format_int i :=
   format_Z (Int32.intval i).
 
-Definition format_sealing_tag (t : @Symbolic.tag t (@Sym.sym_sealing t sk_defs _)):=
+Definition format_sealing_tag (t : @Symbolic.tag (@Sym.sym_sealing sk_defs)):=
   match t with
     Sym.DATA => ss "DATA"
   | Sym.KEY k => ss "KEY(" +++ format_int k +++ ss ")"
@@ -632,7 +587,7 @@ Definition format_value v :=
 Definition summarize_abstract_state mem_count st :=
   let mem' := just_somes
                (@enum _ _ _
-                 (@Abs.mem t sk ap st)
+                 (@Abs.mem t sk st)
                  (@PartMaps.get _ Int32.int _ _)
                  (@omap (@Abs.value t sk) sstring format_value)
                  mem_count
@@ -640,7 +595,7 @@ Definition summarize_abstract_state mem_count st :=
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := just_somes
                  (@enum _ _ _
-                    (@Abs.regs t sk ap st)
+                    (@Abs.regs t sk st)
                     (@PartMaps.get _ Int32.int _ _)
                     (@omap (@Abs.value t sk) sstring format_value)
                     (word_to_nat user_reg_max)
@@ -652,7 +607,7 @@ Definition summarize_abstract_state mem_count st :=
   let current_instr :=
     let: addr := Abs.pc st in
     match @PartMaps.get _ Int32.int _ _
-                    (@Abs.mem t sk ap st)
+                    (@Abs.mem t sk st)
                     addr with
       None => ss "(BAD ADDR)"
     | Some i => format_value i

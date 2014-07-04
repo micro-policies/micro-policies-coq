@@ -17,9 +17,7 @@ Require Import symbolic.symbolic.
 Section fault_handler.
 
 Context (mt : machine_types)
-        (ops : machine_ops mt)
-        (cp : Concrete.concrete_params mt)
-        (sp : Concrete.params_spec cp).
+        (ops : machine_ops mt).
 
 Let code := list (instr mt).
 
@@ -192,11 +190,11 @@ Definition handler : code :=
 Section invariant.
 
 Context {s : machine_ops_spec ops}
-        {ap : Symbolic.symbolic_params mt}
-        {e : encodable (Symbolic.tag mt)}.
+        {ap : Symbolic.symbolic_params}
+        {e : encodable Symbolic.tag}.
 
 Record policy_invariant : Type := {
-  policy_invariant_statement :> Concrete.memory mt -> Symbolic.internal_state mt -> Prop;
+  policy_invariant_statement :> Concrete.memory mt -> Symbolic.internal_state -> Prop;
 
   policy_invariant_upd_mem :
     forall mem mem' addr w1 ut w2 int
@@ -215,10 +213,10 @@ Record policy_invariant : Type := {
 
 Variable pinv : policy_invariant.
 
-Let invariant (mem : Concrete.memory _)
-              (regs : Concrete.registers _)
+Let invariant (mem : Concrete.memory mt)
+              (regs : Concrete.registers mt)
               (cache : Concrete.rules (word mt))
-              (int : Symbolic.internal_state mt) : Prop :=
+              (int : Symbolic.internal_state) : Prop :=
   (forall addr : word mt, In addr (Concrete.rvec_fields ops) ->
                           exists w : word mt, PartMaps.get mem addr = Some w@Concrete.TKernel) /\
   (forall addr instr,
@@ -288,7 +286,7 @@ Proof.
     erewrite GET, encode_kernel_tag in IN. simpl in IN.
     apply encode_inj in IN.
     discriminate.
-  - erewrite (TotalMaps.get_upd_neq (Concrete.reg_map_axioms (t := mt))); eauto.
+  - erewrite (TotalMaps.get_upd_neq (reg_tmap_axioms (t := mt))); eauto.
 Qed.
 
 Lemma invariant_store_mvec mem mem' mvec regs cache int :
@@ -311,10 +309,10 @@ Proof.
       | H : False |- _ => inversion H
       end.
     + erewrite PartMaps.get_upd_list_nin; eauto.
-      eapply Concrete.word_map_axioms; eauto.
+      eapply word_map_axioms; eauto.
   - intros addr instr GET.
     erewrite PartMaps.get_upd_list_nin; eauto.
-    { eapply Concrete.word_map_axioms; eauto. }
+    { eapply word_map_axioms; eauto. }
     intros CONTRA.
     eapply MEM.
     + eapply nth_error_Some; eauto.

@@ -25,12 +25,8 @@ Section Refinement.
 Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {sp : Symbolic.symbolic_params mt}
-        {memax : PartMaps.axioms (@Symbolic.sw mt sp)}
-        {regax : PartMaps.axioms (@Symbolic.sr mt sp)}
-        {cp : Concrete.concrete_params mt}
-        {cps : Concrete.params_spec cp}
-        {e : @encodable (Symbolic.tag mt) mt ops}
+        {sp : Symbolic.symbolic_params}
+        {e : @encodable Symbolic.tag mt ops}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
@@ -113,12 +109,10 @@ Proof.
   try solve [rewrite /in_user /word_lift /= decodeK //= in INUSER'];
 
   repeat match goal with
-  | MEM : PartMaps.get ?cmem ?addr = Some _ |- _ =>
+  | MEM : PartMaps.get ?cmem ?addr = Some _,
+    REFM : refine_memory ?smem ?cmem |- _ =>
     match goal with
-    | _ : PartMaps.get ?amem addr = Some _ |- _ =>
-      match type of amem with
-      | Symbolic.memory mt => fail 2
-      end
+    | _ : PartMaps.get smem addr = Some _ |- _ => fail 1
     | |- _ => idtac
     end;
     pose proof (proj1 (REFM _ _ _) MEM)
@@ -142,7 +136,7 @@ Proof.
   end;
 
   repeat match goal with
-  | creg : Concrete.registers mt,
+  | creg : reg_tmap _ _,
     H : TotalMaps.get ?creg ?r = _ |- _ =>
     apply REFR in H
   end;
@@ -260,7 +254,7 @@ Proof.
     apply is_user_pc_tag_is_kernel_tag in EQ; auto. congruence. }
   destruct (initial_handler_state ISUSER WFENTRYPOINTS NOTALLOWED NUSER CACHECORRECT STEP)
     as (cmem' & mvec & STORE & ?). subst. simpl in *.
-  case HANDLER: (handler [eta (@Symbolic.handler mt _)] mvec) => [rvec|].
+  case HANDLER: (handler [eta Symbolic.handler] mvec) => [rvec|].
   - destruct (handler_correct_allowed_case cmem mvec cregs pc@(encode (USER tpc)) int
                                            KINV HANDLER STORE CACHECORRECT)
       as (cst'' & KEXEC' & CACHE' & LOOKUP & MVEC' &

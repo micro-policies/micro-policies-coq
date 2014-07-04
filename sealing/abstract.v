@@ -41,22 +41,8 @@ Inductive value :=
 
 Import PartMaps.
 
-Class params := {
-  word_map    : Type -> Type;
-  aw :> partial_map word_map (word t);
-  reg_map : Type -> Type;
-  ar :> partial_map reg_map (reg t)
-}.
-
-Class params_spec (ap : params) := {
-  word_map_axioms :> PartMaps.axioms (@aw ap);
-  reg_map_axioms :> PartMaps.axioms (@ar ap)
-}.
-
-Context {ap : params}.
-
-Definition memory := word_map value.
-Definition registers := reg_map value.
+Local Notation memory := (word_map t value).
+Local Notation registers := (reg_map t value).
 
 Open Scope word_scope.
 
@@ -279,8 +265,9 @@ Program Definition abstract_initial_state
 
 End WithClasses.
 
+Notation memory t := (word_map t (@value t _)).
+Notation registers t := (reg_map t (@value t _)).
+
 End Abs.
 
-Arguments Abs.state t {_ _}.
-Arguments Abs.memory t {_ _}.
-Arguments Abs.registers t {_ _}.
+Arguments Abs.state t {_}.

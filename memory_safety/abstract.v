@@ -33,23 +33,19 @@ Import PartMaps.
 
 Class abstract_params := {
   word_map : Type -> Type;
-  word_map_class :> partial_map word_map block;
-  reg_map : Type -> Type;
-  reg_map_class :> partial_map reg_map (reg t)
+  word_map_class :> partial_map word_map block
 }.
 
 Class params_spec (ap : abstract_params) := {
 
-  mem_map_spec :> PartMaps.axioms (@word_map_class ap);
-
-  reg_map_spec :> PartMaps.axioms (@reg_map_class ap)
+  mem_map_spec :> PartMaps.axioms (@word_map_class ap)
 
 }.
 
 Context {ap : abstract_params}.
 
 Definition memory := word_map frame.
-Definition registers := reg_map value.
+Definition registers := reg_map t value.
 
 Open Scope word_scope.
 
@@ -267,4 +263,4 @@ End Abstract.
 
 Arguments Abstract.state t {_ _}.
 Arguments Abstract.memory t {_ _}.
-Arguments Abstract.registers t {_ _}.
+Arguments Abstract.registers t {_}.

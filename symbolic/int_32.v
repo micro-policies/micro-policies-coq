@@ -165,16 +165,16 @@ Program Definition concrete_initial_state
 
 (* TODO: Regularize naming of base addresses and system call stuff. *)
 
-Context {sp: Symbolic.symbolic_params t}.
+Context {sp: Symbolic.symbolic_params}.
 
-Let sym_atom := @common.atom (word t) (Symbolic.tag t).
+Let sym_atom := @common.atom (word t) Symbolic.tag.
 
 Program Definition symbolic_initial_state 
       (user_mem : relocatable_segment (list (word t)) sym_atom)
       (base_addr : sym_atom) (syscall_addrs : list (word t))
       (user_regs : list (reg t))
       (initial_reg_value : sym_atom)
-      (initial_internal_state : Symbolic.internal_state t)
+      (initial_internal_state : Symbolic.internal_state)
       : @Symbolic.state t sp :=
   let (_, gen) := user_mem in
   let mem_contents := gen (common.val base_addr) syscall_addrs in 

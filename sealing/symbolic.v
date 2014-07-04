@@ -39,20 +39,6 @@ Inductive stag :=
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
-Class params := {
-  word_map : Type -> Type;
-  sw :> partial_map word_map (word t);
-  reg_map : Type -> Type;
-  sr :> partial_map reg_map (reg t)
-}.
-
-Class params_spec (sp : params) := {
-  word_map_axioms :> PartMaps.axioms (@sw sp);
-  reg_map_axioms :> PartMaps.axioms (@sr sp)
-}.
-
-Context {sp : params}.
-
 (* One should not depend on the precise value of this tag! *)
 Definition none := KEY max_key.
 
@@ -92,18 +78,12 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Program Instance sym_sealing : (symbolic_params t) := {
+Program Instance sym_sealing : symbolic_params := {
   tag := stag_eqType;
 
   handler := sealing_handler;
 
-  internal_state := key;  (* next key to generate *)
-
-  word_map := word_map;
-  sw := sw;
-
-  reg_map := reg_map;
-  sr := sr
+  internal_state := key  (* next key to generate *)
 }.
 
 Import DoNotation. 
@@ -169,5 +149,8 @@ End WithClasses.
 (* CH: We will probably make a refinementCS.v file at some point,
    and I expect that to use any of Arthur's results we'll need
    to give this kind of details *)
+
+Notation memory t := (Symbolic.memory t sym_sealing).
+Notation registers t := (Symbolic.registers t sym_sealing).
 
 End Sym.

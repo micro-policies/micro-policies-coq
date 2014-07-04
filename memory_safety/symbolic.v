@@ -46,20 +46,7 @@ Local Notation atom := (atom (word t) tag).
 
 Import PartMaps.
 
-Class abstract_params := {
-  word_map : Type -> Type;
-  word_map_class :> partial_map word_map (word t);
-  reg_map : Type -> Type;
-  reg_map_class :> partial_map reg_map (reg t)
-}.
-
-Class params_spec (ap : abstract_params) := {
-  mem_map_spec :> PartMaps.axioms (@word_map_class ap);
-  reg_map_spec :> PartMaps.axioms (@reg_map_class ap)
-}.
-
-Context `{ap : abstract_params}
-        `{syscall_regs t}
+Context `{syscall_regs t}
         {msa : @memory_syscall_addrs t}.
 
 Open Scope word_scope.
@@ -232,8 +219,8 @@ Variable initial_block : block.
 (* Hypothesis: alloc never returns initial_block. *)
 
 Variable initial_pc : word.
-Variable initial_mem  : word_map atom.
-Variable initial_registers : reg_map atom.
+Variable initial_mem  : word_map t atom.
+Variable initial_registers : reg_map t atom.
 Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial_block).
 
 Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_block)).
@@ -265,22 +252,16 @@ Admitted.
 Definition tag_eqMixin := EqMixin tag_eqP.
 Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 
-Global Instance sym_memory_safety : symbolic_params t := {
+Global Instance sym_memory_safety : symbolic_params := {
   tag := tag_eqType;
 
   handler := rules;
 
-  internal_state := (word * list block_info)%type;
-
-  word_map := word_map;
-  sw := word_map_class;
-
-  reg_map := reg_map;
-  sr := reg_map_class
+  internal_state := (word * list block_info)%type
 }.
 
 
-Fixpoint write_block init base (v : atom) n : Symbolic.memory t :=
+Fixpoint write_block init base (v : atom) n : Symbolic.memory t _ :=
   match n with
   | O => init
   | S p => if upd init (base + Z_to_word (Z.of_nat n)) 0@FREE is Some mem then
@@ -297,7 +278,7 @@ Definition update_block_info info x color sz :=
   else
     let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
     pre ++ [block1;block2] ++ post.
-        
+
 Definition malloc_fun st : option (state t) :=
   let: (color,info) := internal st in
   do! sz <- get (regs st) syscall_arg1;
@@ -334,7 +315,7 @@ Definition free_fun (st : state t) : option (state t) :=
     if (block_base x <=? ptr <? block_base x + block_size x) then
       let mem' := write_block (mem st) (block_base x) 0@FREE (Z.to_nat (word_to_Z (block_size x))) in
       let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
-      in 
+      in
       do! raddr <- get (regs st) ra;
       if raddr is _@V(PTR _) then
         Some (State mem' (regs st) raddr (next_color,info'))
@@ -394,9 +375,8 @@ End WithClasses.
 
 Canonical block_info_eqType.
 
-Arguments memory t {_}.
-Arguments registers t {_}.
-Arguments def_info t {_}.
+Notation memory t := (Symbolic.memory t (@sym_memory_safety t)).
+Notation registers t := (Symbolic.registers t (@sym_memory_safety t)).
 
 Module Notations.
 

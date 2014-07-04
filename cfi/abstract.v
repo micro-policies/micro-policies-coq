@@ -22,37 +22,14 @@ Context (t : machine_types).
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
 
-Class abstract_params := {
-  iword_map : Type -> Type;
-  iword_map_class :> partial_map iword_map (word t);
-
-  dword_map : Type -> Type;
-  dword_map_class :> partial_map dword_map (word t);
-
-  reg_map : Type -> Type;
-  reg_map_class :> partial_map reg_map (reg t)
-}.
-
-Class params_spec (ap : abstract_params) := {
-
-  imem_axioms :> PartMaps.axioms (@iword_map_class ap);
-
-  dmem_axioms :> PartMaps.axioms (@dword_map_class ap);
-
-  reg_axioms :> PartMaps.axioms (@reg_map_class ap)
-
-}.
-
-Context {ap : abstract_params}.
-
 Open Scope word_scope.
 
 Local Notation word := (word t).
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
-Definition imemory := iword_map word.
-Definition dmemory := dword_map word.
-Definition registers := reg_map word.
+Local Notation imemory := (word_map t word).
+Local Notation dmemory := (word_map t word).
+Local Notation registers := (reg_map t word).
 
 Record state := State {
   imem : imemory;
@@ -318,10 +295,12 @@ Qed.
 
 End WithClasses.
 
+Notation imemory t := (word_map t (word t)).
+Notation dmemory t := (word_map t (word t)).
+Notation registers t := (reg_map t (word t)).
+
 End Abs.
 
-Arguments Abs.state t {_}.
-Arguments Abs.imemory t {_}.
-Arguments Abs.dmemory t {_}.
-Arguments Abs.registers t {_}.
-Arguments Abs.syscall t {_}.
+Arguments Abs.state t.
+Arguments Abs.State {_} _ _ _ _ _.
+Arguments Abs.syscall t.

@@ -28,22 +28,14 @@ Context
   (t            : machine_types)
   {ops          : machine_ops t}
   {spec         : machine_ops_spec ops}
-  {ap           : abstract_params t}
-  {ap_spec      : params_spec ap}
   {scr          : @syscall_regs t}
-  {sfi_syscalls : sfi_syscall_addrs t}
-  {smemory      : Type -> Type}
-  {smem_class   : partial_map smemory (word t)}
-  {smem_axioms  : axioms smem_class}
-  {sregisters   : Type -> Type}
-  {sreg_class   : partial_map sregisters (reg t)}
-  {sreg_axioms  : axioms sreg_class}.
+  {sfi_syscalls : sfi_syscall_addrs t}.
 
 Notation word    := (word t).
 Notation stag    := (@Sym.stag t).
-Notation sym_sfi := (@Sym.sym_sfi t ops smemory smem_class sregisters sreg_class).
+Notation sym_sfi := (@Sym.sym_sfi t ops).
 
-Notation astate := (@Abs.state t ap).
+Notation astate := (@Abs.state t).
 Notation sstate := (@Symbolic.state t sym_sfi).
 
 Notation astep := Abs.step.
@@ -73,16 +65,16 @@ Definition refine_reg_b (ar : word) (sr : satom) : bool :=
     | _             => false
   end.
 
-Definition refine_memory : memory t -> smemory _ -> Prop :=
+Definition refine_memory : Abs.memory t -> Sym.memory t -> Prop :=
   pointwise refine_mem_loc_b.
 
-Definition refine_registers : registers t -> sregisters _ -> Prop :=
+Definition refine_registers : Abs.registers t -> Sym.registers t -> Prop :=
   pointwise refine_reg_b.
 
 Section With_EqType_refine_compartment_b.
 Import Sym.
 Definition refine_compartment_b (c : Abs.compartment t)
-                                (smem : smemory _) : bool :=
+                                (smem : Sym.memory t) : bool :=
   is_some $
     let: Abs.Compartment A J S := c in
     do! sxs <- map_options (get smem) A;
@@ -228,7 +220,7 @@ Proof.
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
     specialize RCTAGS with pc; rewrite PC in RCTAGS.
     destruct RCTAGS as [[c [IN_c IN_SAME]] [SET_I SET_W]].
-    evar (AR' : registers t);
+    evar (AR' : Abs.registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_const; try reflexivity.
@@ -269,7 +261,7 @@ Proof.
       [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
     destruct (get AR r2) as [x2|] eqn:GET2;
       [| specialize RREGS with r2; rewrite OLD GET2 in RREGS; done].
-    evar (AR' : registers t);
+    evar (AR' : Abs.registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_mov; try reflexivity.
@@ -310,7 +302,7 @@ Proof.
       [| specialize RREGS with r2; rewrite R2W GET2 in RREGS; done].
     destruct (get AR r3) as [x3|] eqn:GET3;
       [| specialize RREGS with r3; rewrite OLD GET3 in RREGS; done].
-    evar (AR' : registers t);
+    evar (AR' : Abs.registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_binop; try reflexivity.
@@ -360,7 +352,7 @@ Proof.
       subst x1.
     destruct (get AM w1) as [x2|] eqn:GETM1;
       [|specialize RMEMS with w1; rewrite MEM1 GETM1 in RMEMS; done].
-    evar (AR' : registers t);
+    evar (AR' : Abs.registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL ac); split;
       subst AR'.
     + eapply Abs.step_load; try reflexivity.
@@ -406,7 +398,7 @@ Proof.
       (by specialize RREGS with r;
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
-    evar (AR' : registers t);
+    evar (AR' : Abs.registers t);
       exists (Abs.State (pc + (if w == 0 then 1 else imm_to_word n))%w
                         AR' AM AC INTERNAL c); split;
       subst AR'.

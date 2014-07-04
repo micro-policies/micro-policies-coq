@@ -152,7 +152,6 @@ Definition masks : Masks :=
 Section handler.
 
 Context {t : machine_types}.
-Context {cp : concrete_params t}.
 Context {ops : machine_ops t}
         {sp : machine_ops_spec ops}.
 
@@ -346,7 +345,7 @@ Definition ground_rules : Concrete.rules (word t) :=
 
 Definition mvec_of_umvec (mvec : Symbolic.MVec user_tag) : Symbolic.MVec tag :=
   match mvec with
-  | Symbolic.mkMVec op tpc ti ts => 
+  | Symbolic.mkMVec op tpc ti ts =>
     Symbolic.mkMVec op (USER tpc) (USER ti)
                     (match Symbolic.nfields op as fs return Symbolic.mvec_operands user_tag fs ->
                                                             Symbolic.mvec_operands tag fs
@@ -362,7 +361,7 @@ Definition mvec_of_umvec_with_calls (mvec : Symbolic.MVec user_tag) : Symbolic.M
     match op with
       | SERVICE =>
         Symbolic.mkMVec NOP (USER tpc) (ENTRY ti) (Vector.nil _)
-      | _ => 
+      | _ =>
         Symbolic.mkMVec op (USER tpc) (USER ti)
                         (match Symbolic.nfields op as fs return Symbolic.mvec_operands user_tag fs ->
                                                                 Symbolic.mvec_operands tag fs

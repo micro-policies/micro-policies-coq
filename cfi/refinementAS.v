@@ -41,21 +41,9 @@ Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
         
-        {ap : Abs.abstract_params t}
-        {aps : Abs.params_spec ap}
+        {smemory_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) word_map_class word_map_class}
 
-        {sword_map : Type -> Type}
-        {sw : partial_map sword_map (word t)}
-        {smems : axioms sw}
-        {smemory_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sw (@Abs.dword_map_class t ap)}
-
-        {sreg_map : Type -> Type}
-        {sr : partial_map sreg_map (reg t)}
-        {sregs : axioms sr}
-        {sregs_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) sr (@Abs.reg_map_class t ap)}.
-
-Definition smemory := sword_map (atom (word t) (@cfi_tag t)).
-Definition sregisters := sreg_map (atom (word t) (@cfi_tag t)).
+        {sregs_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) reg_map_class reg_map_class}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
@@ -71,26 +59,26 @@ Definition smachine := Sym.symbolic_cfi_machine stable.
 
 (*Refinement related definitions*)
 Definition refine_dmemory (admem : Abs.dmemory t)
-                          (smem : smemory) :=
+                          (smem : Sym.memory t valid_jmp) :=
   forall w (x : word t),
     get smem w = Some x@DATA <->
     get admem w = Some x. 
 
 Definition refine_imemory (aimem : Abs.imemory t)
-                          (smem : smemory) :=
+                          (smem : Sym.memory t valid_jmp) :=
   forall w x,
     (exists id, get smem w = Some x@(INSTR id)) <->
     get aimem w = Some x.
 
 Definition refine_registers (areg : Abs.registers t)
-                            (sreg : sregisters) :=
+                            (sreg : Sym.registers t valid_jmp) :=
   forall n (x : word t),
     (exists ut, get sreg n = Some x@ut) <->
     get areg n = Some x.
 
 Definition refine_pc 
            (apc : word t) 
-           (spc : atom (word t) (@Symbolic.tag t sym_params)) :=
+           (spc : atom (word t) (@Symbolic.tag sym_params)) :=
   apc = common.val spc /\ 
   (common.tag spc = DATA \/ 
    exists id, common.tag spc = INSTR (Some id)).
@@ -250,7 +238,7 @@ Definition refine_syscalls
   forall addr,
     match Abs.get_syscall atbl addr, Symbolic.get_syscall stbl addr with
     | Some acall, Some scall =>
-      refine_syscall (@Abs.sem t ap acall)
+      refine_syscall (@Abs.sem t acall)
                      (@Symbolic.run_syscall t sym_params scall)
     | None, None => True
     | _, _ => False
@@ -297,7 +285,7 @@ Qed.
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    Abs.sem ac ast = Some ast' ->
+    @Abs.sem t ac ast = Some ast' ->
        let '(Abs.State imem _ _ _ b) := ast in
        let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
@@ -368,7 +356,7 @@ Proof.
   have [EQ|/eqP NEQ] := altP (addr' =P addr); [simpl in EQ | simpl in NEQ]; subst.
   - rewrite (PartMaps.get_upd_eq UPD).
     rewrite (PartMaps.get_upd_eq UPD').
-    split; try congruence.
+    split; simpl; try congruence.
   - rewrite (PartMaps.get_upd_neq NEQ UPD').
     rewrite (PartMaps.get_upd_neq NEQ UPD).
     now apply MEM.
@@ -401,15 +389,16 @@ Proof.
     have [EQ|/eqP NEQ] := altP (addr =P w); [simpl in EQ | simpl in NEQ]; subst.
     * assert (CONTRA := PartMaps.get_upd_eq UPD).
       simpl in CONTRA. rewrite CONTRA in GET'. discriminate.
-    * simpl in UPD. eapply PartMaps.get_upd_neq in UPD; eauto.
+    * simpl in UPD. eapply PartMaps.get_upd_neq in UPD; eauto; try apply word_map_axioms.
       simpl in UPD. rewrite UPD in GET'.
       eapply MEM; eauto.
   - intro GET'.
     apply MEM in GET'.
     have [EQ|/eqP NEQ] := altP (addr =P w); [simpl in EQ | simpl in NEQ]; subst.
     * simpl in GET. rewrite GET in GET'. destruct GET'; congruence.
-    * simpl in UPD. eapply PartMaps.get_upd_neq in UPD; eauto; simpl in UPD;
-      rewrite UPD; assumption.
+    * simpl in UPD. 
+      eapply PartMaps.get_upd_neq in UPD; eauto; try apply word_map_axioms. 
+      simpl in UPD; rewrite UPD; assumption.
 Qed.
 
 
@@ -749,18 +738,17 @@ Proof.
   - destruct (REF addr v) as [MEMSA MEMAS].
     intro GET.
     assert (EQUIV' := EQUIV addr). clear EQUIV.
-    destruct (get mem addr) eqn:GET'.
+    destruct (get mem addr) eqn:GET'; simpl in GET'; rewrite GET' in EQUIV'.
     + assert (GET'' := GET).
       destruct GET as [id GET].
       rewrite GET in EQUIV'. inversion EQUIV'; subst. 
       * simpl in H0. congruence.
       * rewrite GET in GET''. apply MEMSA in GET''. assumption.
-    + destruct (get mem' addr).
-      * destruct EQUIV'.
-      * destruct GET as [? CONTRA]. discriminate.
+    + destruct GET as [? GET].  
+      by rewrite GET in EQUIV'. 
   - intro GET.
     assert (EQUIV' := EQUIV addr); clear EQUIV.
-    destruct (get mem addr) eqn:GET'.
+    destruct (get mem addr) eqn:GET'; simpl in GET'; rewrite GET' in EQUIV'.
     + destruct (get mem' addr) eqn:GET''.
       * destruct EQUIV' as [? ? TG TG' | a' a'' id' id'' TG TG' EQ].
         { unfold refine_imemory in REF. apply REF in GET.
@@ -768,12 +756,10 @@ Proof.
           rewrite GET' in GET. destruct a as [v' tg]; subst. 
           simpl in TG. congruence. }
         { subst. apply REF in GET.  destruct GET as [id''' GET]. 
-          rewrite GET' in GET. exists id'''. assumption.
+          rewrite GET' in GET. exists id'''. rewrite GET''. assumption.
         }
       * destruct EQUIV'.
-    + destruct (get mem' addr) eqn:GET''.
-      * destruct EQUIV'.
-      * apply REF in GET. destruct GET as [? CONTRA]. congruence.
+    + apply REF in GET. destruct GET as [? GET]. rewrite GET in GET'. congruence.
 Qed.
 
 Definition is_data (a : atom (word t) (@cfi_tag t)) := 
@@ -798,7 +784,7 @@ Proof.
   + destruct (get (filter is_data mem) addr) eqn:GET'.
     * assert (FILTER := filter_correctness is_data mem).
       assert (FILTER' := FILTER addr); clear FILTER.
-      destruct (get mem addr) eqn:GET''.
+      destruct (get mem addr) eqn:GET''; simpl in GET''; rewrite GET'' in FILTER'.
       - destruct a0 as [v tg].
         destruct tg; simpl in FILTER';
         [idtac | apply REF in GET'']; congruence.
@@ -827,11 +813,10 @@ Proof.
   - intro GET. 
     assert (FILTER' := FILTER addr); clear FILTER.
     assert (MAP' := MAP addr); clear MAP. 
-    destruct (get mem' addr) eqn:GET'.
+    destruct (get mem' addr) eqn:GET'; simpl in GET'.
     + destruct a as [v' tg].
       destruct tg; simpl in FILTER'; 
-      rewrite FILTER' in MAP'; simpl in MAP'; 
-      congruence.
+      rewrite FILTER' in MAP'; simpl in *; congruence.
     + rewrite FILTER' in MAP'. simpl in MAP'. congruence.
 Qed.
 
@@ -855,7 +840,7 @@ Proof.
   { apply filter_domains; auto. intros.
     assert (FILTERK := FILTER k).
     assert (EQUIVK := EQUIV k).
-    destruct (get mem k) eqn:GET, (get mem' k) eqn:GET'.
+    destruct (get mem k) eqn:GET, (get mem' k) eqn:GET'; rewrite GET in EQUIVK; rewrite GET.
     - destruct a as [v tg], a0 as [v0 tg0].
       destruct tg, tg0.
       + reflexivity.
@@ -870,11 +855,11 @@ Proof.
     - destruct EQUIVK.
     - constructor.
     }
-  assert (DOMAIN: same_domain dmem dmem'). 
-  { eapply same_domain_trans; eauto. apply same_domain_comm.
-    eapply same_domain_trans; eauto. apply same_domain_comm;
-    assumption. }
-  apply DOMAIN. 
+  assert (DOMAIN: same_domain dmem dmem'); last by apply DOMAIN.
+  simpl in *.
+  eapply same_domain_trans; eauto. apply same_domain_comm.
+  eapply same_domain_trans; eauto. apply same_domain_comm;
+  assumption.
 Qed.
     
 Lemma refine_reg_domains areg reg :
@@ -911,7 +896,7 @@ Proof.
   assert (DOMAIN' : same_domain areg' reg')
     by (apply refine_reg_domains; auto).
   assert (EQUIV' := EQUIV n). clear EQUIV.
-  destruct (get reg n) eqn:GET, (get reg' n) eqn:GET'.
+  destruct (get reg n) eqn:GET, (get reg' n) eqn:GET'; rewrite GET in EQUIV'.
   { destruct a as [v ut], a0 as [v' ut'].
     assert (EGET: exists ut, get reg n = Some v@ut) by (eexists;eauto).
     assert (EGET': exists ut, get reg' n = Some v'@ut) by (eexists;eauto).    

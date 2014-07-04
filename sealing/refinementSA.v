@@ -26,12 +26,6 @@ Context {t : machine_types}
         {ssk : Sym.sealing_key}
         {ask : Abs.sealing_key}
 
-        {sp : @Sym.params t}
-        {sps : Sym.params_spec sp}
-
-        {ap : Abs.params t}
-        {aps : Abs.params_spec ap}
-        
         {key_map : Type -> Type}
         {kmap : partial_map key_map Abs.key}
         {kmaps : PartMaps.axioms kmap}.
@@ -67,6 +61,11 @@ Section WithFixedKeyMap.
    corresponding symbolic key *)
 Variable km : key_map Sym.key.
 
+Local Notation smemory := (@word_map t Sym.sym_sealing).
+Local Notation sregisters := (@reg_map t Sym.sym_sealing).
+Local Notation astate := (@Abs.state t ask).
+Local Notation sstate := (@Symbolic.state t Sym.sym_sealing).
+
 Definition refine_key (ak : Abs.key) (sk : Sym.key) : Prop :=
   get km ak = Some sk.
 
@@ -79,10 +78,10 @@ Definition refine_val_atom (v : Abs.value t)
   | _                   , _                      => False
   end.
 
-Definition refine_mem : Abs.memory t -> Sym.word_map _ -> Prop :=
+Definition refine_mem : Abs.memory t -> Sym.memory t -> Prop :=
   pointwise refine_val_atom.
 
-Definition refine_reg : Abs.registers t -> Sym.reg_map _ -> Prop :=
+Definition refine_reg : Abs.registers t -> Sym.registers t -> Prop :=
   @pointwise _ _ (reg t) _ _ _ _ refine_val_atom.
 
 (* We make no assumption about the pc tag, since it's unused in the policy *)
@@ -94,9 +93,6 @@ Definition refine_ins (akeys : list Abs.key) (next_skey : Sym.key) : Prop :=
   (forall ak, ~In ak akeys -> get km ak = None) /\
   (forall ak sk, get km ak = Some sk -> (sk <? next_skey)%ordered) /\
   (key_map_inj km).
-
-Definition astate := @Abs.state t ask ap.
-Definition sstate := @Symbolic.state t Sym.sym_sealing.
 
 Definition refine_state (ast : astate) (sst : sstate) : Prop :=
   let '(Abs.State amem areg apc akeys) := ast in
@@ -122,11 +118,11 @@ Proof.
 Qed.
 
 (* helping the type class resolution a bit seems needed *)
-Definition refine_upd_reg (aregs : Abs.registers t) (sregs : Sym.reg_map _) :=
+Definition refine_upd_reg (aregs : Abs.registers t) (sregs : Sym.registers t) :=
   @refine_upd_pointwise _ _ _ _ _ _ _ _ _ refine_val_atom aregs sregs.
 
 (* not yet used, but it should be helpful for store *)
-Definition refine_upd_mem (amem : Abs.memory t) (smem : Sym.word_map _) :=
+Definition refine_upd_mem (amem : Abs.memory t) (smem : Sym.memory t) :=
   @refine_upd_pointwise _ _ _ _ _ _ _ _ _ refine_val_atom amem smem.
 
 End WithFixedKeyMap.

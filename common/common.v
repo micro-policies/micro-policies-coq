@@ -278,9 +278,9 @@ Class machine_ops_spec t (ops : machine_ops t) := {
   lew_min : forall w, min_word <= w;
   lew_max : forall w, w <= max_word;
 
-  word_map_axioms : PartMaps.axioms word_map_class;
-  reg_map_axioms : PartMaps.axioms reg_map_class;
-  reg_tmap_axioms : TotalMaps.axioms reg_tmap_class
+  word_map_axioms :> PartMaps.axioms word_map_class;
+  reg_map_axioms :> PartMaps.axioms reg_map_class;
+  reg_tmap_axioms :> TotalMaps.axioms reg_tmap_class
 
 }.
 

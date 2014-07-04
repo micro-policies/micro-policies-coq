@@ -47,14 +47,6 @@ Let rule := rule (word t).
 Let rules := rules (word t).
 Let atom := atom (word t) (word t).
 
-(* BCP/MD: Why is one total and the other partial?? *)
-Class concrete_params := {
-  word_map : Type -> Type;
-  word_map_class :> PartMaps.partial_map word_map (word t);
-  reg_map : Type -> Type;
-  reg_map_class :> TotalMaps.total_map reg_map (reg t)
-}.
-
 (* If we were doing good modularization, these would be abstract! *)
 Definition cache_line_addr : word t := Z_to_word 0.
 (* BCP: Call it fault_handler_addr? *)
@@ -62,16 +54,9 @@ Definition fault_handler_start : word t := Z_to_word 8.
 Definition TNone   : word t := Z_to_word 42.  (* Recognizable enough? *)
 Definition TKernel : word t := Z_to_word 0.
 
-Class params_spec (cp : concrete_params) := {
-  word_map_axioms :> PartMaps.axioms (@word_map_class cp);
-  reg_map_axioms :> TotalMaps.axioms (@reg_map_class cp)
-}.
+Context {spops : machine_ops_spec ops}.
 
-Context {cp : concrete_params}
-        {spops : machine_ops_spec ops}
-        {sp : params_spec cp}.
-
-Lemma store_same_tag cmem cmem' addr addr' (w tg : word t) :
+Lemma store_same_tag (cmem cmem' : word_map t _) addr addr' (w tg : word t) :
   (exists w, PartMaps.get cmem addr = Some w@tg) ->
   PartMaps.upd cmem addr' w@tg = Some cmem' ->
   exists w, PartMaps.get cmem' addr = Some w@tg.
@@ -158,8 +143,8 @@ Definition cache_lookup (cache : rules)
   do! rv <- assoc_list_lookup cache (beq_mvec masked_mv);
   Some (copy mv rv (ct mask)).
 
-Definition memory := word_map atom.
-Definition registers := reg_map atom.
+Local Notation memory := (word_map t atom).
+Local Notation registers := (reg_tmap t atom).
 
 Record state := mkState {
   mem   : memory;
@@ -226,7 +211,7 @@ Definition next_state (st : state) (mvec : MVec)
   | None => miss_state st mvec
   end.
 
-Definition next_state_reg_and_pc (st : state) (mvec : MVec) r x pc' : option state :=
+Definition next_state_reg_and_pc (st : state) (mvec : MVec) (r : reg t) x pc' : option state :=
   next_state st mvec (fun rvec =>
     let reg' := TotalMaps.upd (regs st) r x@(ctr rvec) in
     Some (mkState (mem st) reg' (cache st) pc'@(ctrpc rvec) (epc st))).
@@ -381,10 +366,12 @@ End ConcreteSection.
 
 End WithClasses.
 
+Notation memory t := (word_map t (atom (word t) (word t))).
+Notation registers t := (reg_tmap t (atom (word t) (word t))).
+
 End Concrete.
 
-Arguments Concrete.state t {cp}.
-Arguments Concrete.memory t {_}.
-Arguments Concrete.registers t {_}.
+Arguments Concrete.state t.
+Arguments Concrete.mkState {_} _ _ _ _ _.
 Arguments Concrete.TNone {t _}.
 Arguments Concrete.TKernel {t _}.

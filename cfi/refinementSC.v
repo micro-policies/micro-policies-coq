@@ -50,20 +50,10 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
 
-        {cp : Concrete.concrete_params mt}
-        {sp : Concrete.params_spec cp}
         {e : @rules.encodable (@rules.cfi_tag_eqType mt) mt ops}
 
-        {sword_map: Type -> Type}
-        {sw : partial_map sword_map (word mt)} (* (atom (word mt) (@cfi_tag mt))} *)
-        {smems : axioms sw}
-
-        {sreg_map : Type -> Type}
-        {sr : partial_map sreg_map (reg mt)} (* (atom (word mt) (@cfi_tag mt))}*)
-        {sregs : axioms sr}
-
-        {cm_map : Map.mappable (atom (word mt) (word mt)) (atom (word mt) (@cfi_tag mt)) (@Concrete.word_map_class mt cp) sw}
-        {cr_map : MapTP.mappable (atom (word mt) (word mt)) (atom (word mt) (@cfi_tag mt)) (@Concrete.reg_map_class mt cp) sr}.
+        {cm_map : Map.mappable (atom (word mt) (word mt)) (atom (word mt) (@cfi_tag mt)) word_map_class word_map_class}
+        {cr_map : MapTP.mappable (atom (word mt) (word mt)) (atom (word mt) (@cfi_tag mt)) reg_tmap_class reg_map_class}.
 
 Variable valid_jmp : word mt -> word mt -> bool.
 
@@ -71,7 +61,7 @@ Definition sym_params := Sym.sym_cfi valid_jmp.
 
 Variable stable : list (@Symbolic.syscall mt sym_params).
 
-Variable ki : (@refinement_common.kernel_invariant mt ops sym_params cp e).
+Variable ki : (@refinement_common.kernel_invariant mt ops sym_params e).
 
 Definition masks := symbolic.rules.masks. (*is this right?*)
 
@@ -95,10 +85,10 @@ Hypothesis syscall_preserves_entry_tags :
     Sym.entry_points_tagged stable (Symbolic.mem st').
 
 Definition refine_state_no_inv (sst : @Symbolic.state mt sym_params) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sym_params cp e ki stable sst cst.
+  @refine_state_weak mt ops sym_params e ki stable sst cst.
 
 Definition refine_state (sst : @Symbolic.state mt sym_params) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sym_params cp e ki stable sst cst /\
+  @refine_state_weak mt ops sym_params e ki stable sst cst /\
   Sym.invariants stable sst.
 
 Definition is_user (x : atom (word mt) (word mt)) := 
@@ -481,7 +471,7 @@ Qed.
 
 (* Preservation related stuff, probably move to other file*)
 
-Definition in_user := @in_user mt ops sym_params cp e.
+Definition in_user := @in_user mt ops sym_params e.
 
 Definition smachine := Sym.symbolic_cfi_machine stable.
 Definition cmachine := Conc.concrete_cfi_machine ki stable masks.
@@ -508,7 +498,7 @@ Proof.
       unfold check in VIS.
       apply andb_true_iff in VIS.
       destruct VIS as [VIS VIS'].
-      assert (HIT: @hit_step mt ops sym_params cp e cst cst')
+      assert (HIT: @hit_step mt ops sym_params e cst cst')
           by (constructor; auto).
       destruct (cache_hit_simulation UREF HIT) as [sst' [SSTEP REF']].
       unfold refine_state, refine_state_weak.
@@ -545,12 +535,12 @@ Proof.
       unfold kernel_exec in KEXEC.
       apply restricted_exec_snd in KEXEC.
       unfold in_user in VIS.
-      apply (@in_user_in_kernel mt ops sym_params cp e) in VIS.
+      apply (@in_user_in_kernel mt ops sym_params e) in VIS.
       rewrite VIS in KEXEC. discriminate.
     }
     { (*and taking an invisible step*)
       intro VIS.
-      assert (REFW : @refine_state_weak mt ops sym_params cp e ki stable ast cst)
+      assert (REFW : @refine_state_weak mt ops sym_params e ki stable ast cst)
         by (right; auto).
       destruct (backwards_simulation REFW STEP) as [REFW' | [ast' [STEP' REF']]].
       - left. split; auto.
@@ -578,7 +568,7 @@ Lemma kernel_step cst cst' ast kst cst0 :
   in_kernel cst' = true.
 Proof.
   intros REF STEP EXEC STEP' INKERNEL INUSER.
-  assert (REFW: @refine_state_weak _ _ _ _ _ ki stable ast cst).
+  assert (REFW: @refine_state_weak _ _ _ _ ki stable ast cst).
   { right. eauto. }
   generalize (backwards_simulation REFW STEP').
   intros [[REF' | (? & ? & ? & ? & KEXEC')] | (? & _ & REF')].
@@ -655,12 +645,12 @@ Proof.
 Qed.
 
 
-Definition khandler := @rules.handler cfi_tag_eqType mt ops e (@Symbolic.handler mt sym_params).
-Definition uhandler := @Symbolic.handler mt sym_params.
+Definition khandler := @rules.handler cfi_tag_eqType mt ops e (@Symbolic.handler sym_params).
+Definition uhandler := @Symbolic.handler sym_params.
 
 (*XXX: Move these to refinement_common*)
 Lemma get_reg_no_user sreg reg r v ctg t :
-  @refinement_common.refine_registers mt ops sym_params cp e sreg reg ->
+  @refinement_common.refine_registers mt ops sym_params e sreg reg ->
   get sreg r = None ->
   TotalMaps.get reg r = v@ctg ->
   rules.decode ctg = Some t ->
@@ -677,7 +667,7 @@ Proof.
 Qed.
 
 Lemma get_mem_no_user smem mem addr v ctg t :
-  @refinement_common.refine_memory mt ops sym_params cp e smem mem ->
+  @refinement_common.refine_memory mt ops sym_params e smem mem ->
   get smem addr = None ->
   get mem addr = Some v@ctg ->
   rules.decode ctg = Some t ->
@@ -694,7 +684,7 @@ Proof.
 Qed.
 
 Lemma in_user_ctpc cst :
-  @refinement_common.in_user mt ops sym_params cp e cst = true ->
+  @refinement_common.in_user mt ops sym_params e cst = true ->
   exists ut, 
     rules.decode (common.tag (Concrete.pc cst)) = Some (rules.USER ut).
 Proof.
@@ -814,7 +804,7 @@ Admitted.
 
 
 Lemma unique_cmvec sst cst umvec cmvec :
-  @refinement_common.refine_state mt ops sym_params cp e ki stable sst cst ->
+  @refinement_common.refine_state mt ops sym_params e ki stable sst cst ->
   build_mvec stable sst = Some umvec ->
   build_cmvec mt cst = Some cmvec ->
   rules.encode_mvec (rules.mvec_of_umvec_with_calls umvec) = cmvec.
@@ -1239,8 +1229,8 @@ Next Obligation. (*symbolic-concrete cfg relation*)
                UREFJ as [smemj sregj intj cmemj cregj cachej epcj pcj tpcj
                          ASJ CSJ PC' TPC' REFM' REFR' C3 C5 C6 C7].
       assert (NKERNEL : in_kernel csi || in_kernel csj = false).
-      { apply (@in_user_in_kernel mt ops sym_params cp e) in USERI.
-        apply (@in_user_in_kernel mt ops sym_params cp e) in USERJ.
+      { apply (@in_user_in_kernel mt ops sym_params e) in USERI.
+        apply (@in_user_in_kernel mt ops sym_params e) in USERJ.
         apply orb_false_iff. split; subst; auto.
       }
       unfold Conc.csucc.
@@ -1368,10 +1358,10 @@ Proof.
           destruct (in_kernel kst) eqn:KERNEL.
           { reflexivity. }
           { destruct REF.
-            inversion ES. subst smem0 sregs0 spc tpc0 int0. clear ES.
+            inversion ES. subst smem0 sregs spc tpc0 int0. clear ES.
             inversion EC. subst cmem0 cregs cache0 pc epc0. clear EC.
             assert ( EXEC:=
-                       @handler_correct_disallowed_case mt ops sym_params cp e ki
+                       @handler_correct_disallowed_case mt ops sym_params e ki
                                                         stable _ cmem cmem' cmvec creg
                                                         cache (cpc@ctpc) int kst
                                                         KINV KHANDLER STORE KERNEL).
@@ -1384,7 +1374,7 @@ Proof.
           destruct CONTRA as [? [? [? [? KEXEC]]]].
           apply restricted_exec_snd in KEXEC.
           unfold in_user in USERJ.
-          apply (@in_user_in_kernel mt ops sym_params cp e) in USERJ.
+          apply (@in_user_in_kernel mt ops sym_params e) in USERJ.
           rewrite USERJ in KEXEC. discriminate.
     }
     { (*case the symbolic umvec does not exist.*)
@@ -1407,10 +1397,10 @@ Proof.
             apply forallb_forall. intros kst IN.
             destruct (in_kernel kst) eqn:KERNEL; first done.
             destruct REF.
-            inversion ES. subst smem0 sregs0 spc tpc0 int0. clear ES.
+            inversion ES. subst smem0 sregs spc tpc0 int0. clear ES.
             inversion EC. subst cmem0 cregs cache0 pc epc0. clear EC.
             { assert ( EXEC:=
-                         @handler_correct_disallowed_case mt ops sym_params cp e ki
+                         @handler_correct_disallowed_case mt ops sym_params e ki
                                                           stable _ cmem cmem' m creg
                                                           cache (cpc@ctpc) int kst
                                                           KINV KHANDLER STORE KERNEL).
@@ -1424,7 +1414,7 @@ Proof.
             destruct CONTRA as [? [? [? [? KEXEC]]]].
             apply restricted_exec_snd in KEXEC.
             unfold in_user in USERJ.
-            apply (@in_user_in_kernel mt ops sym_params cp e) in USERJ.
+            apply (@in_user_in_kernel mt ops sym_params e) in USERJ.
             rewrite USERJ in KEXEC. discriminate.
           }
       - (*case the concrete cmvec does not exist - so both machines are stuck in one step
@@ -1444,7 +1434,7 @@ Proof.
     destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
     unfold in_user in USERI.
-    apply (@in_user_in_kernel mt ops sym_params cp e) in USERI.
+    apply (@in_user_in_kernel mt ops sym_params e) in USERI.
     rewrite USERI in KEXEC. discriminate.
   }
 Qed.

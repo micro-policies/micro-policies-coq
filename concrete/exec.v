@@ -16,7 +16,6 @@ Variable masks : Masks.
 
 Context (mt : machine_types).
 Context {ops : machine_ops mt}.
-Context {cp : concrete_params mt}.
 
 Open Scope word_scope.
 
@@ -151,15 +150,15 @@ Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
     | Some i =>
       match decode_instr (val i) with
         | Some op =>
-          let part := @Concrete.mkMVec (word mt) (op_to_word (opcode_of op)) 
+          let part := @Concrete.mkMVec (word mt) (op_to_word (opcode_of op))
                                        tpc (common.tag i) in
           match op  with
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
-            | Const n r => 
-              fun part => 
+            | Const n r =>
+              fun part =>
                 let old := TotalMaps.get reg r in
                   Some (part (common.tag old) Concrete.TNone Concrete.TNone)
-            | Mov r1 r2 => 
+            | Mov r1 r2 =>
               fun part =>
                 let v1 := TotalMaps.get reg r1 in
                 let v2 := TotalMaps.get reg r2 in
@@ -189,13 +188,13 @@ Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
               let w := TotalMaps.get reg r in
               let old := TotalMaps.get reg ra in
                 Some (part (common.tag w) (common.tag old) Concrete.TNone)
-            | JumpEpc => 
-              fun part => 
+            | JumpEpc =>
+              fun part =>
                 Some (part (common.tag epc) Concrete.TNone Concrete.TNone)
-            | AddRule => 
+            | AddRule =>
               fun part =>
                 Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
-            | GetTag r1 r2 => 
+            | GetTag r1 r2 =>
               fun part =>
                 let w1 := TotalMaps.get reg r1 in
                 let old := TotalMaps.get reg r2 in
@@ -210,7 +209,7 @@ Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
           end part
         | None => None
       end
-    | None => None 
+    | None => None
   end.
 
 End Masks.

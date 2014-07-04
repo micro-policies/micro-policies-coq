@@ -25,27 +25,18 @@ Context {opss : machine_ops_spec ops}.
 
 Import PartMaps.
 
-Context {word_map : Type -> Type}
-        {sw : partial_map word_map (word t)}
-        {smems : axioms sw}
-        {reg_map : Type -> Type}
-        {sr : partial_map reg_map (reg t)}.
-
 Variable valid_jmp : word t -> word t -> bool.
 
-Program Instance sym_cfi : (Symbolic.symbolic_params t) := {
+Program Instance sym_cfi : Symbolic.symbolic_params := {
   tag := cfi_tag_eqType;
 
   handler := rules.cfi_handler valid_jmp;
 
-  internal_state := unit;
-
-  word_map := word_map;
-  sw := sw;
-
-  reg_map := reg_map;
-  sr := sr
+  internal_state := unit
 }.
+
+Local Notation memory := (word_map t (atom (word t) (@Symbolic.tag sym_cfi))).
+Local Notation registers := (reg_map t (atom (word t) (@Symbolic.tag sym_cfi))).
 
 Variable table : list (Symbolic.syscall t).
 
@@ -90,7 +81,7 @@ Inductive step_a : Symbolic.state t ->
                   (REQUIV: equiv reg reg')
                   (MEQUIV: equiv mem mem'),
                   step_a (Symbolic.State mem reg pc@tpc int)
-                         (Symbolic.State mem' reg' pc@tpc int).
+                         (@Symbolic.State t sym_cfi mem' reg' pc@tpc int).
 
 Lemma equiv_same_domain {M : Type -> Type} {Key : Type} 
            {M_class : partial_map M Key }
@@ -132,19 +123,19 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
   end.
 
 (*This should be enough for backwards refinement?*)
-Definition instructions_tagged (mem : @Symbolic.memory t sym_cfi) :=
+Definition instructions_tagged (mem : memory) :=
   forall addr i (id : word t), 
     get mem addr = Some i@(INSTR (Some id)) ->
     id = addr. 
 
-Definition entry_points_tagged (mem : @Symbolic.memory t sym_cfi) :=
+Definition entry_points_tagged (mem : memory) :=
   forall addr sc id,
     get mem addr = None ->
     Symbolic.get_syscall table addr = Some sc ->
     Symbolic.entry_tag sc = INSTR (Some id) ->
     id = addr.
 
-Definition valid_jmp_tagged (mem : @Symbolic.memory t sym_cfi) := 
+Definition valid_jmp_tagged (mem : memory) := 
   forall src dst,
     valid_jmp src dst = true ->
     (exists i, get mem src = Some i@(INSTR (Some src))) /\
@@ -156,13 +147,13 @@ Definition valid_jmp_tagged (mem : @Symbolic.memory t sym_cfi) :=
 
 (* These may be needed for forwards simulation, I will leave them out until
    I actually use them*)
-Definition jumps_tagged (mem : @Symbolic.memory t sym_cfi) := True.
+Definition jumps_tagged (mem : memory) := True.
   (* forall addr i cfi_tg r, *)
   (*   get mem addr = Some i@(INSTR cfi_tg) -> *)
   (*   decode_instr i = Some (Jump _ r) -> *)
   (*   cfi_tg = Some addr. *)
 
-Definition jals_tagged (mem : @Symbolic.memory t sym_cfi) := True.
+Definition jals_tagged (mem : memory) := True.
   (* forall addr i cfi_tg r, *)
   (*   get mem addr = Some i@(INSTR cfi_tg) -> *)
   (*   decode_instr i = Some (Jal _ r) -> *)
@@ -212,22 +203,22 @@ Proof.
     intros addr i0 id GET.
     have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
     - intros. subst.
-      apply PartMaps.get_upd_eq in E.
+      apply PartMaps.get_upd_eq in E; try apply word_map_axioms.
       rewrite GET in E. congruence. auto.
-    - apply PartMaps.get_upd_neq with (key' := addr) in E. 
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; try apply word_map_axioms.
       rewrite E in GET.
       specialize (INVARIANT _ _ _ GET); assumption.
-      assumption. assumption.
+      assumption.
   + simpl in E. simpl. unfold instructions_tagged.
     intros addr i0 id GET.
     have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
     - intros. subst.
-      apply PartMaps.get_upd_eq in E.
+      apply PartMaps.get_upd_eq in E; try apply word_map_axioms.
       rewrite GET in E. congruence. auto.
-    - apply PartMaps.get_upd_neq with (key' := addr) in E. 
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; try apply word_map_axioms.
       rewrite E in GET.
       specialize (INVARIANT _ _ _ GET); assumption.
-      assumption. assumption.
+      assumption.
    + unfold Symbolic.run_syscall in CALL. simpl in CALL. 
      match_inv;  eapply syscall_preserves_instruction_tags; eauto.
 Qed.
@@ -262,24 +253,24 @@ Proof.
       - have [EQ'|/eqP NEQ'] := altP (dst =P w1); [simpl in EQ' | simpl in NEQ']; subst.
         * rewrite OLD in GET'. congruence.
         * split.
-          { apply PartMaps.get_upd_neq with (key' := src) in E; auto.
+          { apply PartMaps.get_upd_neq with (key' := src) in E; auto; try apply word_map_axioms.
             rewrite <- E in GET. eexists; eauto. }
           { left.
-            apply PartMaps.get_upd_neq with (key' := dst) in E; auto.
+            apply PartMaps.get_upd_neq with (key' := dst) in E; auto; try apply word_map_axioms.
             rewrite <- E in GET'. eexists; eauto. }
     }
     { split.
       * have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
         - rewrite GET in OLD. congruence.
         - exists isrc.
-          eapply PartMaps.get_upd_neq in E; eauto.
+          eapply PartMaps.get_upd_neq in E; eauto; try apply word_map_axioms.
           rewrite <- E in GET. assumption.
       * right. 
         split.
         - have [EQ|/eqP NEQ] := altP (dst =P w1); [simpl in EQ | simpl in NEQ]; subst.
           + apply PartMaps.upd_inv in E. destruct E as [? E].
             rewrite E in GET'. congruence.
-          + eapply PartMaps.get_upd_neq in E; eauto.
+          + eapply PartMaps.get_upd_neq in E; eauto; try apply word_map_axioms.
             rewrite E. assumption.
         - exists sc. assumption.
     }
@@ -293,24 +284,24 @@ Proof.
       - have [EQ'|/eqP NEQ'] := altP (dst =P w1); [simpl in EQ' | simpl in NEQ']; subst.
         * rewrite OLD in GET'. congruence.
         * split.
-          { apply PartMaps.get_upd_neq with (key' := src) in E; auto.
+          { apply PartMaps.get_upd_neq with (key' := src) in E; auto; try apply word_map_axioms.
             rewrite <- E in GET. eexists; eauto. }
           { left.
-            apply PartMaps.get_upd_neq with (key' := dst) in E; auto.
+            apply PartMaps.get_upd_neq with (key' := dst) in E; auto; try apply word_map_axioms.
             rewrite <- E in GET'. eexists; eauto. }
     }
     { split.
       * have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
         - rewrite GET in OLD. congruence.
         - exists isrc.
-          eapply PartMaps.get_upd_neq in E; eauto.
+          eapply PartMaps.get_upd_neq in E; eauto; try apply word_map_axioms.
           rewrite <- E in GET. assumption.
       * right. 
         split.
         - have [EQ|/eqP NEQ] := altP (dst =P w1); [simpl in EQ | simpl in NEQ]; subst.
           + apply PartMaps.upd_inv in E. destruct E as [? E].
             rewrite E in GET'. congruence.
-          + eapply PartMaps.get_upd_neq in E; eauto.
+          + eapply PartMaps.get_upd_neq in E; eauto; try apply word_map_axioms.
             rewrite E. assumption.
         - exists sc. assumption.
     }
@@ -342,18 +333,18 @@ Proof.
     intros addr sc id GET' CALL ETAG.
     have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
     - intros. subst.
-      apply PartMaps.get_upd_eq in E.
+      apply PartMaps.get_upd_eq in E; try apply word_map_axioms.
       rewrite GET' in E. congruence. auto.
-    - apply PartMaps.get_upd_neq with (key' := addr) in E; auto.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; auto; try apply word_map_axioms.
       rewrite E in GET'. unfold entry_points_tagged in INVARIANT.
       specialize (INVARIANT _ _ _ GET' CALL ETAG); assumption.
   + simpl in E. simpl.
     intros addr sc id GET' CALL ETAG.
     have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
     - intros. subst.
-      apply PartMaps.get_upd_eq in E.
+      apply PartMaps.get_upd_eq in E; try apply word_map_axioms.
       rewrite GET' in E. congruence. auto.
-    - apply PartMaps.get_upd_neq with (key' := addr) in E; auto.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; auto; try apply word_map_axioms.
       rewrite E in GET'. unfold entry_points_tagged in INVARIANT.
       specialize (INVARIANT _ _ _ GET' CALL ETAG); assumption.
   + unfold Symbolic.run_syscall in CALL. simpl in CALL. 
@@ -598,5 +589,8 @@ Proof.
 Qed.
 
 End WithClasses.
+
+Notation memory t vj := (Symbolic.memory t (@sym_cfi t vj)).
+Notation registers t vj := (Symbolic.registers t (@sym_cfi t vj)).
 
 End Sym.
