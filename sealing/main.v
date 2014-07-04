@@ -686,6 +686,15 @@ Definition run_abs n p :=
    map (summarize_abstract_state 8) tr
   ).
 
+(*
+Definition run_sym n p :=
+  let: (init,syscall_addrs) := build_symbolic_sealing_machine p in
+  let tr := utils.runn (fun x => Symbolic.stepf x) n init in
+  (
+   summarize_symbolic_sealing_state 3000 init ::
+   map (summarize_symbolic_sealing_state 8) tr
+  ).
+*)
 
 Definition hello_world0 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [
