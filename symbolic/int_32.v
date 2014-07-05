@@ -146,7 +146,7 @@ Program Definition concrete_initial_state
       (user_regs : list (reg concrete_int_32_t))
       (initial_reg_tag : w)
     : Concrete.state concrete_int_32_t :=
-  let '(_, user_gen) := user_mem in
+  let '(_, user_gen) := kernelize_tags user_mem in
   let mem' := insert_from user_mem_addr (user_gen user_mem_addr syscall_addrs) initial_memory in
   let regs :=
         fold_left
