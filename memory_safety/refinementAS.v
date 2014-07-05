@@ -228,15 +228,15 @@ Definition fresh_color col :=
 
 (* We may need:
 get mi col != None -> exists bi, bi \in info /\ block_color bi = Some col *)
-Definition refine_internal_state smem (ist : word mt * list (Sym.block_info mt)) :=
+Definition refine_internal_state (bl : list block) smem (ist : word mt * list (Sym.block_info mt)) :=
   let: (col, info) := ist in
-  fresh_color col /\
+  fresh_color col /\ (forall col b base, PartMaps.get mi col = Some (b,base) -> b \in bl) /\
   forall x, x \in info -> block_info_spec smem x.
 
-Lemma refine_memory_upd smem smem' ist old
+Lemma refine_memory_upd bl smem smem' ist old
                         w1 w2 pt ty ty' n fr fr' x :
   refine_memory amem smem ->
-  refine_internal_state smem ist ->
+  refine_internal_state bl smem ist ->
   refine_val (Abstract.VPtr pt) w1 (PTR n) ->
   PartMaps.get smem w1 = Some old@M(n, ty') ->
   PartMaps.upd smem w1 w2@M(n, ty) = Some smem' ->
@@ -244,13 +244,13 @@ Lemma refine_memory_upd smem smem' ist old
   update_list_Z (word_to_Z pt.2) x fr = Some fr' ->
   refine_val x w2 ty ->
     exists amem', [/\ PartMaps.upd amem pt.1 fr' = Some amem',
-      refine_memory amem' smem' & refine_internal_state smem' ist].
+      refine_memory amem' smem' & refine_internal_state bl smem' ist].
 Proof.
 case: ist => nextcol infos.
-move=> [miP rmem] [freshcol rist] rpt get_w1 upd_w1 get_pt update_pt rx.
+move=> [miP rmem] [freshcol [in_bl rist]] rpt get_w1 upd_w1 get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
 exists amem'; split => //; last first.
-  split => //.
+  split => //; split => //.
   case=> bi_base bi_size [bi_col in_bi|in_bi]; last first.
     move/(_ _ in_bi): rist => biP.
     inversion biP => //.
@@ -459,7 +459,7 @@ Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym
     [/\ refine_memory amem smem,
         refine_registers aregs sregs,
         refine_val apc w ty &
-        refine_internal_state smem ist]
+        refine_internal_state bl smem ist]
   | _ => False
   end.
 
@@ -486,7 +486,7 @@ Qed.
 
 Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col :
   refine_memory mi amem smem ->
-  refine_internal_state mi smem (col, info) ->
+  refine_internal_state mi bl smem (col, info) ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   let smem' := Sym.write_block smem base 0@M(col, DATA) (Z.to_nat (word_to_Z sz))
   in
@@ -497,7 +497,8 @@ split.
 constructor => b col' col'' base' base''.
   have [->|/eqP neq_col'] := altP (col' =P col);
   have [-> //|/eqP neq_col''] := altP (col'' =P col).
-  + rewrite (PartMaps.get_set_neq _ _ neq_col'') => _ get_col''.
+  + rewrite (PartMaps.get_set_neq _ _ neq_col'').
+rewrite PartMaps.get_set_eq => [[<- _]].
 admit.
 admit.
 admit.
@@ -506,8 +507,9 @@ Qed.
 
 Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color :
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
-  refine_internal_state mi smem (color, info) ->
+  refine_internal_state mi bl smem (color, info) ->
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
+    (newb :: bl)
      (Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA)
         (Z.to_nat (word_to_Z sz)))
      (color + 1, Sym.update_block_info info bi color sz).
@@ -712,7 +714,7 @@ by solve_pc rpci.
 (* Syscall *)
 
   move: b Heqo E => bi Heqo E.
-  case: (rist)=> fresh_color.
+  case: (rist)=> fresh_color [in_bl].
   move/(_ bi _).
   have: bi \in [seq x <- info
               | (val <=? Sym.block_size x)%ordered
