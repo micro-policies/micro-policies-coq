@@ -490,6 +490,33 @@ Proof.
   rewrite bind_assoc INIT -bind_assoc EQ_MAP_J EQ_MAP_S; reflexivity.
 Qed.  
 
+Theorem isolate_refined : forall ast sst sst',
+  Abs.good_state ast ->
+  refine ast sst ->
+  Sym.isolate sst ?= sst' ->
+  exists ast',
+    Abs.isolate_fn ast ?= ast' /\
+    refine ast' sst'.
+Proof. Admitted.
+
+Theorem add_to_jump_targets_refined : forall ast sst sst',
+  Abs.good_state ast ->
+  refine ast sst ->
+  Sym.add_to_jump_targets sst ?= sst' ->
+  exists ast',
+    Abs.semantics (Abs.add_to_jump_targets (t:=t)) ast ?= ast' /\
+    refine ast' sst'.
+Proof. Admitted.
+
+Theorem add_to_shared_memory_refined : forall ast sst sst',
+  Abs.good_state ast ->
+  refine ast sst ->
+  Sym.add_to_shared_memory sst ?= sst' ->
+  exists ast',
+    Abs.semantics (Abs.add_to_shared_memory (t:=t)) ast ?= ast' /\
+    refine ast' sst'.
+Proof. Admitted.
+
 Theorem backward_simulation : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -986,7 +1013,39 @@ Proof.
       * erewrite get_set_neq, get_upd_neq with (m' := regs') by eauto.
         apply RREGS.
   - (* Syscall *)
-    admit.
+    destruct (isolate_addr == pc) eqn:EQ;
+      [ move/eqP in EQ; subst
+      | clear EQ; destruct (add_to_jump_targets_addr == pc) eqn:EQ;
+        [ move/eqP in EQ; subst
+        | clear EQ; destruct (add_to_shared_memory_addr == pc) eqn:EQ;
+          [ move/eqP in EQ; subst
+          | discriminate ]]];
+      inversion GETCALL; subst;
+      rewrite /Symbolic.run_syscall /Symbolic.handler /sym_sfi
+              /Sym.sfi_handler /Symbolic.sem
+        in CALL;
+      [ eapply isolate_refined              in CALL
+      | eapply add_to_jump_targets_refined  in CALL
+      | eapply add_to_shared_memory_refined in CALL ];
+      try constructor; try eassumption;
+      destruct CALL as [ast' [STEP REFINE]];
+      exists ast'; split; auto;
+      [ eapply Abs.step_syscall with (sc := Abs.isolate              (t:=t))
+      | eapply Abs.step_syscall with (sc := Abs.add_to_jump_targets  (t:=t))
+      | eapply Abs.step_syscall with (sc := Abs.add_to_shared_memory (t:=t)) ];
+      try solve [reflexivity | eassumption];
+      destruct tpc as []; try discriminate; move/eqP in RPC; subst;
+      try match goal with |- context[get AM ?addr] =>
+        rewrite /refine_memory /pointwise in RMEMS;
+        specialize (RMEMS addr); rewrite PC in RMEMS;
+        by destruct (get AM addr)
+      end;
+      rewrite /refine_syscall_addrs_b in RSC; repeat move: RSC => /andP [RSC ?];
+      rewrite /Abs.get_syscall /= eq_refl.
+      * done.
+      * by destruct (isolate_addr == add_to_jump_targets_addr).
+      * by destruct (isolate_addr == add_to_shared_memory_addr),
+                    (add_to_jump_targets_addr == add_to_shared_memory_addr).
 Qed.
 
 End RefinementSA.
