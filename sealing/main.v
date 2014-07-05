@@ -68,14 +68,6 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
  (length l,
   fun _ _ => map encode_instr l).
 
-(* BCP: TODO: Arguably the second argument to f should be a list of
-   imm'ediates, not words... *)
-Definition user_code (f : w -> list w -> list (instr t))
-                  : @relocatable_segment t (list w) (instr t) :=
- (* This is hideous.  Will totally break if we add more system calls. *)
- (length (f (Z_to_word 0) [Z_to_word 0; Z_to_word 0; Z_to_word 0]),
-  f).
-
 (* ---------------------------------------------------------------- *)
 (* ---------------------------------------------------------------- *)
 (* ---------------------------------------------------------------- *)
@@ -309,6 +301,15 @@ Definition concrete_sealing_monitor :
                        |} in
   (monitor_memory, user_memory_addr, syscall_addrs).
 
+Definition concrete_sealing_monitor_memory :=
+  fst (fst concrete_sealing_monitor).
+
+Definition user_memory_addr :=
+  snd (fst concrete_sealing_monitor).
+
+Instance ssa : @classes.sealing_syscall_addrs t :=
+  snd concrete_sealing_monitor.
+
 Definition build_concrete_sealing_machine
     (user_program : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t))
   : Concrete.state concrete_int_32_t
@@ -320,17 +321,14 @@ Definition build_concrete_sealing_machine
        map_relocatable_segment
          (fun x => Atom (encode_instr x) DATA)
          user_program in
- let '(monitor_memory, user_memory_addr, syscall_addrs) := concrete_sealing_monitor in
  concrete_initial_state
-   monitor_memory
+   concrete_sealing_monitor_memory
    user_memory_addr
-   syscall_addrs
+   ssa
    user_mem
    DATA
    user_registers
    DATA.
-
-End WithClasses.
 
 (* ---------------------------------------------------------------- *)
 (* ---------------------------------------------------------------- *)
@@ -343,15 +341,14 @@ Definition build_symbolic_sealing_machine
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
- let: (_,base_addr,syscall_addrs) := concrete_sealing_monitor in
  let user_mem : @relocatable_segment t _ _ :=
        map_relocatable_segment
          ((fun v => common.Atom v Sym.DATA) ∘ encode_instr)
          user_program in
  @symbolic_initial_state (@Sym.sym_sealing sk_defs) _
                          user_mem
-                         base_addr@Sym.DATA
-                         syscall_addrs
+                         user_memory_addr@Sym.DATA
+                         ssa
                          user_registers
                          (common.Atom (Int32.repr 0) Sym.DATA)
                          (Int32.repr 0).
@@ -653,83 +650,81 @@ Definition run_sym n p :=
    map (summarize_symbolic_sealing_state 8) tr
   ).
 
-Definition hello_world0 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
+(* BCP: TODO: Arguably the second argument to f should be a list of
+   imm'ediates, not words... *)
+(* AAA: TODO: Do we still need user code to take system call address
+   as its parameters? After all, we now know all of them. *)
+Definition user_code (f : w -> @classes.sealing_syscall_addrs t -> list (instr t))
+                  : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t) :=
+ (List.length (f user_memory_addr ssa),
+  f).
+
+Definition hello_world0 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [
      Const t (Z_to_imm 2) ruser1
   ]).
 
-Definition hello_world1 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
+Definition hello_world1 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [
     Const t (Z_to_imm 2) ruser1;
     Binop t ADD ruser1 ruser1 ruser2
   ]).
 
-Definition hello_world2 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
-  user_code (fun _ syscall_addresses =>
-    match syscall_addresses with
-      [mkkey; seal; unseal] =>
+Definition hello_world2 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t) :=
+  user_code (fun _ _ =>
         [
-          Const _ (word_to_imm mkkey) ruser1;
+          Const _ (word_to_imm classes.mkkey_addr) ruser1;
           Jal t ruser1;
-          Const _ (word_to_imm seal) ruser1;
+          Const _ (word_to_imm classes.seal_addr) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
           Mov _ syscall_ret syscall_arg2;
           Jal t ruser1
         ]
-    | _ => []
-    end).
+      ).
 
 (* double seal: should fail *)
-Definition hello_world3 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
-  user_code (fun _ syscall_addresses =>
-    match syscall_addresses with
-      [mkkey; seal; unseal] =>
+Definition hello_world3 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
+  user_code (fun _ _ =>
         [
-          Const _ (word_to_imm mkkey) ruser1;
+          Const _ (word_to_imm classes.mkkey_addr) ruser1;
           Jal t ruser1;
-          Const _ (word_to_imm seal) ruser1;
+          Const _ (word_to_imm classes.seal_addr) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
           Mov _ syscall_ret syscall_arg2;
           Jal t ruser1;
           Mov _ syscall_ret syscall_arg1;
           Jal t ruser1
         ]
-    | _ => []
-    end).
+  ).
 
 (* Test seal-then-unseal *)
-Definition hello_world4 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
-  user_code (fun _ syscall_addresses =>
-    match syscall_addresses with
-      [mkkey; seal; unseal] =>
+Definition hello_world4 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
+  user_code (fun _ _ =>
         [
-          Const _ (word_to_imm mkkey) ruser1;
+          Const _ (word_to_imm classes.mkkey_addr) ruser1;
           Jal t ruser1;
           Mov _ syscall_ret syscall_arg2;
-          Const _ (word_to_imm seal) ruser1;
+          Const _ (word_to_imm classes.seal_addr) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
           Jal t ruser1;
           Mov _ syscall_ret syscall_arg1;
-          Const _ (word_to_imm unseal) ruser1;
+          Const _ (word_to_imm classes.unseal_addr) ruser1;
           Jal t ruser1
         ]
-    | _ => []
-    end).
+  ).
 
 (* Test store and load *)
-Definition hello_world5 : @relocatable_segment t (list w) (instr concrete_int_32_t) :=
-  user_code (fun base syscall_addresses =>
+Definition hello_world5 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
+  user_code (fun base _ =>
     let data := word_to_imm (add_word base (Int32.repr 0)) in
-    match syscall_addresses with
-      [mkkey; seal; unseal] =>
         [
           (* DATA BLOCK *)
           Nop _;
           (* As before, make up a key and seal 17 with it *)
-          Const _ (word_to_imm mkkey) ruser1;
+          Const _ (word_to_imm classes.mkkey_addr) ruser1;
           Jal t ruser1;
           Mov _ syscall_ret syscall_arg2;
-          Const _ (word_to_imm seal) ruser1;
+          Const _ (word_to_imm classes.seal_addr) ruser1;
           Const _ (Z_to_imm 17) syscall_arg1;
           Jal t ruser1;
           (* Store it in the data block and read it back *)
@@ -737,8 +732,7 @@ Definition hello_world5 : @relocatable_segment t (list w) (instr concrete_int_32
           Store t ruser1 syscall_ret;
           Load t ruser1 ruser2
         ]
-    | _ => []
-    end).
+  ).
 
 (* Run tests like this:
 
@@ -749,5 +743,7 @@ Symbolic Machine: Compute (run_sym 2000 hello_world5).
 Abstract Machine: Compute (run_abs 2000 hello_world5). *)
 
 (* TODO: Refinement proof from concrete to abstract instances *)
+
+End WithClasses.
 
 End SealingInstances.
