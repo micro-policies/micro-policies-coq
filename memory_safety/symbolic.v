@@ -258,12 +258,15 @@ Global Instance sym_memory_safety : params := {
 }.
 
 
-Fixpoint write_block init base (v : atom) n : Symbolic.memory t _ :=
+Fixpoint write_block_rec init base (v : atom) n : Symbolic.memory t _ :=
   match n with
   | O => init
   | S p => if upd init (base + Z_to_word (Z.of_nat n)) 0@FREE is Some mem then
-           write_block mem base v p else init
+           write_block_rec mem base v p else init
   end.
+
+Definition write_block init base (v : atom) sz :=
+  write_block_rec init base v (Z.to_nat (word_to_Z sz)).
 
 Definition update_block_info info x color sz :=
   let i := index x info in
@@ -284,7 +287,7 @@ Definition malloc_fun st : option (state t) :=
       match compare 0 sz with
         | Lt =>
           if ohead [seq x <- info | ((sz <=? block_size x) && (block_color x == None))%ordered] is Some x then
-          let mem' := write_block (mem st) (block_base x) 0@M(color,DATA) (Z.to_nat (word_to_Z sz)) in
+          let mem' := write_block (mem st) (block_base x) 0@M(color,DATA) sz in
           do! regs' <- upd (regs st) syscall_ret ((block_base x)@V(PTR color));
           let color' := color + 1 in
           do! raddr <- get (regs st) ra;
@@ -310,7 +313,7 @@ Definition free_fun (st : state t) : option (state t) :=
     do! x <- ohead [seq x <- info | block_color x == Some color];
     let i := index x info in
     if (block_base x <=? ptr <? block_base x + block_size x) then
-      let mem' := write_block (mem st) (block_base x) 0@FREE (Z.to_nat (word_to_Z (block_size x))) in
+      let mem' := write_block (mem st) (block_base x) 0@FREE (block_size x) in
       let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
       in
       do! raddr <- get (regs st) ra;

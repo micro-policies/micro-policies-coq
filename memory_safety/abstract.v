@@ -1,6 +1,7 @@
 Require Import List Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import lib.utils lib.partial_maps common.common memory_safety.classes.
+Require Import lib.utils lib.partial_maps lib.ordered.
+Require Import common.common memory_safety.classes.
 
 Import DoNotation.
 
@@ -68,13 +69,20 @@ Class allocator := {
 
 }.
 
+Definition getv (mem : memory) (ptr : pointer) :=
+  match get mem (fst ptr) with
+  | None => None
+  | Some fr => index_list_Z (word_to_Z (snd ptr)) fr
+  end.
+
 Class allocator_spec (alloc : allocator) := {
 
   malloc_fresh : forall mem sz mem' bl b,
     malloc_fun mem bl sz = (mem',b) -> b \notin bl;
 
-  malloc_get : forall mem sz mem' bl b,
-    malloc_fun mem bl sz = (mem',b) -> exists fr, get mem' b = Some fr;
+  malloc_get : forall mem sz mem' bl b off,
+    malloc_fun mem bl sz = (mem',b) ->
+      (off < sz)%ordered -> getv mem' (b,off) = Some (VData 0);
 
   malloc_get' : forall mem bl b fr sz mem' b',
     get mem b = Some fr ->
@@ -100,12 +108,6 @@ Class allocator_spec (alloc : allocator) := {
 Context `{syscall_regs t} `{allocator} `{memory_syscall_addrs t}.
 
 Definition syscall_addrs := [malloc_addr; free_addr].
-
-Definition getv (mem : memory) (ptr : pointer) :=
-  match get mem (fst ptr) with
-  | None => None
-  | Some fr => index_list_Z (word_to_Z (snd ptr)) fr
-  end.
 
 (* Check binop_denote. Check VData. SearchAbout [word Z]. *)
 Definition lift_binop (f : binop) (x y : value) :=

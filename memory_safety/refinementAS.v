@@ -466,14 +466,15 @@ Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym
 End memory_injections.
 
 Lemma refine_val_malloc mi amem bl sz amem' newb base col v w ty :
+  fresh_color mi col ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   refine_val mi v w ty -> refine_val (mi_malloc mi newb base col) v w ty.
 Proof.
-move=> malloc [w'|b base' col' off mi_b]; first by constructor.
-constructor; rewrite /mi_malloc; generalize (Abstract.malloc_fresh malloc), mi_b.
-have [<-|] := altP (b =P newb).
-admit.
-admit.
+move=> fresh_col malloc [w'|b base' col' off mi_b]; first by constructor.
+constructor.
+have neq_col: col' <> col.
+  by move=> eq_col; move/fresh_col: mi_b; rewrite eq_col; apply: lt_irrefl.
+by rewrite (PartMaps.get_set_neq _ _ neq_col).
 Qed.
 
 Lemma refine_registers_malloc mi aregs sregs amem amem' bl sz newb base col :
@@ -484,24 +485,54 @@ Proof.
 admit.
 Qed.
 
+Lemma get_write_block smem base sz v w :
+  PartMaps.get (Sym.write_block smem base v sz) w =
+  if base <=? w <? base + sz then Some v else PartMaps.get smem w.
+Proof.
+admit.
+Qed.
+
 Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col :
   refine_memory mi amem smem ->
   refine_internal_state mi bl smem (col, info) ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
-  let smem' := Sym.write_block smem base 0@M(col, DATA) (Z.to_nat (word_to_Z sz))
+  let smem' := Sym.write_block smem base 0@M(col, DATA) sz
   in
   refine_memory (mi_malloc mi newb base col) amem' smem'.
 Proof.
-move=> rmem [fresh_col rist] malloc /=.
+move=> rmem [fresh_col [in_bl rist]] malloc /=.
 split.
 constructor => b col' col'' base' base''.
   have [->|/eqP neq_col'] := altP (col' =P col);
   have [-> //|/eqP neq_col''] := altP (col'' =P col).
   + rewrite (PartMaps.get_set_neq _ _ neq_col'').
-rewrite PartMaps.get_set_eq => [[<- _]].
+    rewrite PartMaps.get_set_eq => [[<- _]] /in_bl.
+    by rewrite (negbTE (Abstract.malloc_fresh malloc)).
+  + rewrite (PartMaps.get_set_neq _ _ neq_col').
+    rewrite PartMaps.get_set_eq => get_col' [eq_b _].
+    move/in_bl: get_col'.
+    by rewrite -eq_b (negbTE (Abstract.malloc_fresh malloc)).
+  + rewrite (PartMaps.get_set_neq _ _ neq_col') (PartMaps.get_set_neq _ _ neq_col'').
+  by case: rmem => miP _; apply: (miIr miP).
+move=> w1 w2 col' ty.
+have [<-|neq_col] := altP (col =P col').
+  rewrite PartMaps.get_set_eq get_write_block.
+  have [|_] := boolP (base <=? w1 <? base + sz); last first.
+    case: rmem => miP rmem /rmem.
+    move: (in_bl col).
+    case: (PartMaps.get mi col) => // [[b' base']] /(_ b' base' erefl).
 admit.
 admit.
-admit.
+    (* by rewrite (negbTE (Abstract.malloc_fresh malloc)).
+
+move/in_bl.
+
+case: ifP; last first.
+
+
+have [|] := boolP (base <=? w1 <? base + sz).
+(ltb_lt base w1).*)
+(* if col = col' then base <= w1 <= base + sz *)
 admit.
 Qed.
 
@@ -510,8 +541,7 @@ Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color :
   refine_internal_state mi bl smem (color, info) ->
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
     (newb :: bl)
-     (Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA)
-        (Z.to_nat (word_to_Z sz)))
+     (Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz)
      (color + 1, Sym.update_block_info info bi color sz).
 Proof.
 admit.
@@ -748,7 +778,7 @@ by solve_pc rpci.
 
   split; try eassumption.
   exact: (refine_memory_malloc _ rmem rist malloc).
-  exact: (refine_val_malloc _ _ malloc).
+  exact: (refine_val_malloc _ fresh_color malloc).
   exact: (refine_internal_state_malloc _ malloc).
 
 (* Free *)
