@@ -1135,6 +1135,16 @@ Proof.
   destruct a as [a'|]; simpl; solve [eauto | discriminate].
 Qed.
 
+Theorem bind_assoc : forall A B C
+                            (mx : option A)
+                            (my : A -> option B)
+                            (mz : B -> option C),
+  bind (bind mz ∘ my) mx = bind mz (bind my mx).
+Proof.
+  intros A B C mx my mz.
+  destruct mx as [x|]; [destruct (my x) as [y|]|]; reflexivity.
+Qed.
+
 (* This notation breaks parsing of the "do" tactical, so it should be
 packaged in a module. *)
 Module DoNotation.

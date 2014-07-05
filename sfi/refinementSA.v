@@ -383,12 +383,46 @@ Proof.
     by assert (c' = <<Aprev,Jprev,Sprev>>) by eauto 3; subst.
 Qed.
 
-Lemma refined_compartment_preserved : forall mem mem' C,
+Lemma refined_compartment_preserved : forall mem mem' c,
   pointwise (fun x x' => slabel x = slabel x') mem mem' ->
-  refined_compartment C mem = refined_compartment C mem'.
+  refined_compartment c mem = refined_compartment c mem'.
 Proof.
-  clear S I; intros mem mem' C SAME.
-  admit.
+  clear S I; intros mem mem' [A J S] SAME.
+  rewrite /pointwise in SAME.
+  rewrite /refined_compartment /=.
+  assert (INIT :
+    (do! sxs <- map_options (get mem) A;
+     the =<< map_options (Sym.stag_compartment ∘ slabel) sxs)
+    =
+    (do! sxs' <- map_options (get mem') A;
+     the =<< map_options (Sym.stag_compartment ∘ slabel) sxs')).
+  {
+    rewrite (lock the) 2!bind_assoc -(lock the) 2!map_options_bind; f_equal.
+    induction A as [|a A]; simpl in *; [reflexivity|].
+    specialize SAME with a.
+    destruct (get mem a) as [[x L]|], (get mem' a) as [[x' L']|];
+      try done; simpl in SAME; inversion SAME; subst L'; simpl.
+    rewrite IHA; reflexivity.
+  }
+  set MAP_J := (map_options _ J); set MAP_J' := (map_options _ J).
+  assert (EQ_MAP_J : MAP_J = MAP_J'). {
+    subst MAP_J MAP_J'.
+    induction J as [|a J]; [reflexivity|simpl].
+    specialize SAME with a.
+    destruct (get mem a) as [[x L]|], (get mem' a) as [[x' L']|]; try done.
+    simpl in SAME; inversion SAME; subst; simpl.
+    by rewrite IHJ.
+  }
+  set MAP_S := (map_options _ S); set MAP_S' := (map_options _ S).
+  assert (EQ_MAP_S : MAP_S = MAP_S'). {
+    subst MAP_S MAP_S'.
+    induction S as [|a S']; [reflexivity|simpl].
+    specialize SAME with a.
+    destruct (get mem a) as [[x L]|], (get mem' a) as [[x' L']|]; try done.
+    simpl in SAME; inversion SAME; subst; simpl.
+    by rewrite IHS'.
+  }
+  rewrite bind_assoc INIT -bind_assoc EQ_MAP_J EQ_MAP_S; reflexivity.
 Qed.  
 
 (* This *really* needs to be cleaned up! *)
@@ -707,6 +741,7 @@ Proof.
             * apply get_upd_neq with (key' := p') in def_mem''; auto.
               rewrite def_mem''; assumption. }
       * erewrite <-refined_compartment_preserved; [|eassumption].
+        (* eassumption picked the wrong thing first *)
         eapply prove_refined_compartment; try apply def_cid; eassumption.
   - (* Jump *)
     undo1 NEXT rvec;

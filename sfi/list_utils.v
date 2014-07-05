@@ -463,6 +463,18 @@ Proof.
       * right; apply IHxs; eauto.
 Qed.
 
+Theorem map_options_bind : forall {A B C}
+                                  (f : A -> option B) (g : B -> option C) xs,
+  bind (map_options g) (map_options f xs) = map_options (bind g ∘ f) xs.
+Proof.
+  intros A B C f g xs.
+  induction xs as [|x xs]; simpl in *; [reflexivity|].
+  destruct (f x) as [fx|]; simpl; [|reflexivity].
+  rewrite <-IHxs.
+  destruct (map_options f xs); simpl; [reflexivity|].
+  destruct (g fx); reflexivity.
+Qed.  
+
 Theorem the_in : forall `{eqdec : ! EqDec (eq_setoid A)} (xs : list A) x,
   the xs = Some x -> In x xs.
 Proof.
