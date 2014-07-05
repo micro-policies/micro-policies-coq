@@ -7,6 +7,7 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun eqtype ssrnat ssrbool.
 Require Import lib.utils lib.partial_maps common.common.
+Require Import lib.FiniteMaps.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import symbolic.int_32.
@@ -24,6 +25,26 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
 Import DoNotation.
+
+Module NatPMap := FiniteMap NatIndexed.
+
+Instance nat_partial_map : PartMaps.partial_map NatPMap.t nat := {
+  get V m n := NatPMap.get n m;
+  set V m n v := NatPMap.set n v m;
+  filter V f m := NatPMap.filter f m;
+  map V1 V2 f m := NatPMap.map1 f m;
+  empty V := NatPMap.empty _
+}.
+
+Instance nat_partial_map_axioms : PartMaps.axioms nat_partial_map.
+Proof.
+  constructor.
+  - (* get_set_eq *) intros V m n v. by apply NatPMap.gss.
+  - (* get_set_neq *) intros V m n1 n2 v. by apply NatPMap.gso.
+  - (* filter_correctness *) intros V f m k. by apply NatPMap.gfilter.
+  - (* map_correctness *) intros V1 V2 f m k. by apply NatPMap.gmap1.
+  - (* empty_is_empty *) intros V k. by apply NatPMap.gempty.
+Qed.
 
 Module SealingInstances.
 
