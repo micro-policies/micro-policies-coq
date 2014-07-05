@@ -1735,7 +1735,6 @@ Proof.
     (apply syscall_step_preserves_good with MM sc; subst; assumption);
     auto.
 Qed.
-  
 
 Theorem good_state_preserved : forall `(STEP : step MM MM'),
   good_state MM  = true ->
