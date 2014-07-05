@@ -165,7 +165,7 @@ Program Definition concrete_initial_state
 
 (* TODO: Regularize naming of base addresses and system call stuff. *)
 
-Context {sp: Symbolic.symbolic_params}.
+Context {sp: Symbolic.params}.
 
 Let sym_atom := @common.atom (word t) Symbolic.tag.
 

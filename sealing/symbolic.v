@@ -78,7 +78,7 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Program Instance sym_sealing : symbolic_params := {
+Program Instance sym_sealing : params := {
   tag := stag_eqType;
 
   handler := sealing_handler;

@@ -57,7 +57,7 @@ Context (t : machine_types)
 
 Import PartMaps.
 
-Class symbolic_params := {
+Class params := {
   (* CH: One nice extension could be to distinguish different tag
      types. In many policies the tags on the pc, the tags on registers,
      and the tags on memory (including instructions which are also
@@ -88,7 +88,7 @@ Class symbolic_params := {
   internal_state : Type
 }.
 
-Context {sp : symbolic_params}.
+Context {sp : params}.
 
 Open Scope word_scope.
 

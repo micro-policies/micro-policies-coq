@@ -252,7 +252,7 @@ Admitted.
 Definition tag_eqMixin := EqMixin tag_eqP.
 Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 
-Global Instance sym_memory_safety : symbolic_params := {
+Global Instance sym_memory_safety : params := {
   tag := tag_eqType;
 
   handler := rules;

@@ -197,7 +197,7 @@ End WithVectors.
 
 Record sfi_internal := Internal { next_id : word t }.
 
-Instance sym_sfi : Symbolic.symbolic_params := {
+Instance sym_sfi : Symbolic.params := {
   tag := stag_eqType;
   
   handler := sfi_handler;

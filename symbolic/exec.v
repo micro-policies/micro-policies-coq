@@ -12,7 +12,7 @@ Section WithClasses.
 
 Context {t : machine_types}
         {ops : machine_ops t}
-        {sp : Symbolic.symbolic_params}.
+        {sp : Symbolic.params}.
 
 Variable table : list (Symbolic.syscall t).
 

@@ -27,7 +27,7 @@ Import PartMaps.
 
 Variable valid_jmp : word t -> word t -> bool.
 
-Program Instance sym_cfi : Symbolic.symbolic_params := {
+Program Instance sym_cfi : Symbolic.params := {
   tag := cfi_tag_eqType;
 
   handler := rules.cfi_handler valid_jmp;

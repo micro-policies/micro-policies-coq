@@ -25,7 +25,7 @@ Section Refinement.
 Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {sp : Symbolic.symbolic_params}
+        {sp : Symbolic.params}
         {e : @encodable Symbolic.tag mt ops}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}

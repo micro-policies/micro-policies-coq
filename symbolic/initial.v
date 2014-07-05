@@ -13,7 +13,7 @@ Section Declarations.
 
 Context (t : machine_types).
 Context {op : machine_ops t}.
-Context {ap : symbolic_params t}.
+Context {ap : params t}.
 
 Inductive initial : @state t ap -> Prop :=
   is_initial : forall mem reg, initial (State mem reg (Z_to_word 0)).
