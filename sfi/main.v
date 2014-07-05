@@ -19,6 +19,7 @@ Section Refinement.
 
 Let t := concrete_int_32_t.
 Existing Instance concrete_int_32_ops.
+Existing Instance concrete_int_32_ops_spec.
 Existing Instance Sym.sym_sfi.
 
 Context {enc : encodable (@Symbolic.tag Sym.sym_sfi)}
@@ -32,11 +33,6 @@ Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
                refinementSA.refine ast sst ->
                refine_state ast cst.
 Hint Constructors refine_state.
-
-Hypothesis good_preservation :
-  forall ast ast', Abs.good_state ast ->
-                   Abs.step ast ast' ->
-                   Abs.good_state ast'.
 
 Hypothesis implementation_correct :
   kernel_code_correctness monitor_invariant Sym.syscalls.
@@ -54,7 +50,8 @@ Proof.
   elim: EXEC ast GOOD REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] ast GOOD REF; first by eauto 7.
   exploit backward_simulation; eauto.
   intros (ast' & STEPA & REF').
-  have GOOD' := good_preservation _ _ GOOD STEPA.
+  have GOOD' := Abs.good_state_preserved (spec := concrete_int_32_ops_spec)
+                                         STEPA GOOD.
   exploit IH; eauto.
   intros (ast'' & EXECA & GOOD'' & REF'').
   eauto 7.

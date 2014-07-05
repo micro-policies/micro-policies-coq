@@ -58,6 +58,7 @@ sfi/common.v
 sfi/abstract.v
 sfi/symbolic.v
 sfi/refinementSA.v
+sfi/main.v
 
 sealing/classes.v
 sealing/abstract.v
