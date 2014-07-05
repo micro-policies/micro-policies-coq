@@ -477,12 +477,21 @@ have neq_col: col' <> col.
 by rewrite (PartMaps.get_set_neq _ _ neq_col).
 Qed.
 
+
 Lemma refine_registers_malloc mi aregs sregs amem amem' bl sz newb base col :
+  fresh_color mi col -> 
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   refine_registers mi aregs sregs ->
   refine_registers (mi_malloc mi newb base col) aregs sregs.
 Proof.
-admit.
+  intros.
+  unfold refine_registers. unfold mi_malloc.
+  eapply PartMaps.refine_extend_map with 
+    (P := refine_reg_val) 
+    (f := fun mi' col' nb' => mi = mi' /\ col = col' /\ (newb,base) = nb'); auto.
+  intros ? ? ? ? ? [E1 [E2 [R]]]. subst k1 km.
+  unfold refine_reg_val. destruct v2; destruct tag; auto. 
+  eapply refine_val_malloc; eauto. 
 Qed.
 
 Lemma get_write_block smem base sz v w :
@@ -614,8 +623,8 @@ Definition lift_binop (f : binop) (x y : atom (word mt) (Sym.tag mt)) :=
          end
   end.
 
-Ltac inv H := (inversion H; subst; clear H). 
 
+Ltac inv H := (inversion H; subst; clear H). 
 
 Lemma refine_binop mi amem f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
   meminj_spec amem mi ->
@@ -786,7 +795,7 @@ by solve_pc rpci.
     rewrite -[Sym.block_base bi]addw0; constructor.
     by rewrite /mi' /mi_malloc PartMaps.get_set_eq.
 
-  move/(refine_registers_malloc (Sym.block_base bi) color malloc): rregs => rregs.
+  move/(refine_registers_malloc (Sym.block_base bi) fresh_color malloc): rregs => rregs.
   eapply (refine_registers_upd rregs rnewb) in E.
   destruct E as (? & ? & ?).
 
