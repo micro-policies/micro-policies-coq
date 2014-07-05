@@ -50,6 +50,9 @@ Notation sstep := Sym.step.
 Hint Immediate word_map_axioms.
 Hint Immediate reg_map_axioms.
 
+Arguments Sym.sget {_ _ _} s p : simpl never.
+Arguments Sym.supd {_ _ _} s p v : simpl never.
+
 (* We check the compartment stuff later *)
 Definition refine_pc_b (apc : word) (spc : satom) :=
   match spc with
@@ -78,29 +81,29 @@ Definition refine_registers : registers t -> Sym.registers t -> Prop :=
 
 Section With_EqType_refined_compartment.
 Import Sym.
-Definition refined_compartment (c    : Abs.compartment t)
-                               (smem : Sym.memory t) : option word :=
+Definition refined_compartment (c   : Abs.compartment t)
+                               (sst : sstate) : option word :=
   let: <<A,J,S>> := c in
-  do! sxs <- map_options (get smem) A;
+  do! sxs <- map_options (Sym.sget sst) A;
   do! sc  <- the =<< map_options (stag_compartment ∘ slabel) sxs;
              (* modulo emptiness *)
   do! guard? forallb (set_elem sc) <$>
-               map_options (stag_incoming ∘ slabel <=< get smem) J;
+               map_options (stag_incoming ∘ slabel <=< Sym.sget sst) J;
   do! guard? forallb (set_elem sc) <$>
-               map_options (stag_writers  ∘ slabel <=< get smem) S;
+               map_options (stag_writers  ∘ slabel <=< Sym.sget sst) S;
   Some sc.
 End With_EqType_refined_compartment.
 
-Definition refine_compartment_tag (C : list (Abs.compartment t))
-                                  (M : Sym.memory t)
-                                  (p : word) : Prop :=
-  match get M p with
+Definition refine_compartment_tag (C   : list (Abs.compartment t))
+                                  (sst : sstate)
+                                  (p   : word) : Prop :=
+  match Sym.sget sst p with
     | Some (_ @ (Sym.DATA cid I W)) =>
       is_set I /\ is_set W /\
       exists c,
         C ⊢ p ∈ c /\
         forall p',
-          match get M p' with
+          match Sym.sget sst p' with
             | Some (_ @ (Sym.DATA cid' I' W')) =>
               (cid = cid' <-> C ⊢ p' ∈ c) /\
               (In cid I'  <-> In p' (Abs.jump_targets  c)) /\
@@ -118,26 +121,43 @@ Definition refine_compartment_tag (C : list (Abs.compartment t))
 
 Definition refine_compartments (C : list (Abs.compartment t))
                                (sst : sstate) : Prop :=
-  forallb (is_some ∘ refined_compartment ^~ (Symbolic.mem sst)) C /\
-  forall p, refine_compartment_tag C (Symbolic.mem sst) p.
+  forallb (is_some ∘ refined_compartment ^~ sst) C /\
+  forall p, refine_compartment_tag C sst p.
 
 Definition refine_previous_b (sk : where_from) (prev : Abs.compartment t)
-                             (spc : satom) (SM : Sym.memory t) : bool :=
-  match spc with
+                             (sst : sstate) : bool :=
+  match Symbolic.pc sst with
     | _ @ (Sym.PC F cid) => (sk == F) &&
-                            (refined_compartment prev SM == Some cid)
+                            (refined_compartment prev sst == Some cid)
     | _ @ _ => false
   end.
 
+Definition refine_syscall_addrs_b (AM : memory t) (SM : Sym.memory t) : bool :=
+  ~~ is_some (get AM isolate_addr)                        &&
+  ~~ is_some (get AM add_to_jump_targets_addr)            &&
+  ~~ is_some (get AM add_to_shared_memory_addr)           &&
+  ~~ is_some (get SM isolate_addr)                        &&
+  ~~ is_some (get SM add_to_jump_targets_addr)            &&
+  ~~ is_some (get SM add_to_shared_memory_addr)           &&
+  (isolate_addr             != add_to_jump_targets_addr)  &&
+  (isolate_addr             != add_to_shared_memory_addr) &&
+  (add_to_jump_targets_addr != add_to_shared_memory_addr).
+
 Record refine (ast : astate) (sst : sstate) : Prop := RefineState
-  { pc_refined           : refine_pc_b         (Abs.pc   ast) (Symbolic.pc   sst)
-  ; regs_refined         : refine_registers    (Abs.regs ast) (Symbolic.regs sst)
-  ; mems_refined         : refine_memory       (Abs.mem  ast) (Symbolic.mem  sst)
-  ; compartments_refined : refine_compartments (Abs.compartments ast) sst
-  ; previous_refined     : refine_previous_b   (Abs.step_kind ast)
-                                               (Abs.previous  ast)
-                                               (Symbolic.pc   sst)
-                                               (Symbolic.mem  sst) }.
+  { pc_refined           : refine_pc_b            (Abs.pc           ast)
+                                                  (Symbolic.pc      sst)
+  ; regs_refined         : refine_registers       (Abs.regs         ast)
+                                                  (Symbolic.regs    sst)
+  ; mems_refined         : refine_memory          (Abs.mem          ast)
+                                                  (Symbolic.mem     sst)
+  ; compartments_refined : refine_compartments    (Abs.compartments ast)
+                                                  sst
+  ; previous_refined     : refine_previous_b      (Abs.step_kind    ast)
+                                                  (Abs.previous     ast)
+                                                  sst
+  ; syscalls_refined     : refine_syscall_addrs_b (Abs.mem          ast)
+                                                  (Symbolic.mem     sst)
+  ; internal_refined     : Sym.good_internal      sst }.
 
 Generalizable All Variables.
 
@@ -153,7 +173,6 @@ Ltac explode_refined_compartment RC A J S :=
   let mS       := fresh "mS"       in
   let MAP_S    := fresh "MAP_S"    in
   let SAME_cid := fresh "SAME_cid" in
-  let TEMP     := fresh "TEMP"     in
   match type of RC with
     | refined_compartment ?c _ ?= _ => destruct c as [A J S]
   end;
@@ -185,8 +204,8 @@ Theorem refine_good : forall `(REFINE : refine ast sst),
 Proof.
   clear S I.
   move=> [Apc AR AM AC Ask Aprev]
-         [SM SR [Spc Lpc] [Snext]]
-         [RPC RREGS RMEMS RCOMPS RPREV]
+         [SM SR [Spc Lpc] [Snext SiT SaJT SaST]]
+         [RPC RREGS RMEMS RCOMPS RPREV RSC RINT]
          /andP [/andP [/andP [ELEM GOODS] SS] SP];
     simpl in *;
     unfold refine_compartments in RCOMPS; simpl in RCOMPS;
@@ -197,10 +216,21 @@ Proof.
     unfold refine_memory, pointwise in RMEMS; specialize RMEMS with p.
     specialize RTAGS with p; unfold refine_compartment_tag in RTAGS;
       simpl in RTAGS.
-    destruct (get SM p) as [[Sx SL]|] eqn:SGET; rewrite SGET in RTAGS *;
-      [|trivial].
-    destruct (get AM p) as [Ax|] eqn:AGET; [simpl in RMEMS | elim RMEMS].
-    destruct SL as [|c I W|]; solve [apply/andP; tauto | done].
+    unfold Sym.sget in *.
+    destruct (get SM p) as [[Sx SL]|] eqn:SGET; rewrite SGET in RTAGS *.
+    + destruct (get AM p) as [Ax|] eqn:AGET; [simpl in RMEMS | elim RMEMS].
+      destruct SL as [|c I W|]; solve [apply/andP; tauto | done].
+    + destruct (p == isolate_addr);
+        [|destruct (p == add_to_jump_targets_addr);
+          [|destruct (p == add_to_shared_memory_addr)]];
+        unfold Sym.sget in *; simpl in *.
+      * destruct SiT; try done.
+        by repeat invh and; apply/andP.
+      * destruct SaJT; try done.
+        by repeat invh and; apply/andP.
+      * destruct SaST; try done.
+        by repeat invh and; apply/andP.
+      * done.
   - intros r; unfold Sym.good_register_tag.
     unfold refine_registers, pointwise in RREGS; specialize RREGS with r.
     destruct (get SR r) as [[Sx SL]|] eqn:SGET; rewrite SGET; [|trivial].
@@ -219,10 +249,26 @@ Proof.
     apply def_sxs in IN.
     destruct IN as [p [GET IN]].
     rewrite /refine_memory /pointwise /refine_mem_loc_b in RMEMS.
-    specialize RMEMS with p; rewrite GET in RMEMS.
-    destruct (get AM p); [|done].
-    destruct Lx as [|c' I W|]; try done.
-    simpl in TAG; inversion TAG; subst; clear TAG; eauto.
+    specialize RMEMS with p; exists p;
+      specialize RTAGS with p;
+      rewrite /refine_compartment_tag in RTAGS.
+    unfold Sym.sget in *.
+    destruct (get SM p) eqn:SGET; rewrite SGET in RTAGS GET *; simpl in *.
+    + inversion GET; subst; simpl in *.
+      destruct (get AM p); [|done].
+      destruct Lx as [|c' I W|]; try done.
+      simpl in TAG; inversion TAG; subst; eauto.
+    + destruct (p == isolate_addr);
+        [ destruct SiT; try done
+        | destruct (p == add_to_jump_targets_addr);
+          [ destruct SaJT; try done
+          | destruct (p == add_to_shared_memory_addr);
+            [ destruct SaST; try done
+            | discriminate ]]];
+        inversion GET; subst;
+        simpl in TAG; inversion TAG; subst;
+        eauto.
+  - assumption.
 Qed.
 
 Ltac unoption :=
@@ -234,17 +280,17 @@ Ltac unoption :=
   end.
 
 Lemma prove_refined_compartment : forall pc instr cid cid' cid'' I W F
-                                         AR AM AC Ask Aprev c mem,
-  get mem pc ?= instr@(Sym.DATA cid'' I W) ->
+                                         AR AM AC Ask Aprev c (sst : sstate),
+  get (Symbolic.mem sst) pc ?= instr@(Sym.DATA cid'' I W) ->
   (do! guard (cid'' == cid') || ((F == JUMPED) && set_elem cid' I);
    Some cid'') ?= cid ->
   Abs.good_state (Abs.State pc AR AM AC Ask Aprev) ->
-  forallb (is_some ∘ refined_compartment^~ mem) AC ->
-  (forall p, refine_compartment_tag AC mem p) ->
+  forallb (is_some ∘ refined_compartment^~ sst) AC ->
+  (forall p, refine_compartment_tag AC sst p) ->
   AC ⊢ pc ∈ c ->
   is_set I ->
   (forall p' : word,
-     match get mem p' with
+     match Sym.sget sst p' with
        | Some _@(Sym.PC _ _) => False
        | Some _@(Sym.DATA cid''' I' W') =>
          (cid'' = cid''' <-> AC ⊢ p' ∈ c) /\
@@ -253,18 +299,19 @@ Lemma prove_refined_compartment : forall pc instr cid cid' cid'' I W F
        | Some _@Sym.REG => False
        | None => True
      end) ->
-  refined_compartment c mem == Some cid.
+  refined_compartment c sst == Some cid.
 Proof.
-  clear S I; intros until 0;
+  clear S I; intros until 0; simpl in *;
     intros PC def_cid AGOOD RCOMPS RCTAGS IN_c SET_I RTAG;
     rewrite /refine_compartment_tag in RCTAGS; simpl in *;
     apply/eqP.
-  assert (OK : is_some (refined_compartment c mem)). {
+  assert (OK : is_some (refined_compartment c sst)). {
     move/forallb_forall in RCOMPS. apply RCOMPS.
     apply Abs.in_compartment_spec in IN_c; tauto.
   }
-  destruct (refined_compartment c mem) as [cid'''|] eqn:OK';
+  destruct (refined_compartment c sst) as [cid'''|] eqn:OK';
     [clear OK; rename OK' into OK; f_equal | discriminate].
+  destruct sst as [mem reg pc' si]; simpl in *.
   let S := fresh "S" in explode_refined_compartment OK A J S.
   undo1 def_cid COND;
     move: COND => /orP [/eqP? | /andP [/eqP? /set_elem_true IN]];
@@ -290,26 +337,27 @@ Proof.
   - symmetry; apply SAME_cid.
     apply MAP_sxs; exists instr@(Sym.DATA cid I W); simpl; split; auto.
     apply def_sxs.
-    exists pc; split; auto.
-    apply Abs.in_compartment_spec in IN_c; tauto.
+    exists pc; split.
+    + by rewrite /Sym.sget /= PC.
+    + apply Abs.in_compartment_spec in IN_c; try tauto.
 Qed.
 
 Lemma prove_permitted_now_in : forall pc instr cid cid' cid'' I W F
                                       AR AM AC Ask Aprev
                                       mem reg int
                                       c,
+  let sst := (Symbolic.State (sp := sym_sfi) mem reg pc@(Sym.PC F cid') int) in
   get mem pc ?= instr@(Sym.DATA cid'' I W) ->
-  (Ask == F) && (refined_compartment Aprev mem == Some cid') ->
+  (Ask == F) && (refined_compartment Aprev sst == Some cid') ->
   (do! guard (cid'' == cid') || ((F == JUMPED) && set_elem cid' I);
    Some cid'') ?= cid ->
   Abs.good_state (Abs.State pc AR AM AC Ask Aprev) ->
-  Sym.good_state (Symbolic.State (sp := sym_sfi)
-                                 mem reg pc@(Sym.PC F cid') int) ->
-  (forall p, refine_compartment_tag AC mem p) ->
+  Sym.good_state sst ->
+  (forall p, refine_compartment_tag AC sst p) ->
   AC ⊢ pc ∈ c ->
   is_set I ->
   (forall p' : word,
-     match get mem p' with
+     match Sym.sget sst p' with
       | Some _@(Sym.PC _ _) => False
       | Some _@(Sym.DATA cid''' I' W') =>
           (cid'' = cid''' <-> AC ⊢ p' ∈ c) /\
@@ -320,7 +368,7 @@ Lemma prove_permitted_now_in : forall pc instr cid cid' cid'' I W F
      end) ->
   Abs.permitted_now_in AC Ask Aprev pc ?= c.
 Proof.
-  clear S I; intros until 0;
+  clear S I; intros until 0; subst sst;
     intros PC RPREV def_cid AGOOD SGOOD RCTAGS IN_c SET_I RTAG;
     rewrite /refine_compartment_tag in RCTAGS; simpl in *.
   eapply Abs.permitted_now_in_spec; eauto 3.
@@ -377,30 +425,45 @@ Proof.
     }
     move: (RCTAGS p') => RCTAGS'; rewrite GET' in RCTAGS';
       move: RCTAGS' => [_ [_ [c' [IC' RTAG']]]].
-    specialize RTAG' with pc; rewrite PC in RTAG'.
+    specialize RTAG' with pc; rewrite /Sym.sget PC in RTAG'.
     move: RTAG' => [_ [IN_I _]].
     apply IN_I in IN.
     by assert (c' = <<Aprev,Jprev,Sprev>>) by eauto 3; subst.
 Qed.
 
-Lemma refined_compartment_preserved : forall mem mem' c,
-  pointwise (fun x x' => slabel x = slabel x') mem mem' ->
-  refined_compartment c mem = refined_compartment c mem'.
+Ltac solve_permitted_now_in :=
+  match goal with
+    | RPREV : context[refine_previous_b] |- _ =>
+      rewrite /refine_previous_b /= in RPREV;
+      eapply prove_permitted_now_in; eassumption
+  end.
+
+Definition equilabeled (sst1 sst2 : sstate) : Prop :=
+  forall p,
+    match Sym.sget sst1 p , Sym.sget sst2 p with
+      | Some (_@L1) , Some (_@L2) => L1 = L2
+      | None        , None        => True
+      | _           , _           => False
+    end.
+
+Lemma refined_compartment_preserved : forall sst sst' c,
+  equilabeled sst sst' ->
+  refined_compartment c sst = refined_compartment c sst'.
 Proof.
-  clear S I; intros mem mem' [A J S] SAME.
-  rewrite /pointwise in SAME.
+  clear S I; intros sst sst' [A J S] SAME.
+  rewrite /equilabeled in SAME.
   rewrite /refined_compartment /=.
   assert (INIT :
-    (do! sxs <- map_options (get mem) A;
+    (do! sxs <- map_options (Sym.sget sst) A;
      the =<< map_options (Sym.stag_compartment ∘ slabel) sxs)
     =
-    (do! sxs' <- map_options (get mem') A;
+    (do! sxs' <- map_options (Sym.sget sst') A;
      the =<< map_options (Sym.stag_compartment ∘ slabel) sxs')).
   {
     rewrite (lock the) 2!bind_assoc -(lock the) 2!map_options_bind; f_equal.
     induction A as [|a A]; simpl in *; [reflexivity|].
     specialize SAME with a.
-    destruct (get mem a) as [[x L]|], (get mem' a) as [[x' L']|];
+    destruct (Sym.sget sst a) as [[x L]|], (Sym.sget sst' a) as [[x' L']|];
       try done; simpl in SAME; inversion SAME; subst L'; simpl.
     rewrite IHA; reflexivity.
   }
@@ -409,7 +472,8 @@ Proof.
     subst MAP_J MAP_J'.
     induction J as [|a J]; [reflexivity|simpl].
     specialize SAME with a.
-    destruct (get mem a) as [[x L]|], (get mem' a) as [[x' L']|]; try done.
+    destruct (Sym.sget sst a) as [[x L]|], (Sym.sget sst' a) as [[x' L']|];
+      try done.
     simpl in SAME; inversion SAME; subst; simpl.
     by rewrite IHJ.
   }
@@ -418,14 +482,14 @@ Proof.
     subst MAP_S MAP_S'.
     induction S as [|a S']; [reflexivity|simpl].
     specialize SAME with a.
-    destruct (get mem a) as [[x L]|], (get mem' a) as [[x' L']|]; try done.
+    destruct (Sym.sget sst a) as [[x L]|], (Sym.sget sst' a) as [[x' L']|];
+      try done.
     simpl in SAME; inversion SAME; subst; simpl.
     by rewrite IHS'.
   }
   rewrite bind_assoc INIT -bind_assoc EQ_MAP_J EQ_MAP_S; reflexivity.
 Qed.  
 
-(* This *really* needs to be cleaned up! *)
 Theorem backward_simulation : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -436,7 +500,7 @@ Theorem backward_simulation : forall ast sst sst',
 Proof.
   clear S I; move=> ast sst sst' AGOOD REFINE SSTEP.
   assert (SGOOD : Sym.good_state sst) by (eapply refine_good; eassumption).
-  destruct REFINE as [RPC RREGS RMEMS RCOMP RPREV],
+  destruct REFINE as [RPC RREGS RMEMS RCOMP RPREV     RSC RINT],
            ast    as [Apc AR    AM    AC    Ask Aprev];
     simpl in *.
   destruct SSTEP; subst; try subst mvec;
@@ -455,7 +519,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
     exists (Abs.State (pc+1)%w AR AM AC INTERNAL c); split.
     + eapply Abs.step_nop; try reflexivity.
@@ -464,7 +528,7 @@ Proof.
           specialize RMEMS with pc; rewrite PC in RMEMS;
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; assumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
     + constructor; simpl;
         try solve [done | eapply prove_refined_compartment; eassumption].
   - (* Const *)
@@ -479,7 +543,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
     evar (AR' : registers t);
       exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
@@ -490,7 +554,7 @@ Proof.
           specialize RMEMS with pc; rewrite PC in RMEMS;
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; eassumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
       * unfold upd; rewrite /refine_registers /pointwise in RREGS;
           specialize RREGS with r.
         destruct (get AR r) eqn:GET;
@@ -515,7 +579,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
     rewrite /refine_registers /pointwise in RREGS.
     destruct (get AR r1) as [x1|] eqn:GET1;
@@ -531,7 +595,7 @@ Proof.
           specialize RMEMS with pc; rewrite PC in RMEMS;
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; eassumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
       * eassumption.
       * unfold upd; rewrite GET2; reflexivity.
     + constructor; simpl;
@@ -554,7 +618,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
     rewrite /refine_registers /pointwise in RREGS.
     destruct (get AR r1) as [x1|] eqn:GET1;
@@ -572,7 +636,7 @@ Proof.
           specialize RMEMS with pc; rewrite PC in RMEMS;
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; eassumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
       * eassumption.
       * eassumption.
       * unfold upd; rewrite GET3; reflexivity.
@@ -600,7 +664,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [ac [IN_ac RTAG]]]].
     rewrite /refine_registers /refine_memory /pointwise  in RREGS RMEMS.
     destruct (get AR r1) as [x1|] eqn:GET1;
@@ -622,7 +686,7 @@ Proof.
           specialize RMEMS with pc; rewrite PC in RMEMS;
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; eassumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
       * eassumption.
       * eassumption.
       * unfold upd; rewrite GET2; reflexivity.
@@ -651,7 +715,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I'' [SET_W'' [ac [IN_ac RTAG]]]].
     rewrite /refine_registers /refine_memory /pointwise  in RREGS RMEMS.
     destruct (get AR r1) as [x1|] eqn:GET1;
@@ -677,7 +741,7 @@ Proof.
           specialize RMEMS with pc; rewrite PC in RMEMS;
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; eassumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
       * eassumption.
       * eassumption.
       * { undo1 def_cid COND; unoption.
@@ -690,16 +754,28 @@ Proof.
            tauto.
         - apply set_elem_true in ELEM; auto.
           move: SGOOD => [[SMEM _] _].
-          specialize SMEM with w1; rewrite /Sym.good_memory_tag OLD in SMEM.
+          specialize SMEM with w1;
+            rewrite /Sym.good_memory_tag /Sym.sget OLD in SMEM;
           by move: SMEM => /andP []. }
       * unfold upd; rewrite GETM1; reflexivity.
-    + assert (SAME : pointwise (fun x x' => slabel x = slabel x') mem mem'). {
-        rewrite /pointwise; intros p.
+    + assert (SAME :
+                equilabeled
+                  (@Symbolic.State t sym_sfi
+                     mem  reg pc@(Sym.PC F cid') int)
+                  (@Symbolic.State t sym_sfi
+                     mem' reg (pc+1)%w@(Sym.PC INTERNAL cid) int)). {
+        rewrite /equilabeled; intros p.
         destruct (p == w1) eqn:EQ_w1; move/eqP in EQ_w1; [subst p|].
         - apply get_upd_eq in def_mem'; auto.
-          by rewrite OLD def_mem'.
+          by rewrite /Sym.sget OLD def_mem'.
         - apply get_upd_neq with (key' := p) in def_mem'; auto.
-          by rewrite def_mem'; destruct (get mem p).
+          rewrite /Sym.sget def_mem'; destruct (get mem p) as [[x L]|] eqn:GET;
+            rewrite GET; try done.
+          destruct (if      p == isolate_addr              then _
+                    else if p == add_to_jump_targets_addr  then _
+                    else if p == add_to_shared_memory_addr then _
+                    else None)
+            as [[z []]|]; auto.
       }
       constructor; simpl; try done.
       * { unfold upd;
@@ -719,9 +795,9 @@ Proof.
           generalize def_mem' => def_mem''.
           destruct (p == w1) eqn:EQ_w1; move/eqP in EQ_w1; [subst p|].
           + apply get_upd_eq in def_mem'; auto.
-            specialize RCTAGS with w1; rewrite OLD in RCTAGS.
+            specialize RCTAGS with w1; rewrite /Sym.sget OLD in RCTAGS.
             move: RCTAGS => [SET_I [SET_W [ac' [IC' RTAG']]]].
-            rewrite def_mem'; repeat split; auto.
+            rewrite /Sym.sget def_mem'; repeat split; auto.
             exists ac'; split; auto.
             intros p'; specialize RTAG' with p'.
             destruct (p' == w1) eqn:EQ_w1'; move/eqP in EQ_w1'; [subst p'|].
@@ -729,20 +805,71 @@ Proof.
             * apply get_upd_neq with (key' := p') in def_mem''; auto.
               rewrite def_mem''; assumption.
           + apply get_upd_neq with (key' := p) in def_mem'; auto.
-            specialize RCTAGS with p; rewrite def_mem'.
-            destruct (get mem p) as [[? []]|]; auto.
-            move: RCTAGS => [SET_I [SET_W [ac' [IC' RTAG']]]].
-            repeat split; auto.
-            exists ac'; split; auto.
-            intros p'; specialize RTAG' with p'.
-            destruct (p' == w1) eqn:EQ_w1'; move/eqP in EQ_w1'; [subst p'|].
-            * apply get_upd_eq in def_mem''; auto.
-              rewrite OLD in RTAG'; rewrite def_mem''; assumption.
-            * apply get_upd_neq with (key' := p') in def_mem''; auto.
-              rewrite def_mem''; assumption. }
-      * erewrite <-refined_compartment_preserved; [|eassumption].
+            specialize RCTAGS with p; rewrite /Sym.sget def_mem'.
+            rewrite /Sym.sget in RCTAGS.
+            destruct (get mem p) as [[? []]|] eqn:GET;
+              rewrite GET in RCTAGS; auto.
+            * move: RCTAGS => [SET_I [SET_W [ac' [IC' RTAG']]]].
+              repeat split; auto.
+              exists ac'; split; auto.
+              intros p'; specialize RTAG' with p'.
+              { destruct (p' == w1) eqn:EQ_w1'; move/eqP in EQ_w1'; [subst p'|].
+              - apply get_upd_eq in def_mem''; auto.
+                rewrite OLD in RTAG'; rewrite def_mem''; assumption.
+              - apply get_upd_neq with (key' := p') in def_mem''; auto.
+                rewrite def_mem''; assumption. }
+            * destruct (if      p == isolate_addr              then _
+                        else if p == add_to_jump_targets_addr  then _
+                        else if p == add_to_shared_memory_addr then _
+                        else None)
+                as [[z []]|]; auto.
+              move: RCTAGS => [SET_I' [SET_W' [c' [IC' RTAG']]]].
+              repeat split; auto.
+              exists c'; split; auto.
+              intros p'.
+              rewrite /equilabeled /Sym.sget in SAME;
+                specialize RTAG' with p'; specialize SAME with p'.
+              by set G  := get mem  p' in RTAG' SAME;
+                 set G' := get mem' p' in SAME *;
+                 destruct G as [[x Lx]|] , G' as [[x' Lx']|];
+                 simpl in *; subst; try done;
+                 destruct (if      p' == isolate_addr              then _
+                           else if p' == add_to_jump_targets_addr  then _
+                           else if p' == add_to_shared_memory_addr then _
+                           else None)
+                   as [[z' []]|]; subst. }
+      * rewrite /refine_previous_b; simpl.
+        erewrite <-refined_compartment_preserved; [|eassumption].
         (* eassumption picked the wrong thing first *)
         eapply prove_refined_compartment; try apply def_cid; eassumption.
+      * rewrite /refine_syscall_addrs_b /= in RSC *.
+        repeat move: RSC => /andP [RSC ?].
+        destruct (w1 == isolate_addr) eqn:EQ_i; move/eqP in EQ_i;
+          [subst; rewrite ->GETM1 in *; done|].
+        destruct (w1 == add_to_jump_targets_addr) eqn:EQ_aJ; move/eqP in EQ_aJ;
+          [subst; rewrite ->GETM1 in *; done|].
+        destruct (w1 == add_to_shared_memory_addr) eqn:EQ_aS; move/eqP in EQ_aS;
+          [subst; rewrite ->GETM1 in *; done|].
+        repeat rewrite get_set_neq; auto.
+        do 3 (erewrite (get_upd_neq (key := w1) (m' := mem')); eauto 2).
+        andb_true_split; auto.
+      * rewrite /Sym.good_internal /= in RINT *.
+        destruct int as [next iT aJT aST].
+        destruct iT,aJT,aST; auto.
+        destruct RINT as [? [? [? RINT]]].
+        repeat (split; [solve [auto]|]).
+        intros p x c' I' W'; specialize (RINT p).
+        rewrite /equilabeled /= in SAME; specialize SAME with p.
+        match type of SAME with
+          | match ?X with _ => _ end =>
+            destruct X as [[? ?]|];
+            match type of SAME with
+              | match ?Y with _ => _ end =>
+                destruct Y as [[? ?]|]
+            end
+        end; try done.
+        inversion 1; subst.
+        eapply RINT; reflexivity.
   - (* Jump *)
     undo1 NEXT rvec;
       destruct t1; try discriminate;
@@ -754,7 +881,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
     rewrite /refine_registers /pointwise in RREGS.
     destruct (get AR r) as [x|] eqn:GET;
@@ -772,7 +899,7 @@ Proof.
           specialize RMEMS with pc; rewrite PC in RMEMS;
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; eassumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
       * assumption.
     + constructor; simpl;
         try solve [done | eapply prove_refined_compartment; eassumption].
@@ -787,7 +914,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
     rewrite /refine_registers /pointwise in RREGS.
     destruct (get AR r) as [x|] eqn:GET;
@@ -807,7 +934,7 @@ Proof.
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; eassumption.
       * eassumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
     + constructor; simpl;
         try solve [done | eapply prove_refined_compartment; eassumption].
   - (* Jal *)
@@ -823,7 +950,7 @@ Proof.
     generalize RCOMP;
       rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-    move: (RCTAGS pc) => RCTAGS'; rewrite PC in RCTAGS';
+    move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
     rewrite /refine_registers /pointwise in RREGS.
     destruct (get AR r) as [x|] eqn:GET;
@@ -841,7 +968,7 @@ Proof.
           specialize RMEMS with pc; rewrite PC in RMEMS;
           destruct (get AM pc); [simpl|contradiction].
         move/eqP in RMEMS; subst; eassumption.
-      * eapply prove_permitted_now_in; eassumption.
+      * solve_permitted_now_in.
       * assumption.
       * unfold upd; rewrite /refine_registers /pointwise in RREGS.
         match goal with |- context[get AR ?ra] =>
