@@ -9,9 +9,6 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-(* This is an instantiation of the machine in quasiabstract.v using
-the symbolic machine. *)
-
 Import DoNotation.
 Import ListNotations.
 
