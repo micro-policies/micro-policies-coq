@@ -222,13 +222,15 @@ Inductive block_info_spec (smem : Sym.memory mt) : Sym.block_info mt -> Prop :=
 (* TODO: export from Sym in symbolic.v *)
 Canonical Sym.block_info_eqType.
 
-Definition fresh_color (mi : meminj) col :=
+Definition fresh_color col :=
   forall col' b base, PartMaps.get mi col' = Some (b,base) ->
   (col' < col)%ordered.
 
+(* We may need:
+get mi col != None -> exists bi, bi \in info /\ block_color bi = Some col *)
 Definition refine_internal_state smem (ist : word mt * list (Sym.block_info mt)) :=
   let: (col, info) := ist in
-  (* fresh_color smem col /\ *)
+  fresh_color col /\
   forall x, x \in info -> block_info_spec smem x.
 
 Lemma refine_memory_upd smem smem' ist old
@@ -244,10 +246,11 @@ Lemma refine_memory_upd smem smem' ist old
     exists amem', [/\ PartMaps.upd amem pt.1 fr' = Some amem',
       refine_memory amem' smem' & refine_internal_state smem' ist].
 Proof.
-move=> [miP rmem] rist rpt get_w1 upd_w1 get_pt update_pt rx.
+case: ist => nextcol infos.
+move=> [miP rmem] [freshcol rist] rpt get_w1 upd_w1 get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
 exists amem'; split => //; last first.
-  case: ist rist => nextcol infos rist.
+  split => //.
   case=> bi_base bi_size [bi_col in_bi|in_bi]; last first.
     move/(_ _ in_bi): rist => biP.
     inversion biP => //.
@@ -450,7 +453,7 @@ by apply rregs.
 Qed.
 
 Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
-  let '(Abstract.mkState amem aregs apc) := ast in
+  let '(Abstract.mkState amem aregs bl apc) := ast in
   match sst with
   | Symbolic.State smem sregs w@V(ty) ist =>
     [/\ refine_memory amem smem,
@@ -462,42 +465,47 @@ Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym
 
 End memory_injections.
 
-Lemma refine_val_malloc mi amem sz amem' newb base col v w ty :
-  Abstract.malloc_fun amem sz = (amem', newb) ->
+Lemma refine_val_malloc mi amem bl sz amem' newb base col v w ty :
+  Abstract.malloc_fun amem bl sz = (amem', newb) ->
   refine_val mi v w ty -> refine_val (mi_malloc mi newb base col) v w ty.
 Proof.
 move=> malloc [w'|b base' col' off mi_b]; first by constructor.
-constructor; rewrite /mi_malloc; generalize (Abstract.malloc_get_fresh malloc), mi_b.
+constructor; rewrite /mi_malloc; generalize (Abstract.malloc_fresh malloc), mi_b.
 have [<-|] := altP (b =P newb).
 admit.
 admit.
 Qed.
 
-Lemma refine_registers_malloc mi aregs sregs amem amem' sz newb base col :
-  Abstract.malloc_fun amem sz = (amem', newb) ->
+Lemma refine_registers_malloc mi aregs sregs amem amem' bl sz newb base col :
+  Abstract.malloc_fun amem bl sz = (amem', newb) ->
   refine_registers mi aregs sregs ->
   refine_registers (mi_malloc mi newb base col) aregs sregs.
 Proof.
 admit.
 Qed.
 
-Lemma refine_memory_malloc mi amem smem amem' sz newb base col :
+Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col :
   refine_memory mi amem smem ->
-  Abstract.malloc_fun amem sz = (amem', newb) ->
+  refine_internal_state mi smem (col, info) ->
+  Abstract.malloc_fun amem bl sz = (amem', newb) ->
   let smem' := Sym.write_block smem base 0@M(col, DATA) (Z.to_nat (word_to_Z sz))
   in
   refine_memory (mi_malloc mi newb base col) amem' smem'.
 Proof.
-move=> rmem malloc /=.
+move=> rmem [fresh_col rist] malloc /=.
 split.
 constructor => b col' col'' base' base''.
-have [->|/eqP neq_col'] := altP (col' =P col);
-have [-> //|/eqP neq_col''] := altP (col'' =P col); admit.
+  have [->|/eqP neq_col'] := altP (col' =P col);
+  have [-> //|/eqP neq_col''] := altP (col'' =P col).
+  + rewrite (PartMaps.get_set_neq _ _ neq_col'') => _ get_col''.
+admit.
+admit.
+admit.
 admit.
 Qed.
 
-Lemma refine_internal_state_malloc mi amem amem' smem info sz newb bi color :
-  Abstract.malloc_fun amem sz = (amem', newb) ->
+Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color :
+  Abstract.malloc_fun amem bl sz = (amem', newb) ->
   refine_internal_state mi smem (color, info) ->
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
      (Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA)
@@ -597,7 +605,7 @@ Lemma backward_simulation ast mi sym_st sym_st' :
   Sym.step sym_st sym_st' ->
   exists ast' mi', Abstract.step ast ast' /\ refine_state mi' ast' sym_st'.
 Proof.
-case: ast => a_mem a_regs a_pc.
+case: ast => a_mem a_regs bl a_pc.
 case: sym_st => sym_mem sym_regs sym_pc // sym_ist rst.
 case: sym_st' => sym_mem' sym_regs' [spcv' spcl'] sym_ist' sym_step.
 Coqlib.inv sym_step;
@@ -704,7 +712,8 @@ by solve_pc rpci.
 (* Syscall *)
 
   move: b Heqo E => bi Heqo E.
-  move/(_ bi _): (rist).
+  case: (rist)=> fresh_color.
+  move/(_ bi _).
   have: bi \in [seq x <- info
               | (val <=? Sym.block_size x)%ordered
               & Sym.block_color x == None].
@@ -718,7 +727,7 @@ by solve_pc rpci.
   move=> {bi} bi _ FREE Heqo E color_bi in_bi lt_val.
 
 
-  case malloc: (Abstract.malloc_fun a_mem val) => [amem' newb].
+  case malloc: (Abstract.malloc_fun a_mem bl val) => [amem' newb].
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
   have rnewb: refine_val mi' (Abstract.VPtr (newb, 0)) (Sym.block_base bi) (PTR color).
     rewrite -[Sym.block_base bi]addw0; constructor.
@@ -736,9 +745,9 @@ by solve_pc rpci.
   by eauto.
 
   split; try eassumption.
-  exact: (refine_memory_malloc _ _ rmem malloc).
+  exact: (refine_memory_malloc _ rmem rist malloc).
   exact: (refine_val_malloc _ _ malloc).
-  exact: (refine_internal_state_malloc malloc).
+  exact: (refine_internal_state_malloc _ malloc).
 
 (* Free *)
 
