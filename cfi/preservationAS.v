@@ -20,11 +20,7 @@ Section Refinement.
 
 Context {t : machine_types}
         {ops : machine_ops t}
-        {opss : machine_ops_spec ops}
-        
-        {smemory_mapd : Map.mappable (atom (word t) (@cfi_tag t)) (word t) word_map_class word_map_class}
-        {smemory_mapi : Map.mappable (atom (word t) (@cfi_tag t)) (word t) word_map_class word_map_class}
-        {sregs_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) reg_map_class reg_map_class}.
+        {opss : machine_ops_spec ops}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
@@ -77,15 +73,15 @@ Definition backwards_simulation :=
 (* For initial states - may need to think a bit about how to structure 
    the whole thing*)
 Lemma untag_implies_reg_refinement reg :
-  RefinementAS.refine_registers valid_jmp (Map.map RefinementAS.untag_atom reg) reg.
+  RefinementAS.refine_registers valid_jmp (PartMaps.map RefinementAS.untag_atom reg) reg.
 Proof.
    intros r v.
    split.
    - intros (ut & GET).
-     rewrite Map.map_correctness.
+     rewrite PartMaps.map_correctness.
      rewrite GET. reflexivity.
    - intros GET.
-     rewrite Map.map_correctness in GET.
+     rewrite PartMaps.map_correctness in GET.
      destruct (get reg r) eqn:GET'; rewrite GET'.
      + destruct a. simpl in GET. inv GET.
        eexists; reflexivity.
@@ -94,16 +90,16 @@ Qed.
 
 Lemma untag_data_implies_dmem_refinement mem :
   RefinementAS.refine_dmemory valid_jmp
-    (Map.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)) mem.
+    (PartMaps.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)) mem.
 Proof.
    intros addr v.
    split.
    - intros GET.
-     rewrite Map.map_correctness.
+     rewrite PartMaps.map_correctness.
      rewrite filter_correctness.
      rewrite GET. reflexivity.
    - intros GET.
-     rewrite Map.map_correctness in GET.
+     rewrite PartMaps.map_correctness in GET.
      rewrite filter_correctness in GET.
      destruct (get mem addr) eqn:GET'; rewrite GET'.
      + destruct a as [val tg]. 
@@ -123,16 +119,16 @@ Definition is_instr (a : atom (word t) (@cfi_tag t)) :=
 
 Lemma untag_instr_implies_imem_refinement mem :
   RefinementAS.refine_imemory valid_jmp
-    (Map.map RefinementAS.untag_atom (filter is_instr mem)) mem.
+    (PartMaps.map RefinementAS.untag_atom (filter is_instr mem)) mem.
 Proof.
    intros addr v.
    split.
    - intros (ut & GET).
-     rewrite Map.map_correctness.
+     rewrite PartMaps.map_correctness.
      rewrite filter_correctness.
      rewrite GET. reflexivity.
    - intros GET.
-     rewrite Map.map_correctness in GET.
+     rewrite PartMaps.map_correctness in GET.
      rewrite filter_correctness in GET.
      destruct (get mem addr) eqn:GET'; rewrite GET'.
      + destruct a as [val tg]. 
@@ -178,9 +174,9 @@ Qed.
 Next Obligation. (*initial state*)
   destruct H as [TPC [ITG [VTG ETG]]].
   destruct cst as [mem reg [pc tpc] int].
-  exists (Abs.State (Map.map RefinementAS.untag_atom (filter is_instr mem)) 
-                    ((Map.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)))
-                    (Map.map RefinementAS.untag_atom reg) pc true).
+  exists (Abs.State (PartMaps.map RefinementAS.untag_atom (filter is_instr mem))
+                    (PartMaps.map RefinementAS.untag_atom (filter RefinementAS.is_data mem))
+                    (PartMaps.map RefinementAS.untag_atom reg) pc true).
   split.
   - unfold Abs.initial. reflexivity.
   - unfold RefinementAS.refine_state. repeat (split; eauto).

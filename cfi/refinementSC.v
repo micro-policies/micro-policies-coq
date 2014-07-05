@@ -52,7 +52,6 @@ Context {mt : machine_types}
 
         {e : @rules.encodable (@rules.cfi_tag_eqType mt) mt ops}
 
-        {cm_map : Map.mappable (atom (word mt) (word mt)) (atom (word mt) (@cfi_tag mt)) word_map_class word_map_class}
         {cr_map : MapTP.mappable (atom (word mt) (word mt)) (atom (word mt) (@cfi_tag mt)) reg_tmap_class reg_map_class}.
 
 Variable valid_jmp : word mt -> word mt -> bool.
@@ -111,13 +110,13 @@ Lemma mem_refinement_equiv :
     Sym.equiv smem smem'.
 Proof.
   intros smem cmem cmem' REF EQUIV.
-  exists (Map.map coerce (filter is_user cmem')).
+  exists (PartMaps.map coerce (filter is_user cmem')).
   split.
   { (*refinement proof*)
     intros addr v tg.
     split.
     { intro CGET.
-      rewrite Map.map_correctness. rewrite filter_correctness.
+      rewrite PartMaps.map_correctness. rewrite filter_correctness.
       rewrite CGET. simpl. 
       destruct (is_user v@(rules.encode (rules.USER (user_tag:=cfi_tag_eqType) tg))) eqn:USER.
       + simpl. unfold coerce. simpl. rewrite rules.decodeK. reflexivity.
@@ -125,7 +124,7 @@ Proof.
         unfold rules.word_lift in USER.
         rewrite rules.decodeK in USER. simpl in USER. discriminate. }
     { intro SGET.
-      rewrite Map.map_correctness filter_correctness in SGET.
+      rewrite PartMaps.map_correctness filter_correctness in SGET.
       destruct (get cmem' addr) eqn:CGET.
       - destruct a as [cv ctg].
         simpl in SGET.
@@ -157,7 +156,7 @@ Proof.
       + destruct a as [v' ctg'].
         inversion EQUIV 
           as [a a' v0 v'' ut ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
-        * rewrite Map.map_correctness filter_correctness.
+        * rewrite PartMaps.map_correctness filter_correctness.
           rewrite CGET'.
           unfold is_user. unfold rules.word_lift.
           simpl. inversion EQ1; inversion EQ2; subst.
@@ -176,7 +175,7 @@ Proof.
       + destruct EQUIV.
     - destruct (get cmem addr) eqn:CGET.
       + destruct a as [v ctg]. unfold refinement_common.refine_memory in REF.
-        rewrite Map.map_correctness filter_correctness.
+        rewrite PartMaps.map_correctness filter_correctness.
         unfold is_user. unfold rules.word_lift.
         destruct (get cmem' addr) eqn:CGET'.
         * destruct a as [v' ctg'].
@@ -201,7 +200,7 @@ Proof.
         * destruct EQUIV.
      + destruct (get cmem' addr) eqn:CGET'.
        * destruct EQUIV.
-       * rewrite Map.map_correctness filter_correctness.
+       * rewrite PartMaps.map_correctness filter_correctness.
          rewrite CGET'. simpl. constructor.
   }
 Qed.

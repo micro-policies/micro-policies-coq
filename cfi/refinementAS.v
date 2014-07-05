@@ -12,26 +12,6 @@ Require Coq.Vectors.Vector.
 
 Set Implicit Arguments.
 
-Module Map.
-  Import PartMaps.
-
-Section Mappable.
-  Variable (M1 M2 : Type -> Type) (K V1 V2 : Type).
-
-  
-  Class mappable (pm1 : partial_map M1 K) (pm2 : partial_map M2 K) := {
-
-    map : (V1 -> V2) -> M1 V1 -> M2 V2;
-
-    map_correctness: forall (f : V1 -> V2) (m1 : M1 V1) (k : K),
-                       get (map f m1) k = option_map f (get m1 k)
-
-
-    }.
-End Mappable. 
-
-End Map.
-
 Module RefinementAS.
 
 Section Refinement.
@@ -39,11 +19,7 @@ Import PartMaps.
 
 Context {t : machine_types}
         {ops : machine_ops t}
-        {opss : machine_ops_spec ops}
-        
-        {smemory_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) word_map_class word_map_class}
-
-        {sregs_map : Map.mappable (atom (word t) (@cfi_tag t)) (word t) reg_map_class reg_map_class}.
+        {opss : machine_ops_spec ops}.
 
 Variable valid_jmp : word t -> word t -> bool.
 
@@ -707,8 +683,8 @@ Proof.
   intros areg reg reg' REF EQUIV.
   unfold Sym.equiv in EQUIV.
   unfold refine_registers in REF.
-  assert (MAP := Map.map_correctness untag_atom reg'). 
-  exists (Map.map untag_atom reg'). subst.
+  assert (MAP := PartMaps.map_correctness untag_atom reg').
+  exists (PartMaps.map untag_atom reg'). subst.
   intros r v.
   split.
   - intro GET. destruct GET as [ut GET].
@@ -801,8 +777,8 @@ Lemma dmem_refinement_preserved_by_equiv :
 Proof.
   intros dmem mem mem' REF EQUIV.
   assert (FILTER := filter_correctness is_data mem').
-  assert (MAP := Map.map_correctness untag_atom (filter is_data mem')). 
-  exists (Map.map untag_atom (filter is_data mem')). subst.
+  assert (MAP := PartMaps.map_correctness untag_atom (filter is_data mem')).
+  exists (PartMaps.map untag_atom (filter is_data mem')). subst.
   intros addr v.
   split.
   - intro GET.
