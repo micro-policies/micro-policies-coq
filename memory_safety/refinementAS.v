@@ -58,8 +58,8 @@ Hypothesis binop_addDr : forall x y z,
 Hypothesis binop_subDl : forall x y z,
   binop_denote SUB (x + y) z = x + (binop_denote SUB y z).
 
-Hypothesis binop_subDr : forall x y z,
-  binop_denote SUB x (y + z) = - y + (binop_denote SUB x z).
+Hypothesis binop_sub_add2l : forall x y z,
+  binop_denote SUB (x + y) (x + z) = (binop_denote SUB y z).
 
 Hypothesis binop_eq_add2l : forall x y z,
   binop_denote EQ (x + y) (x + z) = binop_denote EQ y z.
@@ -538,18 +538,14 @@ Definition lift_binop (f : binop) (x y : atom (word mt) (Sym.tag mt)) :=
             else None
           | _, _ => None
           end
-  | LEQ => match x, y with
-          | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
-          | w1@V(PTR b1), w2@V(PTR b2) =>
-            if b1 == b2 then Some (binop_denote f w1 w2, DATA)
-            else None
-          | _, _ => None
-          end
   | _ => match x, y with
          | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
          | _, _ => None
          end
   end.
+
+Ltac inv H := (inversion H; subst; clear H). 
+
 
 Lemma refine_binop mi amem f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
   meminj_spec amem mi ->
@@ -560,47 +556,26 @@ Proof.
 destruct f; intros miP [x1 | b1 base1 nonce1 off1 mi_b1]
   [x2 | b2 base2 nonce2 off2 mi_b2] hyp; try discriminate hyp;
 try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try constructor.
-+ by rewrite binop_addDr; constructor.
-+ by rewrite binop_addDl; constructor.
-+ by rewrite binop_subDl; constructor.
-Admitted.
-
-(*
-+ simpl in *.
-  move: hyp.
-  have [eq_nonce hyp|//] := altP (nonce1 =P nonce2).
-  injection hyp; intros <- <-.
-  eexists.
-  move: (mi_b1) => mi_b1'.
-  rewrite {mi_b1'}(miIr miP mi_b1' mi_b2) // in mi_b1 *.
-  rewrite eqxx.
-      split; try reflexivity.
-      (* This has a silly behavior:
-         apply eqb_true_iff in eq_nonce.
-      *)
-      assert (eq_base : base1 = base2).
-        congruence.
-      rewrite eq_base.
-      rewrite binop_subDl binop_subDr.
-      rewrite addwA subww add0w.
-      constructor.
-+ simpl in *.
-  case: eqP => [eq_b|neq_b].
-    rewrite eq_b mi_b2 in mi_b1.
-    injection mi_b1 as <- <-.
-    rewrite eqxx in hyp; injection hyp as <- <-.
-    eexists; split; try reflexivity.
-    by rewrite binop_eq_add2l; constructor.
-  move: hyp.
-  have [eq_nonce hyp|neq_nonce hyp] := altP (nonce1 =P nonce2).
-    rewrite (miIr miP mi_b1 mi_b2 eq_nonce) in neq_b; congruence. congruence.
-  eexists; split; try reflexivity.
-rewrite /Abstract.lift_binop /=.
-rewrite /lift_binop in hyp.
-
-
-Admitted.
-*)
+- by rewrite binop_addDr; constructor.
+- by rewrite binop_addDl;  constructor.
+- by rewrite binop_subDl; constructor.
+- eexists. 
+  revert hyp. simpl. 
+  have [nonces_eq|nonces_neq] := altP (nonce1 =P nonce2). 
+  +  subst. intro hyp. inv hyp.
+     rewrite mi_b2 in mi_b1; subst.  inv mi_b1. 
+     split. rewrite eq_refl. auto.
+     rewrite binop_sub_add2l. constructor.
+  +  intro X; inv X. 
+- eexists. 
+  revert hyp. simpl. 
+  have [nonces_eq|nonces_neq] := altP (nonce1 =P nonce2).
+  + subst. intro hyp; inv hyp. 
+    rewrite mi_b2 in mi_b1; subst. inv mi_b1. 
+    split. rewrite eq_refl. auto.
+    rewrite binop_eq_add2l. constructor.
+  + intro X; inv X. 
+Qed.
 
 Ltac solve_pc rpci :=
   by eexists; eexists; split;

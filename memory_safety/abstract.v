@@ -75,6 +75,11 @@ Class allocator_spec (alloc : allocator) := {
   malloc_get : forall mem sz mem' b,
     malloc_fun mem sz = (mem',b) -> exists fr, get mem' b = Some fr;
 
+  malloc_get' : forall mem b fr sz mem' b',
+    get mem b = Some fr ->
+    malloc_fun mem sz = (mem',b') -> 
+    get mem b = Some fr;
+
 (* Similar requirements on upd_mem are not necessary because they follow from
    the above and PartMaps.axioms. *)
 
