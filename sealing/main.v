@@ -295,11 +295,23 @@ Definition unseal_segment : @relocatable_segment t w w :=
        if_ ri5 [Jump _ ra] [Halt _]
 ).
 
+Definition concrete_sealing_monitor :
+  Concrete.memory t * w * @classes.sealing_syscall_addrs t :=
+  let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
+  let res := build_monitor_memory extra_state fault_handler syscalls in
+  let monitor_memory := fst (fst res) in
+  let user_memory_addr := snd (fst res) in
+  let syscall_addrs := Vector.of_list (snd res) in
+  let syscall_addrs := {|
+                          classes.mkkey_addr := Vector.nth syscall_addrs Fin.F1;
+                          classes.seal_addr := Vector.nth syscall_addrs (Fin.FS Fin.F1);
+                          classes.unseal_addr := Vector.nth syscall_addrs (Fin.FS (Fin.FS Fin.F1))
+                       |} in
+  (monitor_memory, user_memory_addr, syscall_addrs).
+
 Definition build_concrete_sealing_machine
-    (user_program : @relocatable_segment t (list w) (instr t))
-  : Concrete.state concrete_int_32_t * (* Initial machine state *)
-     w *                               (* Base addr for user code *)
-     list w                            (* Syscall addrs *)
+    (user_program : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t))
+  : Concrete.state concrete_int_32_t
      :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
@@ -308,11 +320,11 @@ Definition build_concrete_sealing_machine
        map_relocatable_segment
          (fun x => Atom (encode_instr x) DATA)
          user_program in
- let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
+ let '(monitor_memory, user_memory_addr, syscall_addrs) := concrete_sealing_monitor in
  concrete_initial_state
-   extra_state
-   fault_handler
-   syscalls
+   monitor_memory
+   user_memory_addr
+   syscall_addrs
    user_mem
    DATA
    user_registers
@@ -326,30 +338,23 @@ End WithClasses.
 (* Symbolic machine *)
 
 Definition build_symbolic_sealing_machine
-    (user_program : @relocatable_segment t (list w) (instr t))
-  : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing sk_defs) * @classes.sealing_syscall_addrs t :=
+    (user_program : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t))
+  : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing sk_defs) :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
- let: (_,base_addr,syscall_addrs) := build_concrete_sealing_machine user_program in
- let user_mem : @relocatable_segment t (list (word t)) _ :=
+ let: (_,base_addr,syscall_addrs) := concrete_sealing_monitor in
+ let user_mem : @relocatable_segment t _ _ :=
        map_relocatable_segment
          ((fun v => common.Atom v Sym.DATA) ∘ encode_instr)
          user_program in
-  let syscall_addr_rcd :=
-      {|
-        classes.mkkey_addr  := nth 0 syscall_addrs (Int32.repr 0);
-        classes.seal_addr   := nth 1 syscall_addrs (Int32.repr 0);
-        classes.unseal_addr := nth 2 syscall_addrs (Int32.repr 0)
-      |} in
-  (@symbolic_initial_state (@Sym.sym_sealing sk_defs)
-    user_mem
-    base_addr@Sym.DATA
-    syscall_addrs
-    user_registers
-    (common.Atom (Int32.repr 0) Sym.DATA)
-    (Int32.repr 0),
-   syscall_addr_rcd).
+ @symbolic_initial_state (@Sym.sym_sealing sk_defs) _
+                         user_mem
+                         base_addr@Sym.DATA
+                         syscall_addrs
+                         user_registers
+                         (common.Atom (Int32.repr 0) Sym.DATA)
+                         (Int32.repr 0).
 
 (* ---------------------------------------------------------------- *)
 (* ---------------------------------------------------------------- *)
@@ -387,28 +392,21 @@ Global Instance sk : Abs.sealing_key := {|
   a different order from Int32PMap.get and Int32PMap.set?? *)
 
 Definition build_abstract_sealing_machine
-    (user_program : @relocatable_segment t (list w) (instr t))
-  : @Abs.state concrete_int_32_t sk * classes.sealing_syscall_addrs :=
+    (user_program : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t))
+  : @Abs.state concrete_int_32_t sk :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
- let: (_,base_addr,syscall_addrs) := build_concrete_sealing_machine user_program in
+ (* NB: syscall_addrs gets passed via typeclass resolution *)
+ let: (_,base_addr,syscall_addrs) := concrete_sealing_monitor in
  let user_mem :=
        map_relocatable_segment
          ((@Abs.VData _ _) ∘ encode_instr)
          user_program in
-  let syscall_addr_rcd :=
-      {|
-        classes.mkkey_addr  := nth 0 syscall_addrs (Int32.repr 0);
-        classes.seal_addr   := nth 1 syscall_addrs (Int32.repr 0);
-        classes.unseal_addr := nth 2 syscall_addrs (Int32.repr 0)
-      |} in
-  (Abs.abstract_initial_state
+  Abs.abstract_initial_state
     user_mem
     base_addr
-    syscall_addrs
-    user_registers,
-   syscall_addr_rcd).
+    user_registers.
 
 (* ---------------------------------------------------------------- *)
 (* ---------------------------------------------------------------- *)
@@ -578,9 +576,9 @@ Definition format_value v :=
         Some i => ss "(" +++ format_instr i +++ ss ")"
       | None => format_word w
       end
-  | Abs.VKey k => 
+  | Abs.VKey k =>
       ss "KEY(" +++ format_nat k +++ ss ")"
-  | Abs.VSealed w k => 
+  | Abs.VSealed w k =>
       ss "SEALED(" +++ format_word w +++ ss "," +++ format_nat k +++ ss ")"
   end.
 
@@ -624,7 +622,7 @@ Definition summarize_abstract_state mem_count st :=
 (* Tests... *)
 
 Definition runn n p :=
-  let: (init,_,_) := build_concrete_sealing_machine p in
+  let init := build_concrete_sealing_machine p in
   let tr := utils.runn (step masks t) n init in
   (
    summarize_concrete_state 3000 1000 init ::
@@ -634,7 +632,8 @@ Definition runn n p :=
 Definition run := runn 10000.
 
 Definition run_abs n p :=
-  let: (init,syscall_addrs) := build_abstract_sealing_machine p in
+  let init := build_abstract_sealing_machine p in
+  let '(_,_,syscall_addrs) := concrete_sealing_monitor in
   let tr := utils.runn (fun x => Abs.stepf x) n init in
   (
    summarize_abstract_state 3000 init ::
@@ -643,7 +642,8 @@ Definition run_abs n p :=
 
 
 Definition run_sym n p :=
-  let: (init,syscall_addrs) := build_symbolic_sealing_machine p in
+  let init := build_symbolic_sealing_machine p in
+  let '(_,_,syscall_addrs) := concrete_sealing_monitor in
   let tr := utils.runn (fun x => @Symbolic.stepf concrete_int_32_t concrete_int_32_ops
                                  (@Sym.sym_sealing sk_defs)
                                  Sym.sealing_syscalls
@@ -744,7 +744,7 @@ Definition hello_world5 : @relocatable_segment t (list w) (instr concrete_int_32
 
 Concrete Machine: Compute (runn 2000 hello_world5).
 
-Symbolic Machine: Compute (run_sym 2000 hello_world5). 
+Symbolic Machine: Compute (run_sym 2000 hello_world5).
 
 Abstract Machine: Compute (run_abs 2000 hello_world5). *)
 

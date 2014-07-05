@@ -95,11 +95,13 @@ Definition kernelize_tags
      map (fun x => Atom (common.val x)
                         (kernelize_user_tag (common.tag x))) (gen b rest)).
 
-Definition initial_memory
+(* Build the basic monitor memory on top of which we will put user
+   programs. Returns a triple with the monitor memory, the base user
+   address, and a list of system call addresses. *)
+Definition build_monitor_memory
       (extra_state : relocatable_segment _ w)
       (handler : relocatable_segment w w)
       (syscalls : list (relocatable_segment w w))
-      (user_mem : relocatable_segment (list w) atom)
     : Concrete.memory concrete_int_32_t * w * list w :=
   let cacheCell := Atom zero Concrete.TKernel in
   let '((kernel_length,gen_kernel), offsets) :=
@@ -116,13 +118,10 @@ Definition initial_memory
     let syscall_addrs :=
         map (fun off => add_word base_addr (nat_to_word off))
             syscall_offsets in
-    let (_, gen_user) := kernelize_tags user_mem in
     let kernel := gen_kernel base_addr extra_state_addr in
-    let user := gen_user user_code_addr syscall_addrs in
     let mem :=
        ( constants_from zero 8 cacheCell
-       ∘ insert_from base_addr kernel
-       ∘ insert_from user_code_addr user )
+       ∘ insert_from base_addr kernel )
        (Int32PMap.empty _) in
      (mem, user_code_addr, syscall_addrs)
    | _ =>
@@ -138,30 +137,30 @@ Definition initial_memory
    default.) *)
 
 Program Definition concrete_initial_state
-      (extra_state : relocatable_segment _ w)
-      (handler : relocatable_segment w w)
-      (syscalls : list (relocatable_segment w w))
-      (user_mem : relocatable_segment (list w) atom)
+      {Addrs}
+      (initial_memory : Concrete.memory concrete_int_32_t)
+      (user_mem_addr : w)
+      (syscall_addrs : Addrs)
+      (user_mem : relocatable_segment Addrs atom)
       (initial_pc_tag : w)
       (user_regs : list (reg concrete_int_32_t))
       (initial_reg_tag : w)
-    : Concrete.state concrete_int_32_t * w * list w :=
-  let '(mem, start, syscall_addrs) :=
-    initial_memory extra_state handler syscalls user_mem in
+    : Concrete.state concrete_int_32_t :=
+  let '(_, user_gen) := user_mem in
+  let mem' := insert_from user_mem_addr (user_gen user_mem_addr syscall_addrs) initial_memory in
   let regs :=
         fold_left
           (fun regs r =>
             Int32TMap.set r zero@(kernelize_user_tag initial_reg_tag) regs)
           user_regs
           (Int32TMap.init zero@zero) in
-  ({|
-    Concrete.mem := mem;
+  {|
+    Concrete.mem := mem';
     Concrete.regs := regs;
     Concrete.cache := ground_rules;
-    Concrete.pc := start@(kernelize_user_tag initial_pc_tag);
+    Concrete.pc := user_mem_addr@(kernelize_user_tag initial_pc_tag);
     Concrete.epc := zero@zero
-  |},
-  start, syscall_addrs).
+  |}.
 
 (* TODO: Regularize naming of base addresses and system call stuff. *)
 
@@ -169,28 +168,29 @@ Context {sp: Symbolic.params}.
 
 Let sym_atom := @common.atom (word t) Symbolic.tag.
 
-Program Definition symbolic_initial_state 
-      (user_mem : relocatable_segment (list (word t)) sym_atom)
-      (base_addr : sym_atom) (syscall_addrs : list (word t))
+Program Definition symbolic_initial_state
+      {Addrs}
+      (user_mem : relocatable_segment Addrs sym_atom)
+      (base_addr : sym_atom) (syscall_addrs : Addrs)
       (user_regs : list (reg t))
       (initial_reg_value : sym_atom)
       (initial_internal_state : Symbolic.internal_state)
       : @Symbolic.state t sp :=
   let (_, gen) := user_mem in
-  let mem_contents := gen (common.val base_addr) syscall_addrs in 
-  let mem := 
+  let mem_contents := gen (common.val base_addr) syscall_addrs in
+  let mem :=
     snd (fold_left
-      (fun x c => let: (i,m) := x in 
+      (fun x c => let: (i,m) := x in
                   (add_word (Z_to_word 1) i, PartMaps.set m i c))
       mem_contents
       ((common.val base_addr), PartMaps.empty))
       in
-  let regs := 
+  let regs :=
         fold_left
           (fun regs r => PartMaps.set regs r initial_reg_value)
            user_regs
            PartMaps.empty in
-  {|  
+  {|
     Symbolic.mem := mem;
     Symbolic.regs := regs;
     Symbolic.pc := base_addr;

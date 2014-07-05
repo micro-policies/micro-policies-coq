@@ -237,13 +237,13 @@ Definition stepf (st : state) : option state :=
 (* ---------------------------------------------------------------------- *)
 (* Building initial machine states *)
 
-Program Definition abstract_initial_state 
-      (user_mem : relocatable_segment (list (word t)) value) 
-      (base_addr : word t) (syscall_addrs : list (word t))
+Program Definition abstract_initial_state
+      (user_mem : relocatable_segment classes.sealing_syscall_addrs value) 
+      (base_addr : word t)
       (user_regs : list (reg t))
     : state := 
   let (_, gen) := user_mem in
-  let mem_contents := gen base_addr syscall_addrs in 
+  let mem_contents := gen base_addr ssa in 
   let mem := 
     snd (fold_left
       (fun x c => let: (i,m) := x in 
