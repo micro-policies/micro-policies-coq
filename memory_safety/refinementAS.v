@@ -492,6 +492,27 @@ Proof.
 admit.
 Qed.
 
+Lemma meminj_spec_malloc mi amem smem amem' info bl sz newb base col :
+  refine_internal_state mi bl smem (col, info) ->
+  Abstract.malloc_fun amem bl sz = (amem', newb) ->
+  meminj_spec amem mi ->
+  meminj_spec amem' (mi_malloc mi newb base col).
+Proof.
+move=> [fresh_col [in_bl rist]] malloc miP.
+constructor => b col' col'' base' base''.
+have [->|/eqP neq_col'] := altP (col' =P col);
+have [-> //|/eqP neq_col''] := altP (col'' =P col).
++ rewrite (PartMaps.get_set_neq _ _ neq_col'').
+  rewrite PartMaps.get_set_eq => [[<- _]] /in_bl.
+  by rewrite (negbTE (Abstract.malloc_fresh malloc)).
++ rewrite (PartMaps.get_set_neq _ _ neq_col').
+  rewrite PartMaps.get_set_eq => get_col' [eq_b _].
+  move/in_bl: get_col'.
+  by rewrite -eq_b (negbTE (Abstract.malloc_fresh malloc)).
++ rewrite (PartMaps.get_set_neq _ _ neq_col') (PartMaps.get_set_neq _ _ neq_col'').
+exact: (miIr miP).
+Qed.
+
 Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col :
   refine_memory mi amem smem ->
   refine_internal_state mi bl smem (col, info) ->
@@ -500,40 +521,40 @@ Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col :
   in
   refine_memory (mi_malloc mi newb base col) amem' smem'.
 Proof.
-move=> rmem [fresh_col [in_bl rist]] malloc /=.
-split.
-constructor => b col' col'' base' base''.
-  have [->|/eqP neq_col'] := altP (col' =P col);
-  have [-> //|/eqP neq_col''] := altP (col'' =P col).
-  + rewrite (PartMaps.get_set_neq _ _ neq_col'').
-    rewrite PartMaps.get_set_eq => [[<- _]] /in_bl.
-    by rewrite (negbTE (Abstract.malloc_fresh malloc)).
-  + rewrite (PartMaps.get_set_neq _ _ neq_col').
-    rewrite PartMaps.get_set_eq => get_col' [eq_b _].
-    move/in_bl: get_col'.
-    by rewrite -eq_b (negbTE (Abstract.malloc_fresh malloc)).
-  + rewrite (PartMaps.get_set_neq _ _ neq_col') (PartMaps.get_set_neq _ _ neq_col'').
-  by case: rmem => miP _; apply: (miIr miP).
+case=> miP rmem rist malloc /=.
+case: (rist) => [fresh_col [in_bl biP]].
+split; first exact: (meminj_spec_malloc _ rist malloc).
 move=> w1 w2 col' ty.
-have [<-|neq_col] := altP (col =P col').
-  rewrite PartMaps.get_set_eq get_write_block.
-  have [|_] := boolP (base <=? w1 <? base + sz); last first.
-    case: rmem => miP rmem /rmem.
-    move: (in_bl col).
-    case: (PartMaps.get mi col) => // [[b' base']] /(_ b' base' erefl).
-admit.
-admit.
-    (* by rewrite (negbTE (Abstract.malloc_fresh malloc)).
+rewrite get_write_block.
+have [|_ /rmem get_w1] := boolP (base <=? w1 <? base + sz).
+  case/andP=> lt_base lt_w1 [<- <- <-].
+  rewrite PartMaps.get_set_eq (Abstract.malloc_get malloc); last first.
+    admit. (* need a bit of arithmetic here *)
+  apply: (refine_val_malloc _ fresh_col malloc).
+  by constructor.
+have neq_col: col' <> col.
+  move=> eq_col.
+  move: get_w1; rewrite eq_col.
+  move: (fresh_col col).
+  case: (PartMaps.get mi col) => // [[b' base']] /(_ b' base' erefl) lt_col.
+  by apply lt_irrefl in lt_col.
 
-move/in_bl.
-
-case: ifP; last first.
-
-
-have [|] := boolP (base <=? w1 <? base + sz).
-(ltb_lt base w1).*)
-(* if col = col' then base <= w1 <= base + sz *)
-admit.
+move: get_w1.
+set mi' := mi_malloc _ _ _ _.
+have mi'P := (meminj_spec_malloc base rist malloc miP).
+have eq_mi: PartMaps.get mi' col' = PartMaps.get mi col'.
+  by rewrite (PartMaps.get_set_neq _ _ neq_col).
+rewrite eq_mi; move: eq_mi.
+case: (PartMaps.get mi col') => // [[b' base']] mi'_col'.
+have neq_b': b' <> newb.
+  move=> eq_b'; rewrite eq_b' in mi'_col'.
+  have mi'_col: PartMaps.get mi' col = Some (newb, base).
+    by rewrite PartMaps.get_set_eq.
+  exact/neq_col/(miIr mi'P mi'_col' mi'_col).
+rewrite /Abstract.getv (Abstract.malloc_get_neq malloc neq_b').
+case: (PartMaps.get amem b') => // fr.
+case: (index_list_Z (word_to_Z (w1 - base'))) => // v.
+by move=> rvw2; apply: (refine_val_malloc _ fresh_col malloc).
 Qed.
 
 Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color :

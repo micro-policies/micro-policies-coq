@@ -84,10 +84,10 @@ Class allocator_spec (alloc : allocator) := {
     malloc_fun mem bl sz = (mem',b) ->
       (off < sz)%ordered -> getv mem' (b,off) = Some (VData 0);
 
-  malloc_get' : forall mem bl b fr sz mem' b',
-    get mem b = Some fr ->
-    malloc_fun mem bl sz = (mem',b') -> 
-    get mem b = Some fr;
+  malloc_get_neq : forall mem bl b sz mem' b',
+    malloc_fun mem bl sz = (mem',b') ->
+    b <> b' ->
+    get mem' b = get mem b;
 
 (* Similar requirements on upd_mem are not necessary because they follow from
    the above and PartMaps.axioms. *)
