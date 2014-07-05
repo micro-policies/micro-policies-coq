@@ -261,12 +261,14 @@ Global Instance sym_memory_safety : params := {
 Fixpoint write_block_rec init base (v : atom) n : Symbolic.memory t _ :=
   match n with
   | O => init
-  | S p => if upd init (base + Z_to_word (Z.of_nat n)) 0@FREE is Some mem then
+  | S p => if upd init (base + Z_to_word (Z.of_nat p)) v is Some mem then
            write_block_rec mem base v p else init
   end.
 
 Definition write_block init base (v : atom) sz :=
   write_block_rec init base v (Z.to_nat (word_to_Z sz)).
+
+
 
 Definition update_block_info info x color sz :=
   let i := index x info in
