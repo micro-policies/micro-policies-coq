@@ -445,11 +445,11 @@ Proof.
       destruct (f x); reflexivity.
 Qed.
 
-Theorem map_options_in : forall {A B} (f : A -> option B) xs ys y,
+Theorem map_options_in : forall {A B} (f : A -> option B) xs ys,
   map_options f xs = Some ys ->
-  (In y ys <-> (exists x, f x = Some y /\ In x xs)).
+  forall y, In y ys <-> (exists x, f x = Some y /\ In x xs).
 Proof.
-  induction xs as [|x xs]; simpl; unfold bind; intros until 0; intros SOME.
+  induction xs as [|x xs]; simpl; unfold bind; intros until 0; intros SOME y.
   - inversion_clear SOME; simpl; split; [|intros []]; tauto.
   - destruct (f x) as [y'|] eqn:fx; [|congruence].
     destruct (map_options f xs) as [ys'|]; [|congruence].

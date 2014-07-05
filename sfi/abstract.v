@@ -237,8 +237,6 @@ Definition decode M pc :=
   do! pc_val <- get M pc;
   decode_instr pc_val.
 
-Notation "x ?= y" := (x = Some y) (at level 70, no associativity).
-
 Inductive step (MM MM' : state) : Prop :=
 | step_nop :     forall pc R M C sk prev c
                         (ST : MM = State pc R M C sk prev)
@@ -286,10 +284,10 @@ Inductive step (MM MM' : state) : Prop :=
 
 | step_store :   forall pc R M C sk prev c rsrc rpdest x p M'
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Store _ rsrc rpdest)
+                   (INST  : decode M pc ?= Store _ rpdest rsrc)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (GETRS : get R rsrc   ?= x)
-                   (GETRD : get R rpdest ?= p)
+                   (GETRS : get R rpdest ?= p)
+                   (GETRD : get R rsrc   ?= x)
                    (VALID : In p (address_space c ++ shared_memory c))
                    (UPDR  : upd M p x ?= M')
                    (NEXT  : MM' = State (pc + 1) R M' C INTERNAL c),
@@ -323,7 +321,7 @@ Inductive step (MM MM' : state) : Prop :=
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR  : get R rtgt ?= pc')
                    (UPDR  : upd R ra (pc + 1) ?= R')
-                   (NEXT  : MM' = State pc' R' M C INTERNAL c),
+                   (NEXT  : MM' = State pc' R' M C JUMPED c),
                         step MM MM'
 
 | step_syscall : forall pc R M C sk prev sc
@@ -394,7 +392,7 @@ Lemma good_compartment__is_set_address_space : forall c,
 Proof.
   unfold good_compartment; intros; repeat rewrite -> andb_true_iff in *; tauto.
 Qed.
-Hint Resolve good_compartment__is_set_address_space.
+(*Global*) Hint Resolve good_compartment__is_set_address_space.
 
 (* For `auto' *)
 Lemma good_compartment__is_set_jump_targets : forall c,
@@ -402,7 +400,7 @@ Lemma good_compartment__is_set_jump_targets : forall c,
 Proof.
   unfold good_compartment; intros; repeat rewrite -> andb_true_iff in *; tauto.
 Qed.
-Hint Resolve good_compartment__is_set_jump_targets.
+(*Global*) Hint Resolve good_compartment__is_set_jump_targets.
 
 (* For `auto' *)
 Lemma good_compartment__is_set_shared_memory : forall c,
@@ -410,7 +408,7 @@ Lemma good_compartment__is_set_shared_memory : forall c,
 Proof.
   unfold good_compartment; intros; repeat rewrite -> andb_true_iff in *; tauto.
 Qed.
-Hint Resolve good_compartment__is_set_shared_memory.
+(*Global*) Hint Resolve good_compartment__is_set_shared_memory.
 
 (* For `auto' *)
 Lemma good_compartment_decomposed__is_set_address_space : forall A J S,
@@ -419,7 +417,7 @@ Proof.
   clear S; intros A J S GOOD;
   apply good_compartment__is_set_address_space in GOOD; exact GOOD.
 Qed.
-Hint Resolve good_compartment_decomposed__is_set_address_space.
+(*Global*) Hint Resolve good_compartment_decomposed__is_set_address_space.
 
 (* For `auto' *)
 Lemma good_compartment_decomposed__is_set_jump_targets : forall A J S,
@@ -428,7 +426,7 @@ Proof.
   clear S; intros A J S GOOD;
   apply good_compartment__is_set_jump_targets in GOOD; exact GOOD.
 Qed.
-Hint Resolve good_compartment_decomposed__is_set_jump_targets.
+(*Global*) Hint Resolve good_compartment_decomposed__is_set_jump_targets.
 
 (* For `auto' *)
 Lemma good_compartment_decomposed__is_set_shared_memory : forall A J S,
@@ -437,7 +435,7 @@ Proof.
   clear S; intros A J S GOOD;
   apply good_compartment__is_set_shared_memory in GOOD; exact GOOD.
 Qed.
-Hint Resolve good_compartment_decomposed__is_set_shared_memory.
+(*Global*) Hint Resolve good_compartment_decomposed__is_set_shared_memory.
 
 (*** Proofs for `good_compartments' ***)
 
@@ -450,19 +448,19 @@ Local Ltac good_compartments_trivial :=
 Lemma good_compartments__all_good_compartment : forall C,
   good_compartments C = true -> forallb good_compartment C = true.
 Proof. good_compartments_trivial. Qed.
-Hint Resolve good_compartments__all_good_compartment.
+(*Global*) Hint Resolve good_compartments__all_good_compartment.
 
 (* For `auto' *)
 Lemma good_compartments__non_overlapping : forall C,
   good_compartments C = true -> non_overlapping C = true.
 Proof. good_compartments_trivial. Qed.
-Hint Resolve good_compartments__non_overlapping.
+(*Global*) Hint Resolve good_compartments__non_overlapping.
 
 (* For `auto' *)
 Lemma good_compartments__contained_compartments : forall C,
   good_compartments C = true -> contained_compartments C = true.
 Proof. good_compartments_trivial. Qed.
-Hint Resolve good_compartments__contained_compartments.
+(*Global*) Hint Resolve good_compartments__contained_compartments.
 
 Lemma good_compartment_in : forall c C,
   good_compartments C = true ->
@@ -473,7 +471,7 @@ Proof.
     eapply good_compartments__all_good_compartment, forallb_forall in GOOD;
     eassumption.
 Qed.
-Hint Resolve good_compartment_in.
+(*Global*) Hint Resolve good_compartment_in.
 
 Lemma good_in2_disjoint_comm : forall c1 c2 C,
   forallb good_compartment C = true ->
@@ -485,7 +483,7 @@ Proof.
   apply in2_in in IN2; destruct IN2.
   rewrite ->forallb_forall in GOOD; apply disjoint_comm; eauto.
 Qed.
-Hint Resolve good_in2_disjoint_comm.
+(*Global*) Hint Resolve good_in2_disjoint_comm.
 
 Theorem good_no_duplicates : forall C,
   good_compartments C = true ->
@@ -498,7 +496,7 @@ Proof.
     destruct GOOD as [[GOOD NOL] CC]; eauto 2.
   eapply all_pairs_distinct_nodup; [|eassumption]; cbv beta; auto.
 Qed.
-Hint Resolve good_no_duplicates.
+(*Global*) Hint Resolve good_no_duplicates.
 
 (*** Proofs for `non_overlapping' ***)
 
@@ -513,7 +511,7 @@ Proof.
   apply all_pairs__all_tail_pairs.
   rewrite <-all_pairs_in2_comm in NOL; eauto 2.
 Qed.
-Hint Resolve non_overlapping_subset.
+(*Global*) Hint Resolve non_overlapping_subset.
 
 Theorem non_overlapping_tail : forall c C,
   non_overlapping (c :: C) = true -> non_overlapping C = true.
@@ -521,7 +519,7 @@ Proof.
   unfold non_overlapping; intros c C NOL;
   rewrite ->all_tail_pairs_tail, ->andb_true_iff in NOL; tauto.
 Qed.
-Hint Resolve non_overlapping_tail.
+(*Global*) Hint Resolve non_overlapping_tail.
 
 Theorem non_overlapping_spec : forall C,
   forallb good_compartment C = true ->
@@ -552,7 +550,7 @@ Proof.
     apply non_overlapping_spec' in GOOD;
     apply GOOD; assumption.
 Qed.
-Hint Resolve good_compartments__in2_disjoint.
+(*Global*) Hint Resolve good_compartments__in2_disjoint.
 
 Theorem non_overlapping_delete : forall c C,
   forallb good_compartment C = true ->
@@ -564,13 +562,13 @@ Proof.
   intros c1 c2 IN2; apply NOL.
   eapply in2_delete; eassumption.
 Qed.
-Hint Resolve non_overlapping_delete.
+(*Global*) Hint Resolve non_overlapping_delete.
 
 Corollary non_overlapping_delete' : forall c C,
   good_compartments C = true ->
   non_overlapping (delete c C) = true.
 Proof. auto. Qed.
-Hint Resolve non_overlapping_delete'.
+(*Global*) Hint Resolve non_overlapping_delete'.
 
 Lemma non_overlapping_replace : forall c c' C,
   forallb good_compartment C = true ->
@@ -586,7 +584,7 @@ Proof.
   destruct (forallb _ (delete _ _)); [simpl | reflexivity].
   apply non_overlapping_delete; assumption.
 Qed.
-Hint Resolve non_overlapping_replace.
+(*Global*) Hint Resolve non_overlapping_replace.
 
 Lemma non_overlapping_replace' : forall c c' C,
   good_compartments C = true ->
@@ -594,7 +592,7 @@ Lemma non_overlapping_replace' : forall c c' C,
   forallb (fun c'' => disjoint (address_space c') (address_space c''))
           (delete c C).
 Proof. auto. Qed.
-Hint Resolve non_overlapping_replace'.
+(*Global*) Hint Resolve non_overlapping_replace'.
 
 (*** Proofs for `in_compartment' and `in_compartment_opt' ***)
 
@@ -728,12 +726,12 @@ Theorem in_compartment_element : forall C p c,
   C ⊢ p ∈ c ->
   In c C.
 Proof. induction 1; auto. Qed.
-Hint Resolve in_compartment_element.
+(*Global*) Hint Resolve in_compartment_element.
 
 Theorem in_compartment__in_address_space : forall C p c,
   C ⊢ p ∈ c -> In p (address_space c).
 Proof. induction C; inversion 1; subst; auto. Qed.
-Hint Resolve in_compartment__in_address_space.
+(*Global*) Hint Resolve in_compartment__in_address_space.
 
 Theorem in_compartment_spec : forall C p c,
   C ⊢ p ∈ c <-> In c C /\ In p (address_space c).
@@ -752,7 +750,7 @@ Theorem in_same_compartment : forall C p p' c,
   In p' (address_space c) ->
   C ⊢ p' ∈ c.
 Proof. induction 1; auto. Qed.
-Hint Resolve in_same_compartment.
+(*Global*) Hint Resolve in_same_compartment.
 
 Theorem unique_here_not_there : forall C p c,
   ~ In c C       ->
@@ -764,7 +762,7 @@ Proof.
   assert (IN2 : In2 c c (c :: C)) by auto.
   inversion IN2; subst; auto.
 Qed.
-Hint Resolve unique_here_not_there.
+(*Global*) Hint Resolve unique_here_not_there.
 
 Theorem unique_must_be_here : forall C p c c',
   ~ In c' C        ->
@@ -775,7 +773,7 @@ Proof.
   inversion IC; subst; auto.
   contradict OUT; eauto 2.
 Qed.
-Hint Resolve unique_must_be_here.
+(*Global*) Hint Resolve unique_must_be_here.
  
 Theorem in_same_compartment__overlapping : forall C p c1 c2,
   good_compartment c1 = true -> good_compartment c2 = true ->
@@ -793,7 +791,7 @@ Proof.
   - inversion IN.
   - reflexivity.
 Qed.
-Hint Resolve in_same_compartment__overlapping.
+(*Global*) Hint Resolve in_same_compartment__overlapping.
 
 Theorem in_compartment_opt_correct : forall C p c,
   forallb good_compartment C = true -> 
@@ -807,13 +805,13 @@ Proof.
   - inversion ICO; subst; destruct c; auto.
   - auto 10.
 Qed.
-Hint Resolve in_compartment_opt_correct.
+(*Global*) Hint Resolve in_compartment_opt_correct.
 
 Corollary in_compartment_opt_correct' : forall C p c,
   good_compartments C = true -> 
   in_compartment_opt C p ?= c -> C ⊢ p ∈ c.
 Proof. auto. Qed.
-Hint Resolve in_compartment_opt_correct'.
+(*Global*) Hint Resolve in_compartment_opt_correct'.
 
 Theorem in_compartment_opt_missing_correct : forall C p,
   forallb good_compartment C = true ->
@@ -826,13 +824,13 @@ Proof.
   - congruence.
   - inversion IC; subst; [simpl in *; congruence | eapply IHC; eauto].
 Qed.
-Hint Resolve in_compartment_opt_missing_correct.
+(*Global*) Hint Resolve in_compartment_opt_missing_correct.
 
 Corollary in_compartment_opt_missing_correct' : forall C p,
   good_compartments C = true ->
   in_compartment_opt C p = None -> forall c, ~ C ⊢ p ∈ c.
 Proof. auto. Qed.
-Hint Resolve in_compartment_opt_missing_correct'.
+(*Global*) Hint Resolve in_compartment_opt_missing_correct'.
 
 Theorem in_compartment_opt_present : forall C p c,
   forallb good_compartment C = true ->
@@ -847,13 +845,13 @@ Proof.
       [reflexivity | congruence].
   - simpl; (destruct set_elem by auto); eauto.
 Qed.
-Hint Resolve in_compartment_opt_present.
+(*Global*) Hint Resolve in_compartment_opt_present.
 
 Corollary in_compartment_opt_present' : forall C p c,
   good_compartments C = true ->
   C ⊢ p ∈ c -> exists c', in_compartment_opt C p ?= c'.
 Proof. eauto. Qed.
-Hint Resolve in_compartment_opt_present'.
+(*Global*) Hint Resolve in_compartment_opt_present'.
 
 Corollary in_compartment_opt_is_some : forall C p c,
   good_compartments C = true ->
@@ -862,7 +860,7 @@ Proof.
   intros C p c GOOD IC; apply in_compartment_opt_present in IC; auto.
   destruct IC as [c' ICO]; rewrite ICO; reflexivity.
 Qed.
-Hint Resolve in_compartment_opt_is_some.
+(*Global*) Hint Resolve in_compartment_opt_is_some.
 
 Theorem in_compartment_opt_sound : forall C p c,
   forallb good_compartment C = true -> non_overlapping C = true ->
@@ -885,14 +883,14 @@ Proof.
     rewrite ->nil_iff_not_in in SI; specialize SI with p.
     rewrite ->set_intersection_spec in SI by eauto; tauto.
 Qed.
-Hint Resolve in_compartment_opt_sound.
+(*Global*) Hint Resolve in_compartment_opt_sound.
 
 Corollary in_compartment_opt_sound' : forall C p c,
   good_compartments C = true ->
   C ⊢ p ∈ c ->
   in_compartment_opt C p ?= c.
 Proof. auto. Qed.
-Hint Resolve in_compartment_opt_sound'.
+(*Global*) Hint Resolve in_compartment_opt_sound'.
 
 Corollary in_compartment_opt_sound_is_some : forall C p c,
   forallb good_compartment C = true -> non_overlapping C = true ->
@@ -901,13 +899,13 @@ Proof.
   intros C p c GOOD NOL IC;
     apply in_compartment_opt_sound in IC; [rewrite IC | | ]; auto.
 Qed.
-Hint Resolve in_compartment_opt_sound_is_some.
+(*Global*) Hint Resolve in_compartment_opt_sound_is_some.
 
 Corollary in_compartment_opt_sound_is_some' : forall C p c,
   good_compartments C = true ->
   C ⊢ p ∈ c -> is_some (in_compartment_opt C p) = true.
 Proof. eauto. Qed.
-Hint Resolve in_compartment_opt_sound_is_some'.
+(*Global*) Hint Resolve in_compartment_opt_sound_is_some'.
 
 (*** Proofs for `contained_compartments' ***)
 
@@ -958,7 +956,7 @@ Proof.
   rewrite -> nil_iff_not_in in SI; specialize SI with a.
   rewrite -> set_intersection_spec in SI by eauto 3; tauto.
 Qed.
-Hint Resolve good_in2_no_common_addresses.
+(*Global*) Hint Resolve good_in2_no_common_addresses.
 
 Theorem in_unique_compartment : forall C p c1 c2,
   good_compartments C = true ->
@@ -975,7 +973,7 @@ Proof.
   have [|/eqP neq_c1c2] := altP (c1 =P c2); auto.
   lapply (NOL c1 c2); [congruence | eauto].
 Qed.
-Hint Resolve in_unique_compartment.
+(*Global*) Hint Resolve in_unique_compartment.
 
 (*** Proofs about `good_state' ***)
 
@@ -986,7 +984,7 @@ Lemma good_state__previous_is_compartment : forall MM,
 Proof.
   unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.
 Qed.
-Hint Resolve good_state__previous_is_compartment.
+(*Global*) Hint Resolve good_state__previous_is_compartment.
 
 (* For `auto' *)
 Lemma good_state_decomposed__previous_is_compartment : forall pc R M C sk prev,
@@ -996,7 +994,7 @@ Proof.
   intros pc R M C sk prev;
     apply (good_state__previous_is_compartment (State pc R M C sk prev)).
 Qed.
-Hint Resolve good_state_decomposed__previous_is_compartment.
+(*Global*) Hint Resolve good_state_decomposed__previous_is_compartment.
 
 (* For `auto' *)
 Lemma good_state__previous_is_good : forall MM,
@@ -1007,7 +1005,7 @@ Proof.
     repeat rewrite ->andb_true_iff in *; repeat invh and;
     destruct (elem _ _); simpl in *; eauto.
 Qed.
-Hint Resolve good_state__previous_is_good.
+(*Global*) Hint Resolve good_state__previous_is_good.
 
 (* For `auto' *)
 Lemma good_state_decomposed__previous_is_good : forall pc R M C sk prev,
@@ -1017,7 +1015,7 @@ Proof.
   intros until 0; intros GOOD; apply good_state__previous_is_good in GOOD;
     exact GOOD.
 Qed.
-Hint Resolve good_state_decomposed__previous_is_good.
+(*Global*) Hint Resolve good_state_decomposed__previous_is_good.
 
 (* For `auto' *)
 Lemma good_state__good_compartments : forall MM,
@@ -1025,7 +1023,7 @@ Lemma good_state__good_compartments : forall MM,
 Proof.
   unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.
 Qed.
-Hint Resolve good_state__good_compartments.
+(*Global*) Hint Resolve good_state__good_compartments.
 
 (* For `auto' *)
 Lemma good_state_decomposed__good_compartments : forall pc R M C sk prev,
@@ -1034,7 +1032,7 @@ Proof.
   intros pc R M C sk prev;
     apply (good_state__good_compartments (State pc R M C sk prev)).
 Qed.
-Hint Resolve good_state_decomposed__good_compartments.
+(*Global*) Hint Resolve good_state_decomposed__good_compartments.
 
 (* For `auto' *)
 Lemma good_state__syscalls_separated : forall MM,
@@ -1042,7 +1040,7 @@ Lemma good_state__syscalls_separated : forall MM,
 Proof.
   unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.
 Qed.
-Hint Resolve good_state__syscalls_separated.
+(*Global*) Hint Resolve good_state__syscalls_separated.
 
 (* For `auto' *)
 Lemma good_state_decomposed__syscalls_separated : forall pc R M C sk prev,
@@ -1051,7 +1049,7 @@ Proof.
   intros pc R M C sk prev;
     apply (good_state__syscalls_separated (State pc R M C sk prev)).
 Qed.
-Hint Resolve good_state_decomposed__syscalls_separated.
+(*Global*) Hint Resolve good_state_decomposed__syscalls_separated.
 
 (* For `auto' *)
 Lemma good_state__syscalls_present : forall MM,
@@ -1059,7 +1057,7 @@ Lemma good_state__syscalls_present : forall MM,
 Proof.
   unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.
 Qed.
-Hint Resolve good_state__syscalls_present.
+(*Global*) Hint Resolve good_state__syscalls_present.
 
 (* For `auto' *)
 Lemma good_state_decomposed__syscalls_present : forall pc R M C sk prev,
@@ -1068,7 +1066,7 @@ Proof.
   intros pc R M C sk prev;
     apply (good_state__syscalls_present (State pc R M C sk prev)).
 Qed.
-Hint Resolve good_state_decomposed__syscalls_present.
+(*Global*) Hint Resolve good_state_decomposed__syscalls_present.
 
 (*** Proofs for `permitted_now_in' ***)
 
@@ -1391,7 +1389,7 @@ Proof.
       apply in_compartment_opt_sound in IC'; auto.
       rewrite IC'; auto.
 Qed.
-Hint Resolve isolate_good.
+(*Global*) Hint Resolve isolate_good.
 
 Lemma good_compartments_preserved_for_add_to_compartment_component :
   forall c c' C,
@@ -1537,7 +1535,7 @@ Proof.
     intros; destruct c as [A J S]; auto.
   unfold good_compartment; repeat andb_true_split; eauto 2.
 Qed.
-Hint Resolve add_to_jump_targets_good.
+(*Global*) Hint Resolve add_to_jump_targets_good.
 
 Theorem add_to_shared_memory_good : forall MM,
   good_syscall add_to_shared_memory MM = true.
@@ -1547,31 +1545,31 @@ Proof.
     intros; destruct c as [A J S]; auto.
   unfold good_compartment; repeat andb_true_split; eauto 2.
 Qed.
-Hint Resolve add_to_shared_memory_good.
+(*Global*) Hint Resolve add_to_shared_memory_good.
 
 Corollary good_syscalls_b : forall MM,
   forallb (fun sc => good_syscall sc MM) table = true.
 Proof. unfold table; simpl; intros; andb_true_split; auto. Qed.
-Hint Resolve good_syscalls_b.
+(*Global*) Hint Resolve good_syscalls_b.
 
 Corollary good_syscalls : forall MM sc,
   In sc table -> good_syscall sc MM = true.
 Proof. intros MM; apply forallb_forall; auto. Qed.
-Hint Resolve good_syscalls.
+(*Global*) Hint Resolve good_syscalls.
 
 Lemma get_syscall_in : forall addr sc,
   get_syscall addr ?= sc -> In sc table.
 Proof.
   unfold get_syscall; intros addr sc GS; apply find_in in GS; tauto.
 Qed.
-Hint Resolve get_syscall_in.
+(*Global*) Hint Resolve get_syscall_in.
 
 Lemma get_syscall_good : forall addr sc,
   get_syscall addr ?= sc -> forall MM, good_syscall sc MM = true.
 Proof.
   intros addr sc GS; apply get_syscall_in in GS; auto.
 Qed.
-Hint Resolve get_syscall_good.
+(*Global*) Hint Resolve get_syscall_good.
 
 (*** Proofs about the machine. ***)
 
@@ -1674,7 +1672,7 @@ Proof.
    (apply syscall_step_preserves_good with MM sc; subst; assumption);
    auto.
 Qed.
-Hint Resolve previous_compartment.
+(*Global*) Hint Resolve previous_compartment.
 
 Lemma good_compartments_preserved : forall `(STEP : step MM MM'),
   good_state MM = true -> (* Full strength only needed for syscalls *)
@@ -1688,7 +1686,7 @@ Proof.
    (apply syscall_step_preserves_good with MM sc; subst; assumption);
    auto.
 Qed.
-Hint Resolve good_compartments_preserved.
+(*Global*) Hint Resolve good_compartments_preserved.
 
 Lemma syscalls_separated_preserved : forall `(STEP : step MM MM'),
   good_state MM = true ->
@@ -1749,7 +1747,7 @@ Proof.
   - eapply syscalls_separated_preserved; eassumption.
   - eapply syscalls_present_preserved; eassumption.
 Qed.
-Hint Resolve good_state_preserved.
+(*Global*) Hint Resolve good_state_preserved.
 
 Lemma step__permitted_now_in : forall `(STEP : step MM MM'),
   good_state MM ->
@@ -1940,7 +1938,79 @@ Qed.
 
 End WithClasses.
 
+Module Notations.
+(* Repeated notations *)
 Notation memory t := (word_map t (word t)).
 Notation registers t := (reg_map t (word t)).
+Notation "<< A , J , S >>" := (Compartment _ A J S) (format "<< A , J , S >>").
+Notation "C ⊢ p ∈ c" := (in_compartment p C c) (at level 70).
+Notation "C ⊢ p1 , p2 , .. , pk ∈ c" :=
+  (and .. (and (C ⊢ p1 ∈ c) (C ⊢ p2 ∈ c)) .. (C ⊢ pk ∈ c))
+  (at level 70).
+End Notations.
+
+Module Hints.
+(* Can be updated automatically by an Emacs script; see `global-hint.el' *)
+(* Start globalized hint section *)
+Hint Resolve good_compartment__is_set_address_space.
+Hint Resolve good_compartment__is_set_jump_targets.
+Hint Resolve good_compartment__is_set_shared_memory.
+Hint Resolve good_compartment_decomposed__is_set_address_space.
+Hint Resolve good_compartment_decomposed__is_set_jump_targets.
+Hint Resolve good_compartment_decomposed__is_set_shared_memory.
+Hint Resolve good_compartments__all_good_compartment.
+Hint Resolve good_compartments__non_overlapping.
+Hint Resolve good_compartments__contained_compartments.
+Hint Resolve good_compartment_in.
+Hint Resolve good_in2_disjoint_comm.
+Hint Resolve good_no_duplicates.
+Hint Resolve non_overlapping_subset.
+Hint Resolve non_overlapping_tail.
+Hint Resolve good_compartments__in2_disjoint.
+Hint Resolve non_overlapping_delete.
+Hint Resolve non_overlapping_delete'.
+Hint Resolve non_overlapping_replace.
+Hint Resolve non_overlapping_replace'.
+Hint Resolve in_compartment_element.
+Hint Resolve in_compartment__in_address_space.
+Hint Resolve in_same_compartment.
+Hint Resolve unique_here_not_there.
+Hint Resolve unique_must_be_here.
+Hint Resolve in_same_compartment__overlapping.
+Hint Resolve in_compartment_opt_correct.
+Hint Resolve in_compartment_opt_correct'.
+Hint Resolve in_compartment_opt_missing_correct.
+Hint Resolve in_compartment_opt_missing_correct'.
+Hint Resolve in_compartment_opt_present.
+Hint Resolve in_compartment_opt_present'.
+Hint Resolve in_compartment_opt_is_some.
+Hint Resolve in_compartment_opt_sound.
+Hint Resolve in_compartment_opt_sound'.
+Hint Resolve in_compartment_opt_sound_is_some.
+Hint Resolve in_compartment_opt_sound_is_some'.
+Hint Resolve good_in2_no_common_addresses.
+Hint Resolve in_unique_compartment.
+Hint Resolve good_state__previous_is_compartment.
+Hint Resolve good_state_decomposed__previous_is_compartment.
+Hint Resolve good_state__previous_is_good.
+Hint Resolve good_state_decomposed__previous_is_good.
+Hint Resolve good_state__good_compartments.
+Hint Resolve good_state_decomposed__good_compartments.
+Hint Resolve good_state__syscalls_separated.
+Hint Resolve good_state_decomposed__syscalls_separated.
+Hint Resolve good_state__syscalls_present.
+Hint Resolve good_state_decomposed__syscalls_present.
+Hint Resolve isolate_good.
+Hint Resolve add_to_jump_targets_good.
+Hint Resolve add_to_shared_memory_good.
+Hint Resolve good_syscalls_b.
+Hint Resolve good_syscalls.
+Hint Resolve get_syscall_in.
+Hint Resolve get_syscall_good.
+Hint Resolve previous_compartment.
+Hint Resolve good_compartments_preserved.
+Hint Resolve good_state_preserved.
+(* End globalized hint section *)
+End Hints.
 
 End Abs.
