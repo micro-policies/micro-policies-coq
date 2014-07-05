@@ -63,19 +63,6 @@ Instance fhp : fault_handler_params t := concrete_int_32_fh.
 (* ---------------------------------------------------------------- *)
 (* Generic definitions for building concrete machine instances *)
 
-(* TODO: Belongs in symbolic/int_32, I think *)
-
-(* BCP/MD: These should all be distinct from monitor registers in
-   symbolic.int_32, though this should not cause axiom failures --
-   just puzzling user program errors! *)
-
-Global Instance scr : @syscall_regs t := {|
-  syscall_ret  := Int32.repr 16;
-  syscall_arg1 := Int32.repr 17;
-  syscall_arg2 := Int32.repr 18;
-  syscall_arg3 := Int32.repr 19
-|}.
-
 Definition ruser1 := Int32.repr 20.
 Definition ruser2 := Int32.repr 21.
 Definition ruser3 := Int32.repr 22.

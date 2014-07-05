@@ -197,4 +197,15 @@ Program Definition symbolic_initial_state
     Symbolic.internal := initial_internal_state
   |}.
 
+(* BCP/MD: These should all be distinct from monitor registers in
+   symbolic.int_32, though this should not cause axiom failures --
+   just puzzling user program errors! *)
+
+Global Instance concrete_int_32_scr : @syscall_regs concrete_int_32_t := {|
+  syscall_ret  := Int32.repr 16;
+  syscall_arg1 := Int32.repr 17;
+  syscall_arg2 := Int32.repr 18;
+  syscall_arg3 := Int32.repr 19
+|}.
+
 End WithClasses.
