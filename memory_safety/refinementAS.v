@@ -64,6 +64,9 @@ Hypothesis binop_sub_add2l : forall x y z,
 Hypothesis binop_eq_add2l : forall x y z,
   binop_denote EQ (x + y) (x + z) = binop_denote EQ y z.
 
+Hypothesis ltwSw : forall w,
+  (w < max_word -> w < w + 1)%ordered.
+
 Section memory_injections.
 
 (*
@@ -568,13 +571,31 @@ Qed.
 
 Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color :
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
+  (color < max_word)%ordered ->
   refine_internal_state mi bl smem (color, info) ->
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
     (newb :: bl)
      (Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz)
      (color + 1, Sym.update_block_info info bi color sz).
 Proof.
+move=> malloc [lt_color [fresh_color [in_bl biP]]].
+split.
+  rewrite /refinement.fresh_color.
+  move=> col b base.
+  have [-> _|/eqP neq_col] := altP (col =P color).
+    exact: ltwSw.
+  rewrite (PartMaps.get_set_neq _ _ neq_col).
+  move/fresh_color => lt_col.
+  apply: (lt_trans col color) => //.
+  exact: ltwSw.
+split.
+  move=> col b base.
+  have [->|/eqP neq_col] := altP (col =P color).
+    by rewrite PartMaps.get_set_eq => [[<- _]]; rewrite inE eqxx.
+  by rewrite (PartMaps.get_set_neq _ _ neq_col) inE => /in_bl ->; rewrite orbT.
 admit.
+
+
 Qed.
 
 Hint Constructors refine_val refine_val.
@@ -773,7 +794,7 @@ by solve_pc rpci.
 
 (* Syscall *)
 
-  move: b Heqo E => bi Heqo E.
+  move: b Heqo E0 => bi Heqo E0.
   case: (rist)=> fresh_color [in_bl].
   move/(_ bi _).
   have: bi \in [seq x <- info
@@ -785,8 +806,8 @@ by solve_pc rpci.
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/andP [lt_val /eqP color_bi in_bi]].
   rewrite in_bi => /(_ erefl) biP.
-  case: biP Heqo E color_bi in_bi lt_val; first by move=> *; congruence.
-  move=> {bi} bi _ FREE Heqo E color_bi in_bi lt_val.
+  case: biP Heqo E0 color_bi in_bi lt_val; first by move=> *; congruence.
+  move=> {bi} bi _ FREE Heqo E0 color_bi in_bi lt_val.
 
 
   case malloc: (Abstract.malloc_fun a_mem bl val) => [amem' newb].
@@ -796,11 +817,12 @@ by solve_pc rpci.
     by rewrite /mi' /mi_malloc PartMaps.get_set_eq.
 
   move/(refine_registers_malloc (Sym.block_base bi) fresh_color malloc): rregs => rregs.
-  eapply (refine_registers_upd rregs rnewb) in E.
-  destruct E as (? & ? & ?).
+  eapply (refine_registers_upd rregs rnewb) in E0.
+  destruct E0 as (? & ? & ?).
 
   eexists; exists (mi_malloc mi newb (Sym.block_base bi) color); split.
   eapply Abstract.step_malloc.
+  by eauto.
   by eauto.
   by eauto.
   by eauto.
@@ -809,7 +831,8 @@ by solve_pc rpci.
   split; try eassumption.
   exact: (refine_memory_malloc _ rmem rist malloc).
   exact: (refine_val_malloc _ fresh_color malloc).
-  exact: (refine_internal_state_malloc _ malloc).
+  apply ltb_lt in E.
+  exact: (refine_internal_state_malloc _ malloc E).
 
 (* Free *)
 

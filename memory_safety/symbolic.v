@@ -273,16 +273,15 @@ Definition write_block init base (v : atom) sz :=
 Definition update_block_info info x color sz :=
   let i := index x info in
   let block1 := mkBlockInfo (block_base x) sz (Some color) in
-  let pre := take i info in
-  let post := drop (i+1) info in
-  if sz == block_size x then
-    pre ++ [block1] ++ post
-  else
+  let res := set_nth block1 info i block1 in
+  if sz == block_size x then res
+    else
     let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
-    pre ++ [block1;block2] ++ post.
+    block2 :: res.
 
 Definition malloc_fun st : option (state t) :=
   let: (color,info) := internal st in
+  if (color <? max_word)%ordered then
   do! sz <- get (regs st) syscall_arg1;
   match sz with
     | sz@V(DATA) =>
@@ -300,7 +299,8 @@ Definition malloc_fun st : option (state t) :=
         | _ => None
       end
     | _ => None
-  end.
+  end
+  else None.
 
 Definition def_info : block_info :=
   mkBlockInfo 0 0 None.
