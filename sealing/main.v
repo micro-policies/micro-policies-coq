@@ -10,13 +10,16 @@ Require Import lib.utils lib.partial_maps common.common.
 Require Import lib.FiniteMaps.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
+Require Import concrete.exec.
 Require Import symbolic.int_32.
 Require Import symbolic.symbolic.
-Require Import sealing.symbolic.
-Require Import symbolic.fault_handler.
-Require Import sealing.abstract.
+Require Import symbolic.refinement_common.
+Require Import symbolic.backward.
 Require Import symbolic.rules.
-Require Import concrete.exec.
+Require Import symbolic.fault_handler.
+Require Import sealing.symbolic.
+Require Import sealing.abstract.
+Require Import sealing.refinementSA.
 Require Import Integers.
 Require Import Omega.
 
@@ -763,7 +766,55 @@ Symbolic Machine: Compute (run_sym 2000 hello_world5).
 
 Abstract Machine: Compute (run_abs 2000 hello_world5). *)
 
-(* TODO: Refinement proof from concrete to abstract instances *)
+Section Refinement.
+
+Instance sp : Symbolic.params := @Sym.sym_sealing sk_defs.
+
+Context {enc : encodable Symbolic.tag}
+        {sealing_invariant : policy_invariant t ops}.
+
+Let monitor_invariant := fault_handler_invariant t ops fhp transfer_function sealing_invariant.
+
+Context {implementation_correct : kernel_code_correctness monitor_invariant Sym.sealing_syscalls}.
+
+Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
+| rs_intro : forall sst m,
+               refinement_common.refine_state monitor_invariant Sym.sealing_syscalls sst cst ->
+               @refinementSA.refine_state t ops sk_defs sk _ nat_partial_map m ast sst ->
+               refine_state ast cst.
+Hint Constructors refine_state.
+
+Lemma backwards_refinement_as ast sst sst' (m : NatPMap.t _) :
+  @refinementSA.refine_state t ops sk_defs sk _ nat_partial_map m ast sst ->
+  exec (Symbolic.step Sym.sealing_syscalls) sst sst' ->
+  exists ast' m',
+    exec (fun ast ast' => Abs.step ast ast') ast ast' /\
+    refinementSA.refine_state m' ast' sst'.
+Proof.
+  move => REF EXEC.
+  elim: EXEC ast m REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] ast m REF; first by eauto 7.
+  exploit refinementSA.backward_simulation; eauto.
+  intros (ast' & m' & STEPA & REF').
+  exploit IH; eauto.
+  intros (ast'' & m'' & EXECA & REF''). by eauto 7.
+Qed.
+
+Lemma backwards_refinement ast cst cst' :
+  refine_state ast cst ->
+  exec (Concrete.step _ masks) cst cst' ->
+  in_user cst' = true ->
+  exists ast',
+    exec (fun ast ast' => Abs.step ast ast') ast ast' /\
+    refine_state ast' cst'.
+Proof.
+  move => [sst m SC AS] EXECC INUSER.
+  generalize (backwards_refinement SC EXECC INUSER).
+  move => [sst' [EXECS SC']].
+  exploit backwards_refinement_as; eauto.
+  intros (ast' & m' & EXECA & AS'). by eauto 7.
+Qed.
+
+End Refinement.
 
 End WithClasses.
 
