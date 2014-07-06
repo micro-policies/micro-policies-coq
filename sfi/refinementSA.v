@@ -41,8 +41,11 @@ Notation satom  := (atom word stag).
 Notation svalue := (@val word stag).
 Notation slabel := (@common.tag word stag).
 
-Notation astate := (@Abs.state t).
-Notation sstate := (@Symbolic.state t sym_sfi).
+Notation astate    := (@Abs.state t).
+Notation sstate    := (@Symbolic.state t sym_sfi).
+Notation AState    := (@Abs.State t).
+Notation SState    := (@Symbolic.State t sym_sfi).
+Notation SInternal := (@Sym.Internal t).
 
 Notation astep := Abs.step.
 Notation sstep := Sym.step.
@@ -321,7 +324,7 @@ Lemma prove_refined_compartment : forall pc instr cid cid' cid'' I W F
   Sym.sget sst pc ?= instr@(Sym.DATA cid'' I W) ->
   (do! guard (cid'' == cid') || ((F == JUMPED) && set_elem cid' I);
    Some cid'') ?= cid ->
-  Abs.good_state (Abs.State pc AR AM AC Ask Aprev) ->
+  Abs.good_state (AState pc AR AM AC Ask Aprev) ->
   forallb (is_some ∘ refined_compartment^~ sst) AC ->
   (forall p, refine_compartment_tag AC sst p) ->
   AC ⊢ pc ∈ c ->
@@ -383,12 +386,12 @@ Lemma prove_permitted_now_in : forall pc instr cid cid' cid'' I W F
                                       AR AM AC Ask Aprev
                                       mem reg int
                                       c,
-  let sst := (Symbolic.State (sp := sym_sfi) mem reg pc@(Sym.PC F cid') int) in
+  let sst := (SState mem reg pc@(Sym.PC F cid') int) in
   Sym.sget sst pc ?= instr@(Sym.DATA cid'' I W) ->
   (Ask == F) && (refined_compartment Aprev sst == Some cid') ->
   (do! guard (cid'' == cid') || ((F == JUMPED) && set_elem cid' I);
    Some cid'') ?= cid ->
-  Abs.good_state (Abs.State pc AR AM AC Ask Aprev) ->
+  Abs.good_state (AState pc AR AM AC Ask Aprev) ->
   Sym.good_state sst ->
   (forall p, refine_compartment_tag AC sst p) ->
   AC ⊢ pc ∈ c ->
@@ -748,12 +751,15 @@ Proof.
     simpl in *.
   
   rewrite /refine_pc_b in RPC.
-  destruct Spc as [pc [F cid'| |]]; try done; move/eqP in RPC; subst.
+  destruct Spc as [pc [F cid| |]]; try done; move/eqP in RPC; subst.
   
   move/id in ISOLATE;
     undo2 ISOLATE i LI;
     undo1 ISOLATE cid_sys;
-    destruct LI as [|cid I W|]; try discriminate;
+    destruct LI as [|cid' I_sys W_sys|]; try discriminate;
+    generalize def_cid_sys => TEMP; rewrite (lock orb) in def_cid_sys;
+      undo1 TEMP COND_sys; move: TEMP => [?]; subst cid';
+      rewrite -(lock orb) in def_cid_sys;
     undo2 ISOLATE c' si';
     undo2 ISOLATE pA LpA; undo2 ISOLATE pJ LpJ; undo2 ISOLATE pS LpS;
     undo1 ISOLATE A'; undo1 ISOLATE NE_A; undo1 ISOLATE sA;
@@ -765,10 +771,29 @@ Proof.
     undo1 ISOLATE NEXT;
     destruct sS as [MS RS pcS siS];
     unoption.
-
+  
   repeat (erewrite refined_reg_value; [|eassumption]).
   rewrite def_pA_LpA def_pJ_LpJ def_pS_LpS def_pc'_Lpc' /=.
   destruct Aprev as [Aprev Jprev Sprev].
+  
+  generalize RCOMP;
+    rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
+    move: RCOMP => [RCOMPS RCTAGS] RCOMP.
+  move: (RCTAGS pc) => RCTAGS'; rewrite def_i_LI in RCTAGS';
+    destruct RCTAGS' as [SET_I_sys [SET_W_sys [c_sys [IN_c_sys RTAG_sys]]]].
+  
+  assert (PNI : Abs.permitted_now_in AC Ask <<Aprev,Jprev,Sprev>> pc ?= c_sys) by
+    (eapply prove_permitted_now_in; eassumption);
+    rewrite PNI; simpl.
+  assert (R_c_sys : refined_compartment
+                      c_sys
+                      (SState SM SR pc@(Sym.PC F cid)
+                              (SInternal Snext SiT SaJT SaST)) ==
+                    Some cid_sys) by
+    (eapply prove_refined_compartment with (pc := pc); eassumption).
+  
+  rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p [x [I [W def_cid]]]].
+
 Admitted.
 
 Theorem add_to_jump_targets_refined : forall ast sst sst',
@@ -819,13 +844,12 @@ Proof.
     destruct RCTAGS' as [SET_I [SET_W [c_sys [IN_c RTAG]]]].
   
   assert (PNI : Abs.permitted_now_in AC Ask Aprev pc ?= c_sys) by
-    (eapply prove_permitted_now_in; eassumption).
+    (eapply prove_permitted_now_in; eassumption);
     rewrite PNI; simpl.
   assert (R_c_sys : refined_compartment
                       c_sys
-                      (Symbolic.State (sp := sym_sfi)
-                                      SM SR pc@(Sym.PC F cid')
-                                      (Sym.Internal Snext SiT SaJT SaST)) ==
+                      (SState SM SR pc@(Sym.PC F cid')
+                              (SInternal Snext SiT SaJT SaST)) ==
                     Some cid_sys) by
     (eapply prove_refined_compartment with (pc := pc); eassumption).
   
@@ -914,11 +938,9 @@ Proof.
   
   assert (EQUICOMPARTMENTAL :
             equicompartmental
-              (Symbolic.State (sp := sym_sfi)
-                              SM SR pc@(Sym.PC F cid')
-                              (Sym.Internal Snext SiT SaJT SaST))
-              (Symbolic.State (sp := sym_sfi)
-                              M_next R_next not_pc si_next)). {
+              (SState SM SR pc@(Sym.PC F cid')
+                      (SInternal Snext SiT SaJT SaST))
+              (SState M_next R_next not_pc si_next)). {
     rewrite /equicompartmental; intros a.
     destruct (a == p) eqn:EQ; move/eqP in EQ; [subst p|].
     - eapply Sym.sget_supd_eq in def_s'; eauto.
@@ -985,20 +1007,13 @@ Proof.
   eexists; split; [reflexivity|].
   
   assert (sget_next_spec : forall a,
-            Sym.sget (Symbolic.State (sp := sym_sfi)
-                                     M_next R_next not_pc si_next)
-                     a =
-            Sym.sget (Symbolic.State (sp := sym_sfi)
-                                     SM SR pc@(Sym.PC F cid')
-                                     (Sym.Internal Snext SiT SaJT SaST))
-                     a
+            Sym.sget (SState M_next R_next not_pc si_next) a =
+            Sym.sget (SState SM SR pc@(Sym.PC F cid')
+                             (SInternal Snext SiT SaJT SaST)) a
             
             \/
-            (Sym.sget (Symbolic.State (sp := sym_sfi)
-                                      M_next R_next not_pc si_next)
-                      a ?=
-             x@(Sym.DATA cid'' (insert_unique cid' I'') W'')
-             /\
+            (Sym.sget (SState M_next R_next not_pc si_next) a ?=
+               x@(Sym.DATA cid'' (insert_unique cid' I'') W'') /\
              p = a))
     by abstract
          (intros a; destruct (a == p) eqn:EQ; move/eqP in EQ; subst;
@@ -1050,12 +1065,10 @@ Proof.
       * rewrite (lock refined_compartment); simpl.
         { apply/andP; split.
         - rewrite -(lock refined_compartment); move: RPREV => /eqP; simpl.
-          set sst := Symbolic.State (sp := sym_sfi)
-                                    SM R_next pc@(Sym.PC F cid')
-                                    (Sym.Internal Snext SiT SaJT SaST).
-          set sst' := Symbolic.State (sp := sym_sfi)
-                                     M_next R_next pc'@(Sym.PC JUMPED cid_sys)
-                                     (Sym.Internal Snext SiT SaJT SaST).
+          set sst := SState SM R_next pc@(Sym.PC F cid')
+                            (SInternal Snext SiT SaJT SaST).
+          set sst' := SState M_next R_next pc'@(Sym.PC JUMPED cid_sys)
+                             (SInternal Snext SiT SaJT SaST).
           assert (GOOD : forall p, Sym.good_memory_tag sst  p) by auto.
           assert (GOOD' : forall p, Sym.good_memory_tag sst' p) by admit.
           assert (COMPAT : tags_subsets sst sst') by admit.
@@ -1192,17 +1205,11 @@ Proof.
             move: (sget_next_spec a) => [OLD | [NEW ?]]; subst.
             * specialize SGMEM with a; rewrite /Sym.good_memory_tag in SGMEM.
               rewrite -OLD; rewrite -OLD in SGMEM.
-              replace (Sym.sget (Symbolic.State (sp := sym_sfi)
-                                                M_next R_next
-                                                pc@(Sym.PC F cid')
-                                                (Sym.Internal
-                                                   Snext SiT SaJT SaST))
+              replace (Sym.sget (SState M_next R_next pc@(Sym.PC F cid')
+                                        (SInternal Snext SiT SaJT SaST))
                                 a)
-                 with (Sym.sget (Symbolic.State (sp := sym_sfi)
-                                                M_next R_next
-                                                pc@(Sym.PC JUMPED cid_sys)
-                                                (Sym.Internal
-                                                   Snext SiT SaJT SaST))
+                 with (Sym.sget (SState M_next R_next pc@(Sym.PC JUMPED cid_sys)
+                                        (SInternal Snext SiT SaJT SaST))
                                 a)
                    by trivial.
               clear OLD; destruct (Sym.sget _ a) as [[? []]|]; done.
@@ -1346,7 +1353,7 @@ Proof.
       move: RCOMP => [RCOMPS RCTAGS] RCOMP.
     move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
-    exists (Abs.State (pc+1)%w AR AM AC INTERNAL c); split.
+    exists (AState (pc+1)%w AR AM AC INTERNAL c); split.
     + eapply Abs.step_nop; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
@@ -1373,7 +1380,7 @@ Proof.
     move: (RCTAGS pc) => RCTAGS'; rewrite /Sym.sget PC in RCTAGS';
       destruct RCTAGS' as [SET_I [SET_W [c [IN_c RTAG]]]].
     evar (AR' : registers t);
-      exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
+      exists (AState (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_const; try reflexivity.
       * unfold Abs.decode.
@@ -1416,7 +1423,7 @@ Proof.
     destruct (get AR r2) as [x2|] eqn:GET2;
       [| specialize RREGS with r2; rewrite OLD GET2 in RREGS; done].
     evar (AR' : registers t);
-      exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
+      exists (AState (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_mov; try reflexivity.
       * unfold Abs.decode.
@@ -1459,7 +1466,7 @@ Proof.
     destruct (get AR r3) as [x3|] eqn:GET3;
       [| specialize RREGS with r3; rewrite OLD GET3 in RREGS; done].
     evar (AR' : registers t);
-      exists (Abs.State (pc+1)%w AR' AM AC INTERNAL c); split;
+      exists (AState (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_binop; try reflexivity.
       * unfold Abs.decode.
@@ -1511,7 +1518,7 @@ Proof.
     destruct (get AM w1) as [x2|] eqn:GETM1;
       [|specialize RMEMS with w1; rewrite MEM1 GETM1 in RMEMS; done].
     evar (AR' : registers t);
-      exists (Abs.State (pc+1)%w AR' AM AC INTERNAL ac); split;
+      exists (AState (pc+1)%w AR' AM AC INTERNAL ac); split;
       subst AR'.
     + eapply Abs.step_load; try reflexivity.
       * unfold Abs.decode.
@@ -1567,7 +1574,7 @@ Proof.
     destruct (get AM w1) as [xold|] eqn:GETM1;
       [|specialize RMEMS with w1; rewrite OLD GETM1 in RMEMS; done].
     evar (AM' : memory t);
-      exists (Abs.State (pc+1)%w AR AM' AC INTERNAL ac); split;
+      exists (AState (pc+1)%w AR AM' AC INTERNAL ac); split;
       subst AM'.
     + eapply Abs.step_store; try reflexivity.
       * unfold Abs.decode.
@@ -1594,10 +1601,8 @@ Proof.
       * unfold upd; rewrite GETM1; reflexivity.
     + assert (SAME :
                 equilabeled
-                  (@Symbolic.State t sym_sfi
-                     mem  reg pc@(Sym.PC F cid') int)
-                  (@Symbolic.State t sym_sfi
-                     mem' reg (pc+1)%w@(Sym.PC INTERNAL cid) int)). {
+                  (SState mem  reg pc@(Sym.PC F cid')             int)
+                  (SState mem' reg (pc+1)%w@(Sym.PC INTERNAL cid) int)). {
         rewrite /equilabeled; intros p.
         destruct (p == w1) eqn:EQ_w1; move/eqP in EQ_w1; [subst p|].
         - apply get_upd_eq in def_mem'; auto.
@@ -1726,7 +1731,7 @@ Proof.
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
     evar (AR' : registers t);
-      exists (Abs.State w AR' AM AC JUMPED c); split;
+      exists (AState w AR' AM AC JUMPED c); split;
       subst AR'.
     + eapply Abs.step_jump; try reflexivity.
       * unfold Abs.decode.
@@ -1761,8 +1766,8 @@ Proof.
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
     evar (AR' : registers t);
-      exists (Abs.State (pc + (if w == 0 then 1 else imm_to_word n))%w
-                        AR' AM AC INTERNAL c); split;
+      exists (AState (pc + (if w == 0 then 1 else imm_to_word n))%w
+                     AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_bnz; try reflexivity.
       * unfold Abs.decode.
@@ -1799,7 +1804,7 @@ Proof.
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
     evar (AR' : registers t);
-      exists (Abs.State w AR' AM AC JUMPED c); split;
+      exists (AState w AR' AM AC JUMPED c); split;
       subst AR'.
     + eapply Abs.step_jal; try reflexivity.
       * unfold Abs.decode.
