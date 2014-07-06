@@ -638,7 +638,7 @@ exact: sznneg.
 Qed.
 
 Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color smem' :
-  (0 <= sz)%ordered ->
+  (0 <= sz <= Sym.block_size bi)%ordered ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   (color < max_word)%ordered ->
   Sym.block_color bi = None ->
@@ -648,7 +648,8 @@ Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color s
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
     (newb :: bl) smem' (color + 1, Sym.update_block_info info bi color sz).
 Proof.
-move=> nneg_sz malloc lt_color color_bi in_bi [fresh_color [in_bl [no_overlap biP]]] write_bi.
+move=> [nneg_sz le_sz] malloc lt_color color_bi in_bi.
+case=> [fresh_color [in_bl [no_overlap biP]]] write_bi.
 split. (* freshness of color *)
   rewrite /refinement.fresh_color.
   move=> col b base.
@@ -708,16 +709,18 @@ split. (* no overlap *)
     admit. (* Fix overflows *)
   + have [->|neq_i] := i =P index bi info;
     have [->|neq_j] := j =P index bi info => //=.
-    + move=> overlap.
+    * case=> /= [in_newbi in_j].
       congr S.
       apply: (no_overlap _ _ newbi w) => //.
         by rewrite index_mem.
-      admit.
-    + move=> overlap; congr S.
+      rewrite nth_index //; split=> //.
+      admit. (* Fix overflows *)
+    * case=> /= [in_i in_newbi]; congr S.
       apply: (no_overlap _ _ newbi w) => //.
         by rewrite index_mem.
-      admit.
-    + by move/(no_overlap _ _ _ _ lt_i lt_j)->.
+      rewrite nth_index //; split=> //.
+      admit. (* Fix overflows *)
+    * by move/(no_overlap _ _ _ _ lt_i lt_j)->.
 rewrite /Sym.update_block_info.
 move=> bi'.
 set mi' := mi_malloc _ _ _ _.
@@ -742,11 +745,16 @@ have [eq_sz|] := sz =P Sym.block_size bi.
         by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col; apply: lt_irrefl.
       by rewrite (PartMaps.get_set_neq _ _ neq_col).
     move=> off lt_off.
-rewrite (get_write_block _ _ write_bi) => //.
+    rewrite (get_write_block _ _ write_bi) => //.
+    have [in_bounds|] := boolP (Sym.block_base bi <=? base + off <? Sym.block_base bi + sz).
+      case: neq_i; apply: (no_overlap _ _ newbi (base+off) lt_i).
+        by rewrite index_mem.
+      rewrite nth_i nth_index //; split.
 
-have [in_bounds|] := boolP (Sym.block_base bi <=? base + off <? Sym.block_base bi + sz).
-  have := biP bi in_bi.
-  case; first by rewrite color_bi.
+    have := biP bi in_bi.
+    case; first by rewrite color_bi.
+
+admit.
 admit.
 admit.
 admit.
