@@ -96,22 +96,6 @@ Instance int_ordered : @Ordered (word concrete_int_32_t) (eqType_EqDec (word con
 |}.
 
 Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
-  binop_denote b :=
-    match b with
-    | ADD => add
-    | SUB => sub
-    | MUL => mul
-    | EQ => fun x y => if Z.eqb (unsigned x) (unsigned y) then repr 1
-                       else repr 0
-    | LEQ => fun x y => if Z.leb (unsigned x) (unsigned y) then repr 1
-                        else repr 0
-    | AND => and
-    | OR => or
-    | XOR => xor
-    | SHRU => shru
-    | SHL => shl
-    end;
-
   encode_instr i :=
     let pack_long := fun r im =>
                        match unpack3 im with (i1,i2,i3) =>
@@ -169,6 +153,18 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   word_to_Z := signed;
 
   add_word := add;
+
+  mul_word := mul;
+
+  and_word := and;
+
+  or_word := or;
+
+  xor_word := xor;
+
+  shru_word := shru;
+
+  shl_word := shl;
 
   opp_word := neg;
 

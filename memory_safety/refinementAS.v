@@ -772,6 +772,7 @@ Lemma refine_binop mi amem f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
   lift_binop f w1@V(ty1) w2@V(ty2) = Some (w3,ty3) ->
   exists v3, Abstract.lift_binop f v1 v2 = Some v3 /\ refine_val mi v3 w3 ty3.
 Proof.
+Opaque binop_denote. (* Only for now... *)
 destruct f; intros miP [x1 | b1 base1 nonce1 off1 mi_b1]
   [x2 | b2 base2 nonce2 off2 mi_b2] hyp; try discriminate hyp;
 try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try constructor.
@@ -794,6 +795,7 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
     split. rewrite eq_refl. auto.
     rewrite binop_eq_add2l. constructor.
   + intro X; inv X. 
+Transparent binop_denote.
 Qed.
 
 Ltac solve_pc rpci :=

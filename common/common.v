@@ -187,7 +187,6 @@ by right=> eq_xy; move: neq_xy; rewrite eq_xy eqxx.
 Qed.
 
 Class machine_ops (t : machine_types) := {
-  binop_denote : binop -> word t -> word t -> word t;
   encode_instr : instr t -> word t;
   decode_instr : word t -> option (instr t);
 
@@ -212,6 +211,12 @@ Class machine_ops (t : machine_types) := {
   word_to_Z : word t -> Z;
 
   add_word : word t -> word t -> word t;
+  mul_word : word t -> word t -> word t;
+  and_word : word t -> word t -> word t;
+  or_word  : word t -> word t -> word t;
+  xor_word : word t -> word t -> word t;
+  shru_word : word t -> word t -> word t;
+  shl_word : word t -> word t -> word t;
   opp_word : word t -> word t;
   ord_word :> Ordered (word t);
 
@@ -291,6 +296,22 @@ Local Open Scope word_scope.
 Context {t : machine_types}
         {op : machine_ops t}
         {ops : machine_ops_spec op}.
+
+Definition bool_to_word (b : bool) : word t := if b then 1 else 0.
+
+Definition binop_denote (f : binop) : word t -> word t -> word t :=
+  match f with
+  | ADD => add_word
+  | SUB => fun w1 w2 => add_word w1 (opp_word w2)
+  | MUL => mul_word
+  | EQ  => fun w1 w2 => bool_to_word (w1 == w2)
+  | LEQ => fun w1 w2 => bool_to_word (leb w1 w2)
+  | AND => and_word
+  | OR => or_word
+  | XOR => xor_word
+  | SHRU => shru_word
+  | SHL => shl_word
+  end.
 
 Lemma word_to_Z_inj : injective word_to_Z.
 Proof. exact (can_inj word_to_ZK). Qed.
