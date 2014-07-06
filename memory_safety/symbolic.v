@@ -230,7 +230,10 @@ Definition type_eq t1 t2 :=
   end.
 
 Lemma type_eqP : Equality.axiom type_eq.
-Admitted.
+Proof.
+  move => [|b1] [|b2] /=; try (constructor; congruence).
+  have [->|/eqP NEQ] := altP (b1 =P b2); constructor; congruence.
+Qed.
 
 Definition type_eqMixin := EqMixin type_eqP.
 Canonical type_eqType := Eval hnf in EqType type type_eqMixin.
@@ -244,7 +247,12 @@ Definition tag_eq l1 l2 :=
   end.
 
 Lemma tag_eqP : Equality.axiom tag_eq.
-Admitted.
+Proof.
+  move => [t1|b1 t1|] [t2|b2 t2|] /=; try (constructor; congruence).
+  - by have [->|/eqP NEQ] := altP (t1 =P t2); constructor; congruence.
+  - by have [->|/eqP ?] := altP (b1 =P b2); have [->|/eqP ?] := altP (t1 =P t2);
+    constructor; congruence.
+Qed.
 
 Definition tag_eqMixin := EqMixin tag_eqP.
 Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
