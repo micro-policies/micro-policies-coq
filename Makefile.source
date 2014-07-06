@@ -17,11 +17,11 @@ concrete/int_32.v
 
 symbolic/symbolic.v
 symbolic/fault_handler.v
-# symbolic/initial.v
+# symbolic/initial.v -- doesn't compile
 symbolic/refinement_common.v
 symbolic/backward.v
 symbolic/forward.v
-# symbolic/testing.v
+# symbolic/testing.v -- doesn't compile
 symbolic/int_32.v
 symbolic/rules.v
 symbolic/exec.v
@@ -32,22 +32,14 @@ cfi/rules.v
 cfi/symbolic.v
 cfi/refinementAS.v
 cfi/preservation.v
-#cfi/preservation2.v
 cfi/preservationAS.v
 cfi/concrete.v
 cfi/refinementSC.v
-# old files:
-#cfi/concrete_cfi.v
-#cfi/concrete_kernel.v
-#cfi/fault_handler_spec.v
-#cfi/refinementac.v
 
 memory_safety/classes.v
-memory_safety/quasiabstract.v
 memory_safety/abstract.v
 memory_safety/symbolic.v
 memory_safety/refinementAS.v
-# memory-safety/fault_handler_spec.v
 
 sfi/haskell_notation.v
 sfi/list_utils.v

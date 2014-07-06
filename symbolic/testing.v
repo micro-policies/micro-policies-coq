@@ -10,9 +10,9 @@ Import ListNotations.
 Require Import lib.utils.
 Require Import common.common.
 Require Import concrete.concrete.
-Require Import kernel.rules.
-Require Import kernel.refinement.
-Require Import kernel.fault_handler.
+Require Import symbolic.rules.
+Require Import symbolic.fault_handler.
+Require Import symbolic.refinement_common.
 
 
 Definition forallbi {A : Type} (f : nat -> A -> bool) 
