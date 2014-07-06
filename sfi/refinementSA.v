@@ -483,6 +483,18 @@ Proof.
   by move/eqP in REFINE; subst.
 Qed.  
 
+Lemma refined_mem_value : forall AM SM,
+  refine_memory AM SM ->
+  forall p, get AM p = (svalue <$> get SM p).
+Proof.
+  move=> AM SM REFINE p;
+    rewrite /refine_memory /refine_mem_loc_b /pointwise in REFINE.
+  specialize REFINE with p.
+  set oax := get AM p in REFINE *; set osv := get SM p in REFINE *;
+    destruct oax as [|], osv as [[? []]|]; simpl in *; try done.
+  by move/eqP in REFINE; subst.
+Qed.  
+
 Ltac solve_permitted_now_in :=
   match goal with
     | RPREV : context[refine_previous_b],
@@ -729,6 +741,29 @@ Proof.
   rewrite bind_assoc INIT -bind_assoc EQ_MAP_J EQ_MAP_S; reflexivity.
 Qed.  
 
+Theorem isolate_create_set_refined : forall AM SM,
+  refine_memory AM SM ->
+  forall p, isolate_create_set id AM p = isolate_create_set svalue SM p.
+Proof.
+  move=> AM SM REFINE p;
+    rewrite /refine_memory /refine_mem_loc_b /pointwise in REFINE.
+  rewrite /isolate_create_set.
+
+  erewrite refined_mem_value; [|eassumption].
+  set G := get SM p; destruct G as [[wpairs ?]|]; subst; simpl; try done.
+
+  remember (word_to_nat wpairs) as pairs; clear Heqpairs.
+  remember (p + 1)%w as start; clear Heqstart; move: start.
+  
+  induction pairs as [|pairs]; simpl; [reflexivity | intros start].
+  rewrite IHpairs; f_equal.
+  rewrite /isolate_get_range.
+
+  repeat (erewrite refined_mem_value; [|eassumption]).
+  set G := get SM start; destruct G as [[low ?]|]; subst; simpl; try done.
+  by set G := get SM (start + 1)%w; destruct G as [[high ?]|]; subst; simpl.
+Qed.
+
 Theorem isolate_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -762,7 +797,7 @@ Proof.
       rewrite -(lock orb) in def_cid_sys;
     undo2 ISOLATE c' si';
     undo2 ISOLATE pA LpA; undo2 ISOLATE pJ LpJ; undo2 ISOLATE pS LpS;
-    undo1 ISOLATE A'; undo1 ISOLATE NE_A; undo1 ISOLATE sA;
+    undo1 ISOLATE A'; undo1 ISOLATE NE_A'; undo1 ISOLATE sA;
     undo1 ISOLATE J'; undo1 ISOLATE sJ;
     undo1 ISOLATE S'; undo1 ISOLATE sS;
     undo2 ISOLATE pc' Lpc';
@@ -791,6 +826,9 @@ Proof.
                               (SInternal Snext SiT SaJT SaST)) ==
                     Some cid_sys) by
     (eapply prove_refined_compartment with (pc := pc); eassumption).
+
+  repeat (erewrite isolate_create_set_refined; [|eassumption]).
+  rewrite def_A' def_J' def_S' /= NE_A' /=.
   
   rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p [x [I [W def_cid]]]].
 
