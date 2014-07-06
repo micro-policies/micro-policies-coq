@@ -4,8 +4,8 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
-Require Import sfi.haskell_notation.
-Require Import sfi.common sfi.list_utils sfi.set_utils sfi.isolate_sets.
+Require Import lib.haskell_notation.
+Require Import sfi.common lib.list_utils lib.set_utils sfi.isolate_sets.
 Require Import sfi.abstract sfi.symbolic.
 
 Set Bullet Behavior "Strict Subproofs".

@@ -4,7 +4,7 @@ Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils lib.partial_maps common.common.
-Require Import sfi.ranges sfi.set_utils.
+Require Import lib.set_utils sfi.ranges.
 
 Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.

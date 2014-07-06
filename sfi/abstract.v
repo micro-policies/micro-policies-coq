@@ -3,7 +3,7 @@ Require Import List Arith Sorted Bool.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils lib.partial_maps lib.ordered common.common.
-Require Import sfi.list_utils sfi.set_utils sfi.isolate_sets sfi.common.
+Require Import lib.list_utils lib.set_utils sfi.isolate_sets sfi.common.
 
 Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.

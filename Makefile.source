@@ -7,6 +7,9 @@ lib/utils.v
 lib/FiniteMaps.v
 lib/ordered.v
 lib/partial_maps.v
+lib/haskell_notation.v
+lib/list_utils.v
+lib/set_utils.v
 
 common/common.v
 common/printing.v
@@ -41,9 +44,6 @@ memory_safety/abstract.v
 memory_safety/symbolic.v
 memory_safety/refinementAS.v
 
-sfi/haskell_notation.v
-sfi/list_utils.v
-sfi/set_utils.v
 sfi/ranges.v
 sfi/isolate_sets.v
 sfi/common.v

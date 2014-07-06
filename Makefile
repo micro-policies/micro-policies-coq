@@ -12,11 +12,12 @@ clean:
 test: coq
 	$(MAKE) -C sealing runtest
 
-SHARED=lib/ordered.v lib/partial_maps.v lib/utils.v common/*.v concrete/*.v symbolic/*.v
+SHARED=lib/ordered.v lib/partial_maps.v lib/utils.v lib/list_utils.v lib/set_utils.v lib/haskell_notation.v common/*.v concrete/*.v symbolic/*.v
 
 SPECIF=memory_safety/*.v sealing/*.v sfi/*.v cfi/*.v
 
-# TODO: should move reusable parts out of sfi and add to SHARED above
+# Tried to move reusable parts out of sfi and add to SHARED above;
+# if there is anything I missed please move it too
 
 # There are 2 files excluded from build in symbolic (initial.v and testing.v)
 # Q: What should we do about them? Can we bring them back?
