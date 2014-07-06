@@ -287,6 +287,7 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
       do! c_sys  <- can_execute (PC F c) LI;
       
       do! (c',si') <- fresh si;
+      let s' := Symbolic.State M R (pc @ (PC F c)) si' in
       
       do! pA @ _ <- get R syscall_arg1;
       do! pJ @ _ <- get R syscall_arg2;
@@ -296,7 +297,7 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
       do! guard nonempty A';
       do! sA <- retag_set (fun c'' _ _ => c == c'')
                           (fun _   I W => DATA c' I W)
-                          A' s;
+                          A' s';
       
       do! J' <- isolate_create_set (@val _ _) M pJ;
       do! sJ <- retag_set (fun c'' I _ => (c == c'') || set_elem c I)

@@ -468,6 +468,18 @@ Proof.
     by assert (c' = <<Aprev,Jprev,Sprev>>) by eauto 3; subst.
 Qed.
 
+Lemma refined_reg_value : forall AR SR,
+  refine_registers AR SR ->
+  forall r, get AR r = (svalue <$> get SR r).
+Proof.
+  move=> AR SR REFINE r;
+    rewrite /refine_registers /refine_reg_b /pointwise in REFINE.
+  specialize REFINE with r.
+  set oax := get AR r in REFINE *; set osv := get SR r in REFINE *;
+    destruct oax as [|], osv as [[? []]|]; simpl in *; try done.
+  by move/eqP in REFINE; subst.
+Qed.  
+
 Ltac solve_permitted_now_in :=
   match goal with
     | RPREV : context[refine_previous_b],
@@ -670,112 +682,6 @@ Proof.
     + reflexivity.
 Qed.
 
-Lemma refined_compartment_updated : forall sst sst' A J S p,
-  (forall p, Sym.good_memory_tag sst  p) ->
-  (forall p, Sym.good_memory_tag sst' p) ->
-  tags_subsets sst sst' ->
-  refined_compartment <<A,J,S>>                 sst ->
-  refined_compartment <<A,insert_unique p J,S>> sst'.
-Proof.
-  clear S I; intros sst sst' A J S p GOOD GOOD' COMPAT.
-  rewrite /tags_subsets in COMPAT.
-  rewrite /refined_compartment /=.
-  
-  assert (INIT :
-    (do! sxs <- map_options (Sym.sget sst) A;
-     the =<< map_options (Sym.stag_compartment ∘ slabel) sxs)
-    =
-    (do! sxs' <- map_options (Sym.sget sst') A;
-     the =<< map_options (Sym.stag_compartment ∘ slabel) sxs')).
-  {
-    rewrite (lock the) 2!bind_assoc -(lock the) 2!map_options_bind; f_equal.
-    induction A as [|a A]; simpl in *; [reflexivity|].
-    specialize COMPAT with a.
-    destruct (Sym.sget sst  a) as [[x  [|c  I  W|]]|],
-             (Sym.sget sst' a) as [[x' [|c' I' W'|]]|];
-      try done; destruct COMPAT as [EQ _]; subst; simpl.
-    rewrite IHA; reflexivity.
-  }
-
-  intros REFINED; rewrite bind_assoc in REFINED.
-  match type of REFINED with
-    | is_true (isSome (do! _ <- ?X; _)) =>
-      destruct X as [sc|] eqn:def_sc; simpl in REFINED; [|done]
-  end.
-  rewrite bind_assoc -INIT def_sc; simpl.
-  rewrite -forallb_map_options_insert_unique.
-  move: REFINED.
-  
-  set MAP_J := map_options _ J; set MAP_J' := map_options _ J.
-  assert (EQ_ALL_J :
-            (forallb (set_elem sc) <$> MAP_J)  ?= true ->
-            (forallb (set_elem sc) <$> MAP_J') ?= true). {
-    subst MAP_J MAP_J'; simpl.
-    induction J as [|a J]; [reflexivity|simpl].
-    specialize COMPAT with a; specialize GOOD with a; specialize GOOD' with a.
-    rewrite /Sym.good_memory_tag in GOOD GOOD'.
-    destruct (Sym.sget sst  a) as [[x  [|c  I  W|]]|],
-             (Sym.sget sst' a) as [[x' [|c' I' W'|]]|];
-      try done; simpl.
-    move: GOOD GOOD' => /andP [SET_I SET_W] /andP [SET_I' SET_W'].
-    destruct COMPAT as [EQ [SUB_I SUB_W]]; subst.
-    let unMO ys MO := match goal with
-                        |- context[map_options ?f J] =>
-                        destruct (map_options f J) as [ys|] eqn:MO
-                      end
-    in unMO ys MO; unMO ys' MO'; try done; simpl in *.
-    - specialize SUB_I with sc.
-      move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
-      + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
-      + destruct (forallb _ ys); try done.
-        destruct (forallb _ ys'); try done.
-        lapply IHJ; [inversion 1 | auto].
-    - destruct (forallb _ ys).
-      + lapply IHJ; [inversion 1 | auto].
-      + rewrite Bool.andb_false_r; inversion 1.
-  }
-  
-  set MAP_S := map_options _ S; set MAP_S' := map_options _ S.
-  assert (EQ_ALL_S :
-            (forallb (set_elem sc) <$> MAP_S)  ?= true ->
-            (forallb (set_elem sc) <$> MAP_S') ?= true). {
-    subst MAP_S MAP_S'; simpl.
-    induction S as [|a S' IHS];
-      [reflexivity | simpl; clear S; rename S' into S].
-    specialize COMPAT with a; specialize GOOD with a; specialize GOOD' with a.
-    rewrite /Sym.good_memory_tag in GOOD GOOD'.
-    destruct (Sym.sget sst  a) as [[x  [|c  I  W|]]|],
-             (Sym.sget sst' a) as [[x' [|c' I' W'|]]|];
-      try done; simpl.
-    move: GOOD GOOD' => /andP [SET_I SET_W] /andP [SET_I' SET_W'].
-    destruct COMPAT as [EQ [SUB_I SUB_W]]; subst.
-    let unMO ys MO := match goal with
-                        |- context[map_options ?f S] =>
-                        destruct (map_options f S) as [ys|] eqn:MO
-                      end
-    in unMO ys MO; unMO ys' MO'; try done; simpl in *.
-    - specialize SUB_W with sc.
-      move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
-      + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
-      + destruct (forallb _ ys); try done.
-        destruct (forallb _ ys'); try done.
-        lapply IHS; [inversion 1 | auto].
-    - destruct (forallb _ ys).
-      + lapply IHS; [inversion 1 | auto].
-      + rewrite Bool.andb_false_r; inversion 1.
-  }
-
-  intros REFINED.
-  destruct (forallb _ <$> MAP_J) as [[]|] eqn:ALL_J; simpl in REFINED; try done.
-  destruct (forallb _ <$> MAP_S) as [[]|] eqn:ALL_S; simpl in REFINED; try done.
-  lapply EQ_ALL_J; [clear EQ_ALL_J; intro ALL_J' | done].
-  lapply EQ_ALL_S; [clear EQ_ALL_S; intro ALL_S' | done].
-  destruct (forallb _ <$> MAP_J') as [[]|]; try done.
-  destruct (forallb _ <$> MAP_S') as [[]|]; done.
-
-  admit.
-Qed.  
-
 Lemma refined_compartment_same : forall sst sst' c,
   equilabeled sst sst' ->
   refined_compartment c sst = refined_compartment c sst'.
@@ -827,7 +733,43 @@ Theorem isolate_refined : forall ast sst sst',
   exists ast',
     Abs.isolate_fn ast ?= ast' /\
     refine ast' sst'.
-Proof. Admitted.
+Proof.
+  clear S I; move=> ast sst sst' AGOOD REFINE ISOLATE.
+  assert (SGOOD : Sym.good_state sst) by (eapply refine_good; eassumption).
+  destruct REFINE as [RPC RREGS RMEMS RCOMP RPREV     RSC RINT],
+           ast    as [Apc AR    AM    AC    Ask Aprev],
+           sst    as [SM SR Spc [Snext SiT SaJT SaST]].
+  generalize SGOOD; move=> [[SGMEM [SGREG SGPC]] SGINT].
+  generalize AGOOD =>
+    /andP [/andP [/andP [AELEM /andP [/andP [AGOODS ANOL] ACC]] ASS] ASP];
+    assert (AIN : In Aprev AC) by by simpl in *; destruct (elem Aprev AC).
+  rewrite /Abs.semantics /Abs.isolate /Abs.isolate_fn
+          (lock Abs.in_compartment_opt);
+    simpl in *.
+  
+  rewrite /refine_pc_b in RPC.
+  destruct Spc as [pc [F cid'| |]]; try done; move/eqP in RPC; subst.
+  
+  move/id in ISOLATE;
+    undo2 ISOLATE i LI;
+    undo1 ISOLATE cid_sys;
+    destruct LI as [|cid I W|]; try discriminate;
+    undo2 ISOLATE c' si';
+    undo2 ISOLATE pA LpA; undo2 ISOLATE pJ LpJ; undo2 ISOLATE pS LpS;
+    undo1 ISOLATE A'; undo1 ISOLATE NE_A; undo1 ISOLATE sA;
+    undo1 ISOLATE J'; undo1 ISOLATE sJ;
+    undo1 ISOLATE S'; undo1 ISOLATE sS;
+    undo2 ISOLATE pc' Lpc';
+    undoDATA ISOLATE i' cid_next I_next W_next;
+    undo1 ISOLATE NEXT_EQ; move/eqP in NEXT_EQ; subst cid_next;
+    undo1 ISOLATE NEXT;
+    destruct sS as [MS RS pcS siS];
+    unoption.
+
+  repeat (erewrite refined_reg_value; [|eassumption]).
+  rewrite def_pA_LpA def_pJ_LpJ def_pS_LpS def_pc'_Lpc' /=.
+  destruct Aprev as [Aprev Jprev Sprev].
+Admitted.
 
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
