@@ -295,8 +295,7 @@ Definition malloc_fun st : option (state t) :=
   do! sz <- get (regs st) syscall_arg1;
   match sz with
     | sz@V(DATA) =>
-      match compare 0 sz with
-        | Lt =>
+      if (0 <=? sz)%ordered then
           if ohead [seq x <- info | ((sz <=? block_size x) && (block_color x == None))%ordered] is Some x then
           do! mem' <- write_block (mem st) (block_base x) 0@M(color,DATA) sz; 
           do! regs' <- upd (regs st) syscall_ret ((block_base x)@V(PTR color));
@@ -306,8 +305,7 @@ Definition malloc_fun st : option (state t) :=
             Some (State mem' regs' raddr (color', update_block_info info x color sz))
           else None
           else None
-        | _ => None
-      end
+      else None
     | _ => None
   end
   else None.
