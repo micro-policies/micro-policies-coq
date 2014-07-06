@@ -43,12 +43,9 @@ Context {mt : machine_types}
 
 Context `{syscall_regs mt} `{a_alloc : @Abstract.allocator mt block ap}
          {a_allocP : Abstract.allocator_spec a_alloc}
-        `{@memory_syscall_addrs mt}
-        {meminj' : Type -> Type}
-        {meminj_map : PartMaps.partial_map meminj' (word mt)}
-        {meminjs : PartMaps.axioms meminj_map}.
+        `{@memory_syscall_addrs mt}.
 
-Notation meminj := (meminj' (block * (word mt) (* base *))).
+Notation meminj := (@word_map mt (block * (word mt) (* base *))).
 
 Hypothesis binop_addDl : forall x y z,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
