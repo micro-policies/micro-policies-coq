@@ -308,9 +308,10 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
                           (fun c'' I W => DATA c'' I (insert_unique c' W))
                           S' sJ;
       
-      do! pc' @ _               <- get  R  ra;
-      do! _   @ DATA c_next _ _ <- sget sS pc';
+      do! pc' @ _                    <- get  R  ra;
+      do! _   @ DATA c_next I_next _ <- sget sS pc';
       do! guard c == c_next;
+      do! guard set_elem c_sys I_next;
 
       let: Symbolic.State M_next R_next _ si_next := sS in
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
@@ -326,15 +327,18 @@ Definition add_to_jump_targets (s : Symbolic.state t)
       do! guard c != c_sys;
       
       do! p @ _             <- get R syscall_arg1;
-      do! x @ DATA c' I' W' <- get M p;
+      do! x @ DATA c' I' W' <- sget s p;
       
       do! guard (c' == c) || set_elem c I';
-      do! M' <- upd M p (x @ (DATA c' (insert_unique c I') W'));
+      do! s' <- supd s p (x @ (DATA c' (insert_unique c I') W'));
       
-      do! pc' @ _               <- get R ra;
-      do! _   @ DATA c_next _ _ <- get M' pc';
+      do! pc' @ _                    <- get R ra;
+      do! _   @ DATA c_next I_next _ <- sget s' pc';
       do! guard c == c_next;
-      Some (Symbolic.State M' R (pc' @ (PC JUMPED c_sys)) si)
+      do! guard set_elem c_sys I_next;
+
+      let: Symbolic.State M_next R_next _ si_next := s' in
+      Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
     | _ => None
   end.
 
@@ -347,15 +351,18 @@ Definition add_to_shared_memory (s : Symbolic.state t)
       do! guard c != c_sys;
       
       do! p @ _             <- get R syscall_arg1;
-      do! x @ DATA c' I' W' <- get M p;
+      do! x @ DATA c' I' W' <- sget s p;
       
       do! guard (c' == c) || set_elem c W';
-      do! M' <- upd M p (x @ (DATA c' I' (insert_unique c W')));
+      do! s' <- supd s p (x @ (DATA c' I' (insert_unique c W')));
       
-      do! pc' @ _               <- get R ra;
-      do! _   @ DATA c_next _ _ <- get M' pc';
+      do! pc' @ _                    <- get R ra;
+      do! _   @ DATA c_next I_next _ <- sget s' pc';
       do! guard c == c_next;
-      Some (Symbolic.State M' R (pc' @ (PC JUMPED c_sys)) si)
+      do! guard set_elem c_sys I_next;
+
+      let: Symbolic.State M_next R_next _ si_next := s' in
+      Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
     | _ => None
   end.
 
