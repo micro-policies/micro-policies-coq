@@ -210,13 +210,13 @@ case: (index_list_Z (word_to_Z off) fr) => // v rvw3.
 by exists v.
 Qed.
 
-Inductive block_info_spec (smem : Sym.memory mt) : Sym.block_info mt -> Prop :=
-| BlockInfoLive : forall bi col b base, Sym.block_color bi = Some col ->
+Inductive block_info_spec (smem : Sym.memory mt) (bi : Sym.block_info mt) : Prop :=
+| BlockInfoLive : forall col b base, Sym.block_color bi = Some col ->
   PartMaps.get mi col = Some (b,base) ->
   (forall off, (off < Sym.block_size bi)%ordered ->
      exists v ty, PartMaps.get smem (base+off) = Some v@M(col,ty)) ->
   block_info_spec smem bi
-| BlockInfoFree : forall bi,
+| BlockInfoFree :
   Sym.block_color bi = None ->
   (forall off, word_to_Z off < word_to_Z (Sym.block_size bi) ->
     exists v, PartMaps.get smem (Sym.block_base bi + off) = Some v@FREE) ->
@@ -229,11 +229,16 @@ Definition fresh_color col :=
   forall col' b base, PartMaps.get mi col' = Some (b,base) ->
   (col' < col)%ordered.
 
-(* We may need:
-get mi col != None -> exists bi, bi \in info /\ block_color bi = Some col *)
+Definition overlap (bi1 bi2 : Sym.block_info mt) (w : word mt) :=
+  (Sym.block_base bi1 <= w < Sym.block_base bi1 + Sym.block_size bi1 /\
+  Sym.block_base bi2 <= w < Sym.block_base bi2 + Sym.block_size bi2)%ordered.
+
 Definition refine_internal_state (bl : list block) smem (ist : word mt * list (Sym.block_info mt)) :=
   let: (col, info) := ist in
-  fresh_color col /\ (forall col b base, PartMaps.get mi col = Some (b,base) -> b \in bl) /\
+  fresh_color col /\
+  (forall col b base, PartMaps.get mi col = Some (b,base) -> b \in bl) /\
+  (forall i j def w, i < size info -> j < size info ->
+     overlap (nth def info i) (nth def info j) w -> i = j)%N /\
   forall x, x \in info -> block_info_spec smem x.
 
 Lemma refine_memory_upd bl smem smem' ist old
@@ -250,10 +255,11 @@ Lemma refine_memory_upd bl smem smem' ist old
       refine_memory amem' smem' & refine_internal_state bl smem' ist].
 Proof.
 case: ist => nextcol infos.
-move=> [miP rmem] [freshcol [in_bl rist]] rpt get_w1 upd_w1 get_pt update_pt rx.
+move=> [miP rmem] [freshcol [in_bl [no_overlap rist]]] rpt get_w1 upd_w1.
+move=> get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
 exists amem'; split => //; last first.
-  split => //; split => //.
+  split => //; split => //; split => //.
   case=> bi_base bi_size [bi_col in_bi|in_bi]; last first.
     move/(_ _ in_bi): rist => biP.
     inversion biP => //.
@@ -594,32 +600,126 @@ by move=> rvw2; apply: (refine_val_malloc _ fresh_col malloc).
 exact: sznneg.
 Qed.
 
-Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color smem':
+Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color smem' :
+  (0 <= sz)%ordered ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   (color < max_word)%ordered ->
+  Sym.block_color bi = None ->
+  bi \in info ->
   refine_internal_state mi bl smem (color, info) ->
   Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz = Some smem' -> 
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
     (newb :: bl) smem' (color + 1, Sym.update_block_info info bi color sz).
 Proof.
-move=> malloc [lt_color [fresh_color [in_bl biP]]].
-split.
+move=> nneg_sz malloc lt_color color_bi in_bi [fresh_color [in_bl [no_overlap biP]]] write_bi.
+split. (* freshness of color *)
   rewrite /refinement.fresh_color.
   move=> col b base.
-  have [-> _|/eqP neq_col] := altP (col =P color).
+  have [-> _|neq_col] := col =P color.
     exact: ltwSw.
   rewrite (PartMaps.get_set_neq _ _ neq_col).
   move/fresh_color => lt_col.
   apply: (lt_trans col color) => //.
   exact: ltwSw.
-split.
+split. (* list of block is complete *)
   move=> col b base.
-  have [->|/eqP neq_col] := altP (col =P color).
+  have [->|neq_col] := col =P color.
     by rewrite PartMaps.get_set_eq => [[<- _]]; rewrite inE eqxx.
   by rewrite (PartMaps.get_set_neq _ _ neq_col) inE => /in_bl ->; rewrite orbT.
+split. (* no overlap *)
+  move=> i j def w.
+  rewrite /Sym.update_block_info.
+  set newbi := Sym.mkBlockInfo _ _ _.
+  have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
+    rewrite !size_set_nth (maxn_idPr _) ?index_mem // => lt_i lt_j.
+    rewrite !(set_nth_default newbi) ?size_set_nth ?(maxn_idPr _) ?index_mem //.
+    rewrite !nth_set_nth /=.
+    have [->|neq_i] := i =P index bi info;
+    have [->|neq_j] := j =P index bi info => //=.
+    + move=> overlap.
+      apply: (no_overlap _ _ newbi w) => //.
+        by rewrite index_mem.
+      by rewrite nth_index // /refinement.overlap -eq_sz.
+    + move=> overlap.
+      apply: (no_overlap _ _ newbi w) => //.
+        by rewrite index_mem.
+      by rewrite nth_index // /refinement.overlap -eq_sz.
+    + exact: no_overlap.
+  rewrite /= !size_set_nth (maxn_idPr _) ?index_mem // => lt_i lt_j.
+  rewrite !(set_nth_default newbi) /= ?size_set_nth ?(maxn_idPr _) ?index_mem //.
+  case: i lt_i => [|i] lt_i; case: j lt_j => [|j] lt_j //=;
+  rewrite !nth_set_nth /=.
+  + have [->|neq_j] := j =P index bi info.
+      rewrite /overlap /=.
+      case=> [[ge_w _] [_ lt_w]].
+      move: (lt_le_trans _ _ _ lt_w ge_w) => ltww.
+      by apply lt_irrefl in ltww.
+    case=> /= [[ge_w lt_w] ?].
+    case: neq_j; apply: (no_overlap _ _ newbi w) => //.
+      by rewrite index_mem.
+    rewrite nth_index // /overlap; split=> //.
+    admit. (* Fix overflows *)
+  + have [->|neq_i] := i =P index bi info.
+      rewrite /overlap /=.
+      case=> [[_ lt_w] [ge_w _]].
+      move: (lt_le_trans _ _ _ lt_w ge_w) => ltww.
+      by apply lt_irrefl in ltww.
+    case=> /= [? [ge_w lt_w]].
+    case: neq_i; apply: (no_overlap _ _ newbi w) => //.
+      by rewrite index_mem.
+    rewrite nth_index // /overlap; split=> //.
+    admit. (* Fix overflows *)
+  + have [->|neq_i] := i =P index bi info;
+    have [->|neq_j] := j =P index bi info => //=.
+    + move=> overlap.
+      congr S.
+      apply: (no_overlap _ _ newbi w) => //.
+        by rewrite index_mem.
+      admit.
+    + move=> overlap; congr S.
+      apply: (no_overlap _ _ newbi w) => //.
+        by rewrite index_mem.
+      admit.
+    + by move/(no_overlap _ _ _ _ lt_i lt_j)->.
+rewrite /Sym.update_block_info.
+move=> bi'.
+set mi' := mi_malloc _ _ _ _.
+set newbi := Sym.mkBlockInfo _ _ _.
+have [eq_sz|] := sz =P Sym.block_size bi.
+  case/(nthP newbi) => i.
+  rewrite size_set_nth (maxn_idPr _) ?index_mem // => lt_i.
+  rewrite nth_set_nth /=.
+  have [eq_i <-|neq_i] := i =P index bi info.
+    (* Showing invariant for the new block *)
+    apply: (@BlockInfoLive _ _ _ color newb (Sym.block_base bi)) => //.
+      by rewrite PartMaps.get_set_eq.
+    move=> off /= lt_off.
+    rewrite (get_write_block _ _ write_bi) => //.
+    admit. (* need to deal with overflows here too... *)
+  (* Showing that invariant is preserved for other blocks *)
+  move=> nth_i; move: (biP bi'); rewrite -nth_i mem_nth // nth_i.
+  case=> //.
+    move=> col b base color_bi' mi_col get_bi'.
+    apply: (@BlockInfoLive _ _ _ col b base) => //.
+      have neq_col: col <> color.
+        by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col; apply: lt_irrefl.
+      by rewrite (PartMaps.get_set_neq _ _ neq_col).
+    move=> off lt_off.
+rewrite (get_write_block _ _ write_bi) => //.
+
+have [in_bounds|] := boolP (Sym.block_base bi <=? base + off <? Sym.block_base bi + sz).
+  have := biP bi in_bi.
+  case; first by rewrite color_bi.
 admit.
+admit.
+admit.
+admit.
+(*
+case:(get_bi off lt_off) => v [ty get_v].
 
-
+exists v, ty.
+rewrite -get_v.
+*)
 Qed.
 
 Hint Constructors refine_val refine_val.
@@ -848,7 +948,6 @@ by solve_pc rpci.
 
   eexists; exists (mi_malloc mi newb (Sym.block_base bi) color); split.
   eapply Abstract.step_malloc.
-  by eauto.
   by eauto.
   by eauto.
   by eauto.
