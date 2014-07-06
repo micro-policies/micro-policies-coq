@@ -211,20 +211,6 @@ Lemma leb_le : a <=? b = true <-> a <= b. Proof. solve_bool_prop. Qed.
 Lemma geb_ge : a >=? b = true <-> a >= b. Proof. solve_bool_prop. Qed.
 
 
-
-(*
-
-compute -[compare]; destruct (a <=> b); destruct (b <=> c); split; destruct 1; try discriminate.
-; destruct (b <=> c); destruct 1; try discriminate.
-
-; split;
-    try solve [ congruence
-              | let H := fresh in intros H; contradict H; congruence ].
-constructor.
-intros leltb.
-*)
-
-
 Lemma ltb_nlt : a <?  b = false <-> ~ a <  b. Proof. solve_bool_prop. Qed.
 Lemma gtb_ngt : a >?  b = false <-> ~ a >  b. Proof. solve_bool_prop. Qed.
 Lemma leb_nle : a <=? b = false <-> ~ a <= b. Proof. solve_bool_prop. Qed.
@@ -240,7 +226,8 @@ Lemma ge_cases : if a >=? b then a >= b else a <  b. Proof. solve_cases. Qed.
 
 End reflections.
 
-Lemma leltb_lelt a b c : a <=? b <? c = true <-> a <= b < c.
+Lemma leltb_lelt (A : Type) (eqdec : EqDec (eq_setoid A)) (ORD : Ordered A) (a b c : A) :
+  a <=? b <? c = true <-> a <= b < c.
 Proof.
 constructor.
   intro leltb.
