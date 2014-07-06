@@ -198,32 +198,63 @@ Notation "x >= y >= z" := (x >= y /\ y >= z)
 Section reflections.
 
 Context `{ORD : Ordered A}.
-Variables a b : A.
+Variables a b c : A.
 
 Local Ltac solve_bool_prop :=
   compute -[compare]; destruct (a <=> b); simpl; split;
     try solve [ congruence
               | let H := fresh in intros H; contradict H; congruence ].
 
-Theorem ltb_lt : a <?  b = true <-> a <  b. Proof. solve_bool_prop. Qed.
-Theorem gtb_gt : a >?  b = true <-> a >  b. Proof. solve_bool_prop. Qed.
-Theorem leb_le : a <=? b = true <-> a <= b. Proof. solve_bool_prop. Qed.
-Theorem geb_ge : a >=? b = true <-> a >= b. Proof. solve_bool_prop. Qed.
+Lemma ltb_lt : a <?  b = true <-> a <  b. Proof. solve_bool_prop. Qed.
+Lemma gtb_gt : a >?  b = true <-> a >  b. Proof. solve_bool_prop. Qed.
+Lemma leb_le : a <=? b = true <-> a <= b. Proof. solve_bool_prop. Qed.
+Lemma geb_ge : a >=? b = true <-> a >= b. Proof. solve_bool_prop. Qed.
 
-Theorem ltb_nlt : a <?  b = false <-> ~ a <  b. Proof. solve_bool_prop. Qed.
-Theorem gtb_ngt : a >?  b = false <-> ~ a >  b. Proof. solve_bool_prop. Qed.
-Theorem leb_nle : a <=? b = false <-> ~ a <= b. Proof. solve_bool_prop. Qed.
-Theorem geb_nge : a >=? b = false <-> ~ a >= b. Proof. solve_bool_prop. Qed.
+
+
+(*
+
+compute -[compare]; destruct (a <=> b); destruct (b <=> c); split; destruct 1; try discriminate.
+; destruct (b <=> c); destruct 1; try discriminate.
+
+; split;
+    try solve [ congruence
+              | let H := fresh in intros H; contradict H; congruence ].
+constructor.
+intros leltb.
+*)
+
+
+Lemma ltb_nlt : a <?  b = false <-> ~ a <  b. Proof. solve_bool_prop. Qed.
+Lemma gtb_ngt : a >?  b = false <-> ~ a >  b. Proof. solve_bool_prop. Qed.
+Lemma leb_nle : a <=? b = false <-> ~ a <= b. Proof. solve_bool_prop. Qed.
+Lemma geb_nge : a >=? b = false <-> ~ a >= b. Proof. solve_bool_prop. Qed.
 
 Local Ltac solve_cases :=
   compute -[compare]; destruct_with_eqn (a <=> b); congruence.
 
-Theorem lt_cases : if a <?  b then a <  b else a >= b. Proof. solve_cases. Qed.
-Theorem gt_cases : if a >?  b then a >  b else a <= b. Proof. solve_cases. Qed.
-Theorem le_cases : if a <=? b then a <= b else a >  b. Proof. solve_cases. Qed.
-Theorem ge_cases : if a >=? b then a >= b else a <  b. Proof. solve_cases. Qed.
+Lemma lt_cases : if a <?  b then a <  b else a >= b. Proof. solve_cases. Qed.
+Lemma gt_cases : if a >?  b then a >  b else a <= b. Proof. solve_cases. Qed.
+Lemma le_cases : if a <=? b then a <= b else a >  b. Proof. solve_cases. Qed.
+Lemma ge_cases : if a >=? b then a >= b else a <  b. Proof. solve_cases. Qed.
 
 End reflections.
+
+Lemma leltb_lelt a b c : a <=? b <? c = true <-> a <= b < c.
+Proof.
+constructor.
+  intro leltb.
+  apply andb_true_iff in leltb.
+  destruct leltb as [leb ltb].
+  apply leb_le in leb.
+  apply ltb_lt in ltb.
+  now split.
+destruct 1.
+apply andb_true_iff.
+split.
+  now apply leb_le.
+now apply ltb_lt.
+Qed.
 
 Hint Resolve @ltb_lt   @gtb_gt   @leb_le   @geb_ge
              @ltb_nlt  @gtb_ngt  @leb_nle  @geb_nge
@@ -239,15 +270,15 @@ Local Ltac solve_same :=
   unfold ltb,gtb,leb,geb,lt,gt,le,ge; rewrite compare_refl;
     solve [auto | congruence].
 
-Theorem ltb_irrefl : a <?  a = false. Proof. solve_same. Qed.
-Theorem gtb_irrefl : a >?  a = false. Proof. solve_same. Qed.
-Theorem leb_refl   : a <=? a = true.  Proof. solve_same. Qed.
-Theorem geb_refl   : a >=? a = true.  Proof. solve_same. Qed.
+Lemma ltb_irrefl : a <?  a = false. Proof. solve_same. Qed.
+Lemma gtb_irrefl : a >?  a = false. Proof. solve_same. Qed.
+Lemma leb_refl   : a <=? a = true.  Proof. solve_same. Qed.
+Lemma geb_refl   : a >=? a = true.  Proof. solve_same. Qed.
 
-Theorem lt_irrefl : ~ a < a. Proof. solve_same. Qed.
-Theorem gt_irrefl : ~ a > a. Proof. solve_same. Qed.
-Theorem le_refl   : a <= a.  Proof. solve_same. Qed.
-Theorem ge_refl   : a >= a.  Proof. solve_same. Qed.
+Lemma lt_irrefl : ~ a < a. Proof. solve_same. Qed.
+Lemma gt_irrefl : ~ a > a. Proof. solve_same. Qed.
+Lemma le_refl   : a <= a.  Proof. solve_same. Qed.
+Lemma ge_refl   : a >= a.  Proof. solve_same. Qed.
 
 End reflexivity_irreflexivity.  
 
@@ -270,8 +301,8 @@ Local Ltac solve_bool :=
 Local Notation DECOMPOSE_B lax strict := (lax a b = (strict a b || (a == b)))
   (only parsing).
 
-Theorem leb_is_ltb_or_eq : DECOMPOSE_B leb ltb. Proof. solve_bool. Qed.
-Theorem geb_is_gtb_or_eq : DECOMPOSE_B geb gtb. Proof. solve_bool. Qed.
+Lemma leb_is_ltb_or_eq : DECOMPOSE_B leb ltb. Proof. solve_bool. Qed.
+Lemma geb_is_gtb_or_eq : DECOMPOSE_B geb gtb. Proof. solve_bool. Qed.
 
 Local Ltac solve_to :=
   unfold lt,gt,le,ge; destruct (a <=> b) eqn:E;
@@ -280,10 +311,10 @@ Local Ltac solve_to :=
 Local Ltac solve_from :=
   unfold lt,gt,le,ge; destruct 1; [|subst; rewrite compare_refl]; congruence.
 
-Theorem le__lt_or_eq : a <= b -> {a < b} + {a = b}. Proof. solve_to.   Qed.
-Theorem ge__gt_or_eq : a >= b -> {a > b} + {a = b}. Proof. solve_to.   Qed.
-Theorem lt_or_eq__le : {a < b} + {a = b} -> a <= b. Proof. solve_from. Qed.
-Theorem gt_or_eq__ge : {a > b} + {a = b} -> a >= b. Proof. solve_from. Qed.
+Lemma le__lt_or_eq : a <= b -> {a < b} + {a = b}. Proof. solve_to.   Qed.
+Lemma ge__gt_or_eq : a >= b -> {a > b} + {a = b}. Proof. solve_to.   Qed.
+Lemma lt_or_eq__le : {a < b} + {a = b} -> a <= b. Proof. solve_from. Qed.
+Lemma gt_or_eq__ge : {a > b} + {a = b} -> a >= b. Proof. solve_from. Qed.
 
 Local Ltac solve_iff :=
   split;
@@ -308,37 +339,37 @@ Variables a b : A.
 
 Local Ltac solve_eq := intros; subst; auto with ordered.
   
-Theorem eq__leb  : a = b -> a <=? b = true.  Proof. solve_eq. Qed.
-Theorem eq__nltb : a = b -> a <?  b = false. Proof. solve_eq. Qed.
-Theorem eq__geb  : a = b -> a >=? b = true.  Proof. solve_eq. Qed.
-Theorem eq__ngtb : a = b -> a >?  b = false. Proof. solve_eq. Qed.
+Lemma eq__leb  : a = b -> a <=? b = true.  Proof. solve_eq. Qed.
+Lemma eq__nltb : a = b -> a <?  b = false. Proof. solve_eq. Qed.
+Lemma eq__geb  : a = b -> a >=? b = true.  Proof. solve_eq. Qed.
+Lemma eq__ngtb : a = b -> a >?  b = false. Proof. solve_eq. Qed.
 
-Theorem eq__le  : a = b -> a <= b.  Proof. solve_eq. Qed.
-Theorem eq__nlt : a = b -> ~ a < b. Proof. solve_eq. Qed.
-Theorem eq__ge  : a = b -> a >= b.  Proof. solve_eq. Qed.
-Theorem eq__ngt : a = b -> ~ a > b. Proof. solve_eq. Qed.
+Lemma eq__le  : a = b -> a <= b.  Proof. solve_eq. Qed.
+Lemma eq__nlt : a = b -> ~ a < b. Proof. solve_eq. Qed.
+Lemma eq__ge  : a = b -> a >= b.  Proof. solve_eq. Qed.
+Lemma eq__ngt : a = b -> ~ a > b. Proof. solve_eq. Qed.
 
 Local Ltac solve_cmp :=
   try rewrite leb_is_ltb_or_eq; try rewrite geb_is_gtb_or_eq;
   intros H; rewrite H; auto.
 
-Theorem ltb__leb : a <? b = true -> a <=? b = true. Proof. solve_cmp. Qed.
-Theorem gtb__geb : a >? b = true -> a >=? b = true. Proof. solve_cmp. Qed.
+Lemma ltb__leb : a <? b = true -> a <=? b = true. Proof. solve_cmp. Qed.
+Lemma gtb__geb : a >? b = true -> a >=? b = true. Proof. solve_cmp. Qed.
 
-Theorem lt__le : a < b -> a <= b. Proof. auto with ordered. Qed.
-Theorem gt__le : a > b -> a >= b. Proof. auto with ordered. Qed.
+Lemma lt__le : a < b -> a <= b. Proof. auto with ordered. Qed.
+Lemma gt__le : a > b -> a >= b. Proof. auto with ordered. Qed.
 
 Local Ltac solve_flip :=
   cbv -[compare]; rewrite (compare_asym b a);
   destruct (a <=> b); simpl; congruence.
 
-Theorem ltb_is_gtb : (a <?  b) = (b >?  a). Proof. solve_flip. Qed.
-Theorem leb_is_geb : (a <=? b) = (b >=? a). Proof. solve_flip. Qed.
+Lemma ltb_is_gtb : (a <?  b) = (b >?  a). Proof. solve_flip. Qed.
+Lemma leb_is_geb : (a <=? b) = (b >=? a). Proof. solve_flip. Qed.
 
-Theorem lt__gt : a <  b -> b >  a. Proof. solve_flip. Qed.
-Theorem gt__lt : a >  b -> b <  a. Proof. solve_flip. Qed.
-Theorem le__ge : a <= b -> b >= a. Proof. solve_flip. Qed.
-Theorem ge__le : a >= b -> b <= a. Proof. solve_flip. Qed.
+Lemma lt__gt : a <  b -> b >  a. Proof. solve_flip. Qed.
+Lemma gt__lt : a >  b -> b <  a. Proof. solve_flip. Qed.
+Lemma le__ge : a <= b -> b >= a. Proof. solve_flip. Qed.
+Lemma ge__le : a >= b -> b <= a. Proof. solve_flip. Qed.
 
 Ltac solve_negb :=
   unfold ltb,gtb,leb,geb,nequiv_dec; destruct ((a <=> b) == _); reflexivity.
@@ -351,15 +382,15 @@ Ltac solve_not :=
       destruct ((a <=> b) == C) eqn:CMP; [tauto | exfalso; auto]
   end.
 
-Theorem ltb_not_geb : a <?  b = negb (a >=? b). Proof. solve_negb. Qed. 
-Theorem gtb_not_leb : a >?  b = negb (a <=? b). Proof. solve_negb. Qed.
-Theorem leb_not_gtb : a <=? b = negb (a >?  b). Proof. solve_negb. Qed.
-Theorem geb_not_ltb : a >=? b = negb (a <?  b). Proof. solve_negb. Qed.
+Lemma ltb_not_geb : a <?  b = negb (a >=? b). Proof. solve_negb. Qed. 
+Lemma gtb_not_leb : a >?  b = negb (a <=? b). Proof. solve_negb. Qed.
+Lemma leb_not_gtb : a <=? b = negb (a >?  b). Proof. solve_negb. Qed.
+Lemma geb_not_ltb : a >=? b = negb (a <?  b). Proof. solve_negb. Qed.
 
-Theorem lt_not_ge : a <  b <-> ~ a >= b. Proof. solve_not. Qed.
-Theorem gt_not_le : a >  b <-> ~ a <= b. Proof. solve_not. Qed.
-Theorem le_not_gt : a <= b <-> ~ a >  b. Proof. solve_not. Qed.
-Theorem ge_not_lt : a >= b <-> ~ a <  b. Proof. solve_not. Qed.
+Lemma lt_not_ge : a <  b <-> ~ a >= b. Proof. solve_not. Qed.
+Lemma gt_not_le : a >  b <-> ~ a <= b. Proof. solve_not. Qed.
+Lemma le_not_gt : a <= b <-> ~ a >  b. Proof. solve_not. Qed.
+Lemma ge_not_lt : a >= b <-> ~ a <  b. Proof. solve_not. Qed.
 
 End relationships.
 (* Need to generalize the variables *)
@@ -390,7 +421,7 @@ Section decidability.
 Context `{ORD : Ordered A}.
 Variables a b : A.
 
-Theorem trichotomy : {a < b} + {a = b} + {a > b}.
+Lemma trichotomy : {a < b} + {a = b} + {a > b}.
 Proof.
   cbv -[compare]; destruct (a <=> b) eqn:E; try apply compare_eq in E; auto.
 Qed.
@@ -446,19 +477,19 @@ Local Notation TRANS_B rel :=
   (rel a b = true -> rel b c = true -> rel a c = true)
   (only parsing).
 
-Theorem ltb_trans : TRANS_B ltb. Proof. solve_trans. Qed.
-Theorem gtb_trans : TRANS_B gtb. Proof. solve_trans. Qed.
-Theorem leb_trans : TRANS_B leb. Proof. solve_trans. Qed.
-Theorem geb_trans : TRANS_B geb. Proof. solve_trans. Qed.
+Lemma ltb_trans : TRANS_B ltb. Proof. solve_trans. Qed.
+Lemma gtb_trans : TRANS_B gtb. Proof. solve_trans. Qed.
+Lemma leb_trans : TRANS_B leb. Proof. solve_trans. Qed.
+Lemma geb_trans : TRANS_B geb. Proof. solve_trans. Qed.
 
 Local Notation TRANS rel :=
   (rel a b -> rel b c -> rel a c)
   (only parsing).
 
-Theorem lt_trans : TRANS lt. Proof. solve_trans. Qed.
-Theorem gt_trans : TRANS gt. Proof. solve_trans. Qed.
-Theorem le_trans : TRANS le. Proof. solve_trans. Qed.
-Theorem ge_trans : TRANS ge. Proof. solve_trans. Qed.
+Lemma lt_trans : TRANS lt. Proof. solve_trans. Qed.
+Lemma gt_trans : TRANS gt. Proof. solve_trans. Qed.
+Lemma le_trans : TRANS le. Proof. solve_trans. Qed.
+Lemma ge_trans : TRANS ge. Proof. solve_trans. Qed.
 
 Local Ltac mixed_bool :=
   first [rewrite leb_is_ltb_or_eq | rewrite geb_is_gtb_or_eq];
@@ -482,10 +513,10 @@ Local Notation LS_TRANS_B lax strict :=
   (lax a b = true -> strict b c = true -> strict a c = true)
   (only parsing).
 
-Theorem ltb_leb_trans : SL_TRANS_B ltb leb. Proof. solve_mixed. Qed.
-Theorem gtb_geb_trans : SL_TRANS_B gtb geb. Proof. solve_mixed. Qed.
-Theorem leb_ltb_trans : LS_TRANS_B leb ltb. Proof. solve_mixed. Qed.
-Theorem geb_gtb_trans : LS_TRANS_B geb gtb. Proof. solve_mixed. Qed.
+Lemma ltb_leb_trans : SL_TRANS_B ltb leb. Proof. solve_mixed. Qed.
+Lemma gtb_geb_trans : SL_TRANS_B gtb geb. Proof. solve_mixed. Qed.
+Lemma leb_ltb_trans : LS_TRANS_B leb ltb. Proof. solve_mixed. Qed.
+Lemma geb_gtb_trans : LS_TRANS_B geb gtb. Proof. solve_mixed. Qed.
   
 Local Notation SL_TRANS strict lax :=
   (strict a b -> lax b c -> strict a c)
@@ -495,10 +526,10 @@ Local Notation LS_TRANS lax strict :=
   (lax a b -> strict b c -> strict a c)
   (only parsing).
 
-Theorem lt_le_trans : SL_TRANS lt le. Proof. solve_mixed. Qed.
-Theorem gt_ge_trans : SL_TRANS gt ge. Proof. solve_mixed. Qed.
-Theorem le_lt_trans : LS_TRANS le lt. Proof. solve_mixed. Qed.
-Theorem ge_gt_trans : LS_TRANS ge gt. Proof. solve_mixed. Qed.
+Lemma lt_le_trans : SL_TRANS lt le. Proof. solve_mixed. Qed.
+Lemma gt_ge_trans : SL_TRANS gt ge. Proof. solve_mixed. Qed.
+Lemma le_lt_trans : LS_TRANS le lt. Proof. solve_mixed. Qed.
+Lemma ge_gt_trans : LS_TRANS ge gt. Proof. solve_mixed. Qed.
 
 End transitivity.  
 
@@ -521,15 +552,15 @@ Local Ltac solve_asym :=
 (* We deal with the `Prop' case first because the reasoning is easier and we can
    reflect the `bool' case into it. *)
 
-Theorem lt_asym : a < b -> ~ b < a. Proof. solve_asym. Qed.
-Theorem gt_asym : a > b -> ~ b > a. Proof. solve_asym. Qed.
+Lemma lt_asym : a < b -> ~ b < a. Proof. solve_asym. Qed.
+Lemma gt_asym : a > b -> ~ b > a. Proof. solve_asym. Qed.
 
 Local Ltac solve_sym_eq :=
   repeat rewrite le_iff_lt_or_eq; repeat rewrite ge_iff_gt_or_eq;
   destruct 1,1; solve [congruence | elim lt_asym; auto | elim gt_asym; auto].
 
-Theorem le_sym_eq : a <= b -> b <= a -> a = b. Proof. solve_sym_eq. Qed.
-Theorem ge_sym_eq : a >= b -> b >= a -> a = b. Proof. solve_sym_eq. Qed.
+Lemma le_sym_eq : a <= b -> b <= a -> a = b. Proof. solve_sym_eq. Qed.
+Lemma ge_sym_eq : a >= b -> b >= a -> a = b. Proof. solve_sym_eq. Qed.
 
 Local Ltac solve_bool :=
   first [ rewrite ltb_lt, ltb_nlt; apply lt_asym
@@ -537,14 +568,14 @@ Local Ltac solve_bool :=
         | repeat rewrite leb_le; apply le_sym_eq
         | repeat rewrite geb_ge; apply ge_sym_eq ].
 
-Theorem ltb_asym : a <? b = true -> b <? a = false. Proof. solve_bool. Qed.
-Theorem gtb_asym : a >? b = true -> b >? a = false. Proof. solve_bool. Qed.
+Lemma ltb_asym : a <? b = true -> b <? a = false. Proof. solve_bool. Qed.
+Lemma gtb_asym : a >? b = true -> b >? a = false. Proof. solve_bool. Qed.
 
 Local Notation EQ_SYM_B rel := (rel a b = true -> rel b a = true -> a = b)
   (only parsing).
 
-Theorem leb_sym_eq : EQ_SYM_B leb. Proof. solve_bool. Qed.  
-Theorem geb_sym_eq : EQ_SYM_B geb. Proof. solve_bool. Qed.
+Lemma leb_sym_eq : EQ_SYM_B leb. Proof. solve_bool. Qed.  
+Lemma geb_sym_eq : EQ_SYM_B geb. Proof. solve_bool. Qed.
 
 End asymmetry.
 
