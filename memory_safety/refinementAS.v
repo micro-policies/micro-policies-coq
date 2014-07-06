@@ -497,12 +497,36 @@ Proof.
   eapply refine_val_malloc; eauto. 
 Qed.
 
-Lemma get_write_block smem base sz v w :
-  PartMaps.get (Sym.write_block smem base v sz) w =
-  if base <=? w <? base + sz then Some v else PartMaps.get smem w.
+
+Lemma get_write_block_rec:  forall base v n init w, 
+  word_to_Z base + Z.of_nat n <=? word_to_Z max_word -> 
+  PartMaps.get (Sym.write_block_rec init base v n) w =
+  if base <=? w <? base + Z_to_word (Z.of_nat n) then Some v else PartMaps.get init w.
 Proof.
-admit.
+  induction n; intros. 
+  - simpl. 
+    have [inb|_] := boolP (base <=? w <? base + 0)%ordered.
+    replace (base + 0) with base in inb by (rewrite addw0; auto). admit. (* inb is imposible *)
+    auto. 
+  - admit.
 Qed.
+
+Lemma get_write_block: forall smem base sz v w mem',
+  (0 <= sz)%ordered ->                          
+  Sym.write_block smem base v sz = Some mem' ->                          
+  PartMaps.get mem' w = if base <=? w <? base + sz then Some v else PartMaps.get smem w.
+Proof.
+  unfold Sym.write_block.
+  intros. revert H2. 
+  assert (0 <= word_to_Z sz). 
+    apply word_to_Z_le in H1.
+    rewrite Z_to_wordK in H1.  auto. split. apply min_word_bound. pose proof max_word_bound. omega. 
+  have [rep|nrep] := boolP (word_to_Z base + word_to_Z sz <=? word_to_Z max_word).
+  intro. inversion H3; subst; clear H3. 
+  erewrite get_write_block_rec. rewrite Z2Nat.id; auto. rewrite word_to_ZK;  auto.
+  rewrite Z2Nat.id; auto.
+  intro X; inversion X.
+Qed. 
 
 Lemma meminj_spec_malloc mi amem smem amem' info bl sz newb base col :
   refine_internal_state mi bl smem (col, info) ->
@@ -525,19 +549,19 @@ have [-> //|/eqP neq_col''] := altP (col'' =P col).
 exact: (miIr miP).
 Qed.
 
-Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col :
+Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col smem' :
   refine_memory mi amem smem ->
+  (0 <= sz)%ordered -> 
   refine_internal_state mi bl smem (col, info) ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
-  let smem' := Sym.write_block smem base 0@M(col, DATA) sz
-  in
+  Sym.write_block smem base 0@M(col, DATA) sz = Some smem' -> 
   refine_memory (mi_malloc mi newb base col) amem' smem'.
 Proof.
-case=> miP rmem rist malloc /=.
+case=> miP rmem sznneg rist malloc /=.
 case: (rist) => [fresh_col [in_bl biP]].
 split; first exact: (meminj_spec_malloc _ rist malloc).
 move=> w1 w2 col' ty.
-rewrite get_write_block.
+rewrite (get_write_block _ _ H1).
 have [|_ /rmem get_w1] := boolP (base <=? w1 <? base + sz).
   case/andP=> lt_base lt_w1 [<- <- <-].
   rewrite PartMaps.get_set_eq (Abstract.malloc_get malloc); last first.
@@ -567,16 +591,16 @@ rewrite /Abstract.getv (Abstract.malloc_get_neq malloc neq_b').
 case: (PartMaps.get amem b') => // fr.
 case: (index_list_Z (word_to_Z (w1 - base'))) => // v.
 by move=> rvw2; apply: (refine_val_malloc _ fresh_col malloc).
+exact: sznneg.
 Qed.
 
-Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color :
+Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color smem':
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   (color < max_word)%ordered ->
   refine_internal_state mi bl smem (color, info) ->
+  Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz = Some smem' -> 
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
-    (newb :: bl)
-     (Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz)
-     (color + 1, Sym.update_block_info info bi color sz).
+    (newb :: bl) smem' (color + 1, Sym.update_block_info info bi color sz).
 Proof.
 move=> malloc [lt_color [fresh_color [in_bl biP]]].
 split.
@@ -794,7 +818,9 @@ by solve_pc rpci.
 
 (* Syscall *)
 
-  move: b Heqo E0 => bi Heqo E0.
+(* 
+(* XXXX broken here *)
+  move: b Heqo E => bi Heqo E. 
   case: (rist)=> fresh_color [in_bl].
   move/(_ bi _).
   have: bi \in [seq x <- info
@@ -829,10 +855,12 @@ by solve_pc rpci.
   by eauto.
 
   split; try eassumption.
-  exact: (refine_memory_malloc _ rmem rist malloc).
+  exact: (refine_memory_malloc _ rmem rist malloc).  (* will need additional arg *)
   exact: (refine_val_malloc _ fresh_color malloc).
   apply ltb_lt in E.
   exact: (refine_internal_state_malloc _ malloc E).
+*)
+admit.
 
 (* Free *)
 
