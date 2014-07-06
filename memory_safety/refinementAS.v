@@ -1,6 +1,7 @@
 Require Import ZArith.
 Ltac type_of x := type of x.
 
+Require Import lib.Coqlib.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.utils lib.partial_maps common.common symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
@@ -768,9 +769,6 @@ Definition lift_binop (f : binop) (x y : atom (word mt) (Sym.tag mt)) :=
          end
   end.
 
-
-Ltac inv H := (inversion H; subst; clear H). 
-
 Lemma refine_binop mi amem f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
   meminj_spec amem mi ->
   refine_val mi v1 w1 ty1 -> refine_val mi v2 w2 ty2 ->
@@ -815,7 +813,7 @@ Proof.
 case: ast => a_mem a_regs bl a_pc.
 case: sym_st => sym_mem sym_regs sym_pc // sym_ist rst.
 case: sym_st' => sym_mem' sym_regs' [spcv' spcl'] sym_ist' sym_step.
-Coqlib.inv sym_step;
+inv sym_step;
 case: ST => *; subst;
 destruct tpc as [[|]| |] => //;
 case: rst => rmem rregs rpc rist;
