@@ -130,6 +130,7 @@ Class machine_refinement_specs := {
     check csi csj = false ->
     succ csi csj = true;
 
+  (* We should merge this with av_implies_cv, as we did in the paper *)
   cfg_equiv : forall (asi asj : @state amachine) csi csj,
     refine_state asi csi ->
     refine_state asj csj ->
