@@ -47,23 +47,62 @@ Context `{syscall_regs mt} `{a_alloc : @Abstract.allocator mt block ap}
 
 Notation meminj := (@word_map mt (block * (word mt) (* base *))).
 
-Hypothesis binop_addDl : forall x y z,
+Lemma binop_addDl : forall x y z,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
+Proof.
+  move => x y z /=.
+  by rewrite addwA.
+Qed.
 
-Hypothesis binop_addDr : forall x y z,
+Lemma binop_addDr : forall x y z,
   binop_denote ADD x (y + z) = y + (binop_denote ADD x z).
+Proof.
+  move => x y z /=.
+  rewrite addwA.
+  rewrite (addwC x y).
+  by rewrite addwA.
+Qed.
 
-Hypothesis binop_subDl : forall x y z,
+Lemma binop_subDl : forall x y z,
   binop_denote SUB (x + y) z = x + (binop_denote SUB y z).
+Proof.
+  move => x y z /=.
+  by rewrite addwA.
+Qed.
 
-Hypothesis binop_sub_add2l : forall x y z,
+Lemma binop_sub_add2l : forall x y z,
   binop_denote SUB (x + y) (x + z) = (binop_denote SUB y z).
+Proof.
+  move => x y z /=.
+  have ->: (opp_word (x + z) = opp_word x - z).
+  { rewrite <- (add0w (opp_word x + _)).
+    rewrite <- (addNw (x + z)) at 1.
+    rewrite (addwC (opp_word x) (opp_word z)).
+    do ! rewrite <- addwA.
+    rewrite (addwA z _ (opp_word x)).
+    by rewrite addwN add0w addwN addw0. }
+  rewrite (addwC x y).
+  rewrite addwA.
+  rewrite <- (addwA y x _).
+  by rewrite addwN addw0.
+Qed.
 
-Hypothesis binop_eq_add2l : forall x y z,
+Lemma binop_eq_add2l : forall x y z,
   binop_denote EQ (x + y) (x + z) = binop_denote EQ y z.
+Proof.
+  move => x y z /=.
+  f_equal.
+  have [->|/eqP NEQ] := altP (y =P z); first by rewrite eqxx.
+  have [EQ|//] := altP (x + y =P x + z).
+  contradict NEQ.
+  rewrite <- add0w. rewrite <- (addNw x).
+  rewrite <- addwA. rewrite EQ. rewrite addwA.
+  rewrite addNw. apply add0w.
+Qed.
 
-Hypothesis ltwSw : forall w,
+Lemma ltwSw : forall w,
   (w < max_word -> w < w + 1)%ordered.
+Admitted.
 
 Section memory_injections.
 
