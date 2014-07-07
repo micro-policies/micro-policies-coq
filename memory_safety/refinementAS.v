@@ -644,15 +644,18 @@ Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col smem' :
   Sym.write_block smem base 0@M(col, DATA) sz = Some smem' -> 
   refine_memory (mi_malloc mi newb base col) amem' smem'.
 Proof.
-case=> miP rmem sznneg rist malloc /=.
-case: (rist) => [fresh_col [in_bl biP]].
+case=> miP rmem sznneg rist malloc.
+case: (rist) => [fresh_col [in_bl [no_overlap biP]]].
+
 split; first exact: (meminj_spec_malloc _ rist malloc).
 move=> w1 w2 col' ty.
 rewrite (get_write_block _ H1).
-have [|_ /rmem get_w1] := boolP (word_to_Z base <=? word_to_Z w1 <? word_to_Z base + word_to_Z sz)%Z.
-  case/andP=> lt_base lt_w1 [<- <- <-].
+have [/andP [/Z.leb_le ? /Z.ltb_lt ?] [<- <- <-]|_ /rmem get_w1] :=
+  boolP (word_to_Z base <=? word_to_Z w1 <? word_to_Z base + word_to_Z sz)%Z.
   rewrite PartMaps.get_set_eq (Abstract.malloc_get malloc); last first.
-    admit. (* need a bit of arithmetic here *)
+  have ? := @leZ_max sz.
+  generalize min_word_bound => min_bound.
+  by apply/word_to_Z_lt; rewrite subwE; omega.
   apply: (refine_val_malloc _ fresh_col malloc).
   by constructor.
 have neq_col: col' <> col.
@@ -1265,5 +1268,9 @@ rewrite /= /Symbolic.run_syscall /=.
 case: (Symbolic.entry_tag sc) => // b [] //.
 by case: ifP.
 Qed.
+
+(*
+Print Assumptions backward_simulation.
+*)
 
 End refinement.
