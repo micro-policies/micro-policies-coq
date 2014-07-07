@@ -33,7 +33,8 @@ Context {enc : encodable (@Symbolic.tag (Sym.sym_memory_safety t))}
         {syscall_addrs : @memory_syscall_addrs t}
         {ap : Abstract.abstract_params (word t)}
         {apspec : Abstract.params_spec ap}
-        {alloc : @Abstract.allocator t _ _}.
+        {alloc : @Abstract.allocator t _ _}
+        {allocspec : Abstract.allocator_spec alloc}.
 
 Inductive refine_state (ast : Abstract.state t) (cst : Concrete.state t) : Prop :=
 | rs_intro : forall (sst : Symbolic.state t) m,
