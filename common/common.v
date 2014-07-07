@@ -316,6 +316,13 @@ Definition binop_denote (f : binop) : word t -> word t -> word t :=
 Lemma word_to_Z_inj : injective word_to_Z.
 Proof. exact (can_inj word_to_ZK). Qed.
 
+Lemma word0 : word_to_Z 0 = 0%Z.
+Proof.
+generalize min_word_bound => min_word_bound.
+generalize max_word_bound => max_word_bound.
+rewrite Z_to_wordK //; split; omega.
+Qed.
+
 Lemma addwA : associative +%w.
 Proof.
 intros x y z.
@@ -438,6 +445,49 @@ Qed.
 
 Corollary lew_minmax : forall w, min_word <= w <= max_word.
 Proof. split; [apply lew_min | apply lew_max]. Qed.
+
+(*
+Lemma lew_add2l x y z :
+  x + y <= x + z <-> y <= z.
+Proof.
+rewrite !word_to_Z_le.
+rewrite -[x]word_to_ZK -{1}[y]word_to_ZK -{1}[z]word_to_ZK.
+rewrite !addwP.
+rewrite !Z_to_wordK.
+omega.
+
+Qed.
+*)
+
+Lemma addwE x y :
+  (word_to_Z min_word <= word_to_Z x + word_to_Z y <= word_to_Z max_word)%Z ->
+  word_to_Z (x + y) = (word_to_Z x + word_to_Z y)%Z.
+Proof.
+move=> ?.
+rewrite -{1}[x]word_to_ZK -{1}[y]word_to_ZK.
+rewrite addwP.
+by rewrite Z_to_wordK.
+Qed.
+
+Lemma oppwE x :
+  (word_to_Z min_word <= - word_to_Z x <= word_to_Z max_word)%Z ->
+  word_to_Z (- x) = (- word_to_Z x)%Z.
+Proof.
+move=> ?.
+rewrite -{1}[x]word_to_ZK.
+rewrite oppwP.
+by rewrite Z_to_wordK.
+Qed.
+
+Lemma subwE x y :
+(word_to_Z min_word <= word_to_Z x - word_to_Z y <= word_to_Z max_word)%Z ->
+  word_to_Z (x - y) = (word_to_Z x - word_to_Z y)%Z.
+Proof.
+move=> ?.
+rewrite -{1}[x]word_to_ZK -{1}[y]word_to_ZK.
+rewrite oppwP addwP.
+by rewrite Z_to_wordK.
+Qed.
 
 End WordCompare.
 
