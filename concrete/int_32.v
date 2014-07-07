@@ -20,16 +20,26 @@ Require Import concrete.concrete.
 Import DoNotation.
 
 (* We have to use the same Int module that the maps use. *)
+
+Module Wordsize_32 <: WORDSIZE.
+
+Definition wordsize_minus_one := 31.
+
+End Wordsize_32.
+
+
 Module Int32Ordered := IntOrdered Wordsize_32.
 Module Int32Indexed := Int32Ordered.IntIndexed.
-Module Int32        := Int32Indexed.Int.
-Import Int32.
 
-Lemma int_eqP : Equality.axiom Int32.eq.
+Import Word.
+
+Definition int := int 31.
+
+Lemma int_eqP : Equality.axiom (@eq 31).
 Proof.
 move=> x y; apply: (iffP idP) => [|->].
-  by have := eq_spec x y; case: (eq x y).
-by rewrite eq_true.
+  by have := Word.eq_spec _ x y; case: (Word.eq x y).
+by rewrite Word.eq_true.
 Qed.
 
 Definition int_eqMixin := EqMixin int_eqP.
@@ -143,10 +153,10 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
 
   imm_to_word i := i;
 
-  min_word := repr min_signed;
+  min_word := repr (min_signed 31);
   (* ASZ: If this is `max_unsigned`, then `word_to_Z` needs to be `unsigned`,
      but then `opp_word` breaks. *)
-  max_word := repr max_signed;
+  max_word := repr (max_signed 31);
 
   Z_to_word := repr;
 
@@ -232,44 +242,16 @@ Lemma pack3_unpack3_hideous_Bnz : forall i s,
    Some (Bnz concrete_int_32_t s i).
 Admitted.
 
-(* This belongs in CompCert's integers, but alas. *)
-Lemma add_repr : forall x y, (add (repr x) (repr y)) = repr (x + y)%Z.
-Proof.
-  intros. rewrite add_signed. unfold repr,signed; simpl.
-  apply mkint_eq. repeat rewrite Z_mod_modulus_eq.
-  destruct (zlt (x mod modulus) half_modulus),
-           (zlt (y mod modulus) half_modulus).
-  - rewrite <- Zplus_mod; reflexivity.
-  - replace (x mod modulus + (y mod modulus - modulus))%Z
-       with (x mod modulus + y mod modulus - modulus)%Z
-         by omega.
-    rewrite Zminus_mod -Zplus_mod.
-    rewrite Z_mod_same_full Zminus_0_r.
-    rewrite Zmod_mod; reflexivity.
-  - replace (x mod modulus - modulus + y mod modulus)%Z
-       with (x mod modulus + y mod modulus - modulus)%Z
-         by omega.
-    rewrite Zminus_mod -Zplus_mod.
-    rewrite Z_mod_same_full Zminus_0_r.
-    rewrite Zmod_mod; reflexivity.
-  - replace (x mod modulus - modulus + (y mod modulus - modulus))%Z
-       with (x mod modulus + y mod modulus - (2*modulus))%Z
-         by omega.
-    rewrite Zminus_mod -Zplus_mod.
-    rewrite Zmult_mod Z_mod_same_full Zmult_0_r Zminus_0_r.
-    rewrite Zmod_mod; reflexivity.
-Qed.
-
 Lemma compare_signed : forall x y, (x <=> y) = (signed x ?= signed y)%Z.
 Proof.
-  simpl; intros; unfold Int32Ordered.int_compare,lt.
-  destruct (SetoidDec.equiv_dec x y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
+  simpl; intros. unfold Int32Ordered.int_compare,lt.
+  destruct (@SetoidDec.equiv_dec Int32Indexed.t _ _ x y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
   destruct (zlt (signed x) (signed y)) as [LT | GE]; [auto with zarith|].
   unfold Zge in GE; destruct (_ ?= _)%Z eqn:CMP.
   + apply Z.compare_eq in CMP.
     destruct x as [x px], y as [y py].
     unfold signed,unsigned in CMP; simpl in CMP.
-    destruct (zlt x half_modulus),(zlt y half_modulus); ssubst;
+    destruct (zlt x (half_modulus _)),(zlt y (half_modulus _)); ssubst;
     solve [omega
           | contradict NE; apply mkint_eq; solve [reflexivity | omega]].
   + congruence.
@@ -290,20 +272,20 @@ Proof.
   - reflexivity.
   - simpl. apply repr_signed.
   - simpl; intros. apply signed_repr. compute -[Zle] in *; omega.
-  - exact add_repr.
-  - exact neg_repr.
+  - exact: add_repr.
+  - exact: neg_repr.
   - exact compare_signed.
   - intros w.
-    assert (min_signed <= word_to_Z w) by apply signed_range.
-    unfold min_word,word_to_Z,concrete_int_32_ops,le in *.
+    assert (min_signed 31 <= word_to_Z w) by apply signed_range.
+    unfold min_word,word_to_Z,concrete_int_32_ops,le,Wordsize_32.wordsize_minus_one in *.
     rewrite compare_signed signed_repr; last by
-      (generalize (signed_range (repr 0)); omega).
+      (unfold Wordsize_32.wordsize_minus_one; generalize (signed_range 31 (repr 0)); omega).
     assumption.
   - intros w.
-    assert (word_to_Z w <= max_signed) by apply signed_range.
+    assert (word_to_Z w <= max_signed 31) by apply signed_range.
     unfold max_word,word_to_Z,concrete_int_32_ops,le in *.
     rewrite compare_signed signed_repr; last by
-      (generalize (signed_range (repr 0)); omega).
+      (unfold Wordsize_32.wordsize_minus_one; generalize (signed_range 31 (repr 0)); omega).
     assumption.
   - constructor.
     + (* get_set_eq *)

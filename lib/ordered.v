@@ -50,37 +50,35 @@ Proof.
   - apply Zcompare_Gt_trans.
 Defined.
 
+Require Integers.
+
 Module IntOrdered (WS : Integers.WORDSIZE).
   (* We need integers that are indexable and orderable, so... *)
   Module IntIndexed := FiniteMaps.IntIndexed WS.
   Import IntIndexed.
-  Import IntIndexed.Int.
-
-  Instance int_eqdec : EqDec (eq_setoid int) := eq_dec.
+  Import Integers.Word.
   
-  Definition int_compare (a b : int) : comparison :=
+  Instance int_eqdec : EqDec (eq_setoid IntIndexed.t) := eq_dec.
+  
+  Definition int_compare (a b : IntIndexed.t) : comparison :=
     if a == b
     then Eq
     else if lt a b
          then Lt
          else Gt.
   
-  Instance int_ordered : Ordered int.
+  Instance int_ordered : Ordered t.
   Proof.
     apply Build_Ordered with int_compare; unfold int_compare; intros.
     - destruct (a == a); [reflexivity | congruence].
-    - destruct (a == b), (b == a); auto; try congruence.
+    - destruct (a == b) as [ | NEQAB], (b == a) as [ | NEQBA]; auto; try congruence.
       unfold lt;
         destruct (zlt (signed a) (signed b)), (zlt (signed b) (signed a));
         try solve [auto | omega].
-      repeat match goal with
-        | GE : (signed ?x >= signed ?y)%Z |- _ =>
-          apply Z.ge_le,Z_le_lt_eq_dec in GE; destruct GE as [LT|EQ];
-            [| generalize (eq_signed x y); intros ES;
-               rewrite EQ,eq_false,zeq_true in ES by assumption;
-               discriminate ]
-      end.
-      omega.
+      assert (E : signed a = signed b) by omega.
+      generalize (eq_signed _ a b). rewrite E. rewrite zeq_true.
+      intros TRUE.
+      generalize (eq_false _  _ _ NEQAB). congruence.
     - destruct (a == b); [auto | destruct (lt a b); discriminate].
     - unfold lt in *;
         destruct (a == b), (b == c),
@@ -89,22 +87,15 @@ Module IntOrdered (WS : Integers.WORDSIZE).
       destruct (a == c), (zlt (signed a) (signed c)); ssubst;
         first [reflexivity | omega].
     - unfold lt in *;
-        destruct (a == b), (b == c),
+        destruct (a == b) as [|NEQAB], (b == c) as [|NEQBC],
                  (zlt (signed a) (signed b)), (zlt (signed b) (signed c));
         try congruence.
       destruct (a == c), (zlt (signed a) (signed c)); ssubst;
         try first [reflexivity | omega].
-      repeat match goal with
-        | [GE : (signed ?x >= signed ?y)%Z |- _] =>
-          apply Z.ge_le,Z_le_lt_eq_dec in GE;
-          let GT := fresh GT in
-          let EQ := fresh EQ in
-          destruct GE as [GT | EQ]; try omega
-      end.
-      generalize (eq_signed b c); intros ES.
-      match goal with EQ : signed b = signed c |- _ =>
-        rewrite EQ,eq_false,zeq_true in ES by assumption; discriminate
-      end.
+      assert (E : signed b = signed c) by omega.
+      generalize (eq_signed _ b c). rewrite E. rewrite zeq_true.
+      intros TRUE.
+      generalize (eq_false _  _ _ NEQBC). congruence.
   Defined.
 End IntOrdered.
 

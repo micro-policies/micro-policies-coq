@@ -63,14 +63,14 @@ Instance fhp : fault_handler_params t := concrete_int_32_fh.
 (* ---------------------------------------------------------------- *)
 (* Generic definitions for building concrete machine instances *)
 
-Definition ruser1 := Int32.repr 20.
-Definition ruser2 := Int32.repr 21.
-Definition ruser3 := Int32.repr 22.
-Definition ruser4 := Int32.repr 23.
+Definition ruser1 : word t := Word.repr 20.
+Definition ruser2 : word t := Word.repr 21.
+Definition ruser3 : word t := Word.repr 22.
+Definition ruser4 : word t := Word.repr 23.
 Definition user_registers :=
   [ra; syscall_ret; syscall_arg1; syscall_arg2; syscall_arg3; ruser1;
    ruser2; ruser3; ruser4].
-Definition user_reg_max := last user_registers (Int32.repr 0).
+Definition user_reg_max := last user_registers (Word.repr 0).
 
 Definition kernel_data {X} l : @relocatable_segment t X w :=
  (length l, fun _ _ => l).
@@ -102,8 +102,8 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
 (* TODO: Where should this really live? *)
 Instance sk_defs : Sym.sealing_key := {|
  key := int_eqType;
- max_key := Int32.repr 100;
- inc_key := fun x => Int32.add x (Int32.repr 1);
+ max_key := Word.repr 100;
+ inc_key := fun x => Word.add x (Word.repr 1);
  ord_key := int_ordered
 |}.
 admit.
@@ -112,8 +112,8 @@ Defined.
 Definition encode_sealing_tag (t : Sym.stag) : w :=
  match t with
    Sym.DATA => Z_to_word 0
- | Sym.KEY k => add_word (Int32.repr 1) (Int32.shl k (Int32.repr 2))
- | Sym.SEALED k => add_word (Int32.repr 3) (Int32.shl k (Int32.repr 2))
+ | Sym.KEY k => add_word (Word.repr 1) (Word.shl k (Word.repr 2))
+ | Sym.SEALED k => add_word (Word.repr 3) (Word.shl k (Word.repr 2))
  end.
 
 Definition DATA := encode_sealing_tag Sym.DATA.
@@ -210,7 +210,7 @@ Definition extra_state : @relocatable_segment t w w :=
  kernel_data [nat_to_word 13].
 
 Definition gen_syscall_code gen : @relocatable_segment t w w :=
- (length (gen (Int32.repr 0) (Int32.repr 0)),
+ (length (gen (Word.repr 0) (Word.repr 0)),
   fun b w => map encode_instr (gen b w)).
 
 Definition mkkey_segment : @relocatable_segment t w w :=
@@ -361,8 +361,8 @@ Definition build_symbolic_sealing_machine
                          user_memory_addr@Sym.DATA
                          ssa
                          user_registers
-                         (common.Atom (Int32.repr 0) Sym.DATA)
-                         (Int32.repr 0).
+                         (common.Atom (Word.repr 0) Sym.DATA)
+                         (Word.repr 0).
 
 (* ---------------------------------------------------------------- *)
 (* ---------------------------------------------------------------- *)
@@ -435,11 +435,11 @@ Definition format_atom atom :=
     | None => format_word w1 +++ ss "@" +++ format_word w2
     end.
 
-Definition print_instr atom :=
-  let: w1@w2 := atom in (Int32.intval w1, decode_instr w1, Int32.intval w2).
+Definition print_instr (a : atom) :=
+  let: w1@w2 := a in (Word.unsigned w1, decode_instr w1, Word.unsigned w2).
 
-Definition print_atom atom :=
-  let: w1@w2 := atom in (Int32.intval w1, Int32.intval w2).
+Definition print_atom (a : atom) :=
+  let: w1@w2 := a in (Word.unsigned w1, Word.unsigned w2).
 
 Definition format_mvec l :=
   let os := match (Z_to_op (word_to_Z (@Concrete.cop (word t) l))) with
@@ -471,34 +471,34 @@ Definition format_cache (c : Concrete.rules (word t)) :=
 
 Require Import Coqlib.
 
-Fixpoint enum (M R S : Type) (map : M) (get : M -> Int32.int -> R) (f : R -> S) (n : nat) (i : Int32.int) :=
+Fixpoint enum (M R S : Type) (map : M) (get : M -> word t -> R) (f : R -> S) (n : nat) (i : word t) :=
   match n with
   | O => []
-  | S p => (Int32.intval i, f (get map i)) :: enum map get f p (Int32.add i (Int32.repr 1))
+  | S p => (Word.unsigned i, f (get map i)) :: enum map get f p (Word.add i (Word.repr 1))
   end.
 
 Definition summarize_concrete_state mem_count cache_count st :=
   let mem' := just_somes
                (@enum _ _ _
                  (@Concrete.mem t st)
-                 (@PartMaps.get _ Int32.int _ _)
+                 (@PartMaps.get _ (word t) _ _)
                  (@omap atom sstring format_atom)
                  mem_count
-                 (Int32.repr 0)) in
+                 (Word.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := @enum _ _ _
                  (@Concrete.regs t st)
-                 (@TotalMaps.get _ Int32.int _ _)
+                 (@TotalMaps.get _ (word t) _ _)
                  (fun a => format_atom a)
                  (word_to_nat user_reg_max)
-                 (Int32.repr (word_to_Z (nat_to_word 0))) in
+                 (Word.repr (word_to_Z (nat_to_word 0))) in
   let regs := map (fun r =>
                      let: (x,a) := r in
                      ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a)
                regs' in
   let current_instr :=
     let: addr@_ := Concrete.pc st in
-    match @PartMaps.get _ Int32.int _ _
+    match @PartMaps.get _ (word t) _ _
                     (@Concrete.mem t st)
                     addr with
       None => ss "(BAD ADDR)"
@@ -529,25 +529,25 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
   let mem' := just_somes
                (@enum _ _ _
                  (@Symbolic.mem t Sym.sym_sealing st)
-                 (@PartMaps.get _ Int32.int _ _)
+                 (@PartMaps.get _ (word t) _ _)
                  (@omap _ sstring (format_symbolic_atom pr_tag))
                  mem_count
-                 (Int32.repr 0)) in
+                 (Word.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := just_somes
                  (@enum _ _ _
                     (@Symbolic.regs t Sym.sym_sealing st)
-                    (@PartMaps.get _ Int32.int _ _)
+                    (@PartMaps.get _ (word t) _ _)
                     (@omap _ sstring (format_symbolic_atom pr_tag))
                     (word_to_nat user_reg_max)
-                    (Int32.repr (word_to_Z (nat_to_word 0)))) in
+                    (Word.repr (word_to_Z (nat_to_word 0)))) in
   let regs := map (fun r =>
                      let: (x,a) := r in
                      ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a)
                regs' in
   let current_instr :=
     let: addr := Symbolic.pc st in
-    match @PartMaps.get _ Int32.int _ _
+    match @PartMaps.get _ (word t) _ _
                     (@Symbolic.mem t Sym.sym_sealing st)
                     (val addr) with
       None => ss "(BAD ADDR)"
@@ -561,8 +561,8 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
       ss " | " +++
       mem)).
 
-Definition format_int i :=
-  format_Z (Int32.intval i).
+Definition format_int (i : word t) :=
+  format_Z (Word.unsigned i).
 
 Definition format_sealing_tag (t : @Symbolic.tag (@Sym.sym_sealing sk_defs)):=
   match t with
@@ -594,25 +594,25 @@ Definition summarize_abstract_state mem_count st :=
   let mem' := just_somes
                (@enum _ _ _
                  (@Abs.mem t sk st)
-                 (@PartMaps.get _ Int32.int _ _)
+                 (@PartMaps.get _ (word t) _ _)
                  (@omap (@Abs.value t sk) sstring format_value)
                  mem_count
-                 (Int32.repr 0)) in
+                 (Word.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := just_somes
                  (@enum _ _ _
                     (@Abs.regs t sk st)
-                    (@PartMaps.get _ Int32.int _ _)
+                    (@PartMaps.get _ (word t) _ _)
                     (@omap (@Abs.value t sk) sstring format_value)
                     (word_to_nat user_reg_max)
-                    (Int32.repr (word_to_Z (nat_to_word 0)))) in
+                    (Word.repr (word_to_Z (nat_to_word 0)))) in
   let regs := map (fun r =>
                      let: (x,a) := r in
                      ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a)
                regs' in
   let current_instr :=
     let: addr := Abs.pc st in
-    match @PartMaps.get _ Int32.int _ _
+    match @PartMaps.get _ (word t) _ _
                     (@Abs.mem t sk st)
                     addr with
       None => ss "(BAD ADDR)"
@@ -727,7 +727,7 @@ Definition hello_world4 : @relocatable_segment t (@classes.sealing_syscall_addrs
 (* Test store and load *)
 Definition hello_world5 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun base _ =>
-    let data := word_to_imm (add_word base (Int32.repr 0)) in
+    let data := word_to_imm (add_word base (Word.repr 0)) in
         [
           (* DATA BLOCK *)
           Nop _;

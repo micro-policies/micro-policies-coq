@@ -19,7 +19,6 @@ Require Import eqtype.
 Require Import lib.partial_maps.
 
 Import DoNotation.
-Import Int32.
 Import Concrete.
 
 Section WithClasses.
@@ -27,15 +26,15 @@ Section WithClasses.
 Let t := concrete_int_32_t.
 
 Instance concrete_int_32_fh : fault_handler_params t := {
-  rop := Int32.repr 1;
-  rtpc := Int32.repr 2;
-  rti := Int32.repr 3; rt1 := Int32.repr 4; rt2 := Int32.repr 5;
-  rt3 := Int32.repr 6;
-  rb := Int32.repr 7;
-  ri1 := Int32.repr 8; ri2 := Int32.repr 9; ri3 := Int32.repr 10;
-  ri4 := Int32.repr 11; ri5 := Int32.repr 12;
-  rtrpc := Int32.repr 13; rtr := Int32.repr 14;
-  raddr := Int32.repr 15;
+  rop := Word.repr 1;
+  rtpc := Word.repr 2;
+  rti := Word.repr 3; rt1 := Word.repr 4; rt2 := Word.repr 5;
+  rt3 := Word.repr 6;
+  rb := Word.repr 7;
+  ri1 := Word.repr 8; ri2 := Word.repr 9; ri3 := Word.repr 10;
+  ri4 := Word.repr 11; ri5 := Word.repr 12;
+  rtrpc := Word.repr 13; rtr := Word.repr 14;
+  raddr := Word.repr 15;
 
   (* WARNING: This doesn't quite work in the general case, because imm
      should be strictly smaller than word. However, it should work
@@ -51,14 +50,14 @@ Fixpoint insert_from {A : Type} (i : int) (l : list A)
                      (mem : Int32PMap.t A) : Int32PMap.t A :=
   match l with
     | []      => mem
-    | h :: l' => insert_from (add i one) l' (Int32PMap.set i h mem)
+    | h :: l' => insert_from (Word.add i Word.one) l' (Int32PMap.set i h mem)
   end.
 
 Fixpoint constants_from {A : Type} (i : int) (n : nat) (x : A)
                         (mem : Int32PMap.t A) : Int32PMap.t A :=
   match n with
     | O    => mem
-    | S n' => constants_from (add i one) n' x (Int32PMap.set i x mem)
+    | S n' => constants_from (Word.add i Word.one) n' x (Int32PMap.set i x mem)
   end.
 
 Definition w := word concrete_int_32_t.
@@ -80,8 +79,8 @@ Definition kernelize_syscall (seg : @relocatable_segment concrete_int_32_t w w)
         (encode_instr (Nop _))@(Z_to_word 2) ::
         map (fun x => x@Concrete.TKernel) (gen b rest)).
 
-Definition kernelize_user_tag t :=
-  add (shl t (repr 2)) (repr 1).
+Definition kernelize_user_tag t : Word.int 31 :=
+  Word.add (Word.shl t (Word.repr 2)) (Word.repr 1).
 
 Definition kernelize_tags
                    {X : Type}
@@ -103,7 +102,7 @@ Definition build_monitor_memory
       (handler : relocatable_segment w w)
       (syscalls : list (relocatable_segment w w))
     : Concrete.memory concrete_int_32_t * w * list w :=
-  let cacheCell := Atom zero Concrete.TKernel in
+  let cacheCell := Atom Word.zero Concrete.TKernel in
   let '((kernel_length,gen_kernel), offsets) :=
     concat_and_measure_relocatable_segments
       ([kernelize handler;
@@ -120,13 +119,13 @@ Definition build_monitor_memory
             syscall_offsets in
     let kernel := gen_kernel base_addr extra_state_addr in
     let mem :=
-       ( constants_from zero 8 cacheCell
+       ( constants_from Word.zero 8 cacheCell
        ∘ insert_from base_addr kernel )
        (Int32PMap.empty _) in
      (mem, user_code_addr, syscall_addrs)
    | _ =>
      (* Should not happen *)
-     (Int32PMap.empty _, repr 0, [])
+     (Int32PMap.empty _, Word.repr 0, [])
    end.
 
 (* BCP: Register initialization may need to be generalized at some
@@ -151,15 +150,15 @@ Program Definition concrete_initial_state
   let regs :=
         fold_left
           (fun regs r =>
-            Int32TMap.set r zero@(kernelize_user_tag initial_reg_tag) regs)
+            Int32TMap.set r Word.zero@(kernelize_user_tag initial_reg_tag) regs)
           user_regs
-          (Int32TMap.init zero@zero) in
+          (Int32TMap.init Word.zero@Word.zero) in
   {|
     Concrete.mem := mem';
     Concrete.regs := regs;
     Concrete.cache := ground_rules;
     Concrete.pc := user_mem_addr@(kernelize_user_tag initial_pc_tag);
-    Concrete.epc := zero@zero
+    Concrete.epc := Word.zero@Word.zero
   |}.
 
 (* TODO: Regularize naming of base addresses and system call stuff. *)
@@ -202,10 +201,10 @@ Program Definition symbolic_initial_state
    just puzzling user program errors! *)
 
 Global Instance concrete_int_32_scr : @syscall_regs concrete_int_32_t := {|
-  syscall_ret  := Int32.repr 16;
-  syscall_arg1 := Int32.repr 17;
-  syscall_arg2 := Int32.repr 18;
-  syscall_arg3 := Int32.repr 19
+  syscall_ret  := Word.repr 16;
+  syscall_arg1 := Word.repr 17;
+  syscall_arg2 := Word.repr 18;
+  syscall_arg3 := Word.repr 19
 |}.
 
 End WithClasses.
