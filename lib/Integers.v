@@ -3879,4 +3879,241 @@ Arguments or {_} _ _.
 Arguments xor {_} _ _.
 Arguments neg {_} _.
 
+(* Given a word of size (S n) , extract a work of size (S s) starting at position p
+   (counting positions from 0) *)
+Definition extract {n:nat} (p:nat) (s:nat) (bits: int n) : int s :=
+  repr (Z.shiftr (unsigned bits) (Z.of_nat p)).
+
+(* Given a word of size (S n + S p), split at position (S p), yielding two words of size (S n) and (S p) *)
+Definition unpack2 {n:nat} (p:nat) (bits:int (S(n+p))) : int n * int p :=
+  (extract (S p) n bits, extract 0 p bits).
+
+(* Given a word of size (S n) and a word of size (S m), adjoin to make a word of size (S(S(n+m))) *)
+Definition pack2 {n m : nat} (lbits:int n) (rbits:int m) : int (S(n+m)) :=
+  repr (Z.shiftl (unsigned lbits) (Z.of_nat (S m)) +
+        unsigned rbits).
+
+Lemma bounded_mult x y n m :
+  0 <= x < n ->
+  0 <= y < m ->
+  0 <= x * m + y < n * m.
+Proof.
+  intros Hx Hy.
+  replace (n * m) with ((n - 1) * m + m) by ring.
+  assert (0 <= x * m <= (n - 1) * m); try omega.
+  split.
+  - apply Zmult_gt_0_le_0_compat; omega.
+  - apply Zmult_le_compat_r; omega.
+Qed.
+
+Lemma modulus_plus n m : modulus (S (n + m)) = modulus n * modulus m.
+Proof.
+  repeat rewrite modulus_power. unfold zwordsize, wordsize.
+  replace (S (S (n + m))) with (S n + S m)%nat by omega. zify.
+  rewrite two_p_is_exp; try omega.
+Qed.
+
+Lemma modulus_shiftl z n : Z.shiftl z (Z.of_nat (S n)) = z * modulus n.
+Proof.
+  rewrite Zshiftl_mul_two_p; try omega.
+  now rewrite modulus_power.
+Qed.
+
+Lemma modulus_shiftr z n : Z.shiftr z (Z.of_nat (S n)) = z / modulus n.
+Proof.
+  rewrite Zshiftr_div_two_p; try omega.
+  now rewrite modulus_power.
+Qed.
+
+Lemma extract_pack2_left : forall {n m:nat} (lbits:int n) (rbits:int m),
+  extract (S m) n (pack2 lbits rbits) = lbits.
+Proof.
+  Opaque Z.of_nat.
+  intros n m [zl Hzl] [zr Hzr]. unfold extract, pack2, repr. simpl.
+  apply mkint_eq.
+  do 2 rewrite Z_mod_modulus_eq.
+  rewrite modulus_shiftl, modulus_shiftr, modulus_plus.
+  rewrite (Zmod_small _ (modulus n * modulus m)); try apply bounded_mult; try omega.
+  rewrite Z_div_plus_full_l.
+  { rewrite Zdiv_small; try omega.
+    rewrite Zplus_0_r.
+    rewrite Zmod_small; try omega. }
+  generalize (modulus_pos m). omega.
+  Transparent Z.of_nat.
+Qed.
+
+Lemma extract_pack2_right : forall {n m:nat} (lbits:int n) (rbits:int m),
+  extract 0 m (pack2 lbits rbits) = rbits.
+Proof.
+  Opaque Z.of_nat.
+  intros n m [zl Hzl] [zr Hzr]. unfold extract, pack2, repr. simpl.
+  apply mkint_eq.
+  do 2 rewrite Z_mod_modulus_eq.
+  rewrite modulus_shiftl, Z.shiftr_0_r, modulus_plus.
+  rewrite (Zmod_small _ (modulus n * modulus m)); try apply bounded_mult; try omega.
+  rewrite Zplus_comm.
+  rewrite Z_mod_plus; try apply modulus_pos.
+  rewrite Zmod_small; omega.
+  Transparent Z.of_nat.
+Qed.
+
+Lemma pack2K : forall {n m:nat} (lbits:int n) (rbits:int m),
+   unpack2 m (pack2 lbits rbits) = (lbits,rbits).
+Proof.
+  intros. unfold unpack2. f_equal. rewrite extract_pack2_left. auto. rewrite extract_pack2_right.  auto.
+Qed.
+
+Lemma unpack2K : forall {n m:nat} (bits:int (S (n+m))), forall (lbits:int n) (rbits:int m),
+   (lbits,rbits) = unpack2 m bits ->
+   pack2 lbits rbits = bits.
+Proof.
+  Opaque Z.of_nat.
+  intros n m [z Hz] [zl Hzl] [zr Hzr].
+  unfold unpack2, pack2, extract, repr. simpl.
+  intros HEQ.
+  inv HEQ. clear Hzr Hzl.
+  apply mkint_eq.
+  do 3 rewrite Z_mod_modulus_eq.
+  rewrite modulus_shiftl, modulus_shiftr, Z.shiftr_0_r, modulus_plus.
+  rewrite modulus_plus in Hz.
+  rewrite (Zmod_small _ (modulus n)).
+  - rewrite Zmult_comm, <- Z_div_mod_eq; try omega.
+    rewrite Zmod_small; omega.
+    apply modulus_pos.
+  - split.
+    + apply Z.div_le_lower_bound; generalize (modulus_pos m); omega.
+    + rewrite Zmult_comm in Hz.
+      apply Z.div_lt_upper_bound; generalize (modulus_pos m); omega.
+Qed.
+
+Import ListNotations.
+
+Inductive words_pack : list nat -> Type :=
+| wnil : words_pack []
+| wcons : forall n ns, int n -> words_pack ns -> words_pack (n :: ns).
+
+Definition words_pack_hd {n ns} (ws : words_pack (n :: ns)) : int n :=
+  match ws with
+  | wcons _ _ w _ => w
+  end.
+
+Definition words_pack_tl {n ns} (ws : words_pack (n :: ns)) : words_pack ns :=
+  match ws with
+  | wcons _ _ _ ws => ws
+  end.
+
+Definition words_pack_case_nil (ws : words_pack []) : forall (P : words_pack [] -> Type) (H : P wnil), P ws :=
+  match ws with
+  | wnil => fun P H => H
+  end.
+
+Definition words_pack_case_cons n ns (ws : words_pack (n :: ns)) :
+  forall (P : words_pack (n :: ns) -> Type) (H : forall w ws', P (wcons _ _ w ws')), P ws :=
+  match ws with
+  | wcons _ _ w ws' => fun P H => H w ws'
+  end.
+
+Fixpoint words_unpack (ns : list nat) : Type :=
+  match ns with
+  | [] => unit
+  | n :: ns => (int n * words_unpack ns)%type
+  end.
+
+Definition total_word_length_aux (n : nat) (o : option nat) : option nat :=
+  match o with
+  | Some total => Some (S n + total)%nat
+  | None => Some n
+  end.
+
+Definition total_word_length (ns : list nat) : option nat :=
+  fold_right total_word_length_aux None ns.
+
+Definition packed_word (ns : list nat) : Type :=
+  match total_word_length ns with
+  | Some total => int total
+  | None => unit
+  end.
+
+Definition packed_word_pack (n : nat) (ns : list nat) : int n -> packed_word ns -> packed_word (n :: ns) :=
+  match total_word_length ns as o
+                             return int n ->
+                                    match o return Type with
+                                    | Some total => int total
+                                    | None => unit
+                                    end ->
+                                    match total_word_length_aux n o return Type with
+                                    | Some total => int total
+                                    | None => unit
+                                    end
+
+  with
+  | Some total => fun w w' => pack2 w w'
+  | None => fun w _ => w
+  end.
+
+Fixpoint pack (ns : list nat) : words_pack ns -> packed_word ns :=
+  match ns with
+  | [] => fun _ => tt
+  | n :: ns => fun ws => packed_word_pack n ns (words_pack_hd ws) (pack _ (words_pack_tl ws))
+  end.
+
+Definition packed_word_unpack (n : nat) (ns : list nat) : packed_word (n :: ns) -> int n * packed_word ns :=
+  match total_word_length ns as o
+                             return match total_word_length_aux n o return Type with
+                                    | Some total => int total
+                                    | None => unit
+                                    end ->
+                                    int n * match o return Type with
+                                            | Some total => int total
+                                            | None => unit
+                                            end
+  with
+  | Some total => fun w => unpack2 _ w
+  | None => fun w => (w, tt)
+  end.
+
+Fixpoint unpack (ns : list nat) : packed_word ns -> words_unpack ns :=
+  match ns with
+  | [] => fun _ => tt
+  | n :: ns => fun w => let '(w1, w2) := packed_word_unpack _ _ w in
+                        (w1, unpack _ w2)
+  end.
+
+Fixpoint words_pack_unpack ns : words_pack ns -> words_unpack ns :=
+  match ns with
+  | [] => fun _ => tt
+  | n :: ns => fun ws => (words_pack_hd ws, words_pack_unpack _ (words_pack_tl ws))
+  end.
+
+Fixpoint words_unpack_pack ns : words_unpack ns -> words_pack ns :=
+  match ns with
+  | [] => fun _ => wnil
+  | n :: ns => fun ws => wcons _ _ (fst ws) (words_unpack_pack _ (snd ws))
+  end.
+
+Lemma packed_word_packK n ns :
+  forall (w : int n) (w' : packed_word ns),
+    packed_word_unpack _ _ (packed_word_pack _ _ w w') = (w,w').
+Proof.
+  unfold packed_word_unpack, packed_word_pack, packed_word.
+  induction (total_word_length ns); intros w w'.
+  - now rewrite pack2K.
+  - now destruct w'.
+Qed.
+
+Lemma packK ns :
+  forall ws : words_pack ns,
+    words_unpack_pack _ (unpack _ (pack _ ws)) = ws.
+Proof.
+  induction ns as [|n ns IH]; intros ws.
+  - now induction ws using words_pack_case_nil.
+  - induction ws using (words_pack_case_cons n ns).
+    simpl. rewrite packed_word_packK. simpl. now rewrite IH.
+Qed.
+
+Module Notations.
+Notation "[ w1 ; .. ; wn ]%wp" := (wcons _ _ w1 .. (wcons _ _ wn wnil) ..).
+Notation "[ w1 ; .. ; wn ]%wu" := (pair w1 .. (pair wn tt) ..).
+End Notations.
+
 End Word.
