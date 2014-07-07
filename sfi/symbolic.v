@@ -300,12 +300,14 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
                           A' s';
       
       do! J' <- isolate_create_set (@val _ _) M pJ;
-      do! sJ <- retag_set (fun c'' I _ => (c == c'') || set_elem c I)
+      do! sJ <- retag_set (fun c'' I _ => (c == c'') || (c' == c'') ||
+                                          set_elem c I)
                           (fun c'' I W => DATA c'' (insert_unique c' I) W)
                           J' sA;
       
       do! S' <- isolate_create_set (@val _ _) M pS;
-      do! sS <- retag_set (fun c'' _ W => (c == c'') || set_elem c W)
+      do! sS <- retag_set (fun c'' _ W => (c == c'') || (c' == c'') ||
+                                          set_elem c W)
                           (fun c'' I W => DATA c'' I (insert_unique c' W))
                           S' sJ;
       
@@ -379,8 +381,9 @@ Definition good_internal (s : Symbolic.state t) : Prop :=
   match iT , aJT , aST with
     | DATA iC _ _ , DATA aJC _ _ , DATA aST _ _ =>
       iC <> aJC /\ iC <> aST /\ aJC <> aST /\
+      iC < next /\ aJC < next /\ aST < next /\
       forall p x c I W,
-        sget s p ?= x@(DATA c I W) ->
+        get (Symbolic.mem s) p ?= x@(DATA c I W) ->
         c < next /\ c <> iC /\ c <> aJC /\ c <> aST
     | _ , _ , _ =>
       False
@@ -464,6 +467,35 @@ Proof.
         [congruence | done].
 Qed.          
 
+Lemma succ_trans : forall x y,
+  y <> max_word -> x < y -> x < (y + 1)%w.
+Proof.
+  intros x y NEQ LT.
+  generalize (lew_max y) => /le_iff_lt_or_eq [] // LT_max.
+  by apply lt_trans with (b := y), ltb_lt, lebw_succ with (y := max_word).
+Qed.
+Hint Resolve succ_trans.
+
+Lemma sget_lt_next : forall s p x c I W,
+  good_internal s ->
+  sget s p ?= x@(DATA c I W) ->
+  c < next_id (Symbolic.internal s).
+Proof.
+  clear I; move=> [mem reg pc [next Li LaJ LaS]] /= p x c I W GOOD SGET.
+  rewrite /good_internal /= in GOOD;
+    destruct Li  as [|ci  Ii  Wi|];  try done;
+    destruct LaJ as [|caJ IaJ WaJ|]; try done;
+    destruct LaS as [|caS IaS WaS|]; try done.
+  destruct GOOD as [NEQiaJ [NEQiaS [NEQaJaS [LTi [LTaJ [LTaS GOOD]]]]]].
+  rewrite /sget in SGET.
+  destruct (get mem p) eqn:GET.
+  - rewrite SGET in GET; eapply GOOD; eassumption.
+  - destruct (p == isolate_addr);              [by inversion SGET; subst|].
+    destruct (p == add_to_jump_targets_addr);  [by inversion SGET; subst|].
+    destruct (p == add_to_shared_memory_addr); [by inversion SGET; subst|].
+    discriminate.
+Qed.
+
 Lemma fresh_preserves_good : forall mem reg pc si si' fid,
   fresh si ?= (fid,si') ->
   good_internal (Symbolic.State mem reg pc si) ->
@@ -478,13 +510,11 @@ Proof.
            aJT as [|caJ IaJ WaJ|],
            aST as [|caS IaS WaS|];
     auto.
-  intros [NEQ_i_aJ [NEQ_i_aS [NEQ_aJ_aS GOOD]]]; do 3 (split; auto).
+  intros [NEQ_i_aJ [NEQ_i_aS [NEQ_aJ_aS [LT_ci [LT_caJ [LT_caS GOOD]]]]]].
+    do 6 (split; eauto 2).
   intros p x c I W GET; specialize (GOOD p x c I W GET).
     move: GOOD => [LT [NEQ_i [NEQ_aJ NEQ_aS]]].
-  repeat split; auto.
-  eapply lt_trans; try eassumption.
-  apply ltb_lt, lebw_succ with (y := max_word).
-  generalize (lew_max fid) => /le_iff_lt_or_eq [] //.
+  repeat split; eauto 2.
 Qed.
 
 Lemma retag_set_preserves_definedness : forall ok retag ps s s',
@@ -509,6 +539,30 @@ Proof.
     tauto.
 Qed.
 
+Lemma retag_set_forall : forall ok retag ps s s',
+  NoDup ps ->
+  retag_set ok retag ps s ?= s' ->
+  forall p,
+    In p ps ->
+    exists x c I W, sget s p ?= x@(DATA c I W) /\ ok c I W.
+Proof.
+  clear I; move=> ok retag ps; move: ok retag; induction ps as [|p ps];
+    move=> //= ok retag s s'' NODUP RETAG_SET p' IN.
+  let I := fresh "I"
+  in undoDATA RETAG_SET x c I W;
+     undo1    RETAG_SET OK;
+     destruct (retag c I W) as [|c' I' W'|] eqn:RETAG; simpl in *; try done;
+     undo1    RETAG_SET s'.
+  move: IN => [? | IN]; [subst p'|].
+  - by rewrite def_xcIW; repeat eexists.
+  - inversion NODUP as [|? ? NIN NODUP']; subst.
+    assert (NEQ : p' <> p) by (by intro; subst).
+    apply IHps with (p := p') in RETAG_SET; auto.
+    move: RETAG_SET => [x'' [c'' [I'' [W'' [SGET'' OK'']]]]].
+    eapply sget_supd_neq in def_s'; [|eassumption].
+    by rewrite -def_s' SGET''; repeat eexists.
+Qed.
+
 Lemma retag_set_not_in : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
   forall p,
@@ -528,12 +582,13 @@ Proof.
     by rewrite -RETAG def_s''.
 Qed.
 
-Lemma retag_set_in : forall ok retag ps s s',
+Lemma retag_set_in_ok : forall ok retag ps s s',
   NoDup ps ->
   retag_set ok retag ps s ?= s' ->
   forall p,
     In p ps ->
     exists x c I W, sget s  p ?= x@(DATA c I W) /\
+                    ok c I W /\
                     sget s' p ?= x@(retag c I W).
 Proof.
   clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
@@ -555,7 +610,7 @@ Proof.
       by rewrite -NIN def_s'' TAG.
     + destruct (p == p') eqn:EQ; move/eqP in EQ; subst.
       * exists x,c,I,W.
-        split; auto.
+        repeat (split; auto).
         eapply sget_supd_eq in def_s''; eauto.
         by rewrite -NIN def_s'' TAG.
       * apply IHps with (p := p') in RETAG; auto.
@@ -563,6 +618,35 @@ Proof.
         exists xi,ci,Ii,Wi; split; auto.
         apply sget_supd_neq with (p' := p') in def_s''; auto.
         by rewrite -def_s''.
+Qed.
+
+Lemma retag_set_in : forall ok retag ps s s',
+  NoDup ps ->
+  retag_set ok retag ps s ?= s' ->
+  forall p,
+    In p ps ->
+    exists x c I W, sget s  p ?= x@(DATA c I W) /\
+                    sget s' p ?= x@(retag c I W).
+Proof.
+  intros until 0; intros NODUP RETAG p IN.
+  eapply retag_set_in_ok in RETAG; eauto.
+  repeat invh ex; repeat invh and; repeat eexists; eassumption.
+Qed.
+
+Lemma retag_set_or_ok : forall ok retag ps s s',
+  NoDup ps ->
+  (forall p, good_memory_tag s p) ->
+  retag_set ok retag ps s ?= s' ->
+  forall p,
+    sget s p = sget s' p \/
+    exists x c I W, sget s p ?= x@(DATA c I W) /\
+                    ok c I W /\
+                    sget s' p ?= x@(retag c I W).
+Proof.
+  intros ok retag ps s s' NODUP GMEM RETAG p.
+  destruct (elem p ps) as [IN | NIN].
+  - eapply retag_set_in_ok in RETAG; eauto.
+  - eapply retag_set_not_in in RETAG; eauto.
 Qed.
 
 Lemma retag_set_or : forall ok retag ps s s',
@@ -726,7 +810,7 @@ Proof.
    *)
   admit.
 Qed.
-
+ 
 Theorem good_state_preserved : forall `(STEP : step s s'),
   good_state s ->
   good_state s'.
@@ -809,10 +893,10 @@ Proof.
              aJT as [|caJ IaJ WaJ|],
              aST as [|caS IaS WaS|];
       auto.
-    destruct INT as [NEQ_i_aJ [NEQ_i_aS [NEQ_aJ_aS INT]]].
+    destruct INT as
+      [NEQ_i_aJ [NEQ_i_aS [NEQ_aJ_aS [LT_ci [LT_caJ [LT_caS INT]]]]]].
     repeat (split; [assumption|]).
     intros p x c' I' W' SGET.
-    rewrite /sget /= in SGET INT.
     match goal with | HUPD : upd mem _ _ ?= _ |- _ => rename HUPD into UPD end.
     destruct (p == w1) eqn:EQ; move/eqP in EQ; subst;
       [ apply get_upd_eq in UPD | apply get_upd_neq with (key' := p) in UPD ];
