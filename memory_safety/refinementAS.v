@@ -1056,31 +1056,46 @@ by solve_pc rpci.
 
 (* Free *)
 
-(*
-  move/(_ x _): (rist).
+  case: (rist)=> fresh_color [in_bl [no_overlap]].
+  move/(_ x _).
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
     case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x in_x].
   rewrite in_x => /(_ erefl) biP.
-  case: biP E E1 color_x in_x => [|bi ->] //.
-  move=> bi col b ? color_bi mi_col size_fr E E1 color_x in_x.
+  case: biP E E0 E1 color_x in_x => [|->] //.
+  move=> col b color_bi mi_col get_x E E0 E1 color_x in_x.
+
+  have [fr get_b]: exists fr, PartMaps.get a_mem b = Some fr.
+    case/(_ (val - Sym.block_base x)): get_x => [|w [ty]].
+      admit.
+    case: rmem => _ rmem.
+    move/rmem.
+    rewrite mi_col /Abstract.getv /=.
+    by case: (PartMaps.get a_mem b) => // fr _; exists fr.
   have eq_col: col = s0 by congruence.
-  rewrite eq_col in mi_b.
+  rewrite eq_col in mi_col.
   have eq_s4b: s4 = b.
     inversion H3.
-    exact: (miIr miP H8 mi_b erefl).
+    by rewrite H8 in mi_col; injection mi_col.
+
   case: (Abstract.free_Some get_b)=> ? free_b.
 
+  admit.
+(*
   eexists; eexists; split.
   eapply Abstract.step_free.
   by eauto.
   by rewrite eq_s4b.
   by eauto.
 
+  
+
   case: (refine_memory_free rmem rist in_x mi_b color_x free_b) => rmem' rist'.
   by split; eassumption.
+*)
 
+(*
 (* Size *)
   move/(_ x _): (rist).
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
@@ -1103,6 +1118,7 @@ by solve_pc rpci.
   by eauto.
 
   by split; eassumption.
+
 
 (* Base *)
   move/(_ x _): (rist).
@@ -1129,7 +1145,6 @@ by solve_pc rpci.
   by split; eassumption.
 *)
 
-admit.
 admit.
 admit.
 
