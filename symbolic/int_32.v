@@ -46,14 +46,14 @@ Instance concrete_int_32_fh : fault_handler_params t := {
 Open Scope bool_scope.
 Open Scope Z_scope.
 
-Fixpoint insert_from {A : Type} (i : int) (l : list A)
+Fixpoint insert_from {A : Type} (i : int32) (l : list A)
                      (mem : Int32PMap.t A) : Int32PMap.t A :=
   match l with
     | []      => mem
     | h :: l' => insert_from (Word.add i Word.one) l' (Int32PMap.set i h mem)
   end.
 
-Fixpoint constants_from {A : Type} (i : int) (n : nat) (x : A)
+Fixpoint constants_from {A : Type} (i : int32) (n : nat) (x : A)
                         (mem : Int32PMap.t A) : Int32PMap.t A :=
   match n with
     | O    => mem
@@ -150,9 +150,9 @@ Program Definition concrete_initial_state
   let regs :=
         fold_left
           (fun regs r =>
-            Int32TMap.set r Word.zero@(kernelize_user_tag initial_reg_tag) regs)
+            RegtTMap.set r Word.zero@(kernelize_user_tag initial_reg_tag) regs)
           user_regs
-          (Int32TMap.init Word.zero@Word.zero) in
+          (RegtTMap.init Word.zero@Word.zero) in
   {|
     Concrete.mem := mem';
     Concrete.regs := regs;

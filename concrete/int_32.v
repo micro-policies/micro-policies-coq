@@ -27,74 +27,70 @@ Definition wordsize_minus_one := 31.
 
 End Wordsize_32.
 
+Module Wordsize_5 <: WORDSIZE.
+
+Definition wordsize_minus_one := 4.
+
+End Wordsize_5.
 
 Module Int32Ordered := IntOrdered Wordsize_32.
 Module Int32Indexed := Int32Ordered.IntIndexed.
+Module Int5Ordered := IntOrdered Wordsize_5.
+Module Int5Indexed := Int5Ordered.IntIndexed.
 
 Import Word.
 
-Definition int := int 31.
+Definition int32 := int 31.
 
-Lemma int_eqP : Equality.axiom (@eq 31).
+Lemma int32_eqP : Equality.axiom (@eq 31).
 Proof.
 move=> x y; apply: (iffP idP) => [|->].
   by have := Word.eq_spec _ x y; case: (Word.eq x y).
 by rewrite Word.eq_true.
 Qed.
 
-Definition int_eqMixin := EqMixin int_eqP.
-Canonical int_eqType := Eval hnf in EqType int int_eqMixin.
+Definition int32_eqMixin := EqMixin int32_eqP.
+Canonical int32_eqType := Eval hnf in EqType int32 int32_eqMixin.
+
+Definition regt := int 4. (* 5 bits *)
+
+Lemma regt_eqP : Equality.axiom (@eq 4).
+Proof.
+move=> x y; apply: (iffP idP) => [|->].
+  by have := Word.eq_spec _ x y; case: (Word.eq x y).
+by rewrite Word.eq_true.
+Qed.
+
+Definition regt_eqMixin := EqMixin regt_eqP.
+Canonical regt_eqType := Eval hnf in EqType regt regt_eqMixin.
+
+Definition immt := int 14. (* 15 bits *)
+
+Lemma immt_eqP : Equality.axiom (@eq 14).
+Proof.
+move=> x y; apply: (iffP idP) => [|->].
+  by have := Word.eq_spec _ x y; case: (Word.eq x y).
+by rewrite Word.eq_true.
+Qed.
+
+Definition immt_eqMixin := EqMixin immt_eqP.
+Canonical immt_eqType := Eval hnf in EqType immt immt_eqMixin.
 
 Module Int32PMap := FiniteMap      Int32Indexed.
-Module Int32TMap := FiniteTotalMap Int32Indexed.
+Module RegtPMap  := FiniteMap      Int5Indexed.
+Module RegtTMap  := FiniteTotalMap Int5Indexed.
 
 (* These types will yield an incorrect (but still executable/useful) encoding *)
 (* CH: What's incorrect about it?  Is it the fact that you're
    abusing int instead of using a more precise type? *)
 Definition concrete_int_32_t : machine_types := {|
-  word := int_eqType;
-  reg := int_eqType; (* 5 bits *)
-  imm := int_eqType;  (* 5 bits; CH: this is extremely little! *)
-                      (* BCP: Might be changed to 15 now? *)
+  word := int32_eqType;
+  reg := regt_eqType;
+  imm := immt_eqType;
   word_map := Int32PMap.t;
-  reg_map := Int32PMap.t;
-  reg_tmap := Int32TMap.t
+  reg_map := RegtPMap.t;
+  reg_tmap := RegtTMap.t
 |}.
-
-(* CH: x2-x5 are assumed to be all 5 bits,
-   and everything more is _silently_ discarded;
-   that's very nasty! *)
-Definition pack (x1 : opcode) (x2 x3 x4 x5 : int) : int :=
-  List.fold_right add (repr 0)
-                  [shl (repr (op_to_Z x1)) (repr 20);
-                   shl x2 (repr 15);
-                   shl x3 (repr 10);
-                   shl x4 (repr 5);
-                   x5].
-
-Definition mask_31 : int := repr 31.
-
-Definition unpack (x : int) : option (opcode * int * int * int * int) :=
-  do! opcode <- Z_to_op (unsigned (and (shr x (repr 20)) mask_31));
-  Some (opcode,
-        and (shr x (repr 15)) mask_31,
-        and (shr x (repr 10)) mask_31,
-        and (shr x (repr 5)) mask_31,
-        and x mask_31).
-
-(* BCP: Same nasty *)
-Definition pack3 (im : int * int * int) : int :=
-  match im with (i1,i2,i3) =>
-    List.fold_right add (repr 0)
-                    [shl i1 (repr 10);
-                     shl i2 (repr 5);
-                     i3]
-  end.
-
-Definition unpack3 (x : int) : int * int * int :=
-  (and (shr x (repr 10)) mask_31,
-   and (shr x (repr 5)) mask_31,
-   and x mask_31).
 
 Instance int_ordered : @Ordered (word concrete_int_32_t) (eqType_EqDec (word concrete_int_32_t)) :=
   {| compare := compare;
@@ -105,53 +101,75 @@ Instance int_ordered : @Ordered (word concrete_int_32_t) (eqType_EqDec (word con
      compare_gt_trans := compare_gt_trans
 |}.
 
+Import Word.Notations.
+Import ListNotations.
+
+Definition encode_opcode (o : opcode) : int 4 :=
+  repr (op_to_Z o).
+
+Definition decode_opcode (o : int 4) : option opcode :=
+  Z_to_op (unsigned o).
+
+Lemma encode_opcodeK o : decode_opcode (encode_opcode o) = Some o.
+Proof.
+  case o; try case; reflexivity.
+Qed.
+
 Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   encode_instr i :=
-    let pack_long := fun r im =>
-                       match unpack3 im with (i1,i2,i3) =>
-                         pack (opcode_of i) r i1 i2 i3 end in
-    let pack := pack (opcode_of i) in
+    let op := encode_opcode (opcode_of i) in
     match i with
-    | Nop => pack zero zero zero zero
-    | Const i r => pack_long r i
-    | Mov r1 r2 => pack r1 r2 zero zero
-    | Binop _ r1 r2 r3 => pack r1 r2 r3 zero
-    | Load r1 r2 => pack r1 r2 zero zero
-    | Store r1 r2 => pack r1 r2 zero zero
-    | Jump r => pack r zero zero zero
-    | Bnz r i => pack_long r i
-    | Jal r => pack r zero zero zero
-    | JumpEpc => pack zero zero zero zero
-    | AddRule => pack zero zero zero zero
-    | GetTag r1 r2 => pack r1 r2 zero zero
-    | PutTag r1 r2 r3 => pack r1 r2 r3 zero
-    | Halt => pack zero zero zero zero
+    | Nop => pack [4; 26] [op; zero]%wp
+    | Const i r => pack [4; 14; 4; 6] [op; i; r; zero]%wp
+    | Mov r1 r2 => pack [4; 4; 4; 16] [op; r1; r2; zero]%wp
+    | Binop _ r1 r2 r3 => pack [4; 4; 4; 4; 11] [op; r1; r2; r3; zero]%wp
+    | Load r1 r2 => pack [4; 4; 4; 16] [op; r1; r2; zero]%wp
+    | Store r1 r2 => pack [4; 4; 4; 16] [op; r1; r2; zero]%wp
+    | Jump r => pack [4; 4; 21] [op; r; zero]%wp
+    | Bnz r i => pack [4; 4; 14; 6] [op; r; i; zero]%wp
+    | Jal r => pack [4; 4; 21] [op; r; zero]%wp
+    | JumpEpc => pack [4; 26] [op; zero]%wp
+    | AddRule => pack [4; 26] [op; zero]%wp
+    | GetTag r1 r2 => pack [4; 4; 4; 16] [op; r1; r2; zero]%wp
+    | PutTag r1 r2 r3 => pack [4; 4; 4; 4; 11] [op; r1; r2; r3; zero]%wp
+    | Halt => pack [4; 26] [op; zero]%wp
     end;
 
   decode_instr i :=
-    do! t <- unpack i;
-    (* Removing the annotation in the match causes this to fail on 8.4pl3 *)
-    match t : let int := reg concrete_int_32_t in opcode * int * int * int * int with
-    | (NOP, _, _, _, _) => Some (Nop _)
-    | (CONST, r, i1, i2, i3) => Some (Const _ (pack3 (i1,i2,i3): imm concrete_int_32_t) r)
-    | (MOV, r1, r2, _, _) => Some (Mov _ r1 r2)
-    | (BINOP op, r1, r2, r3, _) => Some (Binop _ op r1 r2 r3)
-    | (LOAD, r1, r2, _, _) => Some (Load _ r1 r2)
-    | (STORE, r1, r2, _, _) => Some (Store _ r1 r2)
-    | (JUMP, r, _, _, _) => Some (Jump _ r)
-    | (BNZ, r, i1, i2, i3) => Some (Bnz _ r (pack3 (i1,i2,i3): imm concrete_int_32_t)  )
-    | (JAL, r, _, _, _) => Some (Jal _ r)
-    | (JUMPEPC, _, _, _, _) => Some (JumpEpc _)
-    | (ADDRULE, _, _, _, _) => Some (AddRule _)
-    | (GETTAG, r1, r2, _, _) => Some (GetTag _ r1 r2)
-    | (PUTTAG, r1, r2, r3, _) => Some (PutTag _ r1 r2 r3)
-    | (HALT, _, _, _, _) => Some (Halt _)
-    | (SERVICE, _, _, _, _) => None (* Not a real instruction *)
+    let: (op, rest) := @unpack2 4 26 i in
+    let t := concrete_int_32_t in
+    do! op <- decode_opcode op;
+    match op : let int := reg concrete_int_32_t in opcode with
+    | NOP => Some (Nop t)
+    | CONST => let: [i; r; _]%wu := unpack [14; 4; 6] rest in
+               Some (Const t i r)
+    | MOV => let: [r1; r2; _]%wu := unpack [4; 4; 16] rest in
+             Some (Mov t r1 r2)
+    | BINOP op => let: [r1; r2; r3; _]%wu := unpack [4; 4; 4; 11] rest in
+                  Some (Binop t op r1 r2 r3)
+    | LOAD => let: [r1; r2; _]%wu := unpack [4; 4; 16] rest in
+              Some (Load t r1 r2)
+    | STORE => let: [r1; r2; _]%wu := unpack [4; 4; 16] rest in
+               Some (Store t r1 r2)
+    | JUMP => let : [r; _]%wu := unpack [4; 21] rest in
+              Some (Jump t r)
+    | BNZ => let: [r; i; _]%wu := unpack [4; 14; 6] rest in
+             Some (Bnz t r i)
+    | JAL => let: [r; _]%wu := unpack [4; 21] rest in
+             Some (Jal t r)
+    | JUMPEPC => Some (JumpEpc t)
+    | ADDRULE => Some (AddRule t)
+    | GETTAG => let: [r1; r2; _]%wu := unpack [4; 4; 16] rest in
+                Some (GetTag t r1 r2)
+    | PUTTAG => let: [r1; r2; r3; _]%wu := unpack [4; 4; 4; 11] rest in
+                Some (PutTag t r1 r2 r3)
+    | HALT => Some (Halt t)
+    | SERVICE => None (* Not a real instruction *)
     end;
 
   Z_to_imm := repr;
 
-  imm_to_word i := i;
+  imm_to_word i := repr (unsigned i);
 
   min_word := repr (min_signed 31);
   (* ASZ: If this is `max_unsigned`, then `word_to_Z` needs to be `unsigned`,
@@ -191,62 +209,27 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   |};
 
   reg_map_class := {|
-    PartMaps.get V regs i := Int32PMap.get i regs;
-    PartMaps.set V regs i x := Int32PMap.set i x regs;
-    PartMaps.filter V regs p := Int32PMap.filter regs p;
-    PartMaps.map V1 V2 f regs := Int32PMap.map1 f regs;
-    PartMaps.empty V := @Int32PMap.empty _
+    PartMaps.get V regs i := RegtPMap.get i regs;
+    PartMaps.set V regs i x := RegtPMap.set i x regs;
+    PartMaps.filter V regs p := RegtPMap.filter regs p;
+    PartMaps.map V1 V2 f regs := RegtPMap.map1 f regs;
+    PartMaps.empty V := @RegtPMap.empty _
   |};
 
   reg_tmap_class := {|
-    TotalMaps.get V regs r := Int32TMap.get r regs;
+    TotalMaps.get V regs r := RegtTMap.get r regs;
     (* BCP/MD: Why isn't this called 'set'? *)
-    TotalMaps.upd V regs r x := Int32TMap.set r x regs
+    TotalMaps.upd V regs r x := RegtTMap.set r x regs
   |}
 
 
 |}.
 
-(* Removing Program causes Coq not to find concrete_int_32_t *)
-
-(* BCP: This is surely false (if any of the inputs are
-   outside the expected range)... *)
-Lemma unpack_pack : forall x1 x2 x3 x4 x5,
-  unpack (pack x1 x2 x3 x4 x5) = Some (x1,x2,x3,x4,x5).
-Proof.
-  (* TODO Prove our packing functions correct. *)
-Admitted.
-
-Lemma pack3_unpack3 : forall im,
-  pack3 (unpack3 im) = im.
-Proof.
-Admitted.
-
-(* BCP: This seems to be what is actually needed... *)
-Lemma pack3_unpack3_hideous_Const : forall i s,
-   Some
-     (Const concrete_int_32_t
-        (add (shl (and (shr i (repr 10)) mask_31) (repr 10))
-           (add (shl (and (shr i (repr 5)) mask_31) (repr 5))
-              (add (and i mask_31) (repr 0)))) s) =
-   Some (Const concrete_int_32_t i s).
-Admitted.
-
-(* BCP: And this... *)
-Lemma pack3_unpack3_hideous_Bnz : forall i s,
-   Some
-     (Bnz concrete_int_32_t s
-        (add (shl (and (shr i (repr 10)) mask_31) (repr 10))
-           (add (shl (and (shr i (repr 5)) mask_31) (repr 5))
-              (add (and i mask_31) (repr 0))))) =
-   Some (Bnz concrete_int_32_t s i).
-Admitted.
-
-Lemma compare_signed : forall x y, (x <=> y) = (signed x ?= signed y)%Z.
+Lemma compare_signed : forall x y : int32, (x <=> y) = (signed x ?= signed y)%Z.
 Proof.
   simpl; intros. unfold Int32Ordered.int_compare,lt.
   destruct (@SetoidDec.equiv_dec Int32Indexed.t _ _ x y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
-  destruct (zlt (signed x) (signed y)) as [LT | GE]; [auto with zarith|].
+  destruct (zlt (@signed Wordsize_32.wordsize_minus_one x) (@signed Wordsize_32.wordsize_minus_one y)) as [LT | GE]; [auto with zarith|].
   unfold Zge in GE; destruct (_ ?= _)%Z eqn:CMP.
   + apply Z.compare_eq in CMP.
     destruct x as [x px], y as [y py].
@@ -263,10 +246,15 @@ Open Scope Z_scope.
 Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
   constructor.
-  - unfold encode_instr,decode_instr,concrete_int_32_ops;
-      intros; destruct i; rewrite unpack_pack; try reflexivity.
-      apply pack3_unpack3_hideous_Const.
-      apply pack3_unpack3_hideous_Bnz.
+  - Opaque pack.
+    Opaque unpack.
+    Opaque unpack2.
+    unfold encode_instr,decode_instr,concrete_int_32_ops.
+      intros; destruct i; simpl;
+      rewrite packU /= pack2K encode_opcodeK /= ?packK //.
+    Transparent pack.
+    Transparent unpack.
+    Transparent unpack2.
   - admit.
   - vm_compute; inversion 1.
   - reflexivity.
@@ -300,21 +288,21 @@ Proof.
       intros V k. by apply Int32PMap.gempty.
   - constructor.
     + (* get_set_eq *)
-      intros V mem i x. by apply Int32PMap.gss.
+      intros V mem i x. by apply RegtPMap.gss.
     + (* get_set_neq *)
-      intros V mem i i' x y. by apply Int32PMap.gso.
+      intros V mem i i' x y. by apply RegtPMap.gso.
     + (* filter_correctness *)
-      intros V f m k. by apply Int32PMap.gfilter.
+      intros V f m k. by apply RegtPMap.gfilter.
     + (* map_correctness *)
-      intros V1 V2 f m k. by apply Int32PMap.gmap1.
+      intros V1 V2 f m k. by apply RegtPMap.gmap1.
     + (* empty_is_empty *)
-      intros V k. by apply Int32PMap.gempty.
+      intros V k. by apply RegtPMap.gempty.
   - constructor.
     +(* get_upd_eq *)
       intros V mem i x. simpl in *.
-      apply Int32TMap.gss.
+      apply RegtTMap.gss.
     + intros V mem i i' x Hneq. simpl in *.
-      apply Int32TMap.gso; assumption.
+      apply RegtTMap.gso; assumption.
 Defined.
 
 Import Concrete.
@@ -325,9 +313,9 @@ Open Scope string_scope.
 Import printing.
 
 Instance p : printing concrete_int_32_t := {|
-  format_word := fun i => format_Z (word_to_Z i);
-  format_reg := fun i => format_Z (word_to_Z i);
-  format_imm := fun i => format_Z (word_to_Z i)
+  format_word := fun i => format_Z (unsigned i);
+  format_reg := fun i => format_Z (unsigned i);
+  format_imm := fun i => format_Z (unsigned i)
 |}.
 
 Definition format_instr := printing.format_instr.

@@ -4057,6 +4057,29 @@ Fixpoint pack (ns : list nat) : words_pack ns -> packed_word ns :=
   | n :: ns => fun ws => packed_word_pack n ns (words_pack_hd ws) (pack _ (words_pack_tl ws))
   end.
 
+Lemma packU n ns :
+  forall (w : int n) (ws : words_pack ns),
+    pack (n :: ns) (wcons _ _ w ws) =
+    match total_word_length ns as o
+                               return match o return Type with
+                                      | Some total => int total
+                                      | None => unit
+                                      end ->
+                                      match total_word_length_aux n o return Type with
+                                      | Some total => int total
+                                      | None => unit
+                                      end
+    with
+    | Some total => fun ws => pack2 w ws
+    | None => fun _ => w
+    end (pack ns ws).
+Proof.
+  simpl. intros w ws.
+  generalize (pack ns ws).
+  unfold packed_word, packed_word_pack. simpl.
+  induction (total_word_length ns); trivial.
+Qed.
+
 Definition packed_word_unpack (n : nat) (ns : list nat) : packed_word (n :: ns) -> int n * packed_word ns :=
   match total_word_length ns as o
                              return match total_word_length_aux n o return Type with
@@ -4078,6 +4101,15 @@ Fixpoint unpack (ns : list nat) : packed_word ns -> words_unpack ns :=
   | n :: ns => fun w => let '(w1, w2) := packed_word_unpack _ _ w in
                         (w1, unpack _ w2)
   end.
+
+Lemma unpackU n ns :
+  forall w : packed_word (n :: ns),
+    unpack (n :: ns) w =
+    (fst (packed_word_unpack _ _ w), unpack _ (snd (packed_word_unpack _ _ w))).
+Proof.
+  simpl.
+  intros w. now destruct (packed_word_unpack _ _ w).
+Qed.
 
 Fixpoint words_pack_unpack ns : words_pack ns -> words_unpack ns :=
   match ns with
@@ -4103,17 +4135,30 @@ Qed.
 
 Lemma packK ns :
   forall ws : words_pack ns,
-    words_unpack_pack _ (unpack _ (pack _ ws)) = ws.
+    unpack _ (pack _ ws) = words_pack_unpack _ ws.
 Proof.
   induction ns as [|n ns IH]; intros ws.
   - now induction ws using words_pack_case_nil.
   - induction ws using (words_pack_case_cons n ns).
-    simpl. rewrite packed_word_packK. simpl. now rewrite IH.
+    simpl. rewrite packed_word_packK. now rewrite IH.
+Qed.
+
+Lemma packed_word_unpackK n ns :
+  forall w : packed_word (n :: ns),
+    packed_word_pack _ _ (fst (packed_word_unpack _ _ w)) (snd (packed_word_unpack _ _ w)) = w.
+Proof.
+  unfold packed_word_unpack, packed_word_pack, packed_word.
+  simpl.
+  induction (total_word_length ns); intros w; auto.
+  apply unpack2K.
+  now rewrite <- surjective_pairing.
 Qed.
 
 Module Notations.
-Notation "[ w1 ; .. ; wn ]%wp" := (wcons _ _ w1 .. (wcons _ _ wn wnil) ..).
-Notation "[ w1 ; .. ; wn ]%wu" := (pair w1 .. (pair wn tt) ..).
+Notation "[ w1 ; .. ; wn ]" := (wcons _ _ w1 .. (wcons _ _ wn wnil) ..) : word_pack_scope.
+Notation "[ w1 ; .. ; wn ]" := (pair w1 .. (pair wn tt) ..) : word_unpack_scope.
+Delimit Scope word_pack_scope with wp.
+Delimit Scope word_unpack_scope with wu.
 End Notations.
 
 End Word.

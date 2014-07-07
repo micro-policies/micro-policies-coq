@@ -63,10 +63,10 @@ Instance fhp : fault_handler_params t := concrete_int_32_fh.
 (* ---------------------------------------------------------------- *)
 (* Generic definitions for building concrete machine instances *)
 
-Definition ruser1 : word t := Word.repr 20.
-Definition ruser2 : word t := Word.repr 21.
-Definition ruser3 : word t := Word.repr 22.
-Definition ruser4 : word t := Word.repr 23.
+Definition ruser1 : reg t := Word.repr 20.
+Definition ruser2 : reg t := Word.repr 21.
+Definition ruser3 : reg t := Word.repr 22.
+Definition ruser4 : reg t := Word.repr 23.
 Definition user_registers :=
   [ra; syscall_ret; syscall_arg1; syscall_arg2; syscall_arg3; ruser1;
    ruser2; ruser3; ruser4].
@@ -101,7 +101,7 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
 
 (* TODO: Where should this really live? *)
 Instance sk_defs : Sym.sealing_key := {|
- key := int_eqType;
+ key := int32_eqType;
  max_key := Word.repr 100;
  inc_key := fun x => Word.add x (Word.repr 1);
  ord_key := int_ordered
@@ -471,7 +471,7 @@ Definition format_cache (c : Concrete.rules (word t)) :=
 
 Require Import Coqlib.
 
-Fixpoint enum (M R S : Type) (map : M) (get : M -> word t -> R) (f : R -> S) (n : nat) (i : word t) :=
+Fixpoint enum (M R S : Type) s (map : M) (get : M -> Word.int s -> R) (f : R -> S) (n : nat) (i : Word.int s) :=
   match n with
   | O => []
   | S p => (Word.unsigned i, f (get map i)) :: enum map get f p (Word.add i (Word.repr 1))
@@ -479,18 +479,18 @@ Fixpoint enum (M R S : Type) (map : M) (get : M -> word t -> R) (f : R -> S) (n 
 
 Definition summarize_concrete_state mem_count cache_count st :=
   let mem' := just_somes
-               (@enum _ _ _
+               (@enum _ _ _ _
                  (@Concrete.mem t st)
-                 (@PartMaps.get _ (word t) _ _)
+                 (@PartMaps.get _ (word t) (@word_map_class _ ops) _)
                  (@omap atom sstring format_atom)
                  mem_count
                  (Word.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
-  let regs' := @enum _ _ _
+  let regs' := @enum _ _ _ _
                  (@Concrete.regs t st)
-                 (@TotalMaps.get _ (word t) _ _)
+                 (@TotalMaps.get _ (reg t) (@reg_tmap_class _ ops) _)
                  (fun a => format_atom a)
-                 (word_to_nat user_reg_max)
+                 (Z.to_nat (Word.unsigned user_reg_max))
                  (Word.repr (word_to_Z (nat_to_word 0))) in
   let regs := map (fun r =>
                      let: (x,a) := r in
@@ -527,19 +527,19 @@ Definition format_symbolic_atom (pr_tag : @Symbolic.tag (@Sym.sym_sealing sk_def
 
 Definition summarize_symbolic_state mem_count st pr_tag :=
   let mem' := just_somes
-               (@enum _ _ _
+               (@enum _ _ _ _
                  (@Symbolic.mem t Sym.sym_sealing st)
-                 (@PartMaps.get _ (word t) _ _)
+                 (@PartMaps.get _ (word t) (@word_map_class _ ops) _)
                  (@omap _ sstring (format_symbolic_atom pr_tag))
                  mem_count
                  (Word.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := just_somes
-                 (@enum _ _ _
+                 (@enum _ _ _ _
                     (@Symbolic.regs t Sym.sym_sealing st)
-                    (@PartMaps.get _ (word t) _ _)
+                    (@PartMaps.get _ (reg t) _ _)
                     (@omap _ sstring (format_symbolic_atom pr_tag))
-                    (word_to_nat user_reg_max)
+                    (Z.to_nat (Word.unsigned user_reg_max))
                     (Word.repr (word_to_Z (nat_to_word 0)))) in
   let regs := map (fun r =>
                      let: (x,a) := r in
@@ -592,7 +592,7 @@ Definition format_value v :=
 
 Definition summarize_abstract_state mem_count st :=
   let mem' := just_somes
-               (@enum _ _ _
+               (@enum _ _ _ _
                  (@Abs.mem t sk st)
                  (@PartMaps.get _ (word t) _ _)
                  (@omap (@Abs.value t sk) sstring format_value)
@@ -600,11 +600,11 @@ Definition summarize_abstract_state mem_count st :=
                  (Word.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := just_somes
-                 (@enum _ _ _
+                 (@enum _ _ _ _
                     (@Abs.regs t sk st)
-                    (@PartMaps.get _ (word t) _ _)
+                    (@PartMaps.get _ (reg t) _ _)
                     (@omap (@Abs.value t sk) sstring format_value)
-                    (word_to_nat user_reg_max)
+                    (Z.to_nat (Word.unsigned user_reg_max))
                     (Word.repr (word_to_Z (nat_to_word 0)))) in
   let regs := map (fun r =>
                      let: (x,a) := r in
