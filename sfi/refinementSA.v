@@ -785,6 +785,39 @@ Proof.
   by set G := get SM (start + 1)%w; destruct G as [[high ?]|]; subst; simpl.
 Qed.
 
+Theorem retag_set_preserves_memory_refinement : forall ok retag ps sst sst' AM,
+  Sym.retag_set ok retag ps sst ?= sst' ->
+  refine_memory AM (Symbolic.mem sst) ->
+  refine_memory AM (Symbolic.mem sst').
+Proof.
+  clear S I; intros ok retag ps; induction ps as [|p ps]; simpl;
+    intros sst sst'' AM RETAG REFINE.
+  - by inversion RETAG; subst.
+  - let I := fresh "I"
+    in undoDATA RETAG x c I W; undo1 RETAG OK;
+       destruct (retag c I W) as [|c' I' W'|] eqn:TAG; try discriminate;
+       undo1 RETAG sst'.
+    apply IHps with (AM := AM) in RETAG; [assumption|].
+    rewrite /refine_memory /refine_mem_loc_b /pointwise in REFINE *; intros a;
+      specialize REFINE with a.
+    destruct (get AM a) as [w|],
+             (get (Symbolic.mem sst) a) as [[w' []]|] eqn:GET';
+      rewrite GET' in REFINE; try done;
+      try (move/eqP in REFINE; subst w').
+    + destruct (a == p) eqn:EQ; move/eqP in EQ; subst.
+      * generalize def_sst' => SUPD.
+        eapply Sym.sget_supd_eq in def_sst'; [|eassumption].
+        destruct sst as [SM SR SPC [snext SiT SaJT SaST]];
+          rewrite /Sym.sget /= GET' in def_xcIW.
+        inversion def_xcIW; subst.
+        eapply Sym.get_supd_eq in SUPD; [|eassumption].
+        by rewrite SUPD.
+      * eapply Sym.get_supd_neq in def_sst'; try eassumption.
+        by rewrite def_sst' GET'.
+    + eapply Sym.get_supd_none in def_sst'; [|eassumption].
+      by rewrite def_sst'.
+Qed.
+
 Theorem isolate_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -871,17 +904,17 @@ Proof.
   }
   
   assert (SGOOD_sA : forall p, Sym.good_memory_tag sA p). {
-    eapply Sym.retag_set_preserves_good; try eassumption.
+    eapply Sym.retag_set_preserves_good_memory_tag; try eassumption.
     by move=> /= *; apply/andP.
   }
   
   assert (SGOOD_sJ : forall p, Sym.good_memory_tag sJ p). {
-    eapply Sym.retag_set_preserves_good; try eassumption.
+    eapply Sym.retag_set_preserves_good_memory_tag; try eassumption.
     move=> /= *; apply/andP; auto.
   }
   
   assert (SGOOD_sS : forall p, Sym.good_memory_tag (SState MS RS pcS siS) p). {
-    eapply Sym.retag_set_preserves_good; try eassumption.
+    eapply Sym.retag_set_preserves_good_memory_tag; try eassumption.
     move=> /= *; apply/andP; auto.
   }
 
@@ -1252,9 +1285,40 @@ Proof.
   
   eexists; split; [reflexivity|].
   
-  admit.
+  assert (RMEMS' : refine_memory AM MS). {
+    move/id in def_sA; move/id in def_sJ; move/id in def_sS;
+      eapply retag_set_preserves_memory_refinement in def_sA; [|eassumption];
+      eapply retag_set_preserves_memory_refinement in def_sJ; [|eassumption];
+      eapply retag_set_preserves_memory_refinement in def_sS; [|eassumption];
+      simpl in *.
+    assumption.
+  }
+  
+  constructor; simpl.
+  - apply eq_refl.
+  - move/id in def_sA; move/id in def_sJ; move/id in def_sS;
+      apply Sym.retag_set_preserves_regs in def_sA;
+      apply Sym.retag_set_preserves_regs in def_sJ;
+      apply Sym.retag_set_preserves_regs in def_sS;
+      simpl in *.
+    replace RS with SR by congruence.
+    assumption.
+  - apply RMEMS'.
+  - admit.
+  - admit.
+  - rewrite /refine_memory /refine_mem_loc_b /pointwise in RMEMS'.
+    rewrite /refine_syscall_addrs_b /= in RSC *.
+    repeat move: RSC => /andP [RSC ?].
+    andb_true_split; auto;
+      match goal with
+        | |- context[get MS ?addr] =>
+          by specialize (RMEMS' addr);
+             destruct (get AM addr), (get MS addr) as [[? []]|] eqn:GET';
+             rewrite GET' in RMEMS' *
+      end.
+  - admit.
 Qed.
-
+    
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
