@@ -799,9 +799,7 @@ Proof. (*Postponted until khandler rewrite - proved but ok.*)
         | [H : valid_jmp _ _ = false |- _] => rewrite H
       end; try reflexivity.
     + discriminate.
-(* Qed. *)
-Admitted.
-
+Qed.
 
 Lemma unique_cmvec sst cst umvec cmvec :
   @refinement_common.refine_state mt ops sym_params e ki stable sst cst ->
@@ -891,15 +889,14 @@ Qed.
 
 (*The first part (if get smem pc = Some _) works.
   The second part, should work as well however we will have to replay
-  things like 3 times and it's already too slow.
-  Stays as admit*)
+  things like 3 times and it's already too slow. *)
 Lemma no_user_access_implies_halt sst cst cmvec :
   refinement_common.refine_state ki stable sst cst ->
   build_mvec stable sst = None ->
   build_cmvec mt cst = Some cmvec ->
   khandler cmvec = None.
 Proof.
-  (*intros REF SMVEC CMVEC.
+  intros REF SMVEC CMVEC.
   destruct REF as [smem sreg int mem reg cache epc pc stpc
                         ? ? REFM REFR CACHE MVE WF KI].
   subst.
@@ -1044,12 +1041,9 @@ Proof.
               exfalso.
               specialize (WF pc ut).
               rewrite GET in WF.
-              apply encodeK in INST.
-              rewrite INST in WF.
               apply rules.encodeK in DEC.
-              rewrite DEC in WF.
-              assert (CONTRA: (v == v) && (ctg == ctg) = true)
-                by (apply andb_true_iff; split; apply eqxx).
+              rewrite /is_nop INST DEC eqxx /= in WF.
+              have CONTRA: true = true by [].
               apply WF in CONTRA.
               destruct CONTRA as [? [CONTRA ?]].
               rewrite CONTRA in GETCALL.
@@ -1071,7 +1065,7 @@ Proof.
           + discriminate.
         }
       * discriminate.
-Qed.*) Admitted.
+Qed.
 
 (*Case 3*)
 
