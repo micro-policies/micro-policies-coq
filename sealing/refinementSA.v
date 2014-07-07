@@ -330,7 +330,6 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
   - (* system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    (*  WAS: have {PC} PC: get amem apc = None by admit. (* Shouldn't be hard *) *)
     erewrite (@pointwise_none _ _ _ _ _ _ _ _ amem smem apc rmem) in PC.  
     simpl in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
@@ -473,7 +472,7 @@ Qed.
 (* Here is a weaker form of forward simulation we can hope to prove.
    It intuitively says that we have forwards simulation for programs
    that don't run out of keys at the symbolic level. *)
-Lemma forward_simulation : forall km ast ast' sst,
+Definition forward_simulation := forall km ast ast' sst,
   refine_state km ast sst ->
   Abs.step ast ast' ->
   (* each abstract step can be simulated by a corresponding symbolic one *)
@@ -491,6 +490,5 @@ Lemma forward_simulation : forall km ast ast' sst,
       (Symbolic.get_syscall Sym.sealing_syscalls mkkey_addr = Some sc) /\
       (Symbolic.sem sc sst = None))
   ).
-Admitted.
 
 End RefinementSA.
