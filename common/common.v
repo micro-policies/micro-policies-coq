@@ -154,7 +154,14 @@ Definition instr_eq (i1 i2 : instr) : bool :=
   end.
 
 Lemma instr_eqP : Equality.axiom instr_eq.
-Admitted.
+Proof.
+  move => i1 i2.
+  case: i1; case: i2 => /= *; try (by constructor);
+  repeat match goal with
+  | |- context[?x == ?y] =>
+    have [->|/eqP ?] := altP (x =P y); simpl; try constructor; try congruence
+  end.
+Qed.
 
 Definition instr_eqMixin := EqMixin instr_eqP.
 Canonical instr_eqType := Eval hnf in EqType instr instr_eqMixin.
