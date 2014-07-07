@@ -32,6 +32,14 @@ Notation "x <=? y <? z" := ((x <=? y) && (y <? z))
 Notation "x <=? y <=? z" := ((x <=? y) && (y <=? z))
   (at level 70, y at next level, no associativity) : Z_scope.
 
+Lemma leltP a b c : reflect (a <= b < c) (a <=? b <? c).
+Proof.
+apply/(iffP idP).
+  by case/andP=> /Z.leb_le ? /Z.ltb_lt; split.
+case=> ? ?; apply/andP; split; first exact/Z.leb_le.
+exact/Z.ltb_lt.
+Qed.
+
 Section refinement.
 
 
@@ -131,6 +139,9 @@ Arguments leZ_max.
 Lemma ltwSw : forall w,
   (w < max_word -> w < w + 1)%ordered.
 Admitted.
+
+Notation inbounds base size w :=
+  (word_to_Z base <= word_to_Z w < word_to_Z base + word_to_Z size).
 
 Section memory_injections.
 
@@ -276,6 +287,7 @@ by exists v.
 Qed.
 
 Definition bounded_add w1 w2 :=
+  (* 0 < word_to_Z w2 /\ *)
   word_to_Z min_word <= word_to_Z w1 + word_to_Z w2 <= word_to_Z max_word.
 
 Inductive block_info_spec (smem : Sym.memory mt) (bi : Sym.block_info mt) : Prop :=
@@ -307,8 +319,12 @@ Definition fresh_color col :=
   (col' < col)%ordered.
 
 Definition overlap (bi1 bi2 : Sym.block_info mt) (w : word mt) :=
-  word_to_Z (Sym.block_base bi1) <= word_to_Z w < word_to_Z (Sym.block_base bi1) + word_to_Z (Sym.block_size bi1) /\
-  word_to_Z (Sym.block_base bi2) <= word_to_Z w < word_to_Z (Sym.block_base bi2) + word_to_Z (Sym.block_size bi2).
+  inbounds (Sym.block_base bi1) (Sym.block_size bi1) w /\
+  inbounds (Sym.block_base bi2) (Sym.block_size bi2) w.
+
+Definition cover (smem : Sym.memory mt) (info : list (Sym.block_info mt)) :=
+  forall w v, PartMaps.get smem w = Some v ->
+  exists bi, bi \in info /\ inbounds (Sym.block_base bi) (Sym.block_size bi) w.
 
 Definition refine_internal_state (bl : list block) smem (ist : word mt * list (Sym.block_info mt)) :=
   let: (col, info) := ist in
@@ -316,7 +332,33 @@ Definition refine_internal_state (bl : list block) smem (ist : word mt * list (S
   (forall col b base, PartMaps.get mi col = Some (b,base) -> b \in bl) /\
   (forall i j def w, i < size info -> j < size info ->
      overlap (nth def info i) (nth def info j) w -> i = j)%N /\
+  cover smem info /\
   forall bi, bi \in info -> block_info_spec smem bi.
+
+(*
+Lemma refine_internal_state_uniq smem bl col info :
+  refine_internal_state bl smem (col,info) ->
+  uniq info.
+Proof.
+case=> [_ [_ [no_overlap [_ biP]]]].
+elim: info no_overlap biP => //= bi info IHinfo no_overlap biP.
+apply/andP; split.
+  apply/negP.
+  move=> in_bi.
+  suff [//]: 0%N = (index bi info).+1.
+  apply: (no_overlap _ _ bi (Sym.block_base bi)) => //=.
+    by rewrite ltnS index_mem.
+  rewrite nth_index //.
+  move/(_ bi): biP; rewrite inE in_bi orbT => /(_ erefl).
+  move/block_info_bounds=> [? [? ?]].
+  by split; omega.
+apply: IHinfo.
+  move=> i j def w lt_i lt_j overlap_ij.
+  exact/succn_inj/(no_overlap i.+1 j.+1 def w).
+move=> bi' in_bi'; apply: biP.
+by rewrite inE in_bi' orbT.
+Qed.
+*)
 
 Lemma refine_memory_upd bl smem smem' ist old
                         w1 w2 pt ty ty' n fr fr' x :
@@ -331,12 +373,16 @@ Lemma refine_memory_upd bl smem smem' ist old
     exists amem', [/\ PartMaps.upd amem pt.1 fr' = Some amem',
       refine_memory amem' smem' & refine_internal_state bl smem' ist].
 Proof.
-case: ist => nextcol infos.
-move=> [miP rmem] [freshcol [in_bl [no_overlap rist]]] rpt get_w1 upd_w1.
+case: ist => nextcol info.
+move=> [miP rmem] [freshcol [in_bl [no_overlap [cover_info rist]]]] rpt get_w1 upd_w1.
 move=> get_pt update_pt rx.
 destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
 exists amem'; split => //; last first.
-  split => //; split => //; split => //.
+  repeat split => //.
+    move=> w v.
+    have [->|neq_ww1] := w =P w1.
+      by case: (cover_info _ _ get_w1) => bi ? _; exists bi.
+    by rewrite (PartMaps.get_upd_neq neq_ww1 upd_w1); apply: cover_info.
   case=> bi_base bi_size [bi_col in_bi|in_bi]; last first.
     move/(_ _ in_bi): rist => biP.
     inversion biP => //.
@@ -437,7 +483,20 @@ Proof.
   intro X; inversion X.
 *)
 admit.
-Qed. 
+Qed.
+
+Lemma block_color_unique (smem : Sym.memory mt) bi info bl nc col b w1 w2 ty :
+  refine_memory amem smem ->
+  refine_internal_state bl smem (nc, info) ->
+  bi \in info ->
+  PartMaps.get mi col = Some (b, Sym.block_base bi) ->
+  Sym.block_color bi = Some col ->
+  PartMaps.get smem w1 = Some w2@M(col, ty) ->
+  inbounds (Sym.block_base bi) (Sym.block_size bi) w1.
+Proof.
+move=> rmem rist in_bi get_mi color_bi get_w1.
+admit.
+Qed.
 
 Lemma refine_memory_free (amem' : Abstract.memory mt) (smem smem' : Sym.memory mt) bl nc info b bi col :
   refine_memory amem smem ->
@@ -456,40 +515,36 @@ Lemma refine_memory_free (amem' : Abstract.memory mt) (smem smem' : Sym.memory m
        Sym.block_size := Sym.block_size bi;
        Sym.block_color := None |}).
 Proof.
-move=> [miP rmem] rist in_bi color_bi mi_col free_b write_block; split.
+move=> rmem rist in_bi color_bi mi_col free_b write_block; case: (rmem) => miP get_smem; split.
   split; first by constructor; apply miP.
   move=> w1 w2 col' ty.
   rewrite (get_write_block _ write_block) => //.
-  case: ifP => // _.
-  admit.
-  admit.
-Qed.
+  case: ifP => // bounds get_w1; move/get_smem: (get_w1).
+  case mi_col': (PartMaps.get mi col') => // [[b' ?]].
+  have neq_b: b' <> b.
+    move=> eq_b'b; rewrite eq_b'b in mi_col'.
+    have eq_col := miIr miP mi_col' mi_col.
+    rewrite eq_col in get_w1.
+    move/(block_color_unique rmem rist in_bi mi_col color_bi): get_w1.
+    by apply/leltP; rewrite bounds.
 
 (*
-  PartMaps.get amem b = Some amem' ->
-  refine_memory mi amem'
-     (nat_rect (fun _ : nat => Sym.memory mt) mem
-        (fun (n : nat) (acc : Sym.memory mt) =>
-         match
-           PartMaps.upd acc (Sym.block_base x + Z_to_word (Z.of_nat n))
-             0@(Sym.TagFree mt)
-         with
-         | Some mem0 => mem0
-         | None => acc
-         end) (Z.to_nat (word_to_Z (Sym.block_size x))))
-
-
-                        w1 w2 pt ty n fr fr' x :
-  refine_memory amem smem ->
-  refine_internal_state amem smem ist ->
-  refine_val (Abstract.VPtr pt) w1 (PTR n) ->
-  PartMaps.upd smem w1 w2@M(n, ty) = Some smem' ->
-  PartMaps.get amem (fst pt) = Some fr ->
-  update_list_Z (word_to_Z (snd pt)) x fr = Some fr' ->
-  refine_val x w2 ty ->
-    exists amem', [/\ PartMaps.upd amem (fst pt) fr' = Some amem',
-      refine_memory amem' smem' & refine_internal_state amem' smem' ist].
+  rewrite -Z.leb_antisym -Z.ltb_antisym in bounds.
+  case mi_col': (PartMaps.get mi col') => // [[b' ?]].
+  rewrite /Abstract.getv /=.
+  have neq_col: col != col'.
+    apply/eqP=> eq_col.
 *)
+    
+
+(*(
+  have [->|neq_b'b] := b' =P b.
+
+    rewrite (Abstract.free_get_fail free_b).
+*)
+admit.
+admit.
+Qed.
 
 Definition refine_reg_val v a :=
  match a with w@V(ty) => refine_val v w ty | _ => False end.
@@ -695,7 +750,7 @@ Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color s
     (newb :: bl) smem' (color + 1, Sym.update_block_info info bi color sz).
 Proof.
 move=> [nneg_sz le_sz] malloc lt_color color_bi in_bi.
-case=> [fresh_color [in_bl [no_overlap biP]]] write_bi.
+case=> [fresh_color [in_bl [no_overlap [cover_info biP]]]] write_bi.
 have [? ?] := block_info_bounds (biP _ in_bi).
 have ? := @leZ_min (Sym.block_base bi).
 have ? := @leZ_max (Sym.block_size bi).
@@ -770,6 +825,66 @@ split. (* no overlap *)
         by rewrite index_mem.
       rewrite nth_index //; split=> //; omega.
     * by move/(no_overlap _ _ _ _ lt_i lt_j)->.
+split. (* cover *)
+  rewrite /Sym.update_block_info.
+  set newbi := Sym.mkBlockInfo _ _ _.
+  move=> w v.
+  rewrite (get_write_block _ write_bi).
+  have [eq_sz|_] := sz =P Sym.block_size bi.
+    (* first case: sizes are equal, the covering block_infos remain the same *)
+    case: leltP=> [bounds_bi _| bounds_bi].
+      (* area covered by the new block_info *)
+      exists newbi; split=> //.
+      apply/(nthP newbi).
+      exists (index bi info).
+        by rewrite size_set_nth (maxn_idPr _) ?index_mem // ltnS ltnW // index_mem.
+      by rewrite nth_set_nth /= eqxx.
+    (* unchanged block *)
+    case/cover_info=> bi' [in_bi' bounds_bi']; exists bi'; split=> //.
+    apply/(nthP newbi).
+    rewrite size_set_nth (maxn_idPr _) ?index_mem //.
+    exists (index bi' info); first by rewrite index_mem.
+    rewrite nth_set_nth /=.
+    have [eq_index|] := index bi' info =P index bi info; last by rewrite nth_index.
+    have eq_bi: bi' = bi.
+      by rewrite -(nth_index bi in_bi) -(nth_index bi in_bi') eq_index.
+    rewrite eq_bi in bounds_bi'; rewrite eq_sz in bounds_bi.
+    omega.
+  (* second case: different sizes. The old block_info is now covered by two block_infos *)
+  set newbi2 := Sym.mkBlockInfo _ _ _.
+
+  have [?|] := leltP (word_to_Z (Sym.block_base bi)) (word_to_Z w)
+                     (word_to_Z (Sym.block_base bi) + word_to_Z (Sym.block_size bi)).
+    (* We are in the old block *)
+    have [/Z.ltb_lt lt_w_sz|le_sz_w] := boolP (word_to_Z w <? word_to_Z (Sym.block_base bi) + word_to_Z sz).
+      (* We are in the lower part of the old block *)
+      rewrite andbT.
+      have->: word_to_Z (Sym.block_base bi) <=? word_to_Z w by apply/Z.leb_le; omega.
+      move=> _; exists newbi; split.
+        apply/(nthP newbi); exists (index bi info).+1.
+          by rewrite /= size_set_nth (maxn_idPr _) ?index_mem // ltnS index_mem.
+        by rewrite /= nth_set_nth /= eqxx.
+      by rewrite /newbi /=; omega.
+    (* We are in the higher part of the old block *)
+    rewrite andbF; exists newbi2; split.
+      by apply/(nthP newbi); exists 0%N.
+    rewrite -Z.leb_antisym in le_sz_w.
+    rewrite addwE ?subwE; try omega.
+    split; try omega.
+    exact/Z.leb_le.
+  (* We are in another block *)
+  move=> ?.
+  case: leltP=> ?; first by omega.
+  case/cover_info=> bi' [in_bi' bounds_bi']; exists bi'; split=> //.
+  apply/(nthP newbi).
+  rewrite /= size_set_nth (maxn_idPr _) ?index_mem //.
+  exists (index bi' info).+1; first by rewrite ltnS index_mem.
+  rewrite /= nth_set_nth /=.
+  have [eq_index|] := index bi' info =P index bi info; last by rewrite nth_index.
+  have eq_bi: bi' = bi.
+    by rewrite -(nth_index bi in_bi) -(nth_index bi in_bi') eq_index.
+  by rewrite eq_bi in bounds_bi'.
+
 rewrite /Sym.update_block_info.
 move=> bi'.
 have ? := @leZ_min (Sym.block_base bi').
@@ -1092,7 +1207,7 @@ by solve_pc rpci.
 (* Syscall *)
 
   move: b Heqo E0 E3 => bi Heqo E0 E3. 
-  case: (rist)=> fresh_color [in_bl [no_overlap]].
+  case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ bi _).
   have: bi \in [seq x <- info
               | (val <=? Sym.block_size x)%ordered
@@ -1140,7 +1255,7 @@ by solve_pc rpci.
   generalize min_word_bound => min_bound.
   generalize max_word_bound => max_bound.
   have ? := @leZ_max (Sym.block_size x).
-  case: (rist)=> fresh_color [in_bl [no_overlap]].
+  case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ x _).
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
     case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
@@ -1174,7 +1289,7 @@ by solve_pc rpci.
   eapply Abstract.step_free.
   by eauto.
   by rewrite eq_s4b.
-  by eauto.  
+  by eauto.
 
   case: (refine_memory_free rmem rist in_x color_bi mi_col free_b E0) => rmem' rist'.
   by split; eassumption.
