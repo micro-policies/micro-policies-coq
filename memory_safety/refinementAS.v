@@ -287,7 +287,7 @@ by exists v.
 Qed.
 
 Definition bounded_add w1 w2 :=
-  (* 0 < word_to_Z w2 /\ *)
+  0 < word_to_Z w2 /\
   word_to_Z min_word <= word_to_Z w1 + word_to_Z w2 <= word_to_Z max_word.
 
 Inductive block_info_spec (smem : Sym.memory mt) (bi : Sym.block_info mt) : Prop :=
@@ -485,7 +485,7 @@ Proof.
 admit.
 Qed.
 
-Lemma block_color_unique (smem : Sym.memory mt) bi info bl nc col b w1 w2 ty :
+Lemma block_color_uniq (smem : Sym.memory mt) bi info bl nc col b w1 w2 ty :
   refine_memory amem smem ->
   refine_internal_state bl smem (nc, info) ->
   bi \in info ->
@@ -525,7 +525,7 @@ move=> rmem rist in_bi color_bi mi_col free_b write_block; case: (rmem) => miP g
     move=> eq_b'b; rewrite eq_b'b in mi_col'.
     have eq_col := miIr miP mi_col' mi_col.
     rewrite eq_col in get_w1.
-    move/(block_color_unique rmem rist in_bi mi_col color_bi): get_w1.
+    move/(block_color_uniq rmem rist in_bi mi_col color_bi): get_w1.
     by apply/leltP; rewrite bounds.
 
 (*
@@ -739,7 +739,7 @@ by move=> rvw2; apply: (refine_val_malloc _ fresh_col malloc).
 Qed.
 
 Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color smem' :
-  (0 <= word_to_Z sz <= word_to_Z (Sym.block_size bi)) ->
+  (0 < word_to_Z sz <= word_to_Z (Sym.block_size bi)) ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   (color < max_word)%ordered ->
   Sym.block_color bi = None ->
@@ -891,14 +891,14 @@ have ? := @leZ_min (Sym.block_base bi').
 have ? := @leZ_max (Sym.block_size bi').
 set mi' := mi_malloc _ _ _ _.
 set newbi := Sym.mkBlockInfo _ _ _.
-have [eq_sz|_] := sz =P Sym.block_size bi.
+have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
   case/(nthP newbi) => i.
   rewrite size_set_nth (maxn_idPr _) ?index_mem // => lt_i.
   rewrite nth_set_nth /=.
   have [eq_i <-|neq_i] := i =P index bi info.
     (* Showing invariant for the new block *)
     apply: (@BlockInfoLive _ _ _ color newb) => //.
-    * by rewrite /bounded_add /=; omega.
+    * rewrite /bounded_add /=; omega.
     * by rewrite PartMaps.get_set_eq.
     * move=> off /= lt_off.
     rewrite (get_write_block _ write_bi) => //.
@@ -945,12 +945,14 @@ have [eq_sz|_] := sz =P Sym.block_size bi.
     rewrite -eq_sz.
     omega.
   by move=> _; apply: get_bi'.
+have lt_sz: word_to_Z sz < word_to_Z (Sym.block_size bi).
+  by apply/Z.le_neq; split=> // /word_to_Z_inj.
 case/(nthP newbi) => i.
 rewrite /= size_set_nth (maxn_idPr _) ?index_mem // => lt_i.
 case: i lt_i => [|i] lt_i /=.
   move=> <-.
   constructor=> //=.
-  rewrite /bounded_add /= addwE ?subwE; omega.
+  rewrite /bounded_add /= subwE ?addwE; omega.
   move=> off bounds_off.
   rewrite (get_write_block _ write_bi) //.
   rewrite subwE in bounds_off; last omega.
@@ -1240,13 +1242,15 @@ by solve_pc rpci.
   by eauto.
 
   move/ltb_lt: E => E.
-  move/leb_le: E2 => E2.
+  move/ltb_lt: E2 => E2.
   move/leb_le: lt_val => lt_val.
+  move: (lt__le _ _ E2) => nneg_val.
+
   split; try eassumption.
-  exact: (refine_memory_malloc rmem E2 rist malloc).
+  exact: (refine_memory_malloc rmem nneg_val rist malloc).
   exact: (refine_val_malloc _ fresh_color malloc).
-  have in_bounds: 0 <= word_to_Z val <= word_to_Z (Sym.block_size bi).
-    split; first by move/word_to_Z_le: E2; rewrite word0.
+  have in_bounds: 0 < word_to_Z val <= word_to_Z (Sym.block_size bi).
+    split; first by move/word_to_Z_lt: E2; rewrite word0.
     exact/word_to_Z_le.
 
   exact: (refine_internal_state_malloc in_bounds malloc).
