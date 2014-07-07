@@ -800,7 +800,8 @@ Proof.
            sst    as [SM SR Spc [Snext SiT SaJT SaST]].
   generalize SGOOD; move=> [[SGMEM [SGREG SGPC]] SGINT].
   generalize AGOOD =>
-    /andP [/andP [/andP [AELEM /andP [/andP [AGOODS ANOL] ACC]] ASS] ASP];
+    /andP [/andP [/andP [AELEM AGOODCS] ASS] ASP];
+    generalize AGOODCS => /andP [/andP [AGOODS ANOL] ACC];
     assert (AIN : In Aprev AC) by by simpl in *; destruct (elem Aprev AC).
   rewrite /Abs.semantics /Abs.isolate /Abs.isolate_fn
           (lock Abs.in_compartment_opt);
@@ -870,25 +871,34 @@ Proof.
   }
   
   assert (SGOOD_sA : forall p, Sym.good_memory_tag sA p). {
-    eapply Sym.retag_set_preserves_good; eauto 3.
+    eapply Sym.retag_set_preserves_good; try eassumption.
     by move=> /= *; apply/andP.
   }
   
   assert (SGOOD_sJ : forall p, Sym.good_memory_tag sJ p). {
-    eapply Sym.retag_set_preserves_good; eauto 3.
+    eapply Sym.retag_set_preserves_good; try eassumption.
     move=> /= *; apply/andP; auto.
   }
   
   assert (SGOOD_sS : forall p, Sym.good_memory_tag (SState MS RS pcS siS) p). {
-    eapply Sym.retag_set_preserves_good; eauto 3.
+    eapply Sym.retag_set_preserves_good; try eassumption.
     move=> /= *; apply/andP; auto.
   }
+
+  assert (SET_A'   : is_set A') by eauto 3.
+  assert (SET_J'   : is_set J') by eauto 3.
+  assert (SET_S'   : is_set S') by eauto 3.
   
+  (* These will come in handy later *)
+  assert (NODUP_A' : NoDup A') by eauto 2.
+  assert (NODUP_J' : NoDup J') by eauto 2.
+  assert (NODUP_S' : NoDup S') by eauto 2.
+
   assert (SUBSET_A' : subset A' Aprev). {
     apply/subset_spec; intros a IN.
-    eapply Sym.retag_set_forall in IN; eauto 3 using is_set_no_dups.
+    eapply Sym.retag_set_forall in IN; try eassumption.
     move: IN => /= [x' [c' [I' [W' [SGET /eqP OK]]]]]; subst c'.
-    eapply refined_sget_in_compartment in SGET; eauto 3.
+    eapply refined_sget_in_compartment in SGET; eauto 1.
     apply Abs.in_compartment_spec in SGET; tauto.
   }
   rewrite SUBSET_A'.
@@ -907,17 +917,16 @@ Proof.
   assert (SUBSET_J' : subset J' (set_union Aprev Jprev)). {
     apply/subset_spec; move=> a IN; apply/set_union_spec.
     generalize def_sA => def_sA';
-      apply @Sym.retag_set_or with (p := a) in def_sA'; eauto 3.
-    generalize IN => IN'; eapply Sym.retag_set_forall in IN';
-      eauto 3 using is_set_no_dups.
+      apply @Sym.retag_set_or with (p := a) in def_sA'; try assumption.
+    generalize IN => IN'; eapply Sym.retag_set_forall in IN'; eauto 1.
     move: IN' =>
       /= [x' [c' [I' [W' [SGET /orP [/orP [/eqP? | /eqP?] | ELEM]]]]]];
       [subst c'; left | subst c'; left | right].
-   - eapply Sym.retag_set_in in IN; eauto 3.
+   - eapply Sym.retag_set_in in IN; try eassumption.
      rewrite SGET in IN.
      move: IN => [? [? [? [? [/esym EQ NOW]]]]]; move: EQ => [] *; subst.
      rewrite SGET in def_sA'; move: def_sA' => [OLD | NEW].
-     + eapply refined_sget_in_compartment in OLD; eauto 3.
+     + eapply refined_sget_in_compartment in OLD; eauto 1.
        apply Abs.in_compartment_spec in OLD; tauto.
      + move: NEW => [xnew [cnew [Inew [Wnew [NEW /esym[]]]]]] *; subst.
        move/id in SGET. apply IN_A' in SGET.
@@ -947,7 +956,7 @@ Proof.
                        Sym.sget sJ a ?= x'@(Sym.DATA Snext I' W') ->
                        In a A'). {
     intros until 0; intros SGET.
-    apply @Sym.retag_set_or with (p := a) in def_sJ; eauto 3.
+    apply @Sym.retag_set_or with (p := a) in def_sJ; try assumption.
     rewrite SGET in def_sJ.
     destruct def_sJ as [OLD | NEW].
     - by apply IN_A' in OLD.
@@ -958,9 +967,9 @@ Proof.
   assert (SUBSET_S' : subset S' (set_union Aprev Sprev)). {
     apply/subset_spec; move=> a IN; apply/set_union_spec.
     generalize def_sA => def_sA';
-      apply @Sym.retag_set_or with (p := a) in def_sA'; eauto 3.
+      apply @Sym.retag_set_or with (p := a) in def_sA'; try assumption.
     generalize def_sJ => def_sJ';
-      apply @Sym.retag_set_or with (p := a) in def_sJ'; eauto 3.
+      apply @Sym.retag_set_or with (p := a) in def_sJ'; try assumption.
     set scompartment := fun sst =>
       do! _ @ DATA c _ _ <- Sym.sget sst a;
       Some c.
@@ -993,7 +1002,7 @@ Proof.
     move/subset_spec in SUBSET_A'.
     subst scompartment; simpl in *.
     generalize IN => IN'; eapply Sym.retag_set_forall in IN';
-      eauto 3 using is_set_no_dups.
+      try eassumption.
     move: IN' =>
       /= [x' [c' [I' [W' [SGET /orP [/orP [/eqP? | /eqP?] | ELEM]]]]]];
       [subst c'; left | subst c'; left | ].
@@ -1001,7 +1010,7 @@ Proof.
      move: COMPARTMENT => [OLD | DONE]; auto.
      undoDATA OLD xold cold Iold Wold.
      move: OLD => [] /esym?; subst.
-     eapply refined_sget_in_compartment in def_xcIW0; eauto 3.
+     eapply refined_sget_in_compartment in def_xcIW0; eauto 1.
      apply Abs.in_compartment_spec in def_xcIW0; tauto.
    - apply IN_A'_sJ in SGET; auto.
    - assert (SAME_W : forall x c I W x' c' I' W',
@@ -1080,11 +1089,11 @@ Proof.
        with (Sym.sget (SState MS RS pcS siS) a)
          by reflexivity.
     generalize def_sA => def_sA';
-      apply @Sym.retag_set_or_ok with (p := a) in def_sA'; eauto 3.
+      apply @Sym.retag_set_or_ok with (p := a) in def_sA'; try assumption.
     generalize def_sJ => def_sJ';
-      apply @Sym.retag_set_or with (p := a) in def_sJ'; eauto 3.
+      apply @Sym.retag_set_or with (p := a) in def_sJ'; try assumption.
     generalize def_sS => def_sS';
-      apply @Sym.retag_set_or with (p := a) in def_sS'; eauto 3.
+      apply @Sym.retag_set_or with (p := a) in def_sS'; try assumption.
     idtac;
       destruct def_sA' as [OLD_A | [xA [cA [IA [WA [THEN_A [OK_A NOW_A]]]]]]];
       destruct def_sJ' as [OLD_J | [xJ [cJ [IJ [WJ [THEN_J NOW_J]]]]]];
@@ -1128,7 +1137,7 @@ Proof.
       try done.
     destruct COMPARTMENTS as [? COMPARTMENTS]; subst.
     replace cpc' with cid in * by (destruct COMPARTMENTS; symmetry; tauto).
-    eapply refined_sget_in_compartment; eauto 3.
+    eapply refined_sget_in_compartment; eauto 1.
   }
   
   assert (DIFF : cid <> Snext). {
@@ -1145,13 +1154,13 @@ Proof.
   
   assert (NIN : ~ In pc' A'). {
     intros IN.
-    eapply Sym.retag_set_in_ok in IN; eauto 3.
+    eapply Sym.retag_set_in_ok in IN; try eassumption.
     simpl in IN.
     destruct IN as [xpc' [cpc' [Ipc' [Wpc' [THEN [OK NOW]]]]]].
     move/eqP in OK; subst cpc'.
     move/id in def_xcIW;
-      apply @Sym.retag_set_or with (p := pc') in def_sJ; eauto 3;
-      apply @Sym.retag_set_or with (p := pc') in def_sS; eauto 3;
+      apply @Sym.retag_set_or with (p := pc') in def_sJ; try assumption;
+      apply @Sym.retag_set_or with (p := pc') in def_sS; try assumption;
       destruct def_sJ as [OLD_J | [xJ [cJ [IJ [WJ [THEN_J NOW_J]]]]]];
       destruct def_sS as [OLD_S | [xS [cS [IS [WS [THEN_S NOW_S]]]]]];
       first [move/id in OLD_J | move/id in THEN_J; move/id in NOW_J];
@@ -1169,12 +1178,19 @@ Proof.
       abstract congruence.
   }
   
-  assert (ELEM_pc' : set_elem pc' (set_difference Aprev A')). {
-    move: IC_pc' => /Abs.in_compartment_spec [IN_AC IN_Aprev].
-    move/forallb_forall in AGOODS. apply set_elem_true.
-    - apply set_difference_preserves_set; eauto 3.
-    - apply set_difference_spec; eauto 3.
-  }
+  generalize IC_pc' => /Abs.in_compartment_spec [IN_prev_AC IN_pc'_Aprev].
+  
+  assert (AGOODC_prev : Abs.good_compartment <<Aprev,Jprev,Sprev>>) by
+    (move/forallb_forall in AGOODS; apply AGOODS; assumption).
+  assert (SET_Aprev : is_set Aprev) by
+    (eapply Abs.good_compartment_decomposed__is_set_address_space; eassumption).
+  assert (SET_Jprev : is_set Jprev) by
+    (eapply Abs.good_compartment_decomposed__is_set_jump_targets;  eassumption).
+  assert (SET_Sprev : is_set Sprev) by
+    (eapply Abs.good_compartment_decomposed__is_set_shared_memory; eassumption).
+  
+  assert (ELEM_pc' : set_elem pc' (set_difference Aprev A'))
+    by (apply set_elem_true; auto; apply set_difference_spec; auto).
   rewrite -(lock Abs.in_compartment_opt) /= ELEM_pc' /= eq_refl.
   
   assert (IN_Jsys : In pc' (Abs.jump_targets c_sys)). {
@@ -1187,11 +1203,11 @@ Proof.
            in RTAG_sys
            by reflexivity.
       generalize def_sA => def_sA';
-        apply @Sym.retag_set_or with (p := pc') in def_sA'; eauto 3.
+        apply @Sym.retag_set_or with (p := pc') in def_sA'; try assumption.
       generalize def_sJ => def_sJ';
-        apply @Sym.retag_set_or with (p := pc') in def_sJ'; eauto 3.
+        apply @Sym.retag_set_or with (p := pc') in def_sJ'; try assumption.
       generalize def_sS => def_sS';
-        apply @Sym.retag_set_or with (p := pc') in def_sS'; eauto 3.
+        apply @Sym.retag_set_or with (p := pc') in def_sS'; try assumption.
       idtac;
         destruct def_sA' as [OLD_A | [xA [cA [IA [WA [THEN_A NOW_A]]]]]];
         destruct def_sJ' as [OLD_J | [xJ [cJ [IJ [WJ [THEN_J NOW_J]]]]]];
@@ -1229,7 +1245,7 @@ Proof.
       move: SGOOD_sS => /andP [] //.
   }
   
-  assert (ELEM_Jsys : set_elem pc' (Abs.jump_targets c_sys)) by
+  assert (ELEM_Jsys : set_elem pc' (Abs.jump_targets c_sys)).
     (apply Abs.in_compartment_spec in IN_c_sys; destruct IN_c_sys;
      move/forallb_forall in AGOODS; apply set_elem_true; eauto 3).
   rewrite ELEM_Jsys.
