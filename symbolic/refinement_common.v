@@ -169,26 +169,35 @@ Qed.
 
 Variable table : list (Symbolic.syscall mt).
 
+Definition is_nop (i : word mt) : bool :=
+  match decode_instr i with
+  | Some Nop => true
+  | _ => false
+  end.
+
 Definition wf_entry_points (cmem : Concrete.memory mt) :=
   forall addr t,
     (exists sc, Symbolic.get_syscall table addr = Some sc /\
                 Symbolic.entry_tag sc = t) <->
     match PartMaps.get cmem addr with
-    | Some i@it => (i == encode_instr (Nop _)) && (it == encode (ENTRY t))
+    | Some i@it => (is_nop i && (it == encode (ENTRY t)))
     | None => false
     end = true.
 
 Lemma wf_entry_points_if cmem addr sc :
   wf_entry_points cmem ->
   Symbolic.get_syscall table addr = Some sc ->
-  PartMaps.get cmem addr = Some (encode_instr (Nop _))@(encode (ENTRY (Symbolic.entry_tag sc))).
+  exists i,
+  PartMaps.get cmem addr = Some i@(encode (ENTRY (Symbolic.entry_tag sc))) /\
+  is_nop i.
 Proof.
   move => WFENTRYPOINTS GETCALL.
   have: exists sc', Symbolic.get_syscall table addr = Some sc' /\
                     Symbolic.entry_tag sc' = Symbolic.entry_tag sc by eauto.
   move/WFENTRYPOINTS.
   case: (PartMaps.get cmem addr) => [[i it]|] //.
-  move/andP => [H1 H2]. move/eqP: H1 => ->. by move/eqP : H2 => ->.
+  move/andP => [H1 H2]. exists i. split; last trivial.
+  by move/eqP : H2 => ->.
 Qed.
 
 Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Prop :=

@@ -206,7 +206,7 @@ Proof.
   { apply WFENTRYPOINTS. rewrite PC.
     rewrite eqxx andb_true_r.
     apply/eqP.
-    symmetry. by apply common.encodeK. }
+    symmetry. by rewrite /is_nop INST. }
   rewrite GETCALL {GETCALL} ENTRYTAG {ENTRYTAG} in NCALL.
   by rewrite LOOKUP in NCALL.
 Qed.
@@ -305,9 +305,10 @@ Proof.
     { exists (Symbolic.State smem' sregs' pc'@tpc' int'). split.
       - eapply Symbolic.step_syscall; eauto.
         eapply wf_entry_points_if in GETCALL; last by exact WFENTRYPOINTS.
+        move: GETCALL => [i [GETPC ISNOP]].
         case GET': (PartMaps.get smem pc) => [[? ?]|] //.
         move/REFM: GET' => GET'.
-        rewrite GETCALL in GET'.
+        rewrite GETPC in GET'.
         move: GET' => [[? H]].
         by apply encode_inj in H.
       - econstructor; eauto. }

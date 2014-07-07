@@ -255,7 +255,6 @@ Proof.
     Transparent pack.
     Transparent unpack.
     Transparent unpack2.
-  - admit.
   - vm_compute; inversion 1.
   - reflexivity.
   - simpl. apply repr_signed.

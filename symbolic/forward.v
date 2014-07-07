@@ -159,13 +159,13 @@ Lemma no_syscall_no_entry_point mem addr t :
   wf_entry_points table mem ->
   Symbolic.get_syscall table addr = None ->
   ~~ match PartMaps.get mem addr with
-     | Some i@it => (i == encode_instr (Nop _)) && (it == encode (ENTRY t))
+     | Some i@it => (is_nop i) && (it == encode (ENTRY t))
      | None => false
      end.
 Proof.
   intros WF GETSC.
   destruct (match PartMaps.get mem addr with
-            | Some i@it => (i == encode_instr (Nop _)) && (it == encode (ENTRY t))
+            | Some i@it => (is_nop i) && (it == encode (ENTRY t))
             | None => false
             end) eqn:E; trivial.
   apply WF in E.
@@ -341,8 +341,9 @@ Proof.
       case: (boolP (cache_allows_syscall table cst)) => [ALLOWED | NOTALLOWED]
   end.
   + by analyze_syscall.
-  + move: (wf_entry_points_if _ WFENTRYPOINTS GETCALL) => ?.
-    have ? : decode_instr (encode_instr (Nop mt)) = Some (Nop mt) by rewrite common.decodeK.
+  + move: (wf_entry_points_if _ WFENTRYPOINTS GETCALL) => [i [GETPC ISNOP]].
+    rewrite /is_nop in ISNOP.
+    case DEC: (decode_instr i) ISNOP => [[] |] // _.
     move: (CALL) => CALL'. rewrite /Symbolic.run_syscall /= in CALL'.
     rewrite /cache_allows_syscall GETCALL /= in NOTALLOWED.
     match type of NOTALLOWED with

@@ -258,10 +258,7 @@ Delimit Scope word_scope with w.
    hard one") for the 32-bit machine in int_32.v. *)
 Class machine_ops_spec t (ops : machine_ops t) := {
 
-  decodeK : forall i, decode_instr (encode_instr i) = Some i;
-
-  encodeK : forall i w, decode_instr w = Some i ->
-                        encode_instr i = w;
+  encodeK : forall i, decode_instr (encode_instr i) = Some i;
 
   min_word_bound : (word_to_Z min_word <= 0)%Z;
 
