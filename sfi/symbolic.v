@@ -570,7 +570,8 @@ Lemma succ_trans : forall x y,
 Proof.
   intros x y NEQ LT.
   generalize (lew_max y) => /le_iff_lt_or_eq [] // LT_max.
-  by apply lt_trans with (b := y), ltb_lt, lebw_succ with (y := max_word).
+  apply lt_trans with (b := y); first by [].
+  by apply ltb_lt, lebw_succ with (y := max_word).
 Qed.
 Hint Resolve succ_trans.
 

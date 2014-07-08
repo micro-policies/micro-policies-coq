@@ -57,8 +57,8 @@ Module IntOrdered (WS : Integers.WORDSIZE).
   Module IntIndexed := FiniteMaps.IntIndexed WS.
   Import IntIndexed.
   Import Integers.Word.
-  
-  Instance int_eqdec : EqDec (eq_setoid IntIndexed.t) := eq_dec.
+
+  Instance int_eqdec : EqDec (eq_setoid IntIndexed.t) := @eqType_EqDec (@Integers.int_eqType _).
   
   Definition int_compare (a b : IntIndexed.t) : comparison :=
     if a == b

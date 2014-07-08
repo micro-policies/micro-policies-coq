@@ -1987,3 +1987,12 @@ Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : list A :=
 
 Definition run {A} (step: A -> option A) (st : A) := runn step 10000 st.
 
+Require Import ssreflect ssrbool eqtype.
+
+Instance eqType_EqDec (A : eqType) : EqDec (eq_setoid A).
+Proof.
+move=> x y.
+have [->|neq_xy] := altP (x =P y); first by left.
+by right=> eq_xy; move: neq_xy; rewrite eq_xy eqxx.
+Qed.
+

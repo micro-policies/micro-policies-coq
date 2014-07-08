@@ -68,7 +68,7 @@ Definition concrete_int_32_t : machine_types := {|
   reg_tmap := RegtTMap.t
 |}.
 
-Instance int_ordered : @Ordered (word concrete_int_32_t) (eqType_EqDec (word concrete_int_32_t)) :=
+Instance int_ordered : @Ordered (word concrete_int_32_t) (@eqType_EqDec (word concrete_int_32_t)) :=
   {| compare := compare;
      compare_refl := compare_refl;
      compare_asym :=compare_asym;

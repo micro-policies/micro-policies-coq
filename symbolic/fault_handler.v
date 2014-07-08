@@ -297,7 +297,7 @@ Proof.
   intros (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   do 7 (try split; eauto).
   - intros addr IN.
-    destruct (in_dec (fun x y : word mt => eqType_EqDec _ x y)
+    destruct (in_dec (fun x y : word mt => @eqType_EqDec _ x y)
                      addr (Concrete.mvec_fields ops)) as [IN' | NIN].
     + destruct (PartMaps.get_upd_list_in MVEC IN')
         as (v' & IN'' & GET).

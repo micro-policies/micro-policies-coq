@@ -186,13 +186,6 @@ Definition opcode_of (i : instr) : opcode :=
 
 End instr.
 
-Instance eqType_EqDec (A : eqType) : EqDec (eq_setoid A).
-Proof.
-move=> x y.
-have [->|neq_xy] := altP (x =P y); first by left.
-by right=> eq_xy; move: neq_xy; rewrite eq_xy eqxx.
-Qed.
-
 Class machine_ops (t : machine_types) := {
   encode_instr : instr t -> word t;
   decode_instr : word t -> option (instr t);
