@@ -893,47 +893,44 @@ Qed.
   
 Theorem backwards_simulation_attacker ast sst sst' :
   refine_state ast sst ->
-  Sym.step_a stable sst sst' ->
+  Sym.step_a sst sst' ->
   exists ast',
     Abs.step_a ast ast' /\
     refine_state ast' sst'.
 Proof.
   intros REF SSTEP.
   destruct ast as [imem dmem aregs apc b].
-  destruct b; inversion SSTEP; subst;
+  inversion SSTEP; subst;
   unfold refine_state in REF; 
   destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT INV]]]]]];
-  unfold refine_pc in REFPC; simpl in REFPC; destruct REFPC as [? ?]; subst.
+  unfold refine_pc in REFPC; simpl in REFPC; destruct REFPC as [? TPC]; subst.
   { destruct (reg_refinement_preserved_by_equiv REFR REQUIV) as [aregs' REFR'];
     assert (REFI' := imem_refinement_preserved_by_equiv REFI MEQUIV);
     destruct (dmem_refinement_preserved_by_equiv REFD MEQUIV) as [dmem' REFD'];
     assert (DOMAINM := dmem_domain_preserved_by_equiv REFD MEQUIV REFD').
     assert (DOMAINR := reg_domain_preserved_by_equiv REFR REQUIV REFR').
-    assert (EFETCH : exists id, get mem pc = Some i@(INSTR id)) by (eexists; eauto);
-    apply REFI in EFETCH;
-    exists (Abs.State imem dmem' aregs' pc true).
+    exists (Abs.State imem dmem' aregs' pc b).
     split; [econstructor(eauto) | split; auto].
     split; auto.
     split; auto.
     split.
     unfold refine_pc. split; auto.
-    split. intros ? ? H.
+    split.  intros ? ? H. 
     { (*proof of correctness for instructions*)
-      split.
-      - intros ? src TAG.
+      split. 
+      - intros CONT src TAG.
         unfold Sym.equiv in MEQUIV.
         assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
-        destruct (get mem pc) eqn:GET. 
+        destruct (get mem pc) eqn:GET.  
         { destruct (get mem' pc) eqn:GET'.
           + destruct MEQUIV' as [a a' TG1 TG2 | a a0 id' id'' TG TG' EQ].
             - destruct a as [av atg].
               simpl in TG1. rewrite TG1 in GET. apply CORRECTNESS in GET.
-              assert (TRUE: true = true) by reflexivity.
               destruct GET as [CORRECT ?].
               destruct tpc as [opt_id|].
               * destruct opt_id.
-                { apply CORRECT with (src := s) in TRUE.
-                  destruct TRUE as [? [CONTRA ?]].
+                { apply CORRECT with (src := s) in CONT.
+                  destruct CONT as [? [CONTRA ?]].
                   discriminate.
                   reflexivity.
                 }
@@ -941,8 +938,9 @@ Proof.
               * inversion TAG.
             - subst. simpl in GET. destruct a0 as [a0_v a0_t]. 
               apply CORRECTNESS in GET. destruct GET as [CORRECT ?].
+              simpl in TG. 
               assert (TRUE: true = true) by reflexivity.
-              simpl in TG. apply CORRECT with (src0 := src) in TRUE.
+              apply CORRECT with (src0 := src) in TRUE.
               simpl in GET'. simpl in H. rewrite GET' in H. inversion H. subst a0_t.
               subst ti. assumption.
               reflexivity.
@@ -952,29 +950,48 @@ Proof.
           - destruct MEQUIV'.
           - simpl in H. simpl in GET'. rewrite GET' in H. discriminate.
         }
-      - intros ?. reflexivity.
+      - intros CORRECT'.
+        assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
+        destruct (get mem pc) eqn:GET. 
+        { rewrite H in MEQUIV'.
+          + inversion MEQUIV' as [? ? TG1 TG2 | ? a0 id' id'' TG TG' EQ]; subst.
+            - destruct a as [av atg].
+              simpl in TG1. rewrite TG1 in GET. 
+              simpl in TG2.
+              destruct TPC as [TPC | [? TPC]]; subst.
+              * apply CORRECTNESS in GET.
+                apply GET. intros ? CONTRA. by discriminate.
+              * specialize (CORRECT' x erefl).
+                destruct CORRECT' as [dst [TI VALID]].
+                discriminate.
+            - simpl in *.
+              apply CORRECTNESS in GET.
+              apply GET. assumption.
+        }
+        { rewrite H in MEQUIV'. destruct MEQUIV'. }
     }
     { split.
       - (*proof for syscall correctness*)
         intros sc H GETCALL.
         split.
-        + intros ? src TPC.
-          apply REFI' in EFETCH.
-          destruct EFETCH as [? CONTRA].
-          rewrite CONTRA in H. congruence.
-        + intros ?. reflexivity.
+        + intros CONT src TPC'.
+          specialize (MEQUIV pc).
+          rewrite H in MEQUIV.
+          destruct (get mem pc) eqn:GET.
+          * destruct MEQUIV.
+          * specialize (SYSCORRECT sc GET GETCALL).
+            destruct SYSCORRECT as [SYS ?].
+            specialize (SYS CONT src TPC').
+            assumption.
+        + intros CORRECT'.
+          specialize (MEQUIV pc).
+          rewrite H in MEQUIV.
+          destruct (get mem pc) eqn:GET.
+          * destruct MEQUIV.
+          * specialize (SYSCORRECT sc GET GETCALL).
+            apply SYSCORRECT; auto.
       -  eauto using Sym.invariants_preserved_by_step_a.
     }
-  }
-  { (*case a violation has happened*)
-    unfold Sym.no_violation in NOV.
-    destruct (CORRECTNESS i _ FETCH) as [? CONTRA].
-    assert (HYPOTHESIS: (forall src : word t,
-                           tpc = INSTR (Some src) ->
-                           exists dst : word t,
-                             INSTR id = INSTR (Some dst) /\ valid_jmp src dst = true)).
-          by (intros src TPC; eapply NOV; eauto).
-    apply CONTRA in HYPOTHESIS. discriminate.
   }
 Qed.
 

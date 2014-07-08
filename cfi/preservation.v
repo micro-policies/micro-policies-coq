@@ -113,6 +113,34 @@ Proof.
       eapply re_step; eauto.
       econstructor(auto).
 Qed.
+
+
+Lemma refine_traces_astep ast ast' cst axs cxs :
+  refine_traces (ast :: ast' :: axs) (cst :: cxs) ->
+  exists cst' cst'', In2 cst' cst'' (cst :: cxs) /\
+                     (step ast ast' \/ step_a ast ast' /\ step_a cst' cst'').
+Proof.
+  intros RTRACE.
+  gdep cst.
+  induction cxs; intros.
+  - inv RTRACE.
+  - inversion RTRACE
+    as [| ? ? ? ? ? STEP CHECK REF REF' RTRACE' 
+        | ? ? ? ? ? ? STEP ASTEP REF REF' RTRACE' 
+        | ? ? ? ? ? ? NSTEP STEPA SSTEPA REF REF' RTRACE'];
+    subst.
+    +  destruct (IHcxs _ RTRACE') as [cst' [cst'' IH]].
+       destruct IH as [IN2 [SSTEP | [STEPA CSTEPA]]].
+       * exists cst'; exists cst''.
+         split. simpl; by auto.
+         left. by assumption.
+       * exists cst'; exists cst''.
+         split. simpl; by auto.
+         right; by auto.
+    + exists cst; exists a. split; [simpl; by auto | left; by assumption].
+    + exists cst; exists a.
+      split; [simpl; by auto | right; auto].
+Qed.
       
 Class machine_refinement_specs := {
 

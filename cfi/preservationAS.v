@@ -158,7 +158,7 @@ Next Obligation.
    eexists; split; eauto | discriminate].
 Qed.
 Next Obligation.
-  destruct (RefinementAS.backwards_simulation_attacker ast REF STEPA);
+  destruct (RefinementAS.backwards_simulation_attacker stable ast REF STEPA);
   eexists; eauto.
 Qed.
 
@@ -233,9 +233,10 @@ Next Obligation.
     - destruct (get dmem spc); discriminate.
 Qed.
 Next Obligation.
-  assert (ST := Abs.step_succ_violation H0 H1).
-  intro CONTRA.
-  destruct CONTRA. discriminate.
+  destruct (Abs.step_succ_violation H0 H1) as [H2 H3].
+  intro CONTRA. assert (CONT := Abs.step_a_violation CONTRA).
+  rewrite CONT in H2.
+  congruence.
 Qed.
 Next Obligation.
   unfold Abs.succ in H1. 
@@ -285,18 +286,59 @@ Qed.
 Next Obligation.
   unfold Abs.stopping in H4.
   unfold Sym.stopping.
-  destruct H4 as [s [EQ NOSTEP]].
-  inversion EQ; subst.
-  inversion H3; subst.
-  - exists csj. split; auto.
-    intro CONTRA. destruct CONTRA as [s' CONTRA].
-    destruct (backwards_refinement_normal _ _ _ H6 CONTRA).
-    unfold check in H4. simpl in H4.
-    destruct (H4 erefl) as [ast' [ASTEP REF]].
-    assert (ESTEP : exists s', Abs.step atable valid_jmp s s')
-      by (eexists; eauto).
-    auto.
-  - unfold check in H9. simpl in H9. discriminate.
+  destruct H4 as [ALLA ALLS].
+  induction H3
+    as [ast cst REF | ast cst cst' axs' cxs' STEP VIS REF REF' RTRACE' |
+        ast ast' cst cst' axs' cxs' STEP ASTEP' REF REF' RTRACE'|
+        ast ast' cst cst' axs' cxs' NSTEP STEP ASTEP' REF REF' RTRACE']; 
+    subst.
+  - split. 
+    + intros csi' csj' CONTRA.
+      destruct CONTRA.
+    + intros csi' IN.
+      destruct IN as [? | CONTRA]; subst.
+      * intros (? & CONTRA).
+        destruct (backwards_refinement_normal _ _ _ REF CONTRA) as [VIS CLEAN].
+        clear CLEAN.
+        unfold check in VIS. simpl in VIS.
+        destruct (VIS erefl) as [ast' [ASTEP REF']].
+        unfold Abs.all_stuck in ALLS.
+        assert (IN: In ast [ast]) by (simpl; auto).
+        apply ALLS in IN.
+        eauto.
+      * destruct CONTRA.
+  - simpl in *.
+    discriminate.
+  - simpl in *.
+    assert (IN: In ast (ast :: ast' :: axs')) by (simpl; auto).
+    apply ALLS in IN.
+    exfalso.
+    eauto.
+  - apply Abs.all_attacker_red in ALLA.
+    split.
+    { apply Abs.all_stuck_red in ALLS.
+      exploit IHRTRACE'; auto.
+      intros [IH IH'];
+      simpl in *; eauto using Sym.all_attacker_step.
+    }
+    { intros csi' IN.
+      destruct IN as [? | IN]; subst.
+      - intros (? & CONTRA).
+        destruct (backwards_refinement_normal _ _ _ REF CONTRA) as [CONTRA' H'].
+        clear H'.
+        simpl in CONTRA'.
+        destruct (CONTRA' erefl) as [ast'' [ASTEP REF'']].
+        assert (IN: In ast (ast :: ast' :: axs'))
+          by (simpl; auto).
+        specialize (ALLS ast IN).
+        eauto.
+      - exploit IHRTRACE'; auto.
+        apply Abs.all_stuck_red in ALLS.
+        assumption.
+        intros [? STUCK].
+        specialize (STUCK csi' IN).
+        assumption.
+    }
 Qed.
         
 End Refinement.

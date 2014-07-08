@@ -76,12 +76,11 @@ Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t
 
 (* Do we also want to disallow attacker if the next step is KERNEL?
   Isn't the violation enough? *)
+
 Inductive step_a : Concrete.state t ->
                    Concrete.state t -> Prop :=
-| step_attack : forall mem reg cache pc tpc epc mem' reg' i id
+| step_attack : forall mem reg cache pc tpc epc mem' reg'
                   (INUSER: word_lift (fun x => is_user x) tpc)
-                  (FETCH: get mem pc = Some i@(encode (USER (INSTR id))))
-                  (NOV: no_violation (Concrete.mkState mem reg cache pc@tpc epc))
                   (REQUIV: reg_equiv reg reg')
                   (MEQUIV: equiv mem mem'),
                   step_a (Concrete.mkState mem reg cache pc@tpc epc)
@@ -130,20 +129,22 @@ Variable masks : Concrete.Masks.
 Definition in_user := @in_user t ops sp e.
 
 Import ListNotations.
-Definition stopping (ss : list (Concrete.state t)) : Prop :=
-  (exists s, ss = [s] /\ in_user s)
-  \/
-  (exists hd tl,
-    ss = hd :: tl /\
-    in_user hd /\
-    forallb in_kernel tl).
-
-(* TODO: sanity check: stopping is non-empty prefix closed *)
 
 Definition all_attacker (xs : list (Concrete.state t)) : Prop :=
   forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~Concrete.step _ masks x1 x2. 
 
-Definition stopping' (ss : list (Concrete.state t)) : Prop :=
+Lemma all_attacker_red ast ast' axs :
+  all_attacker (ast :: ast' :: axs) ->
+  all_attacker (ast' :: axs).
+Proof.
+  intros ATTACKER asi asj IN2.
+  assert (IN2' : In2 asi asj (ast :: ast' :: axs))
+    by (simpl; auto).
+  apply ATTACKER in IN2'.
+  assumption.
+Qed.
+
+Definition stopping (ss : list (Concrete.state t)) : Prop :=
   (all_attacker ss /\ forallb in_user ss)
   \/
   (exists user kernel,

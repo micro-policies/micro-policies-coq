@@ -1386,6 +1386,20 @@ Proof.
         { left. simpl; right; auto. }
         { right. trivial. }
 Qed.
+
+Lemma In2_implies_In xs :
+  In2 xs ->
+  In x xs.
+Proof.
+  intros IN2.
+  induction xs. 
+  - now destruct IN2.
+  - destruct xs.
+    + now destruct IN2.
+    + destruct IN2 as [[? ?] | IN2]; subst.
+      * simpl; auto.
+      * simpl. right. apply IHxs; assumption.
+Qed.
         
 End In2. 
 

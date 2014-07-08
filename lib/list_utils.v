@@ -137,6 +137,20 @@ Theorem in_spec : forall {A} (a : A) xs,
   In a xs <-> exists pre post, xs = pre ++ a :: post.
 Proof. split; [|intros [pre [post EQ]]; subst]; auto using in_split. Qed.
 
+Theorem in_reverse {X} (x i:X) xs :
+  In x (xs ++ [i]) -> In x xs \/ i = x.
+Proof.
+  intros IN.
+  induction xs.
+  - destruct IN; subst; auto.
+  - destruct IN as [? | IN]; subst.
+    + left; simpl; auto.
+    + simpl.
+      destruct (IHxs IN).
+      * left; right; assumption.
+      * auto.
+Qed.
+
 Theorem forallb_map : forall {A B} (p : B -> bool) (f : A -> B) xs,
   forallb p (map f xs) = forallb (p ∘ f) xs.
 Proof.

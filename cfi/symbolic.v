@@ -75,13 +75,11 @@ Definition equiv {M : Type -> Type} {Key : Type}
 
 Inductive step_a : Symbolic.state t ->
                    Symbolic.state t -> Prop :=
-| step_attack : forall mem reg pc tpc int mem' reg' i id
-                  (FETCH: get mem pc = Some i@(INSTR id))
-                  (NOV: no_violation (Symbolic.State mem reg pc@tpc int))
+| step_attack : forall mem reg pc tpc int mem' reg'
                   (REQUIV: equiv reg reg')
                   (MEQUIV: equiv mem mem'),
                   step_a (Symbolic.State mem reg pc@tpc int)
-                         (@Symbolic.State t sym_cfi mem' reg' pc@tpc int).
+                         (Symbolic.State mem' reg' pc@tpc int).
 
 Lemma equiv_same_domain {M : Type -> Type} {Key : Type} 
            {M_class : partial_map M Key }
@@ -147,13 +145,13 @@ Definition valid_jmp_tagged (mem : memory) :=
 
 (* These may be needed for forwards simulation, I will leave them out until
    I actually use them*)
-Definition jumps_tagged (mem : memory) := True.
+(* Definition jumps_tagged (mem : memory) :=  *)
   (* forall addr i cfi_tg r, *)
   (*   get mem addr = Some i@(INSTR cfi_tg) -> *)
   (*   decode_instr i = Some (Jump _ r) -> *)
   (*   cfi_tg = Some addr. *)
 
-Definition jals_tagged (mem : memory) := True.
+(* Definition jals_tagged (mem : memory) :=  *)
   (* forall addr i cfi_tg r, *)
   (*   get mem addr = Some i@(INSTR cfi_tg) -> *)
   (*   decode_instr i = Some (Jal _ r) -> *)
@@ -467,8 +465,45 @@ Definition initial (s : Symbolic.state t) :=
   (common.tag (Symbolic.pc s)) = DATA /\
   invariants s.
 
-Definition stopping xs :=
-  exists s, xs = [s] /\ ~ exists s', Symbolic.step table s s'.
+Definition all_attacker xs : Prop :=
+  forall x1 x2, In2 x1 x2 xs -> step_a x1 x2.
+
+Definition all_stuck xs : Prop :=
+  forall x, In x xs -> ~ exists s, Symbolic.step table x s.
+
+Definition stopping xs : Prop :=
+  all_attacker xs /\ all_stuck xs.
+
+Lemma all_attacker_step st st' xs :
+  step_a st st' ->
+  all_attacker (st' :: xs) ->
+  all_attacker (st :: st' :: xs).
+Proof.
+  intros STEP ALLA si sj IN2.
+  destruct IN2 as [[? ?] | IN2]; subst; auto.
+Qed.
+
+Lemma all_attacker_red ast ast' axs :
+  all_attacker (ast :: ast' :: axs) ->
+  all_attacker (ast' :: axs).
+Proof.
+  intros ATTACKER asi asj IN2.
+  assert (IN2' : In2 asi asj (ast :: ast' :: axs))
+    by (simpl; auto).
+  apply ATTACKER in IN2'.
+  assumption.
+Qed.
+
+Lemma all_stuck_red ast ast' axs :
+  all_stuck (ast :: ast' :: axs) ->
+  all_stuck (ast' :: axs).
+Proof.
+  intros ALLS asi IN.
+  unfold all_stuck in ALLS.
+  assert (IN': In asi (ast :: ast' :: axs))
+    by (simpl; right; auto).
+  auto.
+Qed.
 
 Program Instance symbolic_cfi_machine : cfi_machine := {|
   state := Symbolic.state t;
@@ -484,21 +519,91 @@ Program Instance symbolic_cfi_machine : cfi_machine := {|
 Import DoNotation.
 Import Vector.VectorNotations.
 
-Definition option_handler x := 
-  match x with
-    | Some v => Symbolic.handler v
-    | None => None
+Definition get_ti sst := 
+  match get (Symbolic.mem sst) (common.val (Symbolic.pc sst)) with
+    | Some i@ti => Some ti
+    | None => 
+      match Symbolic.get_syscall table (common.val (Symbolic.pc sst)) with
+        | Some sc => Some (Symbolic.entry_tag sc)
+        | None => None
+      end
   end.
 
-(*If we have a violation then the symbolic handler will
- say no*)
-Lemma succ_false_handler asi asj :
-  invariants asi ->
-  ssucc asi asj = false ->
-  step asi asj ->
-  option_handler (build_mvec table asj) = None.
+Definition violation sst :=
+  let 'pc@tpc := Symbolic.pc sst in
+  match get_ti sst with
+    | Some ti =>
+      match tpc with
+        | INSTR (Some src) =>
+          match ti with
+            | INSTR (Some dst) =>
+              valid_jmp src dst = false
+            | _ => true
+          end
+        | _ => match ti with
+                 | INSTR _ => false
+                 | DATA => true
+               end
+      end
+    | None => true
+  end.
+
+Lemma attacker_preserves_tpc_ti sst sst':
+  step_a sst sst' ->
+  (Symbolic.pc sst = Symbolic.pc sst') /\
+  (get_ti sst = get_ti sst').
+Proof.
+  intro STEP.
+  inv STEP.
+  split.
+  - by reflexivity.
+  - specialize (MEQUIV pc).
+    unfold get_ti.
+    simpl.
+    destruct (get mem pc) as [[i ti]|] eqn:GET; rewrite GET.
+    { destruct (get mem' pc) as[[i' ti']|] eqn:GET'; rewrite GET'.
+      - inversion MEQUIV as [? ? EQ1 EQ2 EQ3 EQ4|? ? ? ? EQ1 EQ2 EQ3]; subst.
+        + simpl in EQ1, EQ2. subst. by reflexivity.
+        + inv EQ3. by reflexivity.
+      - by destruct MEQUIV.
+    }
+    { destruct (get mem' pc) as[[i' ti']|] eqn:GET'; rewrite GET'.
+      - destruct MEQUIV.
+      - by reflexivity.
+    }
+Qed.
+
+Lemma violation_preserved_by_step_a sst sst' :
+  violation sst ->
+  step_a sst sst' ->
+  violation sst'.
+Proof.
+  intros VIO STEP.
+  unfold violation in *.
+  destruct (attacker_preserves_tpc_ti STEP) as [TPC TI].
+  rewrite <- TPC, TI in *.
+  by assumption.
+Qed.
+
+Lemma violation_preserved_by_exec_a sst sst' :
+  violation sst ->
+  exec step_a sst sst' ->
+  violation sst'.
+Proof.
+  intros VIO EXEC.
+  induction EXEC.
+  - by assumption.
+  - eauto using violation_preserved_by_step_a.
+Qed.
+
+Lemma succ_false_implies_violation sst sst' :
+  invariants sst ->
+  ssucc sst sst' = false ->
+  step sst sst' ->
+  False \/ violation sst'.
 Proof.
   intros INV SUCC STEP.
+  destruct INV as [ITG [VTG ETG]].
   unfold ssucc in SUCC.
   inv STEP; simpl in *;
   rewrite PC in SUCC; try rewrite INST in SUCC;
@@ -512,7 +617,7 @@ Proof.
           unfold Symbolic.next_state_reg_and_pc in H
         | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
           unfold Symbolic.next_state in H; simpl in H
-      end); match_inv; subst; simpl in SUCC;
+      end); subst; match_inv; simpl in SUCC;
   try match goal with 
         | [H: _ || _ = false |- _] => 
           apply orb_false_iff in H;
@@ -523,69 +628,74 @@ Proof.
   try match goal with
         | [H: (?A == ?A) = false |- _] => 
       move/eqP:H => CONTRA; destruct (CONTRA erefl)
+      end; 
+  right; unfold violation;
+  simpl; unfold get_ti; simpl;
+  destruct (get mem w) as [[i' [[dst|]|]]|] eqn:GET; try constructor;
+  try match goal with
+        |[H: get ?Mem ?W = None |- _] =>
+         destruct (Symbolic.get_syscall table W) as [sc|] eqn:GETCALL
       end;
-  simpl;
-  repeat match goal with
-    | [ |- option_handler match get ?Mem ?W with _ => _ end = _] => 
-      destruct (get Mem W) eqn:GET
-    | [ |- option_handler match decode_instr (val ?I) with _ => _ end = _] => 
-      destruct (decode_instr (val I)) 
-  end; try (destruct i0);
-  try match goal with
-    | [|- option_handler None = None] => unfold option_handler; reflexivity
-  end; 
-  destruct INV as [ITG [VTG ETG]]; simpl in *;
-  unfold option_handler; simpl;
-  try match goal with
-    | |- context[get ?Reg ?R] => destruct (get Reg R)
-         end;
-  try match goal with
-        | |- context[Some ?A] => destruct A; simpl
-      end;
-  try match goal with
-    | |- context[get ?Reg ?R] => destruct (get Reg R)
-         end;
-  try match goal with
-        | |- context[Some ?A] => destruct A; simpl
-      end;
-  try match goal with
-        | |- context[get ?Reg ?R] => destruct (get Reg R)
-      end;
-  try match goal with
-        | |- context[Some ?A] => destruct A; simpl
-      end;
-  try match goal with
-    | [H: valid_jmp ?Pc ?W = false, H1: get ?Mem ?W = Some ?A |- _ ] =>
-       destruct a as [v tg]; simpl;
-       destruct tg as [[id|] |]; try reflexivity
-  end;
- try match goal with
-    | [|- match match ?Expr with _ => _ end with _ => _ end = None] => destruct Expr eqn:GETCALL
-  end;
-  unfold entry_points_tagged in ETG;
   try match goal with
         |[H: Symbolic.get_syscall _ _ = Some ?Sc |- _] =>
-         destruct (Symbolic.entry_tag Sc) as [[id|]|] eqn:ETAG
+         destruct (Symbolic.entry_tag sc) as [[dst|]|] eqn:ETAG
       end;
-  try reflexivity;
   try match goal with
-    | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some ?S)), H1: valid_jmp ?Pc ?W = false,
-       H2: get ?Mem ?W = None,                                                 
-       H3: Symbolic.get_syscall _ ?W  = Some ?Sc,
-       H4: Symbolic.entry_tag _ = INSTR (Some _) |- _ ] =>
-       assert (TG := ITG _ _ _ H); subst;
-       assert (TG := ETG _ _ _ H2 H3 H4); subst;
-       simpl; rewrite H1
-    end;
-  try match goal with
-    | [H: get ?Mem ?Pc = Some ?I@(INSTR (Some ?S)), H1: valid_jmp ?Pc ?W = false,
-       H2: get ?Mem ?W  = Some _@(INSTR (Some ?Id)) |- _ ] =>
-       assert (TG := ITG _ _ _ H); subst;
-       assert (TG := ITG _ _ _ H2); subst;
-       rewrite H1
-       end;
-  try reflexivity;
-  try (destruct tag1; reflexivity).
+    | [H:valid_jmp ?Pc ?W = false,
+       H1: get ?Mem ?Pc = Some _@(INSTR (Some ?Id)),
+       H2: get ?Mem ?W = Some _@(INSTR (Some ?Id')) |- _] =>
+      assert (EQ := ITG _ _ _ H1);
+      assert (EQ' := ITG _ _ _ H2);
+      subst
+    | [H:valid_jmp ?Pc ?W = false,
+       H1: get ?Mem ?Pc = Some _@(INSTR (Some ?Id)),
+       H2 : get ?Mem ?W = None,
+       H3: Symbolic.get_syscall _ ?W = Some ?Sc,
+       H4: Symbolic.entry_tag ?Sc = _ |- _] =>
+        assert (EQ := ITG _ _ _ H1);
+        assert (EQ' := ETG _ _ _ H2 H3 H4);
+        subst
+  end; by auto.
+Qed.
+
+Lemma is_violation_implies_stop sst umvec :
+  violation sst ->
+  build_mvec table sst = Some umvec ->
+  Symbolic.handler umvec = None.
+Proof.
+  intros VIO UMVEC.
+  unfold violation in VIO.
+  destruct sst as [mem reg [pc tpc] int].
+  unfold build_mvec in UMVEC.
+  simpl in UMVEC, VIO.
+  unfold get_ti in VIO. simpl in VIO.
+  destruct (get mem pc) as [[i itg]|] eqn:GET.
+  - rewrite GET in VIO UMVEC.
+    destruct tpc as [[src|]|], itg as [[dst|]|];
+      try (by inversion VIO);
+      simpl in UMVEC;
+      unfold bind in UMVEC;
+      repeat match goal with
+               | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] => 
+             rewrite H1 in H
+               | [H: match ?Expr with _ => _ end = _ |- _ ] =>
+                 destruct Expr eqn:?
+               | [H: match ?Expr with _ => _ end _ = _ |- _ ] =>
+                 destruct Expr eqn:?
+         end;
+      inv UMVEC; try reflexivity;
+      unfold Symbolic.handler; simpl; unfold cfi_handler;
+      try rewrite VIO; try reflexivity.
+    destruct (tag a1); by reflexivity.
+  -  (*get mem pc = None*)
+    rewrite GET in VIO UMVEC.
+    destruct (Symbolic.get_syscall table pc) as [sc|] eqn:GETCALL.
+    + destruct tpc as [[src|]|], (Symbolic.entry_tag sc) as [[dst|]|]; 
+      try (by inversion VIO);
+      inv UMVEC; try reflexivity.
+      unfold Symbolic.handler; simpl; unfold cfi_handler;
+      try rewrite VIO; by reflexivity.
+    + by discriminate.
 Qed.
 
 End WithClasses.
