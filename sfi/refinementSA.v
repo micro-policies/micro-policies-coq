@@ -885,6 +885,10 @@ Proof.
   repeat (erewrite isolate_create_set_refined; [|eassumption]).
   rewrite def_A' def_J' def_S' /= NE_A' /=.
   
+  assert (SGINT' : Sym.good_internal (SState SM SR pc@(Sym.PC F cid) si')). {
+    fold (Sym.fresh (SInternal Snext SiT SaJT SaST)) in def_c'_si'.
+    eapply Sym.fresh_preserves_good in def_c'_si'; eassumption.
+  }
   rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p [x [I [W def_cid]]]].
   destruct (Snext == max_word) eqn:SMALL_Snext; move/eqP in SMALL_Snext;
     inversion def_c'_si'; subst c' si'; clear def_c'_si'.
@@ -1316,7 +1320,158 @@ Proof.
              destruct (get AM addr), (get MS addr) as [[? []]|] eqn:GET';
              rewrite GET' in RMEMS' *
       end.
-  - admit.
+  - rewrite /refine_syscall_addrs_b /= in RSC *.
+    move/id in RSC.
+    move: RSC => /andP [/andP [/andP [/andP [/andP [/andP [/andP [/andP [
+                 ANGET_i ANGET_aJ] ANGET_aS]
+                 SNGET_i] SNGET_aJ] SNGET_aS]
+                 /eqP NEQiaJ] /eqP NEQiaS] /eqP NEQaJaS].
+    
+    generalize def_sA => GETS_sA;
+      move/Sym.retag_set_preserves_get_definedness in GETS_sA.
+    generalize def_sJ => GETS_sJ;
+      move/Sym.retag_set_preserves_get_definedness in GETS_sJ.
+    generalize def_sS => GETS_sS;
+      move/Sym.retag_set_preserves_get_definedness in GETS_sS.
+    simpl in *.
+
+    assert (SNGET_sA_i : ~~ is_some (get (Symbolic.mem sA) isolate_addr))
+      by by apply/negP; intros H; apply GETS_sA in H; move/negP in SNGET_i.
+    assert (SNGET_sA_aJ : ~~ is_some (get (Symbolic.mem sA)
+                                          add_to_jump_targets_addr))
+      by by apply/negP; intros H; apply GETS_sA in H; move/negP in SNGET_aJ.
+    assert (SNGET_sA_aS : ~~ is_some (get (Symbolic.mem sA)
+                                          add_to_shared_memory_addr))
+      by by apply/negP; intros H; apply GETS_sA in H; move/negP in SNGET_aS.
+
+    assert (SNGET_sJ_i : ~~ is_some (get (Symbolic.mem sJ) isolate_addr))
+      by by apply/negP; intros H; apply GETS_sJ in H; move/negP in SNGET_sA_i.
+    assert (SNGET_sJ_aJ : ~~ is_some (get (Symbolic.mem sJ)
+                                          add_to_jump_targets_addr))
+      by by apply/negP; intros H; apply GETS_sJ in H; move/negP in SNGET_sA_aJ.
+    assert (SNGET_sJ_aS : ~~ is_some (get (Symbolic.mem sJ)
+                                          add_to_shared_memory_addr))
+      by by apply/negP; intros H; apply GETS_sJ in H; move/negP in SNGET_sA_aS.
+
+    assert (SNGET_sS_i : ~~ is_some (get MS isolate_addr))
+      by by apply/negP; intros H; apply GETS_sS in H; move/negP in SNGET_sJ_i.
+    assert (SNGET_sS_aJ : ~~ is_some (get MS add_to_jump_targets_addr))
+      by by apply/negP; intros H; apply GETS_sS in H; move/negP in SNGET_sJ_aJ.
+    assert (SNGET_sS_aS : ~~ is_some (get MS add_to_shared_memory_addr))
+      by by apply/negP; intros H; apply GETS_sS in H; move/negP in SNGET_sJ_aS.
+    
+    assert (SGINT_sA : Sym.good_internal sA). {
+      assert (NIN_i : ~ In isolate_addr A'). {
+        intros IN.
+        rewrite /Abs.syscalls_separated in ASS; move/forallb_forall in ASS.
+        specialize (ASS _ IN_prev_AC); move: ASS => /orP [UAS | SAS].
+        - rewrite /Abs.user_address_space /= in UAS; move/forallb_forall in UAS.
+          assert (IN' : In isolate_addr Aprev)
+            by by move/subset_spec in SUBSET_A'; apply SUBSET_A'.
+          specialize (UAS _ IN').
+          by move/negP in ANGET_i.
+        - rewrite /Abs.syscall_address_space in SAS.
+          cbv [Abs.address_space] in SAS.
+          destruct Aprev as [|sc [|]]; try done.
+          move: SAS => /andP [NONE ELEM].
+          assert (A' = []). {
+            destruct A' as [|a' A']; [reflexivity|].
+            move/subset_spec in SUBSET_A'.
+            apply SUBSET_A' in IN.
+            inversion IN; subst; try done.
+            specialize (SUBSET_A' a' (or_introl erefl)).
+            inversion SUBSET_A'; subst; try done.
+            inversion IN_pc'_Aprev; subst; try done.
+            by elim NIN; left.
+          }
+          by subst A'.
+      }
+      
+      assert (NIN_aJ : ~ In add_to_jump_targets_addr A'). {
+        intros IN.
+        rewrite /Abs.syscalls_separated in ASS; move/forallb_forall in ASS.
+        specialize (ASS _ IN_prev_AC); move: ASS => /orP [UAS | SAS].
+        - rewrite /Abs.user_address_space /= in UAS; move/forallb_forall in UAS.
+          assert (IN' : In add_to_jump_targets_addr Aprev)
+            by by move/subset_spec in SUBSET_A'; apply SUBSET_A'.
+          specialize (UAS _ IN').
+          by move/negP in ANGET_aJ.
+        - rewrite /Abs.syscall_address_space in SAS.
+          cbv [Abs.address_space] in SAS.
+          destruct Aprev as [|sc [|]]; try done.
+          move: SAS => /andP [NONE ELEM].
+          assert (A' = []). {
+            destruct A' as [|a' A']; [reflexivity|].
+            move/subset_spec in SUBSET_A'.
+            apply SUBSET_A' in IN.
+            inversion IN; subst; try done.
+            specialize (SUBSET_A' a' (or_introl erefl)).
+            inversion SUBSET_A'; subst; try done.
+            inversion IN_pc'_Aprev; subst; try done.
+            by elim NIN; left.
+          }
+          by subst A'.
+      }
+      
+      assert (NIN_aS : ~ In add_to_shared_memory_addr A'). {
+        intros IN.
+        rewrite /Abs.syscalls_separated in ASS; move/forallb_forall in ASS.
+        specialize (ASS _ IN_prev_AC); move: ASS => /orP [UAS | SAS].
+        - rewrite /Abs.user_address_space /= in UAS; move/forallb_forall in UAS.
+          assert (IN' : In add_to_shared_memory_addr Aprev)
+            by by move/subset_spec in SUBSET_A'; apply SUBSET_A'.
+          specialize (UAS _ IN').
+          by move/negP in ANGET_aS.
+        - rewrite /Abs.syscall_address_space in SAS.
+          cbv [Abs.address_space] in SAS.
+          destruct Aprev as [|sc [|]]; try done.
+          move: SAS => /andP [NONE ELEM].
+          assert (A' = []). {
+            destruct A' as [|a' A']; [reflexivity|].
+            move/subset_spec in SUBSET_A'.
+            apply SUBSET_A' in IN.
+            inversion IN; subst; try done.
+            specialize (SUBSET_A' a' (or_introl erefl)).
+            inversion SUBSET_A'; subst; try done.
+            inversion IN_pc'_Aprev; subst; try done.
+            by elim NIN; left.
+          }
+          by subst A'.
+      }
+      eapply Sym.retag_set_updating_preserves_good_internal;
+        try apply def_sA; try eauto 1; apply/eqP; assumption.
+    }
+    assert (SGINT_sJ : Sym.good_internal sJ). {
+      generalize def_sJ => GETS;
+        move/Sym.retag_set_preserves_get_definedness in GETS.
+      eapply Sym.good_internal_equiv; try apply SGINT_sA; try (by apply/eqP);
+        auto.
+      - intros a.
+        generalize def_sJ => def_sJ';
+          apply @Sym.retag_set_or with (p := a) in def_sJ'; try assumption.
+        move: def_sJ' => [OLD | [xnew [cnew [Inew [Wnew [THEN NOW]]]]]].
+        + rewrite OLD.
+          specialize (SGOOD_sJ a); rewrite /Sym.good_memory_tag /= in SGOOD_sJ.
+          by destruct (Sym.sget sJ a) as [[? []]|].
+        + by rewrite THEN NOW.
+      - eapply Sym.retag_set_preserves_next_id; eassumption.
+    }
+    assert (SGINT_sS : Sym.good_internal (SState MS RS pcS siS)). {
+      generalize def_sS => GETS;
+        move/Sym.retag_set_preserves_get_definedness in GETS.
+      eapply Sym.good_internal_equiv; try apply SGINT_sJ; try (by apply/eqP);
+        auto.
+      - intros a.
+        generalize def_sS => def_sS';
+          apply @Sym.retag_set_or with (p := a) in def_sS'; try assumption.
+        move: def_sS' => [OLD | [xnew [cnew [Inew [Wnew [THEN NOW]]]]]].
+        + rewrite OLD.
+          specialize (SGOOD_sS a); rewrite /Sym.good_memory_tag /= in SGOOD_sS.
+          by destruct (Sym.sget (SState MS RS pcS siS) a) as [[? []]|].
+        + by rewrite THEN NOW.
+      - eapply Sym.retag_set_preserves_next_id; eassumption.
+    }
+    apply SGINT_sS.
 Qed.
     
 Theorem add_to_jump_targets_refined : forall ast sst sst',

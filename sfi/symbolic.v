@@ -551,6 +551,20 @@ Proof.
        inversion SUPD; subst.
 Qed.
 
+Theorem supd_preserves_next_id : forall s p v s',
+  supd s p v ?= s' ->
+  next_id (Symbolic.internal s) = next_id (Symbolic.internal s').
+Proof.
+  move=> [mem reg pc [next iT aJT aST]] /= p v s' SUPD;
+    rewrite /supd /= in SUPD.
+  destruct (upd mem p v) eqn:UPD; rewrite UPD in SUPD.
+  - by inversion SUPD; subst.
+  - by destruct (p == isolate_addr);
+         [|destruct (p == add_to_jump_targets_addr);
+           [|destruct (p == add_to_shared_memory_addr)]];
+       inversion SUPD; subst.
+Qed.
+
 Lemma succ_trans : forall x y,
   y <> max_word -> x < y -> x < (y + 1)%w.
 Proof.
@@ -779,6 +793,48 @@ Proof.
   - eapply retag_set_not_in in RETAG; eauto.
 Qed.
 
+Lemma sget_eq__get_eq : forall s s' p,
+  (is_some (get (Symbolic.mem s) p) <-> is_some (get (Symbolic.mem s') p)) ->
+  sget s p = sget s' p ->
+  get (Symbolic.mem s) p = get (Symbolic.mem s') p.
+Proof.
+  intros [mem reg pc [next iT aJT aST]] [mem' reg' pc' [next' iT' aJT' aST']]
+         p GETS SGETS; simpl in *.
+  rewrite /sget /= in SGETS.
+  by destruct (get mem p),(get mem' p); simpl in *;
+     try (destruct GETS;
+          match goal with H : is_true true -> is_true false |- _ =>
+            specialize (H erefl)
+          end).
+Qed.
+
+Lemma retag_set_or_ok_get : forall ok retag ps s s',
+  NoDup ps ->
+  (forall p, good_memory_tag s p) ->
+  retag_set ok retag ps s ?= s' ->
+  forall p,
+    get (Symbolic.mem s) p = get (Symbolic.mem s') p \/
+    exists x c I W, get (Symbolic.mem s) p ?= x@(DATA c I W) /\
+                    ok c I W /\
+                    get (Symbolic.mem s') p ?= x@(retag c I W).
+Proof.
+  clear I; intros ok retag ps s s' NODUP GMEM RETAG p.
+  generalize (retag_set_preserves_get_definedness ok retag ps s s' RETAG p)
+             => GETS.
+  generalize (retag_set_or_ok ok retag ps s s' NODUP GMEM RETAG p)
+             => [[EQ | [x [c [I [W [OLD [OK NEW]]]]]]]].
+  - by left; apply sget_eq__get_eq in EQ.
+  - rewrite /sget /= in OLD; rewrite /sget /= in NEW;
+      destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
+               s' as [mem' reg' pc' [next' iT' aJT' aST']];
+        simpl in *.
+    destruct (get mem p),(get mem' p); simpl in *.
+    + right; repeat eexists; eauto.
+    + by destruct GETS as [NO _]; specialize (NO erefl).
+    + by destruct GETS as [_ NO]; specialize (NO erefl).
+    + by left.
+Qed.
+
 Lemma retag_set_preserves_good_memory_tag : forall ok retag ps s s',
   (forall c I W,
      is_set I ->
@@ -818,187 +874,6 @@ Proof.
       by destruct (sget s p') as [[? [|c'' I'' W''|]]|].
 Qed.
 
-(*
-Lemma retag_set_preserves_good_internal : forall ok retag ps s s',
-  (forall c I W,
-     match retag c I W with
-       | DATA c' _ _ => c' = c \/
-                        forall p, match sget s p with
-                                    | Some _@(DATA cold _ _) => c' <> cold
-                                    | Some _                 => False
-                                    | None                   => True
-                                  end
-       | _           => False
-     end) ->
-  NoDup ps ->
-  ~~ is_some (get (Symbolic.mem s) isolate_addr) ->
-  ~~ is_some (get (Symbolic.mem s) add_to_jump_targets_addr) ->
-  ~~ is_some (get (Symbolic.mem s) add_to_shared_memory_addr) ->
-  isolate_addr <> add_to_jump_targets_addr ->
-  isolate_addr <> add_to_shared_memory_addr ->
-  add_to_jump_targets_addr <> add_to_shared_memory_addr ->
-  (forall p, good_memory_tag s p) ->
-  retag_set ok retag ps s ?= s' ->
-  good_internal s ->
-  good_internal s'.
-Proof.
-  clear I; move=> ok retag ps s s'
-                  RETAG NODUP NISOME NAJSOME NASSOME
-                  DIFF_I_aJ DIFF_I_aS DIFF_aJ_aS GMEM
-                  RETAG_SET INT.
-  assert (INONE : get (Symbolic.mem s) isolate_addr = None)
-    by by destruct (get _ isolate_addr).
-  assert (AJNONE : get (Symbolic.mem s) add_to_jump_targets_addr = None)
-    by by destruct (get _ add_to_jump_targets_addr).
-  assert (ASNONE : get (Symbolic.mem s) add_to_shared_memory_addr = None)
-    by by destruct (get _ add_to_shared_memory_addr).
-  rewrite /good_internal in INT *.
-  destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
-           s' as [mem' reg' pc' [next' iT' aJT' aST']];
-    simpl in *.
-  
-  assert (SGET_I :
-            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
-                 isolate_addr ?= 0%w@iT).
-    by by rewrite /sget INONE eq_refl.
-  assert (SGET_aJ :
-            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
-                 add_to_jump_targets_addr ?= 0%w@aJT) by
-    (by move/eqP in DIFF_I_aJ; rewrite eq_sym in DIFF_I_aJ;
-        move/Bool.negb_true_iff in DIFF_I_aJ;
-        rewrite /sget AJNONE DIFF_I_aJ eq_refl).
-  assert (SGET_aS :
-            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
-                 add_to_shared_memory_addr ?= 0%w@aST) by
-    (by move/eqP in DIFF_I_aS; rewrite eq_sym in DIFF_I_aS;
-        move/Bool.negb_true_iff in DIFF_I_aS;
-        move/eqP in DIFF_aJ_aS; rewrite eq_sym in DIFF_aJ_aS;
-        move/Bool.negb_true_iff in DIFF_aJ_aS;
-        rewrite /sget ASNONE DIFF_I_aS DIFF_aJ_aS eq_refl).
-  
-  idtac;
-    destruct iT  as [|ci  Ii  Wi|];  try done;
-    destruct aJT as [|caJ IaJ WaJ|]; try done;
-    destruct aST as [|caS IaS WaS|]; try done.
-  move: INT => [NEQiaJ [NEQiaS [NEQaJaS [LTi [LTaJ [LTaS MEM]]]]]].
-  
-  assert (NISOME' : ~~ is_some (get mem' isolate_addr)). {
-    move/retag_set_preserves_get_definedness in RETAG_SET.
-    apply/negP; move=> SOME; apply RETAG_SET in SOME.
-    simpl in SOME; move/negP in NISOME.
-    contradiction.
-  }
-  
-  assert (NAJSOME' : ~~ is_some (get mem' add_to_jump_targets_addr)). {
-    move/retag_set_preserves_get_definedness in RETAG_SET.
-    apply/negP; move=> SOME; apply RETAG_SET in SOME.
-    simpl in SOME; move/negP in NAJSOME.
-    contradiction.
-  }
-  
-  assert (NASSOME' : ~~ is_some (get mem' add_to_shared_memory_addr)). {
-    move/retag_set_preserves_get_definedness in RETAG_SET.
-    apply/negP; move=> SOME; apply RETAG_SET in SOME.
-    simpl in SOME; move/negP in NASSOME.
-    contradiction.
-  }
-                                                         
-  assert (INONE' : get mem' isolate_addr = None)
-    by by clear NISOME INONE; destruct (get _ isolate_addr).
-  assert (AJNONE' : get mem' add_to_jump_targets_addr = None)
-    by by clear NAJSOME AJNONE; destruct (get _ add_to_jump_targets_addr).
-  assert (ASNONE' : get mem' add_to_shared_memory_addr = None)
-    by by clear NASSOME ASNONE; destruct (get _ add_to_shared_memory_addr).
-  
-  assert (SGET_I' :
-            sget (Symbolic.State mem' reg' pc' (Internal next' iT' aJT' aST'))
-                 isolate_addr ?= 0%w@iT').
-    by by rewrite /sget INONE' eq_refl.
-  assert (SGET_aJ' :
-            sget (Symbolic.State mem' reg' pc' (Internal next' iT' aJT' aST'))
-                 add_to_jump_targets_addr ?= 0%w@aJT') by
-    (by move/eqP in DIFF_I_aJ; rewrite eq_sym in DIFF_I_aJ;
-        move/Bool.negb_true_iff in DIFF_I_aJ;
-        rewrite /sget AJNONE' DIFF_I_aJ eq_refl).
-  assert (SGET_aS' :
-            sget (Symbolic.State mem' reg' pc' (Internal next' iT' aJT' aST'))
-                 add_to_shared_memory_addr ?= 0%w@aST') by
-    (by move/eqP in DIFF_I_aS; rewrite eq_sym in DIFF_I_aS;
-        move/Bool.negb_true_iff in DIFF_I_aS;
-        move/eqP in DIFF_aJ_aS; rewrite eq_sym in DIFF_aJ_aS;
-        move/Bool.negb_true_iff in DIFF_aJ_aS;
-        rewrite /sget ASNONE' DIFF_I_aS DIFF_aJ_aS eq_refl).
-  generalize RETAG_SET => /retag_set_or SGET_OR;
-    do 2 (lapply SGET_OR; [clear SGET_OR; move=> SGET_OR | assumption]).
-
-  idtac;
-    (generalize (SGET_OR isolate_addr)              => [[OLD_I | NEW_I]];
-     [ rewrite SGET_I SGET_I' in OLD_I; inversion OLD_I; subst; clear OLD_I
-     |]);
-    (generalize (SGET_OR add_to_jump_targets_addr)  => [[OLD_aJ | NEW_aJ]];
-     [ rewrite SGET_aJ SGET_aJ' in OLD_aJ; inversion OLD_aJ; subst; clear OLD_aJ
-     |]);
-    (generalize (SGET_OR add_to_shared_memory_addr) => [[OLD_aS | NEW_aS]];
-     [ rewrite SGET_aS SGET_aS' in OLD_aS; inversion OLD_aS; subst; clear OLD_aS
-     |]).
-  - repeat (split; [solve [eauto]|]).
-    move/id in LTi.
-    
-
-  move: SGET_OR' => [Z | W].
-  match type of SGET_OR' with
-    | ?X \/ ?Y => idtac
-  end.
-  
-  destruct SGET_OR' as [Z | W].  
-  
-
-
-
-  intros ok retag ps s s' RETAG RETAG_SET; simpl.
-  move: s s' RETAG RETAG_SET; induction ps as [|p ps];
-    move=> /= s s' RETAG RETAG_SET.
-  - by inversion RETAG_SET; subst.
-  - idtac;
-      undoDATA RETAG_SET x c I' W; rename I' into I;
-      undo1 RETAG_SET OK;
-      destruct (retag c I W) as [|c' I' W'|] eqn:def_c'_I'_W'; try discriminate;
-      undo1 RETAG_SET s2.
-    destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
-             s' as [mem' reg' pc' [next' iT' aJT' aST']];
-      simpl in *.
-    rewrite /good_internal /=; move=> INT;
-      destruct iT  as [|ci  Ii  Wi|];  try done;
-      destruct aJT as [|caJ IaJ WaJ|]; try done;
-      destruct aST as [|caS IaS WaS|]; try done.
-    move: INT => [NEQiaJ [NEQiaS [NEQaJaS [LTi [LTaJ [LTaS MEM]]]]]].
-    idtac;
-      destruct iT'  as [|ci'  Ii'  Wi'|];  try done;
-      destruct aJT' as [|caJ' IaJ' WaJ'|]; try done;
-      destruct aST' as [|caS' IaS' WaS'|]; try done.
-    admit. admit. admit. admit. admit. admit. admit. admit. admit. admit. admit.
-    admit. admit.
-    
-    admit. admit. admit. admit. admit. admit. admit. admit. admit. admit. admit.
-    admit. admit.
-    
-    unfold good_memory_tag in *.
-    move: (MEM p); rewrite def_xcIW; move=> /andP [SET_I SET_W].
-    specialize (RETAG c I W SET_I SET_W);
-      rewrite def_c'_I'_W' /= in RETAG;
-      repeat rewrite <-Bool.andb_assoc in RETAG.
-      move: RETAG => /andP [SET_I' SET_W'].
-    eapply IHps; try eassumption.
-    intros p'; destruct (p == p') eqn:EQ_p_p'; move/eqP in EQ_p_p'.
-    + subst p'.
-      eapply sget_supd_eq in def_s2; eauto 1; rewrite def_s2.
-      by apply/andP.
-    + apply sget_supd_neq with (p' := p') in def_s2; auto.
-      rewrite def_s2; specialize MEM with p'.
-      by destruct (sget s p') as [[? [|c'' I'' W''|]]|].
-Qed.
-*)
-
 Lemma retag_set_preserves_regs : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
   Symbolic.regs s = Symbolic.regs s'.
@@ -1033,6 +908,292 @@ Proof.
     apply supd_preserves_pc in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
 
+Lemma retag_set_preserves_next_id : forall ok retag ps s s',
+  retag_set ok retag ps s ?= s' ->
+  next_id (Symbolic.internal s) = next_id (Symbolic.internal s').
+Proof.
+  clear I.
+  intros ok retag ps s s' RETAG_SET; simpl.
+  move: s s' RETAG_SET; induction ps as [|p ps];
+    move=> /= s s' RETAG_SET.
+  - by inversion RETAG_SET; subst.
+  - idtac;
+      undoDATA RETAG_SET x c I' W; rename I' into I;
+      undo1 RETAG_SET OK;
+      destruct (retag c I W) as [|c' I' W'|] eqn:def_c'_I'_W'; try discriminate;
+      undo1 RETAG_SET s2.
+    apply supd_preserves_next_id in def_s2; apply IHps in RETAG_SET; congruence.
+Qed.
+
+Lemma good_internal_equiv : forall s s',
+  (forall p,
+     match sget s p , sget s' p with
+       | Some _@(DATA c _ _) , Some _@(DATA c' _ _) => c = c'
+       | None                , None                 => True
+       | _                   , _                    => False
+     end) ->
+  next_id (Symbolic.internal s) = next_id (Symbolic.internal s') ->
+  ~~ is_some (get (Symbolic.mem s) isolate_addr) ->
+  ~~ is_some (get (Symbolic.mem s) add_to_jump_targets_addr) ->
+  ~~ is_some (get (Symbolic.mem s) add_to_shared_memory_addr) ->
+  ~~ is_some (get (Symbolic.mem s') isolate_addr) ->
+  ~~ is_some (get (Symbolic.mem s') add_to_jump_targets_addr) ->
+  ~~ is_some (get (Symbolic.mem s') add_to_shared_memory_addr) ->
+  isolate_addr != add_to_jump_targets_addr ->
+  isolate_addr != add_to_shared_memory_addr ->
+  add_to_jump_targets_addr != add_to_shared_memory_addr ->
+  good_internal s ->
+  good_internal s'.
+Proof.
+  clear I; move=> s s'
+                  TAGS NEXT
+                  NOT_SOME_I NOT_SOME_aJ NOT_SOME_aS
+                  NOT_SOME_I' NOT_SOME_aJ' NOT_SOME_aS'
+                  DIFF_I_aJ DIFF_I_aS DIFF_aJ_aS.
+  
+  assert (INONE : get (Symbolic.mem s) isolate_addr = None)
+    by by destruct (get (Symbolic.mem s) isolate_addr).
+  assert (AJNONE : get (Symbolic.mem s) add_to_jump_targets_addr = None)
+    by by destruct (get (Symbolic.mem s) add_to_jump_targets_addr).
+  assert (ASNONE : get (Symbolic.mem s) add_to_shared_memory_addr = None)
+    by by destruct (get (Symbolic.mem s) add_to_shared_memory_addr).
+  
+  assert (INONE' : get (Symbolic.mem s') isolate_addr = None)
+    by by destruct (get (Symbolic.mem s') isolate_addr).
+  assert (AJNONE' : get (Symbolic.mem s') add_to_jump_targets_addr = None)
+    by by destruct (get (Symbolic.mem s') add_to_jump_targets_addr).
+  assert (ASNONE' : get (Symbolic.mem s') add_to_shared_memory_addr = None)
+    by by destruct (get (Symbolic.mem s') add_to_shared_memory_addr).
+
+  assert (FALSE_aJ_I : (add_to_jump_targets_addr == isolate_addr) = false)
+   by by rewrite eq_sym in DIFF_I_aJ; move/Bool.negb_true_iff in DIFF_I_aJ.
+  assert (FALSE_aS_I : (add_to_shared_memory_addr == isolate_addr) = false)
+   by by rewrite eq_sym in DIFF_I_aS; move/Bool.negb_true_iff in DIFF_I_aS.
+  assert (FALSE_aS_aJ: (add_to_shared_memory_addr ==
+                        add_to_jump_targets_addr) = false)
+   by by rewrite eq_sym in DIFF_aJ_aS; move/Bool.negb_true_iff in DIFF_aJ_aS.
+
+  destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
+           s' as [mem' reg' pc' [next' iT' aJT' aST']];
+    simpl in *; subst next'.
+
+  assert (SGET_I :
+            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
+                 isolate_addr ?= 0%w@iT).
+    by by rewrite /sget INONE eq_refl.
+  assert (SGET_aJ :
+            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
+                 add_to_jump_targets_addr ?= 0%w@aJT)
+    by by rewrite /sget AJNONE FALSE_aJ_I eq_refl.
+  assert (SGET_aS :
+            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
+                 add_to_shared_memory_addr ?= 0%w@aST)
+    by by rewrite /sget ASNONE FALSE_aS_I FALSE_aS_aJ eq_refl.
+  
+  assert (SGET_I' :
+            sget (Symbolic.State mem' reg' pc' (Internal next iT' aJT' aST'))
+                 isolate_addr ?= 0%w@iT')
+    by by rewrite /sget INONE' eq_refl.
+  assert (SGET_aJ' :
+            sget (Symbolic.State mem' reg' pc' (Internal next iT' aJT' aST'))
+                 add_to_jump_targets_addr ?= 0%w@aJT')
+    by by rewrite /sget AJNONE' FALSE_aJ_I eq_refl.
+  assert (SGET_aS' :
+            sget (Symbolic.State mem' reg' pc' (Internal next iT' aJT' aST'))
+                 add_to_shared_memory_addr ?= 0%w@aST')
+    by by rewrite /sget ASNONE' FALSE_aS_I FALSE_aS_aJ eq_refl.
+  
+  rewrite /good_internal /=; move=> GOOD.
+  generalize (TAGS isolate_addr) => TAGS_I;
+    rewrite SGET_I SGET_I' in TAGS_I;
+    destruct iT as [|ci Wi Ii|], iT' as [|ci' Wi' Ii'|]; try done;
+    subst ci'.
+  generalize (TAGS add_to_jump_targets_addr) => TAGS_aJ;
+    rewrite SGET_aJ SGET_aJ' in TAGS_aJ;
+    destruct aJT as [|caJ WaJ IaJ|], aJT' as [|caJ' WaJ' IaJ'|]; try done;
+    subst caJ'.
+  generalize (TAGS add_to_shared_memory_addr) => TAGS_aS;
+    rewrite SGET_aS SGET_aS' in TAGS_aS;
+    destruct aST as [|caS WaS IaS|], aST' as [|caS' WaS' IaS'|]; try done;
+    subst caS'.
+  repeat move: GOOD => [? GOOD].
+  repeat (split; [assumption|]).
+  intros p x c I W GET'.
+  move/id in TAGS; specialize TAGS with p.
+  rewrite /sget GET' in TAGS.
+  destruct (get mem p) as [[y [|cy Iy Wy|]]|] eqn:GET; rewrite GET in TAGS;
+   try done; subst.
+  - apply GOOD in GET; assumption.
+  - by destruct (p == isolate_addr) eqn:EQ_I;
+         move/eqP in EQ_I;
+         [|destruct (p == add_to_jump_targets_addr) eqn:EQ_aJ;
+           move/eqP in EQ_aJ;
+             [|destruct (p == add_to_shared_memory_addr) eqn:EQ_aS;
+               move/eqP in EQ_aS]];
+       subst; try congruence.
+Qed.
+  
+Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
+  cnew <> max_word ->
+  next_id (Symbolic.internal s) = (cnew+1)%w ->
+  ~~ is_some (get (Symbolic.mem s) isolate_addr) ->
+  ~~ is_some (get (Symbolic.mem s) add_to_jump_targets_addr) ->
+  ~~ is_some (get (Symbolic.mem s) add_to_shared_memory_addr) ->
+  isolate_addr != add_to_jump_targets_addr ->
+  isolate_addr != add_to_shared_memory_addr ->
+  add_to_jump_targets_addr != add_to_shared_memory_addr ->
+  ~ In isolate_addr ps ->
+  ~ In add_to_jump_targets_addr ps ->
+  ~ In add_to_shared_memory_addr ps ->
+  NoDup ps ->
+  (forall p, good_memory_tag s p) ->
+  retag_set ok (fun _ I W => DATA cnew I W) ps s ?= s' ->
+  good_internal (Symbolic.State
+                   (Symbolic.mem s) (Symbolic.regs s) (Symbolic.pc s)
+                   (Internal
+                      cnew
+                      (isolate_tag              (Symbolic.internal s))
+                      (add_to_jump_targets_tag  (Symbolic.internal s))
+                      (add_to_shared_memory_tag (Symbolic.internal s)))) ->
+  good_internal s'.
+Proof.
+  clear I; move=> ok cnew ps s s'
+                  NMAX NEXT
+                  NOT_SOME_i NOT_SOME_aJ NOT_SOME_aS
+                  DIFF_i_aJ DIFF_i_aS DIFF_aJ_aS
+                  NIN_i NIN_aJ NIN_aS
+                  NODUP GMEM
+                  RETAG_SET.
+
+  assert (GETS : forall p, is_some (get (Symbolic.mem s) p) <->
+                           is_some (get (Symbolic.mem s') p))
+    by (eapply retag_set_preserves_get_definedness; eassumption).
+
+  assert (INONE : get (Symbolic.mem s) isolate_addr = None)
+    by by destruct (get (Symbolic.mem s) isolate_addr).
+  assert (AJNONE : get (Symbolic.mem s) add_to_jump_targets_addr = None)
+    by by destruct (get (Symbolic.mem s) add_to_jump_targets_addr) eqn:H.
+  assert (ASNONE : get (Symbolic.mem s) add_to_shared_memory_addr = None)
+    by by destruct (get (Symbolic.mem s) add_to_shared_memory_addr) eqn:H.
+  
+  assert (NOT_SOME_i' : ~~ is_some (get (Symbolic.mem s') isolate_addr)). {
+    apply/negP; move=> SOME; apply GETS in SOME.
+    simpl in SOME; move/negP in NOT_SOME_i.
+    contradiction.
+  }
+  
+  assert (NOT_SOME_aJ' : ~~ is_some (get (Symbolic.mem s')
+                                         add_to_jump_targets_addr)). {
+    apply/negP; move=> SOME; apply GETS in SOME.
+    simpl in SOME; move/negP in NOT_SOME_aJ.
+    contradiction.
+  }
+  
+  assert (NOT_SOME_aS' : ~~ is_some (get (Symbolic.mem s')
+                                         add_to_shared_memory_addr)). {
+    apply/negP; move=> SOME; apply GETS in SOME.
+    simpl in SOME; move/negP in NOT_SOME_aS.
+    contradiction.
+  }
+  
+  assert (INONE' : get (Symbolic.mem s') isolate_addr = None)
+    by by destruct (get (Symbolic.mem s') isolate_addr).
+  assert (AJNONE' : get (Symbolic.mem s') add_to_jump_targets_addr = None)
+    by by destruct (get (Symbolic.mem s') add_to_jump_targets_addr).
+  assert (ASNONE' : get (Symbolic.mem s') add_to_shared_memory_addr = None)
+    by by destruct (get (Symbolic.mem s') add_to_shared_memory_addr).
+  
+  assert (FALSE_aJ_i : (add_to_jump_targets_addr == isolate_addr) = false)
+   by by rewrite eq_sym in DIFF_i_aJ; move/Bool.negb_true_iff in DIFF_i_aJ.
+  assert (FALSE_aS_i : (add_to_shared_memory_addr == isolate_addr) = false)
+   by by rewrite eq_sym in DIFF_i_aS; move/Bool.negb_true_iff in DIFF_i_aS.
+  assert (FALSE_aS_aJ: (add_to_shared_memory_addr ==
+                        add_to_jump_targets_addr) = false)
+   by by rewrite eq_sym in DIFF_aJ_aS; move/Bool.negb_true_iff in DIFF_aJ_aS.
+   
+  destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
+           s' as [mem' reg' pc' [next' iT' aJT' aST']];
+    simpl in *.
+   
+  assert (SGET_i : sget (Symbolic.State mem reg pc
+                                        (Internal next iT aJT aST))
+                        isolate_addr ?= 0%w@iT)
+    by by rewrite /sget INONE eq_refl.
+  assert (SGET_aJ : sget (Symbolic.State mem reg pc
+                                         (Internal next iT aJT aST))
+                         add_to_jump_targets_addr ?= 0%w@aJT)
+    by by rewrite /sget AJNONE FALSE_aJ_i eq_refl.
+  assert (SGET_aS : sget (Symbolic.State mem reg pc
+                                         (Internal next iT aJT aST))
+                         add_to_shared_memory_addr ?= 0%w@aST)
+    by by rewrite /sget ASNONE FALSE_aS_i FALSE_aS_aJ eq_refl.
+  
+  assert (SGET_i' : sget (Symbolic.State mem' reg' pc'
+                                         (Internal next' iT' aJT' aST'))
+                         isolate_addr ?= 0%w@iT')
+    by by rewrite /sget INONE' eq_refl.
+  assert (SGET_aJ' : sget (Symbolic.State mem' reg' pc'
+                                           (Internal next' iT' aJT' aST'))
+                          add_to_jump_targets_addr ?= 0%w@aJT')
+    by by rewrite /sget AJNONE' FALSE_aJ_i eq_refl.
+  assert (SGET_aS' : sget (Symbolic.State mem' reg' pc'
+                                          (Internal next' iT' aJT' aST'))
+                          add_to_shared_memory_addr ?= 0%w@aST')
+    by by rewrite /sget ASNONE' FALSE_aS_i FALSE_aS_aJ eq_refl.
+  
+  rewrite /good_internal /=; move => GOOD;
+    destruct iT  as [|ci  Ii  Wi|];  try done;
+    destruct aJT as [|caJ IaJ WaJ|]; try done;
+    destruct aST as [|caS IaS WaS|]; try done.
+  
+  assert (def_iT' : iT' = DATA ci Ii Wi). {
+    apply retag_set_not_in with (p := isolate_addr) in RETAG_SET; auto.
+    rewrite SGET_i SGET_i' in RETAG_SET.
+    by inversion RETAG_SET; subst.
+  }
+  
+  assert (def_aJT' : aJT' = DATA caJ IaJ WaJ). {
+    apply retag_set_not_in with (p := add_to_jump_targets_addr) in RETAG_SET;
+      auto.
+    rewrite SGET_aJ SGET_aJ' in RETAG_SET.
+    by inversion RETAG_SET; subst.
+  }
+
+  assert (def_aST' : aST' = DATA caS IaS WaS). {
+    apply retag_set_not_in with (p := add_to_shared_memory_addr) in RETAG_SET;
+      auto.
+    rewrite SGET_aS SGET_aS' in RETAG_SET.
+    by inversion RETAG_SET; subst.
+  }
+
+  assert (NEXTS : next = next')
+    by by apply retag_set_preserves_next_id in RETAG_SET.
+  subst iT' aJT' aST' next' next.
+
+  move: GOOD => [NEQiaJ [NEQiaS [NEQaJaS [LTi [LTaJ [LTaS IF_GET]]]]]].
+  repeat (split; [solve [eauto 2]|]).
+  intros p x c I W GET'.
+  
+  apply retag_set_or with (p := p) in RETAG_SET; auto.
+  destruct (get mem p) as [[y Ly]|] eqn:GET;
+    [|by specialize GETS with p; rewrite GET GET' /= in GETS;
+         destruct GETS as [_ NO]; specialize (NO erefl)].
+  move: RETAG_SET => [OLD | [x' [c' [I' [W' [THEN NOW]]]]]].
+  - rewrite /sget GET' GET in OLD.
+    inversion OLD; subst.
+    apply IF_GET in GET.
+    repeat invh and; repeat split; eauto 2.
+  - rewrite /sget GET  in THEN.
+    rewrite /sget GET' in NOW.
+    inversion THEN; subst; inversion NOW; subst.
+    repeat split.
+    + generalize (lew_max cnew) => /le_iff_lt_or_eq [LTmax | ?]; [|by subst].
+      eapply ltb_lt,lebw_succ; eassumption.
+    + by move=> ?; subst; apply lt_irrefl in LTi.
+    + by move=> ?; subst; apply lt_irrefl in LTaJ.
+    + by move=> ?; subst; apply lt_irrefl in LTaS.
+Qed.
+    
 End WithClasses.
 
 Notation memory    t := (Symbolic.memory t sym_sfi).
