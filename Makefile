@@ -14,13 +14,7 @@ test: coq
 
 SHARED=lib/ordered.v lib/partial_maps.v lib/utils.v lib/list_utils.v lib/set_utils.v lib/haskell_notation.v common/*.v concrete/*.v symbolic/*.v
 
-SPECIF=memory_safety/*.v sealing/*.v sfi/*.v cfi/*.v
-
-# Tried to move reusable parts out of sfi and add to SHARED above;
-# if there is anything I missed please move it too
-
-# There are 2 files excluded from build in symbolic (initial.v and testing.v)
-# Q: What should we do about them? Can we bring them back?
+SPECIF=memory_safety/*.v sealing/*.v compartmentalization/*.v cfi/*.v
 
 bc:
 	@echo "The shared/common/framework part"
@@ -35,4 +29,4 @@ bc:
 
 dist: clean
 	rm -f rm ../micropolicies.tar.gz
-	tar czvf ../micropolicies.tar.gz . --transform 's/^\./micropolicies/' --exclude=notes --exclude=old --exclude=testing --exclude=.gitignore --exclude=cfi/review.org --exclude=sfi/global-hint.el
+	tar czvf ../micropolicies.tar.gz . --transform 's/^\./micropolicies/' --exclude=notes --exclude=old --exclude=testing --exclude=.gitignore --exclude=cfi/review.org --exclude=compartmentalization/global-hint.el
