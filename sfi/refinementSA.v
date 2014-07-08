@@ -1742,15 +1742,67 @@ Proof.
       + move/forallb_forall in AGOODS; apply AGOODS in IN; auto.
       + apply subset_spec; assumption.
   }
+
+  assert (RC_rest : forall c,
+                      In c (delete <<Aprev,Jprev,Sprev>> AC) ->
+                      refined_compartment
+                        c (SState SM SR pc@(Sym.PC F cid)
+                                  (SInternal Snext SiT SaJT SaST))
+                      = refined_compartment
+                          c (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)). {
+    intros c IN_c.
+    move/forallb_forall in RCOMPS; lapply (RCOMPS c);
+      [move=> RCSOME | apply delete_in_iff in IN_c; tauto].
+    match type of RCSOME with
+      | is_some ?rc = true =>
+        destruct rc as [c_cid|] eqn:RC; [clear RCSOME | done]
+    end.
+    eapply TSI_rest, refined_compartment_untouched_preserved in IN_c; eauto 1.
+  }
+                                                                             
+  assert (NOT_SYSCALL_prev : ~ Abs.syscall_address_space
+                                 AM <<Aprev,Jprev,Sprev>>). {
+    move=> SAS.
+    rewrite /Abs.syscall_address_space (lock elem) /= in SAS.
+    destruct Aprev as [|sc [|]]; auto.
+    apply Abs.permitted_now_in_spec in PNI; eauto 3.
+    destruct IN_pc'_Aprev; [subst pc' | done].
+    destruct A' as [|a' A']; [discriminate|].
+    move/subset_spec in SUBSET_A'.
+    move: (SUBSET_A' a' (or_introl erefl)) => [EQ | []]; subst a'.
+    apply NIN; auto.
+  }
+  
+  assert (USER_prev : Abs.user_address_space AM <<Aprev,Jprev,Sprev>>). {
+    move/forallb_forall in ASS.
+    move: (ASS _ IN_prev_AC) => /orP [UAS | SAS] //.
+  }
+  
+  generalize IN_c_sys => /Abs.in_compartment_spec [IN_c_sys_AC IN_pc_c_sys].
+  
+  assert (NOT_USER_c_sys : ~ Abs.user_address_space AM c_sys). {
+    move=> /forallb_forall UAS.
+    specialize (UAS _ IN_pc_c_sys); simpl in UAS.
+    rewrite -(lock eq) in IS_ISOLATE; subst.
+    by move/negP in ANGET_i.
+  }
+  
+  assert (SYSCALL_c_sys : Abs.syscall_address_space AM c_sys). {
+    move/forallb_forall in ASS.
+    move: (ASS _ IN_c_sys_AC) => /orP [UAS | SAS] //.
+  }
+  
+  assert (DIFF_prev_c_sys : <<Aprev,Jprev,Sprev>> <> c_sys)
+    by by move=> ?; subst.
   
   assert (R_c_sys' : refined_compartment
                        c_sys
                        (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
                        ?= cid_sys). {
-    destruct c_sys as [Asys Jsys Ssys]; simpl in *.
-    rewrite /refined_compartment /=.
-    (*eapply refined_compartment_preserved in R_c_sys; try eassumption.*)
-    admit.
+    rewrite RC_rest in R_c_sys; auto.
+    apply delete_in_iff; split.
+    - auto.
+    - apply Abs.in_compartment_spec in IN_c_sys; tauto.
   }
   
   constructor; simpl.
