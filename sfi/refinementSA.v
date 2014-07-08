@@ -1856,6 +1856,25 @@ Proof.
       end.
   - apply SGINT_sS.
 Qed.
+
+Lemma in_compartment_update A J Sa J' Sa' AC p c :
+  AC ⊢ p ∈ c ->
+  exists c', <<A,J,Sa>> :: delete <<A,J',Sa'>> AC ⊢ p ∈ c'.
+Proof.
+  elim => {c AC} [c A'' J'' Sa'' IN|AC c c' IN [c''' IN']] /=.
+  - destruct (SetoidDec.equiv_dec A A'') as [EQ | NEQ].
+    + simpl in EQ. subst. eexists. by constructor.
+    + simpl in NEQ. 
+      exists <<A'',J'',Sa''>>.
+      destruct (SetoidDec.equiv_dec <<A,J',Sa'>> <<A'',J'',Sa''>>); first by congruence.
+      by repeat constructor.
+  - inversion IN'; subst.
+    + eexists. by econstructor.
+    + eexists c'''.
+      constructor.
+      destruct (SetoidDec.equiv_dec <<A,J',Sa'>> c); first by trivial.
+      by constructor.
+Qed.
     
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
@@ -2394,22 +2413,11 @@ Proof.
             split3.
             + by apply insert_unique_preserves_set_true.
             + by [].
-            + exists c.
-              have INCOMP : <<Aprev,insert_unique a Jprev,Sprev>> :: delete <<Aprev,Jprev,Sprev>> AC ⊢ a ∈ c
-                by admit. (* Should be possible to show by reasoning over Hc1 and delete *)
-              split; first by [].
+            + generalize (in_compartment_update Aprev (insert_unique a Jprev) Sprev Jprev Sprev Hc1).
+              move => [c' Hc'].
+              eexists. split; first by apply Hc'.
               move => p''.
-              move: Hc2 RTAG => /(_ p'') Hc2 /(_ p'') RTAG.
-              rewrite /Sym.sget in Hc2 RTAG.
-              have [EQap''|/eqP NEQap''] := altP (p'' =P a).
-              * subst p''.
-                generalize (PartMaps.get_upd_eq UPD) => EQ.
-                rewrite EQ.
-                split; first by eauto.
-                admit.
-              * generalize (PartMaps.get_upd_neq NEQap'' UPD) => EQ.
-                rewrite EQ.
-                admit.
+              admit.
         }
     + rewrite /refine_previous_b /=.
       (*eapply prove_refined_compartment; eauto 3.*)
