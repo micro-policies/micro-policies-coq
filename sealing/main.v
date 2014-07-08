@@ -150,6 +150,48 @@ Proof.
   by move => H [<-].
 Qed.
 
+Instance encodable_tag : encodable Sym.stag_eqType := {|
+  encode t :=
+    match t with
+    | USER ut => Word.pack [29; 1] [encode_sealing_tag ut; Word.one]%wp
+    | ENTRY ut => Word.pack [29; 1] [encode_sealing_tag ut; Word.repr 2]%wp
+    | KERNEL => Word.pack [29; 1] [Word.zero; Word.zero]%wp
+    end;
+
+  decode w :=
+    let: [ut; w']%wu := Word.unpack [29; 1] w in
+    if w' == Word.zero then
+      if ut == Word.zero then Some KERNEL
+      else None
+    else if w' == Word.one then
+      do! ut <- decode_sealing_tag ut;
+      Some (@USER Sym.stag_eqType ut)
+    else if w' == Word.repr 2 then
+      do! ut <- decode_sealing_tag ut;
+      Some (@ENTRY Sym.stag_eqType ut)
+    else None;
+
+  encode_kernel_tag := erefl
+|}.
+Proof.
+  - case => [ut| |ut];
+    by rewrite Word.packK /= ?encode_sealing_tagK.
+  - intros t w.
+    case E: (Word.unpack [29; 1] w) => [ut [w' []]].
+    move: (Word.unpackK [29; 1] w). rewrite E.
+    have [?|?] := altP (w' =P Word.zero); try subst w'.
+    { have [?|?] := altP (ut =P Word.zero); try subst ut; last by [].
+      by move => H [<-]. }
+    have [?|?] := altP (w' =P Word.one); try subst w'.
+    { case DEC: (decode_sealing_tag ut) => [ut'|] //=.
+      apply decode_sealing_tagK in DEC. subst ut.
+      by move => H [<-]. }
+    have [?|?] := altP (w' =P Word.repr 2); try subst w'; last by [].
+    case DEC: (decode_sealing_tag ut) => [ut'|] //=.
+    apply decode_sealing_tagK in DEC. subst ut.
+    by move => H [<-].
+Qed.
+
 Definition DATA : word t := Word.repr 0.
 
 Definition transfer_function : list (instr t) :=
@@ -791,8 +833,7 @@ Section Refinement.
 
 Instance sp : Symbolic.params := @Sym.sym_sealing sk_defs.
 
-Context {enc : encodable Symbolic.tag}
-        {sealing_invariant : policy_invariant t ops}.
+Context {sealing_invariant : policy_invariant t ops}.
 
 Let monitor_invariant := fault_handler_invariant t ops fhp transfer_function sealing_invariant.
 
