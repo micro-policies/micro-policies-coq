@@ -950,12 +950,39 @@ Proof.
   rewrite bind_assoc INIT -bind_assoc EQ_MAP_J EQ_MAP_S; reflexivity.
 Qed.
 
-
 Lemma refined_compartment_irrelevancies : forall c SM SR SR' Spc Spc'
                                                  Snext Snext' SiT SaJT SaST,
   refined_compartment c (SState SM SR  Spc  (SInternal Snext  SiT SaJT SaST)) =
   refined_compartment c (SState SM SR' Spc' (SInternal Snext' SiT SaJT SaST)).
 Proof. reflexivity. Qed.
+
+Lemma refine_compartment_tag_preserved : forall C C' sst sst',
+  (forall p, Sym.good_memory_tag sst  p) ->
+  (forall p, Sym.good_memory_tag sst' p) ->
+  tags_subsets sst sst' ->
+  (forall c p, C ⊢ p ∈ c -> exists c', C' ⊢ p ∈ c') ->
+  (forall p, refine_compartment_tag C  sst  p) ->
+  forall p, refine_compartment_tag C' sst' p.
+Proof.
+  clear S I; move=> C C' sst sst' GMEM GMEM' TS ICS RCT p;
+    specialize RCT with p;
+    move: (TS p) (GMEM p) (GMEM' p) => TS_p GMEM_p GMEM'_p.
+  
+  rewrite /Sym.good_memory_tag in GMEM_p GMEM'_p.
+  rewrite /refine_compartment_tag in RCT *.
+  destruct (Sym.sget sst  p) as [[x  [|cid  I  W|]]|],
+           (Sym.sget sst' p) as [[x' [|cid' I' W'|]]|];
+    try done.
+  move: GMEM_p GMEM'_p => _ /andP [SET_I' SET_W'].
+  repeat split; auto.
+  destruct RCT as [SET_I [SET_W [c [IC RTAG]]]].
+  assert (IC' : exists c', C' ⊢ p ∈ c') by by apply ICS in IC.
+  move: IC' => [c' IC']; exists c'; split; auto.
+  move=> q; move: (TS q) (RTAG q) => TS_q RTAG_q.
+  destruct (Sym.sget sst  q) as [[y  [|did  K  V|]]|],
+           (Sym.sget sst' q) as [[y' [|did' K' V'|]]|];
+    try done.
+Abort.
 
 Theorem isolate_create_set_refined : forall AM SM,
   refine_memory AM SM ->
