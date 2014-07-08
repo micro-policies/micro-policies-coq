@@ -2083,12 +2083,11 @@ Proof.
       apply set_elem_true, IN_I in IN_I''; auto.
       by replace c''' with <<Aprev,Jprev,Sprev>> in * by eauto 3.
   }
-  assert (ELEM_p : set_elem p (set_union Aprev Jprev)). {
+  have -> : set_elem p (set_union Aprev Jprev). {
     assert (Abs.good_compartment <<Aprev,Jprev,Sprev>>) by eauto 2.
     apply set_elem_true;
       [apply set_union_preserves_set; eauto 2 | by apply set_union_spec].
   }
-  rewrite ELEM_p; simpl.
 
   generalize RREGS => RREGS';
     rewrite /refine_registers /pointwise /refine_reg_b in RREGS';
@@ -2159,10 +2158,9 @@ Proof.
         rewrite -def_s' def_xcIW0 in SGMEM.
         move: SGMEM => /andP [] //.
   }
-  assert (ELEM_Jsys : set_elem pc' (Abs.jump_targets c_sys)) by
+  have -> : set_elem pc' (Abs.jump_targets c_sys) by
     (apply Abs.in_compartment_spec in IN_c; destruct IN_c;
      move/forallb_forall in AGOODS; apply set_elem_true; eauto 3).
-  rewrite ELEM_Jsys.
 
   eexists; split; [reflexivity|].
 
@@ -2275,7 +2273,7 @@ Proof.
             (do! sxs' <- map_options (Sym.sget sst') A;
              the =<< map_options (Sym.stag_compartment ∘ slabel) sxs')).
           {
-            clear AELEM AIN AGOOD SYS_SEP IC_p' IN_p PNI ELEM_p IC_pc' IN_pc'
+            clear AELEM AIN AGOOD SYS_SEP IC_p' IN_p PNI IC_pc' IN_pc'
                   ELEM_pc'.
             rewrite (lock the) 2!bind_assoc -(lock the) 2!map_options_bind;
               f_equal.
@@ -2291,99 +2289,94 @@ Proof.
           undo1 REFINED sc.
           rewrite bind_assoc -INIT def_sc; simpl.
           rewrite -forallb_map_options_insert_unique.
-          move: REFINED.
+          { move: REFINED.
 
-          set MAP_J := map_options _ J; set MAP_J' := map_options _ J.
-          assert (EQ_ALL_J :
-                    (forallb (set_elem sc) <$> MAP_J)  ?= true ->
-                    (forallb (set_elem sc) <$> MAP_J') ?= true). {
-            clear AELEM AIN AGOOD SYS_SEP IC_p' IN_p PNI ELEM_p IC_pc' IC_pc'
-                  IN_p.
-            subst MAP_J MAP_J'; simpl.
-            induction J as [|a J]; [reflexivity|simpl].
-            specialize COMPAT with a;
-              specialize GOOD with a; specialize GOOD' with a.
-            rewrite /Sym.good_memory_tag in GOOD GOOD'.
-            destruct (Sym.sget sst  a) as [[z  [|cz  Iz  Wz|]]|],
-                     (Sym.sget sst' a) as [[z' [|cz' Iz' Wz'|]]|];
-              try done; simpl.
-            move: GOOD GOOD' => /andP [SET_Iz SET_Wz] /andP [SET_Iz' SET_Wz'].
-            destruct COMPAT as [EQ [SUB_Iz SUB_Wz]]; subst.
-            let unMO ys MO := match goal with
-                                |- context[map_options ?f J] =>
-                                destruct (map_options f J) as [ys|] eqn:MO
-                              end
-            in unMO ys MO; unMO ys' MO'; try done; simpl in *.
-            - specialize SUB_Iz with sc.
-              move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
-              + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
-              + destruct (forallb _ ys); try done.
-                destruct (forallb _ ys'); try done.
-                lapply IHJ; [inversion 1 | auto].
-            - destruct (forallb _ ys).
-              + lapply IHJ; [inversion 1 | auto].
-              + rewrite Bool.andb_false_r; inversion 1.
+            set MAP_J := map_options _ J; set MAP_J' := map_options _ J.
+            assert (EQ_ALL_J :
+                      (forallb (set_elem sc) <$> MAP_J)  ?= true ->
+                      (forallb (set_elem sc) <$> MAP_J') ?= true). {
+              clear AELEM AIN AGOOD SYS_SEP IC_p' IN_p PNI IC_pc' IC_pc'
+                    IN_p.
+              subst MAP_J MAP_J'; simpl.
+              induction J as [|a J]; [reflexivity|simpl].
+              specialize COMPAT with a;
+                specialize GOOD with a; specialize GOOD' with a.
+              rewrite /Sym.good_memory_tag in GOOD GOOD'.
+              destruct (Sym.sget sst  a) as [[z  [|cz  Iz  Wz|]]|],
+                       (Sym.sget sst' a) as [[z' [|cz' Iz' Wz'|]]|];
+                try done; simpl.
+              move: GOOD GOOD' => /andP [SET_Iz SET_Wz] /andP [SET_Iz' SET_Wz'].
+              destruct COMPAT as [EQ [SUB_Iz SUB_Wz]]; subst.
+              let unMO ys MO := match goal with
+                                  |- context[map_options ?f J] =>
+                                  destruct (map_options f J) as [ys|] eqn:MO
+                                end
+              in unMO ys MO; unMO ys' MO'; try done; simpl in *.
+              - specialize SUB_Iz with sc.
+                move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
+                + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
+                + destruct (forallb _ ys); try done.
+                  destruct (forallb _ ys'); try done.
+                  lapply IHJ; [inversion 1 | auto].
+              - destruct (forallb _ ys).
+                + lapply IHJ; [inversion 1 | auto].
+                + rewrite Bool.andb_false_r; inversion 1.
+            }
+
+            set MAP_S := map_options _ S; set MAP_S' := map_options _ S.
+            assert (EQ_ALL_S :
+                      (forallb (set_elem sc) <$> MAP_S)  ?= true ->
+                      (forallb (set_elem sc) <$> MAP_S') ?= true). {
+              clear AELEM AIN AGOOD PNI SYS_SEP IC_p' IC_pc'.
+              subst MAP_S MAP_S'; simpl.
+              induction S as [|a S' IHS];
+                [reflexivity | simpl; clear S; rename S' into S].
+              specialize COMPAT with a;
+                specialize GOOD with a; specialize GOOD' with a.
+              rewrite /Sym.good_memory_tag in GOOD GOOD'.
+              destruct (Sym.sget sst  a) as [[z  [|cz  Iz  Wz|]]|],
+                       (Sym.sget sst' a) as [[z' [|cz' Iz' Wz'|]]|];
+                try done; simpl.
+              move: GOOD GOOD' => /andP [SET_Iz SET_Wz] /andP [SET_Iz' SET_Wz'].
+              destruct COMPAT as [EQ [SUB_Iz SUB_Wz]]; subst.
+              let unMO ys MO := match goal with
+                                  |- context[map_options ?f S] =>
+                                  destruct (map_options f S) as [ys|] eqn:MO
+                                end
+              in unMO ys MO; unMO ys' MO'; try done; simpl in *.
+              - specialize SUB_Wz with sc.
+                move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
+                + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
+                + destruct (forallb _ ys); try done.
+                  destruct (forallb _ ys'); try done.
+                  lapply IHS; [inversion 1 | auto].
+              - destruct (forallb _ ys).
+                + lapply IHS; [inversion 1 | auto].
+                + rewrite Bool.andb_false_r; inversion 1.
+            }
+
+            intros REFINED.
+            destruct (forallb _ <$> MAP_J) as [[]|] eqn:ALL_J; simpl in REFINED;
+              try done.
+            destruct (forallb _ <$> MAP_S) as [[]|] eqn:ALL_S; simpl in REFINED;
+              try done.
+            lapply EQ_ALL_J; [clear EQ_ALL_J; intro ALL_J' | done].
+            lapply EQ_ALL_S; [clear EQ_ALL_S; intro ALL_S' | done].
+            by rewrite ALL_J' ALL_S'.
           }
-
-          set MAP_S := map_options _ S; set MAP_S' := map_options _ S.
-          assert (EQ_ALL_S :
-                    (forallb (set_elem sc) <$> MAP_S)  ?= true ->
-                    (forallb (set_elem sc) <$> MAP_S') ?= true). {
-            clear AELEM AIN AGOOD PNI SYS_SEP IC_p' IC_pc'.
-            subst MAP_S MAP_S'; simpl.
-            induction S as [|a S' IHS];
-              [reflexivity | simpl; clear S; rename S' into S].
-            specialize COMPAT with a;
-              specialize GOOD with a; specialize GOOD' with a.
-            rewrite /Sym.good_memory_tag in GOOD GOOD'.
-            destruct (Sym.sget sst  a) as [[z  [|cz  Iz  Wz|]]|],
-                     (Sym.sget sst' a) as [[z' [|cz' Iz' Wz'|]]|];
-              try done; simpl.
-            move: GOOD GOOD' => /andP [SET_Iz SET_Wz] /andP [SET_Iz' SET_Wz'].
-            destruct COMPAT as [EQ [SUB_Iz SUB_Wz]]; subst.
-            let unMO ys MO := match goal with
-                                |- context[map_options ?f S] =>
-                                destruct (map_options f S) as [ys|] eqn:MO
-                              end
-            in unMO ys MO; unMO ys' MO'; try done; simpl in *.
-            - specialize SUB_Wz with sc.
-              move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
-              + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
-              + destruct (forallb _ ys); try done.
-                destruct (forallb _ ys'); try done.
-                lapply IHS; [inversion 1 | auto].
-            - destruct (forallb _ ys).
-              + lapply IHS; [inversion 1 | auto].
-              + rewrite Bool.andb_false_r; inversion 1.
-          }
-
-          intros REFINED.
-          destruct (forallb _ <$> MAP_J) as [[]|] eqn:ALL_J; simpl in REFINED;
-            try done.
-          destruct (forallb _ <$> MAP_S) as [[]|] eqn:ALL_S; simpl in REFINED;
-            try done.
-          lapply EQ_ALL_J; [clear EQ_ALL_J; intro ALL_J' | done].
-          lapply EQ_ALL_S; [clear EQ_ALL_S; intro ALL_S' | done].
-          destruct (forallb _ <$> MAP_J') as [[]|]; try done.
-          destruct (forallb _ <$> MAP_S') as [[]|]; done.
 
           specialize COMPAT with p;
             specialize GOOD with p; specialize GOOD' with p.
-          rewrite /Sym.good_memory_tag in GOOD GOOD'.
-          rewrite def_xcIW in COMPAT.
-          destruct (Sym.sget sst' p) as [[z [|cz Iz Wz|]]|];
-            try done; simpl.
-          rewrite def_xcIW in GOOD.
-          move: GOOD GOOD' => /andP [SET_I'' SET_W''] /andP [SET_Iz SET_Wz].
-          destruct COMPAT as [EQ [SUB_I'' SUB_W'']]; subst cz.
+          rewrite /Sym.good_memory_tag /Sym.sget /sst /sst' in GOOD GOOD'.
+          rewrite /Sym.sget /sst'.
+          generalize (PartMaps.get_upd_eq UPD) => EQ.
+          rewrite EQ /= in GOOD' *.
+          move: GOOD' => /andP [SET_I'' SET_W''].
           f_equal; apply set_elem_true; auto.
           have -> : sc = cid'.
           { undo1 REFINED X1.
             undo1 REFINED X2. by unoption. }
-          move/orP: OK => [/eqP EQ' | IN''].
-          + admit.
-          + apply SUB_I''.
-            by apply/(set_elem_true _ _ SET_I'').
+          by apply insert_unique_adds.
         - rewrite -(lock refined_compartment); apply delete_preserves_forallb.
           eapply forallb_impl; [|apply RCOMPS].
           simpl; intros d RCSOME.
