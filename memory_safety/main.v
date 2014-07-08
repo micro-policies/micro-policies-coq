@@ -1,7 +1,8 @@
-Require Import ssreflect ssrbool.
+Require Import ssreflect ssrbool eqtype.
 
 Require Import lib.Coqlib.
 Require Import lib.utils.
+Require Import lib.partial_maps.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
@@ -20,6 +21,11 @@ Section Refinement.
 Let t := concrete_int_32_t.
 Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
+(* TODO: Instantiate this with some word type. *)
+Context {col : Sym.color_class}
+        {color_map : Type -> Type}
+        {color_map_class : PartMaps.partial_map color_map Sym.color}
+        {color_map_spec : PartMaps.axioms color_map_class}.
 Instance sp : Symbolic.params := Sym.sym_memory_safety t.
 
 (* XXX: Right now, it is actually contradictory to assume that
@@ -38,17 +44,17 @@ Context {enc : encodable (@Symbolic.tag (Sym.sym_memory_safety t))}
 
 Inductive refine_state (ast : Abstract.state t) (cst : Concrete.state t) : Prop :=
 | rs_intro : forall (sst : Symbolic.state t) m,
-               refinement_common.refine_state monitor_invariant (@Sym.memsafe_syscalls _ _ _ _) sst cst ->
+               refinement_common.refine_state monitor_invariant (@Sym.memsafe_syscalls _ _ _ _ _) sst cst ->
                refinementAS.refine_state m ast sst ->
                refine_state ast cst.
 Hint Constructors refine_state.
 
 Hypothesis implementation_correct :
-  kernel_code_correctness monitor_invariant (@Sym.memsafe_syscalls _ _ _ _).
+  kernel_code_correctness monitor_invariant (@Sym.memsafe_syscalls _ _ _ _ _).
 
 Lemma backwards_refinement_as ast m sst sst' :
   refinementAS.refine_state m ast sst ->
-  exec (Symbolic.step (@Sym.memsafe_syscalls _ _ _ _)) sst sst' ->
+  exec (Symbolic.step (@Sym.memsafe_syscalls _ _ _ _ _)) sst sst' ->
   exists ast' m',
     exec (fun ast ast' => Abstract.step ast ast') ast ast' /\
     refinementAS.refine_state m' ast' sst'.
