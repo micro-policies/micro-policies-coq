@@ -109,15 +109,48 @@ Instance sk_defs : Sym.sealing_key := {|
 admit.
 Defined.
 
+Import Word.Notations.
 
-Definition encode_sealing_tag (t : Sym.stag) : w :=
+Definition encode_sealing_tag (t : Sym.stag) : Word.int 29 :=
  match t with
-   Sym.DATA => Z_to_word 0
- | Sym.KEY k => add_word (Word.repr 1) (Word.shl k (Word.repr 2))
- | Sym.SEALED k => add_word (Word.repr 3) (Word.shl k (Word.repr 2))
+   Sym.DATA => Word.pack [27; 1] [Word.zero; Word.zero]%wp
+ | Sym.KEY k => Word.pack [27; 1] [k; Word.one]%wp
+ | Sym.SEALED k => Word.pack [27; 1] [k; Word.repr 3]%wp
  end.
 
-Definition DATA := encode_sealing_tag Sym.DATA.
+Definition decode_sealing_tag (t : Word.int 29) : option Sym.stag :=
+  let: [k; t]%wu := Word.unpack [27; 1] t in
+  if t == Word.zero then
+    if k == Word.zero then Some Sym.DATA
+    else None
+  else if t == Word.one then
+    Some (Sym.KEY k)
+  else if t == Word.repr 3 then
+    Some (Sym.SEALED k)
+  else None.
+
+Lemma encode_sealing_tagK t : decode_sealing_tag (encode_sealing_tag t) = Some t.
+Proof.
+  case: t => [|k|k];
+  by rewrite /decode_sealing_tag /encode_sealing_tag Word.packK /=.
+Qed.
+
+Lemma decode_sealing_tagK w t : decode_sealing_tag w = Some t ->
+                                encode_sealing_tag t = w.
+Proof.
+  rewrite /decode_sealing_tag /encode_sealing_tag.
+  case E: (Word.unpack [27; 1] w) => [k [w' []]].
+  move: (Word.unpackK [27; 1] w). rewrite E.
+  have [?|?] := altP (w' =P Word.zero); try subst w'.
+  { have [?|?] := altP (k =P Word.zero); try subst k; last by [].
+    by move => H [<-]. }
+  have [?|?] := altP (w' =P Word.one); try subst w'.
+  { by move => H [<-]. }
+  have [?|?] := altP (w' =P Word.repr 3); try subst w'; last by [].
+  by move => H [<-].
+Qed.
+
+Definition DATA : word t := Word.repr 0.
 
 Definition transfer_function : list (instr t) :=
  let assert_DATA r := [
@@ -562,7 +595,7 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
       ss " | " +++
       mem)).
 
-Definition format_int (i : word t) :=
+Definition format_int {n} (i : Word.int n) :=
   format_Z (Word.unsigned i).
 
 Definition format_sealing_tag (t : @Symbolic.tag (@Sym.sym_sealing sk_defs)):=

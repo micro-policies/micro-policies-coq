@@ -4154,6 +4154,16 @@ Proof.
   now rewrite <- surjective_pairing.
 Qed.
 
+Lemma unpackK ns :
+  forall w,
+    pack ns (words_unpack_pack _ (unpack ns w)) = w.
+Proof.
+  induction ns as [|n ns IH]; intros ws.
+  - now destruct ws.
+  - rewrite unpackU. simpl. rewrite IH.
+    now rewrite packed_word_unpackK.
+Qed.
+
 Module Notations.
 Notation "[ w1 ; .. ; wn ]" := (wcons _ _ w1 .. (wcons _ _ wn wnil) ..) : word_pack_scope.
 Notation "[ w1 ; .. ; wn ]" := (pair w1 .. (pair wn tt) ..) : word_unpack_scope.
