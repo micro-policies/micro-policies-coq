@@ -266,19 +266,17 @@ Global Instance sym_memory_safety : params := {
 }.
 
 
-Fixpoint write_block_rec mem base (v : atom) n : Symbolic.memory t _ :=
+Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=
   match n with
-  | O => mem
-  | S p => let mem' := write_block_rec mem base v p in
-           if upd mem' (base + Z_to_word (Z.of_nat p)) v is Some mem'' then
-           mem'' else mem'
+  | O => Some mem
+  | S p => do! mem' <- write_block_rec mem base v p;
+           upd mem' (base + Z_to_word (Z.of_nat p)) v
   end.
 
 Definition write_block init base (v : atom) sz : option (Symbolic.memory t _) :=
   if word_to_Z base + word_to_Z sz <=? word_to_Z max_word  then
-     Some (write_block_rec init base v (Z.to_nat (word_to_Z sz)))
+     write_block_rec init base v (Z.to_nat (word_to_Z sz))
   else None.
-
 
 Definition update_block_info info x color sz :=
   let i := index x info in
