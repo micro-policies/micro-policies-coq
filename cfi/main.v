@@ -69,8 +69,6 @@ Hypothesis syscall_preserves_entry_tags :
     Symbolic.sem sc st = Some st' ->
     Sym.entry_points_tagged stable (Symbolic.mem st').
 
-
-
 Lemma backwards_refinement_as ast sst sst' :
   RefinementAS.refine_state stable ast sst ->
   exec (Symbolic.step stable) sst sst' ->
