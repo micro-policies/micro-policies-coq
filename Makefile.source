@@ -38,6 +38,7 @@ cfi/preservation.v
 cfi/preservationAS.v
 cfi/concrete.v
 cfi/refinementSC.v
+cfi/main.v
 
 memory_safety/classes.v
 memory_safety/abstract.v
