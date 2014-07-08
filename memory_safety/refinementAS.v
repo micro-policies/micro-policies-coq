@@ -287,7 +287,7 @@ by exists v.
 Qed.
 
 Definition bounded_add w1 w2 :=
-  0 < word_to_Z w2 /\
+  0 <= word_to_Z w1 /\ 0 < word_to_Z w2 /\
   word_to_Z min_word <= word_to_Z w1 + word_to_Z w2 <= word_to_Z max_word.
 
 Inductive block_info_spec (smem : Sym.memory mt) (bi : Sym.block_info mt) : Prop :=
@@ -494,8 +494,31 @@ Lemma block_color_uniq (smem : Sym.memory mt) bi info bl nc col b w1 w2 ty :
   PartMaps.get smem w1 = Some w2@M(col, ty) ->
   inbounds (Sym.block_base bi) (Sym.block_size bi) w1.
 Proof.
-move=> rmem rist in_bi get_mi color_bi get_w1.
-admit.
+generalize min_word_bound => min_bound.
+move=> rmem rist in_bi mi_col color_bi get_w1.
+case: rist => _ [_ [no_overlap [cover_info biP]]].
+case/cover_info: (get_w1) => bi' [in_bi' bounds_bi'].
+have eq_base: Sym.block_base bi' = Sym.block_base bi.
+  pose (off := w1 - Sym.block_base bi').
+  case/(_ bi' in_bi'): biP.
+    move=> col' ? _ [? ?] mi_col' /(_ off) [|v [ty']].
+      by rewrite /off subwE; omega.
+    rewrite /off [_ - _]addwC addwA subww add0w get_w1 => [[_ eq_col _]].
+    by move: mi_col; rewrite eq_col mi_col' => [[]].
+  move=> _ [? ?] /(_ off) [|v].
+    by rewrite /off subwE; omega.
+  by rewrite /off [_ - _]addwC addwA subww add0w get_w1.
+have<-//: bi' = bi.
+rewrite -(nth_index bi' in_bi') -(nth_index bi' in_bi).
+have->//: index bi' info = index bi info.  
+apply: (no_overlap _ _ bi (Sym.block_base bi)).
++ by rewrite index_mem.
++ by rewrite index_mem.
+rewrite !nth_index //.
+split; first by rewrite -eq_base; omega.
+split; try omega.
+case/(_ bi in_bi)/block_info_bounds: biP => [? ?].
+omega.
 Qed.
 
 Lemma refine_memory_free (amem' : Abstract.memory mt) (smem smem' : Sym.memory mt) bl nc info b bi col :
