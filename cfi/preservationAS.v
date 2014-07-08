@@ -144,6 +144,115 @@ Hint Resolve untag_instr_implies_imem_refinement.
 Hint Resolve untag_data_implies_dmem_refinement.
 Hint Resolve untag_implies_reg_refinement.
 
+Theorem cfg_true_equiv (asi asj : Abs.state t) ssi ssj :
+  RefinementAS.refine_state stable asi ssi ->
+  RefinementAS.refine_state stable asj ssj ->
+  Abs.step atable valid_jmp asi asj -> 
+  Abs.succ atable valid_jmp asi asj = true ->
+  Symbolic.step stable ssi ssj ->
+  Sym.ssucc stable ssi ssj = true.
+Proof.
+  intros REF REF' ASTEP ASUCC SSTEP.
+  destruct asi as [imem dmem aregs apc b], 
+           asj as [imem' dmem' aregs' apc' b'].
+  destruct ssi as [mem regs [spc tpc] int].
+  destruct ssj as [mem' regs' [spc' tpc'] int'].
+  destruct REF as [REFI [REFD [REFR [REFPC ?]]]].
+  destruct REF' as [REFI' [REFD' [REFR' [REFPC' ?]]]].
+  unfold Abs.succ in ASUCC.
+  unfold RefinementAS.refine_pc in REFPC; simpl in REFPC; 
+  destruct REFPC as [? TPC];
+  unfold RefinementAS.refine_pc in REFPC'; simpl in REFPC'; 
+  destruct REFPC' as [? TPC'];
+  subst.
+  unfold Sym.ssucc; simpl.
+  destruct (get imem spc) eqn:GET.
+  + destruct (decode_instr s) eqn:INST.
+    - destruct i eqn:DECODE;
+      apply REFI in GET;
+      destruct GET as [id GET'];
+      rewrite GET'; simpl;
+      rewrite INST; try assumption. 
+    - discriminate.
+  + destruct (Abs.get_syscall atable spc) eqn:GETCALL.
+    - destruct (get mem spc) eqn:GET'.
+      { destruct a as [v ut].
+        destruct ut.
+        * assert (EGET': exists id, get mem spc = Some v@(INSTR id))
+            by (eexists; eauto).
+          apply REFI in EGET'.
+          rewrite EGET' in GET. congruence.
+        * rewrite GET'. 
+          destruct (get dmem spc) eqn:AGET.
+          + discriminate.
+          + apply REFD in GET'.
+            rewrite GET' in AGET. congruence.
+      }
+      { rewrite GET'.
+        unfold refine_sc in *. unfold RefinementAS.refine_syscalls in ref_sc_correct.
+        assert (CALLDOMAINS := RefinementAS.refine_syscalls_domains ref_sc_correct).
+        assert (EGETCALL: exists ac, Abs.get_syscall atable spc = Some ac)
+          by (eexists; eauto).
+        apply CALLDOMAINS in EGETCALL.
+        destruct EGETCALL as [sc GETCALL'].
+        rewrite GETCALL'. reflexivity.
+      }
+    - destruct (get dmem spc); discriminate.
+Qed.
+
+Theorem cfg_false_equiv asi asj ssi ssj :
+  RefinementAS.refine_state stable asi ssi ->
+  RefinementAS.refine_state stable asj ssj ->
+  Abs.succ atable valid_jmp asi asj = false ->
+  Symbolic.step stable ssi ssj ->
+  Sym.ssucc stable ssi ssj = false.
+Proof.
+  intros REF REF' ASUCC SSTEP.
+  unfold Abs.succ in ASUCC. 
+  destruct asi as [imem dmem aregs apc b],
+           asj as [imem' dmem' aregs' apc' b'].
+  destruct ssi as [mem reg [pc tpc] int].
+  destruct ssj as [mem' reg' [pc' tpc'] int'].
+  destruct REF as [REFI [REFD [REFR [REFPC CORRECT]]]],
+           REF' as [REFI' [REFD' [REFR' [REFPC' CORRECT']]]].
+  unfold RefinementAS.refine_pc in *.
+  simpl in REFPC; simpl in REFPC'; destruct REFPC as [? TPC],
+                                            REFPC' as [? TPC'].
+  subst.
+  unfold Sym.ssucc.    
+  destruct (get imem pc) eqn:GET.
+  { apply REFI in GET.
+    destruct GET as [id GET].
+    destruct (decode_instr s) eqn:INST.
+    { destruct i;
+      simpl; rewrite GET; simpl; rewrite INST; auto. 
+    }
+    { simpl. rewrite GET. rewrite INST. assumption. }
+  }
+  { destruct (Abs.get_syscall atable pc) eqn:GETCALL.
+    { simpl. 
+      destruct (get dmem pc) eqn:GET'.
+      { apply REFD in GET'. rewrite GET'. reflexivity. }
+      { discriminate. }
+    }
+    { simpl. 
+      destruct (get mem pc) eqn:GET'.
+      { destruct a. destruct tag.
+        { assert (EGET' : exists id, get mem pc = Some val@(INSTR id)) 
+               by (eexists; eauto). 
+          apply REFI in EGET'. congruence.
+        }
+        { rewrite GET'. reflexivity. } 
+      } 
+      { rewrite GET'. 
+        assert (SCDOMAINS := RefinementAS.refine_syscalls_domains ref_sc_correct).
+        apply RefinementAS.same_domain_total with (addr' := pc) in SCDOMAINS.
+        apply SCDOMAINS in GETCALL. rewrite GETCALL. reflexivity.
+      }
+    }
+  }
+Qed.
+
 Program Instance cfi_refinementAS  : 
   (machine_refinement amachine smachine) := {
     refine_state st st' := RefinementAS.refine_state stable st st';
@@ -186,102 +295,15 @@ Next Obligation. (*initial state*)
     congruence.
 Qed.
 Next Obligation.
-  destruct asi as [imem dmem aregs apc b], 
-           asj as [imem' dmem' aregs' apc' b'].
-  destruct csi as [mem regs [spc tpc] int].
-  destruct csj as [mem' regs' [spc' tpc'] int'].
-  destruct H as [REFI [REFD [REFR [REFPC ?]]]].
-  destruct H0 as [REFI' [REFD' [REFR' [REFPC' ?]]]].
-  unfold Abs.succ in H2.
-  unfold RefinementAS.refine_pc in REFPC; simpl in REFPC; 
-  destruct REFPC as [? TPC];
-  unfold RefinementAS.refine_pc in REFPC'; simpl in REFPC'; 
-  destruct REFPC' as [? TPC'];
-  subst.
-  unfold Sym.ssucc; simpl.
-  destruct (get imem spc) eqn:GET.
-  + destruct (decode_instr s) eqn:INST.
-    - destruct i eqn:DECODE;
-      apply REFI in GET;
-      destruct GET as [id GET'];
-      rewrite GET'; simpl;
-      rewrite INST; try assumption. 
-    - discriminate.
-  + destruct (Abs.get_syscall atable spc) eqn:GETCALL.
-    - destruct (get mem spc) eqn:GET'.
-      { destruct a as [v ut].
-        destruct ut.
-        * assert (EGET': exists id, get mem spc = Some v@(INSTR id))
-            by (eexists; eauto).
-          apply REFI in EGET'.
-          rewrite EGET' in GET. congruence.
-        * rewrite GET'. 
-          destruct (get dmem spc) eqn:AGET.
-          + discriminate.
-          + apply REFD in GET'.
-            rewrite GET' in AGET. congruence.
-      }
-      { rewrite GET'.
-        unfold refine_sc in *. unfold RefinementAS.refine_syscalls in ref_sc_correct.
-        assert (CALLDOMAINS := RefinementAS.refine_syscalls_domains ref_sc_correct).
-        assert (EGETCALL: exists ac, Abs.get_syscall atable spc = Some ac)
-          by (eexists; eauto).
-        apply CALLDOMAINS in EGETCALL.
-        destruct EGETCALL as [sc GETCALL'].
-        rewrite GETCALL'. reflexivity.
-      }
-    - destruct (get dmem spc); discriminate.
+  destruct (Abs.succ atable valid_jmp asi asj) eqn:?.
+  - eauto using cfg_true_equiv.
+  - eauto using cfg_false_equiv.
 Qed.
 Next Obligation.
   destruct (Abs.step_succ_violation H0 H1) as [H2 H3].
   intro CONTRA. assert (CONT := Abs.step_a_violation CONTRA).
   rewrite CONT in H2.
   congruence.
-Qed.
-Next Obligation.
-  unfold Abs.succ in H1. 
-  destruct ast as [imem dmem aregs apc b],
-           ast' as [imem' dmem' aregs' apc' b'].
-  destruct cst as [mem reg [pc tpc] int].
-  destruct cst' as [mem' reg' [pc' tpc'] int'].
-  destruct H as [REFI [REFD [REFR [REFPC CORRECT]]]],
-           H0 as [REFI' [REFD' [REFR' [REFPC' CORRECT']]]].
-  unfold RefinementAS.refine_pc in *.
-  simpl in REFPC; simpl in REFPC'; destruct REFPC as [? TPC],
-                                            REFPC' as [? TPC'].
-  subst.
-  unfold Sym.ssucc.    
-  destruct (get imem pc) eqn:GET.
-  { apply REFI in GET.
-    destruct GET as [id GET].
-    destruct (decode_instr s) eqn:INST.
-    { destruct i;
-      simpl; rewrite GET; simpl; rewrite INST; auto. 
-    }
-    { simpl. rewrite GET. rewrite INST. assumption. }
-  }
-  { destruct (Abs.get_syscall atable pc) eqn:GETCALL.
-    { simpl. 
-      destruct (get dmem pc) eqn:GET'.
-      { apply REFD in GET'. rewrite GET'. reflexivity. }
-      { discriminate. }
-    }
-    { simpl. 
-      destruct (get mem pc) eqn:GET'.
-      { destruct a. destruct tag.
-        { assert (EGET' : exists id, get mem pc = Some val@(INSTR id)) 
-               by (eexists; eauto). 
-          apply REFI in EGET'. congruence.
-        }
-        { rewrite GET'. reflexivity. } 
-      } 
-      { rewrite GET'. 
-        assert (SCDOMAINS := RefinementAS.refine_syscalls_domains ref_sc_correct).
-        apply RefinementAS.same_domain_total with (addr' := pc) in SCDOMAINS.
-        apply SCDOMAINS in GETCALL. rewrite GETCALL. reflexivity.
-      }
-    }
-  }
 Qed.
 Next Obligation.
   unfold Abs.stopping in H4.

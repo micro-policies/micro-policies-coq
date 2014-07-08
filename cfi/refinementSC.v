@@ -1654,55 +1654,18 @@ Proof.
       { (*case the cmvec does not exist*)
         exfalso.
         assert (STUCK := concrete_stuck CMVEC).
-        eauto. }
+        eauto. } 
 Qed.
 
-Require Import Classical.
-Import ListNotations.
-
-Open Scope list_scope.
-Close Scope seq_scope.
-
-Program Instance cfi_refinementAS_specs :
-  machine_refinement_specs cfi_refinementSC.
-Next Obligation. (*step or no step*)
-  by apply classic.
-Qed.
-Next Obligation. (*initial states*)
-  unfold Conc.cinitial in H.
-  destruct H as [ast [INIT REF]].
-  eexists; split; [eassumption | split].
-  - left; assumption.
-  - destruct INIT as [? INV]; by assumption.
-Qed.
-Next Obligation.
-  unfold check in H1.
-  apply andb_false_iff in H1.
-  destruct H1 as [CONTRA | NUSER].
-  - destruct H as [REF INV].
-    move: REF => [/(@refine_state_in_user _) INUSER | REF].
-    + unfold in_user in CONTRA. rewrite INUSER in CONTRA.
-        by discriminate.
-    + destruct REF as [? [? [? [? KEXEC]]]].
-      apply restricted_exec_snd in KEXEC.
-      unfold Conc.csucc. rewrite KEXEC.
-      by reflexivity.
-  - destruct H as [REF INV].
-    destruct REF as [REF | REF].
-    + assert (KERNEL' := user_into_kernel REF H0 NUSER).
-      unfold Conc.csucc. rewrite KERNEL'.
-      rewrite orb_true_r. reflexivity.
-    + destruct REF as [? [? [? [? KEXEC]]]].
-      apply restricted_exec_snd in KEXEC.
-      unfold Conc.csucc. rewrite KEXEC.
-      by reflexivity.
-Qed.
-Next Obligation. (*symbolic-concrete cfg relation*)
-  (*
-  destruct asi as [smemi sregi [spci tpci] inti] eqn:ASI,
-           asj as [smemj sregj [spcj tpcj] intj] eqn:ASJ.
-  destruct csi as [cmemi cregi cachei [cpci ctpci] epci] eqn:CSI,
-           csj as [cmemj cregj cachej [cpcj ctpcj] epcj] eqn:CSJ.*)
+Theorem cfg_true_equiv ssi ssj csi csj :
+  refine_state ssi csi ->
+  refine_state ssj csj ->
+  Symbolic.step stable ssi ssj -> 
+  Sym.ssucc stable ssi ssj = true ->
+  Concrete.step ops masks csi csj ->
+  Conc.csucc valid_jmp csi csj = true.
+Proof.
+  intros.
   destruct H as [REF INV].
   destruct REF as [UREFI | KREFI].
   - destruct H0 as [REF' INV'].
@@ -1749,11 +1712,16 @@ Next Obligation. (*symbolic-concrete cfg relation*)
     unfold Conc.csucc. rewrite KEXEC.
     by reflexivity.
 Qed.
-Next Obligation. (*symbolic no attacker on violation*)
-  destruct H as [? INV].
-  eauto using attacker_no_v.
-Qed.
-Next Obligation. (*symolic violation implies concrete violation*)
+
+Theorem cfg_false_equiv ssi ssj csi csj :
+  refine_state ssi csi ->
+  refine_state ssj csj ->
+  Sym.ssucc stable ssi ssj = false ->
+  check csi csj = true ->
+  Concrete.step ops masks csi csj ->
+  Conc.csucc valid_jmp csi csj = false.
+Proof.
+  intros.
   destruct H as [REF INV], H0 as [REF' INV']. clear INV INV'.
   unfold check in H2.
   apply andb_true_iff in H2.
@@ -1802,6 +1770,56 @@ Next Obligation. (*symolic violation implies concrete violation*)
       apply restricted_exec_snd in KEXEC.
       apply in_user_in_kernel in USER. rewrite KEXEC in USER.
       discriminate.
+Qed.
+
+Require Import Classical.
+Import ListNotations.
+
+Open Scope list_scope.
+Close Scope seq_scope.
+
+Program Instance cfi_refinementAS_specs :
+  machine_refinement_specs cfi_refinementSC.
+Next Obligation. (*step or no step*)
+  by apply classic.
+Qed.
+Next Obligation. (*initial states*)
+  unfold Conc.cinitial in H.
+  destruct H as [ast [INIT REF]].
+  eexists; split; [eassumption | split].
+  - left; assumption.
+  - destruct INIT as [? INV]; by assumption.
+Qed.
+Next Obligation.
+  unfold check in H1.
+  apply andb_false_iff in H1.
+  destruct H1 as [CONTRA | NUSER].
+  - destruct H as [REF INV].
+    move: REF => [/(@refine_state_in_user _) INUSER | REF].
+    + unfold in_user in CONTRA. rewrite INUSER in CONTRA.
+        by discriminate.
+    + destruct REF as [? [? [? [? KEXEC]]]].
+      apply restricted_exec_snd in KEXEC.
+      unfold Conc.csucc. rewrite KEXEC.
+      by reflexivity.
+  - destruct H as [REF INV].
+    destruct REF as [REF | REF].
+    + assert (KERNEL' := user_into_kernel REF H0 NUSER).
+      unfold Conc.csucc. rewrite KERNEL'.
+      rewrite orb_true_r. reflexivity.
+    + destruct REF as [? [? [? [? KEXEC]]]].
+      apply restricted_exec_snd in KEXEC.
+      unfold Conc.csucc. rewrite KEXEC.
+      by reflexivity.
+Qed.
+Next Obligation. (*symbolic-concrete cfg relation*)
+  destruct (Sym.ssucc stable asi asj) eqn:SUCC.
+  - eauto using cfg_true_equiv.
+  - eauto using cfg_false_equiv.
+Qed.
+Next Obligation. (*symbolic no attacker on violation*)
+  destruct H as [? INV].
+  eauto using attacker_no_v.
 Qed.
 Next Obligation. (*symbolic stopping implies concrete stopping*)
 Proof.

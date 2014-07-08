@@ -162,10 +162,10 @@ Class machine_refinement_specs := {
   cfg_equiv : forall (asi asj : @state amachine) csi csj,
     refine_state asi csi ->
     refine_state asj csj ->
-    step asi asj -> (*needed to strengthen this for syscalls, may only need concrete step though*)
-    succ asi asj = true ->
+    step asi asj ->
+    check csi csj = true ->
     step csi csj ->
-    succ csi csj = true;
+    succ csi csj = succ asi asj;
 
   (* We discharge this for abstract and symbolic machine without
      making any assumptions on the shape of the CFG *)
@@ -175,19 +175,6 @@ Class machine_refinement_specs := {
     step asi asj ->
     ~ step_a asi asj;
 
-  av_implies_cv : forall ast ast' cst cst',
-    refine_state ast cst ->
-    refine_state ast' cst' ->
-    succ ast ast' = false ->
-    check cst cst' = true ->
-    step cst cst' ->
-    succ cst cst' = false;
-
-  (* Q: Can this be simplified to if we were to show that
-     backwards_refinement_traces_stronger produces _unique_ axs?
-     Doesn't seem easy to state! *)
-  (* CH: not clear how possible it was before, but this is clearly not
-     possible with the new way to define backwards_refinement_normal *)
   as_implies_cs : forall axs cxs asi asj csi csj,
     check csi csj = true ->
     succ asi asj = false ->
@@ -311,7 +298,9 @@ Proof.
   - destruct IN2 as [[? ?] | IN2]; subst.
     * assert (SUCC: succ ast ast' = true).
       { apply TSAFE; simpl; auto. }
-      apply (cfg_equiv _ _ _ _ REF REF' ASTEP' SUCC STEP).
+      destruct (check csi csj) eqn:CHECK.
+      by (rewrite <- SUCC; apply (cfg_equiv _ _ _ _ REF REF' ASTEP' CHECK STEP)).
+      by apply (cfg_nocheck _ _ _ REF STEP CHECK).
     * apply IHRTRACE'.
       destruct axs.
       + intros ? ? CONTRA; destruct CONTRA.
@@ -402,8 +391,9 @@ Proof.
       + right.
         exists csi; exists csj; exists chs; exists ctl.
         split. now assumption.
-        split. split; 
-               [assumption | apply (av_implies_cv asi asj csi csj REFI REFJ AV VIS CSTEP)].
+        split. split;
+               [assumption | rewrite <- AV; 
+                             apply (cfg_equiv asi asj csi csj REFI REFJ ASTEP VIS CSTEP)].
         split. now apply (refine_traces_preserves_cfi_trace RHT TSAFE1).
         split. now apply (refine_traces_preserves_cfi_trace  RTT TSAFE2).
         apply (as_implies_cs asi csi VIS AV ASTEP REFI RTT STOP1).
