@@ -99,15 +99,20 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
       SEALED(k) --> k*4+3
 *)
 
+Compute Int28Ordered.IntIndexed.t.
+
 (* TODO: Where should this really live? *)
-Instance sk_defs : Sym.sealing_key := {|
- key := int32_eqType;
- max_key := Word.repr 100;
- inc_key := fun x => Word.add x (Word.repr 1);
- ord_key := int_ordered
+Program Instance sk_defs : Sym.sealing_key := {|
+ key := int28_eqType;
+ max_key := @Word.repr 27 100;
+ inc_key := fun x => @Word.add 27 x (Word.repr 1);
+ ord_key := @Int28Ordered.int_ordered
 |}.
-admit.
-Defined.
+Next Obligation.
+Admitted.
+Next Obligation.
+Admitted.
+
 
 Definition encode_sealing_tag (t : Sym.stag) : w :=
  match t with

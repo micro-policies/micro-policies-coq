@@ -33,8 +33,16 @@ Definition wordsize_minus_one := 4.
 
 End Wordsize_5.
 
+Module Wordsize_28 <: WORDSIZE.
+
+Definition wordsize_minus_one := 27.
+
+End Wordsize_28.
+
 Module Int32Ordered := IntOrdered Wordsize_32.
 Module Int32Indexed := Int32Ordered.IntIndexed.
+Module Int28Ordered := IntOrdered Wordsize_28.
+Module Int28Indexed := Int28Ordered.IntIndexed.
 Module Int5Ordered := IntOrdered Wordsize_5.
 Module Int5Indexed := Int5Ordered.IntIndexed.
 
@@ -51,6 +59,19 @@ Qed.
 
 Definition int32_eqMixin := EqMixin int32_eqP.
 Canonical int32_eqType := Eval hnf in EqType int32 int32_eqMixin.
+
+
+Definition int28 := int 27. (*28 bits*)
+
+Lemma int28_eqP : Equality.axiom (@eq 27).
+Proof.
+move=> x y; apply: (iffP idP) => [|->].
+  by have := Word.eq_spec _ x y; case: (Word.eq x y).
+by rewrite Word.eq_true.
+Qed.
+
+Definition int28_eqMixin := EqMixin int28_eqP.
+Canonical int28_eqType := Eval hnf in EqType int28 int28_eqMixin.
 
 Definition regt := int 4. (* 5 bits *)
 
