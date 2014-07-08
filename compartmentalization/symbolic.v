@@ -4,8 +4,9 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
-Require Import sfi.common lib.list_utils lib.set_utils sfi.isolate_sets
-               sfi.ranges.
+Require Import lib.list_utils lib.set_utils.
+Require Import compartmentalization.common.
+Require Import compartmentalization.isolate_sets compartmentalization.ranges.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -99,7 +100,7 @@ Context {t            : machine_types}
         {ops          : machine_ops t}
         {spec         : machine_ops_spec ops}
         {scr          : @syscall_regs t}
-        {sfi_syscalls : sfi_syscall_addrs t}.
+        {cmp_syscalls : compartmentalization_syscall_addrs t}.
 
 (* I want to use I as a variable. *)
 Let I := Logic.I.
@@ -155,7 +156,8 @@ Definition can_execute (Lpc LI : stag) : option (word t) :=
   do! guard (c' == c) || ((F == JUMPED) && set_elem c I);
   Some c'.
 
-Definition sfi_rvec (F : where_from) (c : word t) : RVec stag :=
+Definition compartmentalization_rvec (F : where_from)
+                                     (c : word t) : RVec stag :=
   mkRVec (PC F c) REG.  
 
 Definition rvec_step (rv : word t -> option (RVec stag))
@@ -164,7 +166,7 @@ Definition rvec_step (rv : word t -> option (RVec stag))
   rv c.
 
 Definition rvec_simple (F : where_from) : stag -> stag -> option (RVec stag) :=
-  rvec_step (fun c => Some (sfi_rvec F c)).
+  rvec_step (fun c => Some (compartmentalization_rvec F c)).
 
 Definition rvec_next : stag -> stag -> option (RVec stag) :=
   rvec_simple INTERNAL.
@@ -178,7 +180,7 @@ Definition rvec_store (c : word t) (I W : list (word t))
 
 (* The `REG's in the MVec's fields can also be _s; it's an invariant that
    registers are always tagged with `REG'. *)
-Definition sfi_handler (mv : MVec stag) : option (RVec stag) :=
+Definition compartmentalization_handler (mv : MVec stag) : option (RVec stag) :=
   match mv with
     | mkMVec NOP       Lpc LI []                     => rvec_next        Lpc LI
     | mkMVec CONST     Lpc LI [REG]                  => rvec_next        Lpc LI
@@ -195,22 +197,24 @@ Definition sfi_handler (mv : MVec stag) : option (RVec stag) :=
 
 End WithVectors.
 
-Record sfi_internal := Internal { next_id                  : word t
-                                ; isolate_tag              : stag
-                                ; add_to_jump_targets_tag  : stag
-                                ; add_to_shared_memory_tag : stag }.
-(* TODO: memory invariants for the tags, syscall invariants for the tags *)
+Record compartmentalization_internal :=
+  Internal { next_id                  : word t
+           ; isolate_tag              : stag
+           ; add_to_jump_targets_tag  : stag
+           ; add_to_store_targets_tag : stag }.
 
-Instance sym_sfi : Symbolic.params := {
+Instance sym_compartmentalization : Symbolic.params := {
   tag := stag_eqType;
   
-  handler := sfi_handler;
+  handler := compartmentalization_handler;
   
-  internal_state := sfi_internal
+  internal_state := compartmentalization_internal
 }.
 
-Local Notation memory    := (word_map t (atom (word t) (@Symbolic.tag sym_sfi))).
-Local Notation registers := (reg_map  t (atom (word t) (@Symbolic.tag sym_sfi))).
+Local Notation memory    :=
+  (word_map t (atom (word t) (@Symbolic.tag sym_compartmentalization))).
+Local Notation registers :=
+  (reg_map  t (atom (word t) (@Symbolic.tag sym_compartmentalization))).
 
 Hint Immediate word_map_axioms.
 Hint Immediate reg_map_axioms.
@@ -224,7 +228,7 @@ Definition sget (s : Symbolic.state t) (p : word t)
     | None   =>
       if      p == isolate_addr              then sctag isolate_tag
       else if p == add_to_jump_targets_addr  then sctag add_to_jump_targets_tag
-      else if p == add_to_shared_memory_addr then sctag add_to_shared_memory_tag
+      else if p == add_to_store_targets_addr then sctag add_to_store_targets_tag
       else None
   end.
 Arguments sget s p : simpl never.
@@ -235,7 +239,7 @@ Definition supd (s : Symbolic.state t) (p : word t) (v : atom (word t) stag)
   let: Internal next_id
                 isolate_tag
                 add_to_jump_targets_tag
-                add_to_shared_memory_tag :=
+                add_to_store_targets_tag :=
        si in
   let sctagged si' := Some (Symbolic.State mem reg pc si') in
   match upd mem p v with
@@ -245,13 +249,13 @@ Definition supd (s : Symbolic.state t) (p : word t) (v : atom (word t) stag)
         then sctagged (Internal next_id
                                 (common.tag v)
                                 add_to_jump_targets_tag
-                                add_to_shared_memory_tag)
+                                add_to_store_targets_tag)
       else if p == add_to_jump_targets_addr
         then sctagged (Internal next_id
                                 isolate_tag
                                 (common.tag v)
-                                add_to_shared_memory_tag)
-      else if p == add_to_shared_memory_addr
+                                add_to_store_targets_tag)
+      else if p == add_to_store_targets_addr
         then sctagged (Internal next_id
                                 isolate_tag
                                 add_to_jump_targets_tag
@@ -260,7 +264,8 @@ Definition supd (s : Symbolic.state t) (p : word t) (v : atom (word t) stag)
   end.
 Arguments supd s p v : simpl never.
 
-Definition fresh (si : sfi_internal) : option (word t * sfi_internal) :=
+Definition fresh (si : compartmentalization_internal)
+                 : option (word t * compartmentalization_internal) :=
   let 'Internal next iT ajtT asmT := si in
   if next == max_word
   then None
@@ -345,7 +350,7 @@ Definition add_to_jump_targets (s : Symbolic.state t)
     | _ => None
   end.
 
-Definition add_to_shared_memory (s : Symbolic.state t)
+Definition add_to_store_targets (s : Symbolic.state t)
                                 : option (Symbolic.state t) :=
   match s with
     | Symbolic.State M R (pc @ (PC F c)) si =>
@@ -372,7 +377,7 @@ Definition add_to_shared_memory (s : Symbolic.state t)
 Definition syscalls : list (Symbolic.syscall t) :=
   [Symbolic.Syscall isolate_addr              REG isolate;
    Symbolic.Syscall add_to_jump_targets_addr  REG add_to_jump_targets;
-   Symbolic.Syscall add_to_shared_memory_addr REG add_to_shared_memory].
+   Symbolic.Syscall add_to_store_targets_addr REG add_to_store_targets].
 
 Definition step := Symbolic.step syscalls.
 
@@ -453,7 +458,7 @@ Proof.
     by rewrite get_set_neq.
   - destruct (p == isolate_addr) eqn:EQI; move/eqP in EQI;
       [|destruct (p == add_to_jump_targets_addr) eqn:EQJ; move/eqP in EQJ;
-        [|destruct (p == add_to_shared_memory_addr) eqn:EQS; move/eqP in EQS]];
+        [|destruct (p == add_to_store_targets_addr) eqn:EQS; move/eqP in EQS]];
       inversion SUPD; subst;
       (destruct (get mem' p'); [done|]).
     + destruct (p' == isolate_addr) eqn:EQ'; move/eqP in EQ';
@@ -463,7 +468,7 @@ Proof.
         [congruence | done].
     + destruct (p' == isolate_addr); auto.
       destruct (p' == add_to_jump_targets_addr); auto.
-      destruct (p' == add_to_shared_memory_addr) eqn:EQ'; move/eqP in EQ';
+      destruct (p' == add_to_store_targets_addr) eqn:EQ'; move/eqP in EQ';
         [congruence | done].
 Qed.          
 
@@ -498,7 +503,7 @@ Proof.
     by rewrite get_set_neq.
   - by destruct (p == isolate_addr);
         [|destruct (p == add_to_jump_targets_addr);
-          [|destruct (p == add_to_shared_memory_addr)]];
+          [|destruct (p == add_to_store_targets_addr)]];
        inversion SUPD; subst.
 Qed.
 
@@ -533,7 +538,7 @@ Proof.
   - by inversion SUPD; subst.
   - by destruct (p == isolate_addr);
          [|destruct (p == add_to_jump_targets_addr);
-           [|destruct (p == add_to_shared_memory_addr)]];
+           [|destruct (p == add_to_store_targets_addr)]];
        inversion SUPD; subst.
 Qed.
 
@@ -547,7 +552,7 @@ Proof.
   - by inversion SUPD; subst.
   - by destruct (p == isolate_addr);
          [|destruct (p == add_to_jump_targets_addr);
-           [|destruct (p == add_to_shared_memory_addr)]];
+           [|destruct (p == add_to_store_targets_addr)]];
        inversion SUPD; subst.
 Qed.
 
@@ -561,7 +566,7 @@ Proof.
   - by inversion SUPD; subst.
   - by destruct (p == isolate_addr);
          [|destruct (p == add_to_jump_targets_addr);
-           [|destruct (p == add_to_shared_memory_addr)]];
+           [|destruct (p == add_to_store_targets_addr)]];
        inversion SUPD; subst.
 Qed.
 
@@ -591,7 +596,7 @@ Proof.
   - rewrite SGET in GET; eapply GOOD; eassumption.
   - destruct (p == isolate_addr);              [by inversion SGET; subst|].
     destruct (p == add_to_jump_targets_addr);  [by inversion SGET; subst|].
-    destruct (p == add_to_shared_memory_addr); [by inversion SGET; subst|].
+    destruct (p == add_to_store_targets_addr); [by inversion SGET; subst|].
     discriminate.
 Qed.
 
@@ -936,13 +941,13 @@ Lemma good_internal_equiv : forall s s',
   next_id (Symbolic.internal s) = next_id (Symbolic.internal s') ->
   ~~ is_some (get (Symbolic.mem s) isolate_addr) ->
   ~~ is_some (get (Symbolic.mem s) add_to_jump_targets_addr) ->
-  ~~ is_some (get (Symbolic.mem s) add_to_shared_memory_addr) ->
+  ~~ is_some (get (Symbolic.mem s) add_to_store_targets_addr) ->
   ~~ is_some (get (Symbolic.mem s') isolate_addr) ->
   ~~ is_some (get (Symbolic.mem s') add_to_jump_targets_addr) ->
-  ~~ is_some (get (Symbolic.mem s') add_to_shared_memory_addr) ->
+  ~~ is_some (get (Symbolic.mem s') add_to_store_targets_addr) ->
   isolate_addr != add_to_jump_targets_addr ->
-  isolate_addr != add_to_shared_memory_addr ->
-  add_to_jump_targets_addr != add_to_shared_memory_addr ->
+  isolate_addr != add_to_store_targets_addr ->
+  add_to_jump_targets_addr != add_to_store_targets_addr ->
   good_internal s ->
   good_internal s'.
 Proof.
@@ -956,21 +961,21 @@ Proof.
     by by destruct (get (Symbolic.mem s) isolate_addr).
   assert (AJNONE : get (Symbolic.mem s) add_to_jump_targets_addr = None)
     by by destruct (get (Symbolic.mem s) add_to_jump_targets_addr).
-  assert (ASNONE : get (Symbolic.mem s) add_to_shared_memory_addr = None)
-    by by destruct (get (Symbolic.mem s) add_to_shared_memory_addr).
+  assert (ASNONE : get (Symbolic.mem s) add_to_store_targets_addr = None)
+    by by destruct (get (Symbolic.mem s) add_to_store_targets_addr).
   
   assert (INONE' : get (Symbolic.mem s') isolate_addr = None)
     by by destruct (get (Symbolic.mem s') isolate_addr).
   assert (AJNONE' : get (Symbolic.mem s') add_to_jump_targets_addr = None)
     by by destruct (get (Symbolic.mem s') add_to_jump_targets_addr).
-  assert (ASNONE' : get (Symbolic.mem s') add_to_shared_memory_addr = None)
-    by by destruct (get (Symbolic.mem s') add_to_shared_memory_addr).
+  assert (ASNONE' : get (Symbolic.mem s') add_to_store_targets_addr = None)
+    by by destruct (get (Symbolic.mem s') add_to_store_targets_addr).
 
   assert (FALSE_aJ_I : (add_to_jump_targets_addr == isolate_addr) = false)
    by by rewrite eq_sym in DIFF_I_aJ; move/Bool.negb_true_iff in DIFF_I_aJ.
-  assert (FALSE_aS_I : (add_to_shared_memory_addr == isolate_addr) = false)
+  assert (FALSE_aS_I : (add_to_store_targets_addr == isolate_addr) = false)
    by by rewrite eq_sym in DIFF_I_aS; move/Bool.negb_true_iff in DIFF_I_aS.
-  assert (FALSE_aS_aJ: (add_to_shared_memory_addr ==
+  assert (FALSE_aS_aJ: (add_to_store_targets_addr ==
                         add_to_jump_targets_addr) = false)
    by by rewrite eq_sym in DIFF_aJ_aS; move/Bool.negb_true_iff in DIFF_aJ_aS.
 
@@ -988,7 +993,7 @@ Proof.
     by by rewrite /sget AJNONE FALSE_aJ_I eq_refl.
   assert (SGET_aS :
             sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
-                 add_to_shared_memory_addr ?= 0%w@aST)
+                 add_to_store_targets_addr ?= 0%w@aST)
     by by rewrite /sget ASNONE FALSE_aS_I FALSE_aS_aJ eq_refl.
   
   assert (SGET_I' :
@@ -1001,7 +1006,7 @@ Proof.
     by by rewrite /sget AJNONE' FALSE_aJ_I eq_refl.
   assert (SGET_aS' :
             sget (Symbolic.State mem' reg' pc' (Internal next iT' aJT' aST'))
-                 add_to_shared_memory_addr ?= 0%w@aST')
+                 add_to_store_targets_addr ?= 0%w@aST')
     by by rewrite /sget ASNONE' FALSE_aS_I FALSE_aS_aJ eq_refl.
   
   rewrite /good_internal /=; move=> GOOD.
@@ -1013,7 +1018,7 @@ Proof.
     rewrite SGET_aJ SGET_aJ' in TAGS_aJ;
     destruct aJT as [|caJ WaJ IaJ|], aJT' as [|caJ' WaJ' IaJ'|]; try done;
     subst caJ'.
-  generalize (TAGS add_to_shared_memory_addr) => TAGS_aS;
+  generalize (TAGS add_to_store_targets_addr) => TAGS_aS;
     rewrite SGET_aS SGET_aS' in TAGS_aS;
     destruct aST as [|caS WaS IaS|], aST' as [|caS' WaS' IaS'|]; try done;
     subst caS'.
@@ -1029,7 +1034,7 @@ Proof.
          move/eqP in EQ_I;
          [|destruct (p == add_to_jump_targets_addr) eqn:EQ_aJ;
            move/eqP in EQ_aJ;
-             [|destruct (p == add_to_shared_memory_addr) eqn:EQ_aS;
+             [|destruct (p == add_to_store_targets_addr) eqn:EQ_aS;
                move/eqP in EQ_aS]];
        subst; try congruence.
 Qed.
@@ -1039,13 +1044,13 @@ Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
   next_id (Symbolic.internal s) = (cnew+1)%w ->
   ~~ is_some (get (Symbolic.mem s) isolate_addr) ->
   ~~ is_some (get (Symbolic.mem s) add_to_jump_targets_addr) ->
-  ~~ is_some (get (Symbolic.mem s) add_to_shared_memory_addr) ->
+  ~~ is_some (get (Symbolic.mem s) add_to_store_targets_addr) ->
   isolate_addr != add_to_jump_targets_addr ->
-  isolate_addr != add_to_shared_memory_addr ->
-  add_to_jump_targets_addr != add_to_shared_memory_addr ->
+  isolate_addr != add_to_store_targets_addr ->
+  add_to_jump_targets_addr != add_to_store_targets_addr ->
   ~ In isolate_addr ps ->
   ~ In add_to_jump_targets_addr ps ->
-  ~ In add_to_shared_memory_addr ps ->
+  ~ In add_to_store_targets_addr ps ->
   NoDup ps ->
   (forall p, good_memory_tag s p) ->
   retag_set ok (fun _ I W => DATA cnew I W) ps s ?= s' ->
@@ -1055,7 +1060,7 @@ Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
                       cnew
                       (isolate_tag              (Symbolic.internal s))
                       (add_to_jump_targets_tag  (Symbolic.internal s))
-                      (add_to_shared_memory_tag (Symbolic.internal s)))) ->
+                      (add_to_store_targets_tag (Symbolic.internal s)))) ->
   good_internal s'.
 Proof.
   clear I; move=> ok cnew ps s s'
@@ -1074,8 +1079,8 @@ Proof.
     by by destruct (get (Symbolic.mem s) isolate_addr).
   assert (AJNONE : get (Symbolic.mem s) add_to_jump_targets_addr = None)
     by by destruct (get (Symbolic.mem s) add_to_jump_targets_addr) eqn:H.
-  assert (ASNONE : get (Symbolic.mem s) add_to_shared_memory_addr = None)
-    by by destruct (get (Symbolic.mem s) add_to_shared_memory_addr) eqn:H.
+  assert (ASNONE : get (Symbolic.mem s) add_to_store_targets_addr = None)
+    by by destruct (get (Symbolic.mem s) add_to_store_targets_addr) eqn:H.
   
   assert (NOT_SOME_i' : ~~ is_some (get (Symbolic.mem s') isolate_addr)). {
     apply/negP; move=> SOME; apply GETS in SOME.
@@ -1091,7 +1096,7 @@ Proof.
   }
   
   assert (NOT_SOME_aS' : ~~ is_some (get (Symbolic.mem s')
-                                         add_to_shared_memory_addr)). {
+                                         add_to_store_targets_addr)). {
     apply/negP; move=> SOME; apply GETS in SOME.
     simpl in SOME; move/negP in NOT_SOME_aS.
     contradiction.
@@ -1101,14 +1106,14 @@ Proof.
     by by destruct (get (Symbolic.mem s') isolate_addr).
   assert (AJNONE' : get (Symbolic.mem s') add_to_jump_targets_addr = None)
     by by destruct (get (Symbolic.mem s') add_to_jump_targets_addr).
-  assert (ASNONE' : get (Symbolic.mem s') add_to_shared_memory_addr = None)
-    by by destruct (get (Symbolic.mem s') add_to_shared_memory_addr).
+  assert (ASNONE' : get (Symbolic.mem s') add_to_store_targets_addr = None)
+    by by destruct (get (Symbolic.mem s') add_to_store_targets_addr).
   
   assert (FALSE_aJ_i : (add_to_jump_targets_addr == isolate_addr) = false)
    by by rewrite eq_sym in DIFF_i_aJ; move/Bool.negb_true_iff in DIFF_i_aJ.
-  assert (FALSE_aS_i : (add_to_shared_memory_addr == isolate_addr) = false)
+  assert (FALSE_aS_i : (add_to_store_targets_addr == isolate_addr) = false)
    by by rewrite eq_sym in DIFF_i_aS; move/Bool.negb_true_iff in DIFF_i_aS.
-  assert (FALSE_aS_aJ: (add_to_shared_memory_addr ==
+  assert (FALSE_aS_aJ: (add_to_store_targets_addr ==
                         add_to_jump_targets_addr) = false)
    by by rewrite eq_sym in DIFF_aJ_aS; move/Bool.negb_true_iff in DIFF_aJ_aS.
    
@@ -1126,7 +1131,7 @@ Proof.
     by by rewrite /sget AJNONE FALSE_aJ_i eq_refl.
   assert (SGET_aS : sget (Symbolic.State mem reg pc
                                          (Internal next iT aJT aST))
-                         add_to_shared_memory_addr ?= 0%w@aST)
+                         add_to_store_targets_addr ?= 0%w@aST)
     by by rewrite /sget ASNONE FALSE_aS_i FALSE_aS_aJ eq_refl.
   
   assert (SGET_i' : sget (Symbolic.State mem' reg' pc'
@@ -1139,7 +1144,7 @@ Proof.
     by by rewrite /sget AJNONE' FALSE_aJ_i eq_refl.
   assert (SGET_aS' : sget (Symbolic.State mem' reg' pc'
                                           (Internal next' iT' aJT' aST'))
-                          add_to_shared_memory_addr ?= 0%w@aST')
+                          add_to_store_targets_addr ?= 0%w@aST')
     by by rewrite /sget ASNONE' FALSE_aS_i FALSE_aS_aJ eq_refl.
   
   rewrite /good_internal /=; move => GOOD;
@@ -1161,7 +1166,7 @@ Proof.
   }
 
   assert (def_aST' : aST' = DATA caS IaS WaS). {
-    apply retag_set_not_in with (p := add_to_shared_memory_addr) in RETAG_SET;
+    apply retag_set_not_in with (p := add_to_store_targets_addr) in RETAG_SET;
       auto.
     rewrite SGET_aS SGET_aS' in RETAG_SET.
     by inversion RETAG_SET; subst.
@@ -1197,7 +1202,7 @@ Qed.
     
 End WithClasses.
 
-Notation memory    t := (Symbolic.memory t sym_sfi).
-Notation registers t := (Symbolic.registers t sym_sfi).
+Notation memory    t := (Symbolic.memory    t sym_compartmentalization).
+Notation registers t := (Symbolic.registers t sym_compartmentalization).
 
 End Sym.

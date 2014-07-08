@@ -10,21 +10,21 @@ Require Import symbolic.int_32.
 Require Import symbolic.refinement_common.
 Require Import symbolic.backward.
 Require Import symbolic.rules.
-Require Import sfi.common.
-Require Import sfi.symbolic.
-Require Import sfi.abstract.
-Require Import sfi.refinementSA.
+Require Import compartmentalization.common.
+Require Import compartmentalization.symbolic.
+Require Import compartmentalization.abstract.
+Require Import compartmentalization.refinementSA.
 
 Section Refinement.
 
 Let t := concrete_int_32_t.
 Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
-Existing Instance Sym.sym_sfi.
+Existing Instance Sym.sym_compartmentalization.
 
-Context {enc : encodable (@Symbolic.tag Sym.sym_sfi)}
+Context {enc : encodable (@Symbolic.tag Sym.sym_compartmentalization)}
         {monitor_invariant : kernel_invariant}
-        {syscall_addrs : sfi_syscall_addrs t}.
+        {syscall_addrs : compartmentalization_syscall_addrs t}.
 
 Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
 | rs_intro : forall (sst : Symbolic.state t),

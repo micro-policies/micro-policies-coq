@@ -6,10 +6,10 @@ Generalizable All Variables.
 
 Import PartMaps.
 
-Class sfi_syscall_addrs (t : machine_types) := {
+Class compartmentalization_syscall_addrs (t : machine_types) := {
   isolate_addr              : word t;
   add_to_jump_targets_addr  : word t;
-  add_to_shared_memory_addr : word t
+  add_to_store_targets_addr : word t
 }.
 
 Inductive where_from :=

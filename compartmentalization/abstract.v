@@ -3,7 +3,8 @@ Require Import List Arith Sorted Bool.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils lib.partial_maps lib.ordered common.common.
-Require Import lib.list_utils lib.set_utils sfi.isolate_sets sfi.common.
+Require Import lib.list_utils lib.set_utils.
+Require Import compartmentalization.isolate_sets compartmentalization.common.
 
 Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.
@@ -24,7 +25,7 @@ Context (t            : machine_types)
         {ops          : machine_ops t}
         {spec         : machine_ops_spec ops}
         {scr          : @syscall_regs t}
-        {sfi_syscalls : sfi_syscall_addrs t}.
+        {cmp_syscalls : compartmentalization_syscall_addrs t}.
 
 Open Scope word_scope.
 Local Notation word  := (word t).
@@ -41,11 +42,11 @@ Implicit Type r rsrc rdest rpsrc rpdest rtgt : reg t.
 Let S := Datatypes.S.
 Local Notation Suc := Datatypes.S.
 
-(* BCP: Can we change `shared_memory' to `writable_memory', and disallow writes
+(* BCP: Can we change `store_targets' to `writable_memory', and disallow writes
    to `address_space'?  [TODO] *)
 Record compartment := Compartment { address_space : list value
                                   ; jump_targets  : list value
-                                  ; shared_memory : list value }.
+                                  ; store_targets : list value }.
 Notation "<< A , J , S >>" := (Compartment A J S) (format "<< A , J , S >>").
 Implicit Type c     : compartment.
 Implicit Type A J S : list value.
@@ -54,7 +55,7 @@ Implicit Type C     : list compartment.
 Definition compartment_eq c1 c2 :=
   [&& address_space c1 == address_space c2,
       jump_targets c1 == jump_targets c2 &
-      shared_memory c1 == shared_memory c2].
+      store_targets c1 == store_targets c2].
 
 Lemma compartment_eqP : Equality.axiom compartment_eq.
 Proof.
@@ -69,7 +70,7 @@ Canonical compartment_eqType :=
 Definition good_compartment (c : compartment) : bool :=
   is_set (address_space c) &&
   is_set (jump_targets  c) &&
-  is_set (shared_memory c).
+  is_set (store_targets c).
 
 Definition non_overlapping : list compartment -> bool :=
   all_tail_pairs_b
@@ -78,7 +79,7 @@ Definition non_overlapping : list compartment -> bool :=
 (* BCP: Do we need this?  Can we get away with just having all user memory
    inside a compartment at all times?  [TODO] *)
 Definition contained_compartments (C : list compartment) : bool :=
-  subset (concat (List.map jump_targets C) ++ concat (List.map shared_memory C))
+  subset (concat (List.map jump_targets C) ++ concat (List.map store_targets C))
          (concat (List.map address_space C)).
 
 Definition good_compartments (C : list compartment) : bool :=
@@ -185,13 +186,13 @@ Definition add_to_jump_targets :=
                     jump_targets
                     (fun J' c => let '<<A,_,S>> := c in <<A,J',S>>) |}.
 
-Definition add_to_shared_memory :=
-  {| address   := add_to_shared_memory_addr
+Definition add_to_store_targets :=
+  {| address   := add_to_store_targets_addr
    ; semantics := add_to_compartment_component
-                    shared_memory
+                    store_targets
                     (fun S' c => let '<<A,J,_>> := c in <<A,J,S'>>) |}.
 
-Let table := [isolate; add_to_jump_targets; add_to_shared_memory].
+Let table := [isolate; add_to_jump_targets; add_to_store_targets].
 
 Definition get_syscall (addr : value) : option syscall :=
   List.find (fun sc => address sc == addr) table.
@@ -288,7 +289,7 @@ Inductive step (MM MM' : state) : Prop :=
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETRS : get R rpdest ?= p)
                    (GETRD : get R rsrc   ?= x)
-                   (VALID : In p (address_space c ++ shared_memory c))
+                   (VALID : In p (address_space c ++ store_targets c))
                    (UPDR  : upd M p x ?= M')
                    (NEXT  : MM' = State (pc + 1) R M' C INTERNAL c),
                         step MM MM'
@@ -403,12 +404,12 @@ Qed.
 (*Global*) Hint Resolve good_compartment__is_set_jump_targets.
 
 (* For `auto' *)
-Lemma good_compartment__is_set_shared_memory : forall c,
-  good_compartment c = true -> is_set (shared_memory c) = true.
+Lemma good_compartment__is_set_store_targets : forall c,
+  good_compartment c = true -> is_set (store_targets c) = true.
 Proof.
   unfold good_compartment; intros; repeat rewrite -> andb_true_iff in *; tauto.
 Qed.
-(*Global*) Hint Resolve good_compartment__is_set_shared_memory.
+(*Global*) Hint Resolve good_compartment__is_set_store_targets.
 
 (* For `auto' *)
 Lemma good_compartment_decomposed__is_set_address_space : forall A J S,
@@ -429,13 +430,13 @@ Qed.
 (*Global*) Hint Resolve good_compartment_decomposed__is_set_jump_targets.
 
 (* For `auto' *)
-Lemma good_compartment_decomposed__is_set_shared_memory : forall A J S,
+Lemma good_compartment_decomposed__is_set_store_targets : forall A J S,
   good_compartment <<A,J,S>> = true -> is_set S = true.
 Proof.
   clear S; intros A J S GOOD;
-  apply good_compartment__is_set_shared_memory in GOOD; exact GOOD.
+  apply good_compartment__is_set_store_targets in GOOD; exact GOOD.
 Qed.
-(*Global*) Hint Resolve good_compartment_decomposed__is_set_shared_memory.
+(*Global*) Hint Resolve good_compartment_decomposed__is_set_store_targets.
 
 (*** Proofs for `good_compartments' ***)
 
@@ -911,7 +912,7 @@ Proof. eauto. Qed.
 
 Theorem contained_compartments_spec : forall C,
   contained_compartments C = true <->
-  (forall c a, In c C -> (In a (jump_targets c) \/ In a (shared_memory c)) ->
+  (forall c a, In c C -> (In a (jump_targets c) \/ In a (store_targets c)) ->
                exists c', In c' C /\ In a (address_space c')).
 Proof.
   clear S; intros; unfold contained_compartments; rewrite subset_spec; split.
@@ -920,7 +921,7 @@ Proof.
       rewrite ->in_app_iff in SUBSET; repeat rewrite ->concat_in in SUBSET.
     destruct SUBSET as [A [IN_A IN_a_A]].
     + destruct IN_a;
-        [left; exists (jump_targets c) | right; exists (shared_memory c)];
+        [left; exists (jump_targets c) | right; exists (store_targets c)];
         (split; [apply in_map_iff; eauto | assumption]).
     + apply in_map_iff in IN_A; destruct IN_A as [c' [EQ IN_c']].
       exists c'; subst; tauto.
@@ -1273,7 +1274,7 @@ Proof.
            [IN_a_S | [IN_a_S' |  IN_a_SMs]]]]].
     (* There are essentially three proofs here: (1) In a J/S; (2) In a J'/S'
        (which calls out to (1)); and (3) In a (concat (map
-       jump_targets/shared_memory (delete c C)).  I could not figure out how to
+       jump_targets/store_targets (delete c C)).  I could not figure out how to
        Ltac them together nicely, however, so here you have it. *)
     + (* Proof (1) *)
       move CC after IN_a_J.
@@ -1399,8 +1400,8 @@ Lemma good_compartments_preserved_for_add_to_compartment_component :
     address_space c = address_space c' ->
     subset (jump_targets  c')
            (set_union (address_space c) (jump_targets  c)) = true ->
-    subset (shared_memory c')
-           (set_union (address_space c) (shared_memory c)) = true ->
+    subset (store_targets c')
+           (set_union (address_space c) (store_targets c)) = true ->
     good_compartments (c' :: delete c C) = true.
 Proof.
   intros c c' C GOOD IN GOOD_c ADDR SUBSET_J SUBSET_S.
@@ -1445,8 +1446,8 @@ Lemma add_to_compartment_component_good : forall addr rd wr MM,
                is_set X = true -> good_compartment (wr X c) = true) ->
   (forall X c, jump_targets (wr X c) = jump_targets c \/
                jump_targets (wr X c) = X /\ rd c = jump_targets c) ->
-  (forall X c, shared_memory (wr X c) = shared_memory c \/
-               shared_memory (wr X c) = X /\ rd c = shared_memory c) ->
+  (forall X c, store_targets (wr X c) = store_targets c \/
+               store_targets (wr X c) = X /\ rd c = store_targets c) ->
   good_syscall (Syscall addr (add_to_compartment_component rd wr)) MM = true.
 Proof.
   clear S.
@@ -1537,15 +1538,15 @@ Proof.
 Qed.
 (*Global*) Hint Resolve add_to_jump_targets_good.
 
-Theorem add_to_shared_memory_good : forall MM,
-  good_syscall add_to_shared_memory MM = true.
+Theorem add_to_store_targets_good : forall MM,
+  good_syscall add_to_store_targets MM = true.
 Proof.
   clear - t ops spec.
   intros; apply add_to_compartment_component_good;
     intros; destruct c as [A J S]; auto.
   unfold good_compartment; repeat andb_true_split; eauto 2.
 Qed.
-(*Global*) Hint Resolve add_to_shared_memory_good.
+(*Global*) Hint Resolve add_to_store_targets_good.
 
 Corollary good_syscalls_b : forall MM,
   forallb (fun sc => good_syscall sc MM) table = true.
@@ -1868,8 +1869,8 @@ Proof.
       apply in_compartment_opt_correct, in_compartment_spec in def_c_sys;
         [|eauto 3].
       destruct def_c_sys as [IN IN']; specialize (GOODS c_sys IN); auto.
-  - (* add_to_shared_memory *)
-    unfold semantics,add_to_shared_memory,add_to_compartment_component in CALL;
+  - (* add_to_store_targets *)
+    unfold semantics,add_to_store_targets,add_to_compartment_component in CALL;
       rewrite (lock in_compartment_opt) in CALL;
       simpl in CALL.
     let (* Can't get the binder name, so we provide it *)
@@ -1901,7 +1902,7 @@ Theorem permitted_modifications : forall `(STEP : step MM MM') c,
   compartments MM ⊢ pc MM ∈ c ->
   forall a,
     get (mem MM) a <> get (mem MM') a ->
-    In a (address_space c) \/ In a (shared_memory c).
+    In a (address_space c) \/ In a (store_targets c).
 Proof.
   intros MM MM' STEP c GOOD_STATE IC a DIFF; destruct STEP;
     try (subst; simpl in *; congruence).
@@ -1953,10 +1954,10 @@ Module Hints.
 (* Start globalized hint section *)
 Hint Resolve good_compartment__is_set_address_space.
 Hint Resolve good_compartment__is_set_jump_targets.
-Hint Resolve good_compartment__is_set_shared_memory.
+Hint Resolve good_compartment__is_set_store_targets.
 Hint Resolve good_compartment_decomposed__is_set_address_space.
 Hint Resolve good_compartment_decomposed__is_set_jump_targets.
-Hint Resolve good_compartment_decomposed__is_set_shared_memory.
+Hint Resolve good_compartment_decomposed__is_set_store_targets.
 Hint Resolve good_compartments__all_good_compartment.
 Hint Resolve good_compartments__non_overlapping.
 Hint Resolve good_compartments__contained_compartments.
@@ -2001,7 +2002,7 @@ Hint Resolve good_state__syscalls_present.
 Hint Resolve good_state_decomposed__syscalls_present.
 Hint Resolve isolate_good.
 Hint Resolve add_to_jump_targets_good.
-Hint Resolve add_to_shared_memory_good.
+Hint Resolve add_to_store_targets_good.
 Hint Resolve good_syscalls_b.
 Hint Resolve good_syscalls.
 Hint Resolve get_syscall_in.

@@ -5,8 +5,9 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import lib.haskell_notation.
-Require Import sfi.common lib.list_utils lib.set_utils sfi.isolate_sets.
-Require Import sfi.abstract sfi.symbolic.
+Require Import lib.list_utils lib.set_utils.
+Require Import compartmentalization.common compartmentalization.isolate_sets.
+Require Import compartmentalization.abstract compartmentalization.symbolic.
 
 Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.
@@ -31,20 +32,20 @@ Context
   {ops          : machine_ops t}
   {spec         : machine_ops_spec ops}
   {scr          : @syscall_regs t}
-  {sfi_syscalls : sfi_syscall_addrs t}.
+  {cmp_syscalls : compartmentalization_syscall_addrs t}.
 
-Notation word    := (word t).
-Notation stag    := (@Sym.stag t).
-Notation sym_sfi := (@Sym.sym_sfi t ops).
+Notation word := (word t).
+Notation stag := (@Sym.stag t).
+Notation sym_compartmentalization := (@Sym.sym_compartmentalization t ops).
 
 Notation satom  := (atom word stag).
 Notation svalue := (@val word stag).
 Notation slabel := (@common.tag word stag).
 
 Notation astate    := (@Abs.state t).
-Notation sstate    := (@Symbolic.state t sym_sfi).
+Notation sstate    := (@Symbolic.state t sym_compartmentalization).
 Notation AState    := (@Abs.State t).
-Notation SState    := (@Symbolic.State t sym_sfi).
+Notation SState    := (@Symbolic.State t sym_compartmentalization).
 Notation SInternal := (@Sym.Internal t).
 
 Notation astep := Abs.step.
@@ -113,7 +114,7 @@ Definition refine_compartment_tag (C   : list (Abs.compartment t))
             | Some (_ @ (Sym.DATA cid' I' W')) =>
               (cid = cid' <-> C ⊢ p' ∈ c) /\
               (In cid I'   -> In p' (Abs.jump_targets  c)) /\
-              (In cid W'   -> In p' (Abs.shared_memory c))
+              (In cid W'   -> In p' (Abs.store_targets c))
             | Some (_ @ _) =>
               False
             | None =>
@@ -141,13 +142,13 @@ Definition refine_previous_b (sk : where_from) (prev : Abs.compartment t)
 Definition refine_syscall_addrs_b (AM : memory t) (SM : Sym.memory t) : bool :=
   ~~ is_some (get AM isolate_addr)                        &&
   ~~ is_some (get AM add_to_jump_targets_addr)            &&
-  ~~ is_some (get AM add_to_shared_memory_addr)           &&
+  ~~ is_some (get AM add_to_store_targets_addr)           &&
   ~~ is_some (get SM isolate_addr)                        &&
   ~~ is_some (get SM add_to_jump_targets_addr)            &&
-  ~~ is_some (get SM add_to_shared_memory_addr)           &&
+  ~~ is_some (get SM add_to_store_targets_addr)           &&
   (isolate_addr             != add_to_jump_targets_addr)  &&
-  (isolate_addr             != add_to_shared_memory_addr) &&
-  (add_to_jump_targets_addr != add_to_shared_memory_addr).
+  (isolate_addr             != add_to_store_targets_addr) &&
+  (add_to_jump_targets_addr != add_to_store_targets_addr).
 
 Record refine (ast : astate) (sst : sstate) : Prop := RefineState
   { pc_refined           : refine_pc_b            (Abs.pc           ast)
@@ -262,7 +263,7 @@ Proof.
       destruct SL as [|c I W|]; solve [apply/andP; tauto | done].
     + destruct (p == isolate_addr);
         [|destruct (p == add_to_jump_targets_addr);
-          [|destruct (p == add_to_shared_memory_addr)]];
+          [|destruct (p == add_to_store_targets_addr)]];
         unfold Sym.sget in *; simpl in *.
       * destruct SiT; try done.
         by repeat invh and; apply/andP.
@@ -302,7 +303,7 @@ Proof.
         [ destruct SiT; try done
         | destruct (p == add_to_jump_targets_addr);
           [ destruct SaJT; try done
-          | destruct (p == add_to_shared_memory_addr);
+          | destruct (p == add_to_store_targets_addr);
             [ destruct SaST; try done
             | discriminate ]]];
         inversion GET; subst;
@@ -333,7 +334,7 @@ Lemma prove_refined_compartment : forall pc instr cid I W
        | Some _@(Sym.DATA cid' I' W') =>
          (cid = cid' <-> AC ⊢ p' ∈ c) /\
          (In cid I' -> In p' (Abs.jump_targets c)) /\
-         (In cid W' -> In p' (Abs.shared_memory c))
+         (In cid W' -> In p' (Abs.store_targets c))
        | Some _@Sym.REG => False
        | None => True
      end) ->
@@ -385,7 +386,7 @@ Lemma prove_refined_compartment' : forall pc instr cid cid' cid'' I W F
        | Some _@(Sym.DATA cid''' I' W') =>
          (cid'' = cid''' <-> AC ⊢ p' ∈ c) /\
          (In cid'' I' -> In p' (Abs.jump_targets c)) /\
-         (In cid'' W' -> In p' (Abs.shared_memory c))
+         (In cid'' W' -> In p' (Abs.store_targets c))
        | Some _@Sym.REG => False
        | None => True
      end) ->
@@ -416,7 +417,7 @@ Lemma prove_permitted_now_in : forall pc instr cid cid' cid'' I W F
       | Some _@(Sym.DATA cid''' I' W') =>
           (cid'' = cid''' <-> AC ⊢ p' ∈ c) /\
           (In cid'' I' -> In p' (Abs.jump_targets c)) /\
-          (In cid'' W' -> In p' (Abs.shared_memory c))
+          (In cid'' W' -> In p' (Abs.store_targets c))
       | Some _@Sym.REG => False
       | None => True
      end) ->
@@ -1448,7 +1449,7 @@ Proof.
   assert (SET_Jprev : is_set Jprev) by
     (eapply Abs.good_compartment_decomposed__is_set_jump_targets;  eassumption).
   assert (SET_Sprev : is_set Sprev) by
-    (eapply Abs.good_compartment_decomposed__is_set_shared_memory; eassumption).
+    (eapply Abs.good_compartment_decomposed__is_set_store_targets; eassumption).
 
   assert (ELEM_pc' : set_elem pc' (set_difference Aprev A'))
     by (apply set_elem_true; auto; apply set_difference_spec; auto).
@@ -1579,12 +1580,12 @@ Proof.
       by subst A'.
   }
 
-  assert (NIN_aS : ~ In add_to_shared_memory_addr A'). {
+  assert (NIN_aS : ~ In add_to_store_targets_addr A'). {
     intros IN.
     rewrite /Abs.syscalls_separated in ASS; move/forallb_forall in ASS.
     specialize (ASS _ IN_prev_AC); move: ASS => /orP [UAS | SAS].
     - rewrite /Abs.user_address_space /= in UAS; move/forallb_forall in UAS.
-      assert (IN' : In add_to_shared_memory_addr Aprev)
+      assert (IN' : In add_to_store_targets_addr Aprev)
         by by move/subset_spec in SUBSET_A'; apply SUBSET_A'.
       specialize (UAS _ IN').
       by move/negP in ANGET_aS.
@@ -1619,7 +1620,7 @@ Proof.
                                         add_to_jump_targets_addr))
     by by apply/negP; intros H; apply GETS_sA in H; move/negP in SNGET_aJ.
   assert (SNGET_sA_aS : ~~ is_some (get (Symbolic.mem sA)
-                                        add_to_shared_memory_addr))
+                                        add_to_store_targets_addr))
     by by apply/negP; intros H; apply GETS_sA in H; move/negP in SNGET_aS.
 
   assert (SNGET_sJ_i : ~~ is_some (get (Symbolic.mem sJ) isolate_addr))
@@ -1628,14 +1629,14 @@ Proof.
                                         add_to_jump_targets_addr))
     by by apply/negP; intros H; apply GETS_sJ in H; move/negP in SNGET_sA_aJ.
   assert (SNGET_sJ_aS : ~~ is_some (get (Symbolic.mem sJ)
-                                        add_to_shared_memory_addr))
+                                        add_to_store_targets_addr))
     by by apply/negP; intros H; apply GETS_sJ in H; move/negP in SNGET_sA_aS.
 
   assert (SNGET_sS_i : ~~ is_some (get MS isolate_addr))
     by by apply/negP; intros H; apply GETS_sS in H; move/negP in SNGET_sJ_i.
   assert (SNGET_sS_aJ : ~~ is_some (get MS add_to_jump_targets_addr))
     by by apply/negP; intros H; apply GETS_sS in H; move/negP in SNGET_sJ_aJ.
-  assert (SNGET_sS_aS : ~~ is_some (get MS add_to_shared_memory_addr))
+  assert (SNGET_sS_aS : ~~ is_some (get MS add_to_store_targets_addr))
     by by apply/negP; intros H; apply GETS_sS in H; move/negP in SNGET_sJ_aS.
 
   assert (SGINT_sA : Sym.good_internal sA). {
@@ -2191,7 +2192,7 @@ Proof.
       + let finish := by inversion def_s'; subst; left
         in destruct (p == isolate_addr);              [finish|];
            destruct (p == add_to_jump_targets_addr);  [finish|];
-           destruct (p == add_to_shared_memory_addr); [finish|];
+           destruct (p == add_to_store_targets_addr); [finish|];
            discriminate.
     - left; rewrite /Sym.supd in def_s'.
       set U := upd SM p _ in def_s'; destruct U eqn:UPD; subst U.
@@ -2200,7 +2201,7 @@ Proof.
       + let finish := by inversion def_s'; subst
         in destruct (p == isolate_addr);              [finish|];
            destruct (p == add_to_jump_targets_addr);  [finish|];
-           destruct (p == add_to_shared_memory_addr); [finish|];
+           destruct (p == add_to_store_targets_addr); [finish|];
            discriminate.
   }
   undo1 def_cid_sys COND; inversion def_cid_sys; subst cid; clear def_cid_sys.
@@ -2262,7 +2263,7 @@ Proof.
               move: GOOD.
               case: (p'' == isolate_addr); first by case SiT.
               case: (p'' == add_to_jump_targets_addr); first by case SaJT.
-              case: (p'' == add_to_shared_memory_addr); by [case SaST | ]. }
+              case: (p'' == add_to_store_targets_addr); by [case SaST | ]. }
           rewrite /tags_subsets in COMPAT.
           rename Aprev into A; rename Jprev into J; rename Sprev into S.
 
@@ -2499,7 +2500,7 @@ Proof.
     + admit.
   - destruct (p == isolate_addr);
       [|destruct (p == add_to_jump_targets_addr);
-         [|destruct (p == add_to_shared_memory_addr);
+         [|destruct (p == add_to_store_targets_addr);
            [|discriminate]]];
       inversion def_s'; subst; clear def_s'; simpl in *.
     + constructor; simpl; auto.
@@ -2518,12 +2519,12 @@ Proof.
     + admit.
 Qed.
 
-Theorem add_to_shared_memory_refined : forall ast sst sst',
+Theorem add_to_store_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
-  Sym.add_to_shared_memory sst ?= sst' ->
+  Sym.add_to_store_targets sst ?= sst' ->
   exists ast',
-    Abs.semantics (Abs.add_to_shared_memory (t:=t)) ast ?= ast' /\
+    Abs.semantics (Abs.add_to_store_targets (t:=t)) ast ?= ast' /\
     refine ast' sst'.
 Proof. Admitted.
 
@@ -2549,7 +2550,8 @@ Proof.
     simpl in *.
   - (* Nop *)
     undo1 NEXT rvec; undo1 def_rvec cid;
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -2575,7 +2577,8 @@ Proof.
       destruct told as [| |]; try discriminate;
       undo1 def_rvec cid;
       undo1 NEXT regs';
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -2613,7 +2616,8 @@ Proof.
       destruct t1,told; try discriminate;
       undo1 def_rvec cid;
       undo1 NEXT regs';
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -2654,7 +2658,8 @@ Proof.
       destruct t1,t2,told; try discriminate;
       undo1 def_rvec cid;
       undo1 NEXT regs';
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -2702,7 +2707,8 @@ Proof.
       destruct t1,t2,told; try discriminate;
       undo1 def_rvec cid;
       undo1 NEXT regs';
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I'' W''|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -2754,7 +2760,8 @@ Proof.
       undo1 def_rvec cid;
       undo1 def_rvec WRITE_OK;
       undo1 NEXT mem';
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I'' W''|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -2817,7 +2824,7 @@ Proof.
             rewrite GET; try done.
           destruct (if      p == isolate_addr              then _
                     else if p == add_to_jump_targets_addr  then _
-                    else if p == add_to_shared_memory_addr then _
+                    else if p == add_to_store_targets_addr then _
                     else None)
             as [[z []]|]; auto.
       }
@@ -2864,7 +2871,7 @@ Proof.
                 rewrite def_mem''; assumption. }
             * destruct (if      p == isolate_addr              then _
                         else if p == add_to_jump_targets_addr  then _
-                        else if p == add_to_shared_memory_addr then _
+                        else if p == add_to_store_targets_addr then _
                         else None)
                 as [[z []]|]; auto.
               move: RCTAGS => [SET_I' [SET_W' [c' [IC' RTAG']]]].
@@ -2879,7 +2886,7 @@ Proof.
                  simpl in *; subst; try done;
                  destruct (if      p' == isolate_addr              then _
                            else if p' == add_to_jump_targets_addr  then _
-                           else if p' == add_to_shared_memory_addr then _
+                           else if p' == add_to_store_targets_addr then _
                            else None)
                    as [[z' []]|]; subst. }
       * rewrite /refine_previous_b; simpl.
@@ -2893,7 +2900,7 @@ Proof.
           [subst; rewrite ->GETM1 in *; done|].
         destruct (w1 == add_to_jump_targets_addr) eqn:EQ_aJ; move/eqP in EQ_aJ;
           [subst; rewrite ->GETM1 in *; done|].
-        destruct (w1 == add_to_shared_memory_addr) eqn:EQ_aS; move/eqP in EQ_aS;
+        destruct (w1 == add_to_store_targets_addr) eqn:EQ_aS; move/eqP in EQ_aS;
           [subst; rewrite ->GETM1 in *; done|].
         repeat rewrite get_set_neq; auto.
         do 3 (erewrite (get_upd_neq (key := w1) (m' := mem')); eauto 2).
@@ -2913,7 +2920,8 @@ Proof.
     undo1 NEXT rvec;
       destruct t1; try discriminate;
       undo1 def_rvec cid;
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -2948,7 +2956,8 @@ Proof.
     undo1 NEXT rvec;
       destruct t1; try discriminate;
       undo1 def_rvec cid;
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -2986,7 +2995,8 @@ Proof.
       destruct told; try discriminate;
       undo1 def_rvec cid;
       undo1 NEXT regs';
-      unfold Sym.can_execute,Sym.sfi_rvec in *; unoption; simpl in *.
+      unfold Sym.can_execute,Sym.compartmentalization_rvec in *;
+      unoption; simpl in *.
     destruct tpc as [F cid'| |]; try discriminate;
       destruct ti as [|cid'' I W|]; try discriminate.
     move/eqP in RPC; subst Apc.
@@ -3035,23 +3045,23 @@ Proof.
       [ move/eqP in EQ; subst
       | clear EQ; destruct (add_to_jump_targets_addr == pc) eqn:EQ;
         [ move/eqP in EQ; subst
-        | clear EQ; destruct (add_to_shared_memory_addr == pc) eqn:EQ;
+        | clear EQ; destruct (add_to_store_targets_addr == pc) eqn:EQ;
           [ move/eqP in EQ; subst
           | discriminate ]]];
       inversion GETCALL; subst;
-      rewrite /Symbolic.run_syscall /Symbolic.handler /sym_sfi
-              /Sym.sfi_handler /Symbolic.sem
+      rewrite /Symbolic.run_syscall /Symbolic.handler /sym_compartmentalization
+              /Sym.compartmentalization_handler /Symbolic.sem
         in CALL;
       [ eapply isolate_refined              in CALL
       | eapply add_to_jump_targets_refined  in CALL
-      | eapply add_to_shared_memory_refined in CALL ];
+      | eapply add_to_store_targets_refined in CALL ];
       try constructor; try eassumption;
       try solve [by destruct tpc; try done; move/eqP in RPC; subst];
       destruct CALL as [ast' [STEP REFINE]];
       exists ast'; split; auto;
       [ eapply Abs.step_syscall with (sc := Abs.isolate              (t:=t))
       | eapply Abs.step_syscall with (sc := Abs.add_to_jump_targets  (t:=t))
-      | eapply Abs.step_syscall with (sc := Abs.add_to_shared_memory (t:=t)) ];
+      | eapply Abs.step_syscall with (sc := Abs.add_to_store_targets (t:=t)) ];
       try solve [reflexivity | eassumption];
       destruct tpc as []; try discriminate; move/eqP in RPC; subst;
       try match goal with |- context[get AM ?addr] =>
@@ -3063,8 +3073,8 @@ Proof.
       rewrite /Abs.get_syscall /= eq_refl.
       * done.
       * by destruct (isolate_addr == add_to_jump_targets_addr).
-      * by destruct (isolate_addr == add_to_shared_memory_addr),
-                    (add_to_jump_targets_addr == add_to_shared_memory_addr).
+      * by destruct (isolate_addr == add_to_store_targets_addr),
+                    (add_to_jump_targets_addr == add_to_store_targets_addr).
 Qed.
 
 End RefinementSA.
