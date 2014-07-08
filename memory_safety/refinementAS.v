@@ -538,35 +538,99 @@ Lemma refine_memory_free (amem' : Abstract.memory mt) (smem smem' : Sym.memory m
        Sym.block_size := Sym.block_size bi;
        Sym.block_color := None |}).
 Proof.
-move=> rmem rist in_bi color_bi mi_col free_b write_block; case: (rmem) => miP get_smem; split.
+move=> rmem rist in_bi color_bi mi_col free_b write_block.
+have ? := @leZ_min (Sym.block_base bi).
+case: (rist) => fresh_color [in_bl [no_overlap [cover_info biP]]].
+case: (rmem) => miP get_smem; split.
   split; first by constructor; apply miP.
   move=> w1 w2 col' ty.
   rewrite (get_write_block _ write_block) => //.
   case: ifP => // bounds get_w1; move/get_smem: (get_w1).
   case mi_col': (PartMaps.get mi col') => // [[b' ?]].
-  have neq_b: b' <> b.
-    move=> eq_b'b; rewrite eq_b'b in mi_col'.
+  have neq_b: b != b'.
+    apply/eqP => eq_bb'; rewrite eq_bb' in mi_col.
     have eq_col := miIr miP mi_col' mi_col.
     rewrite eq_col in get_w1.
     move/(block_color_uniq rmem rist in_bi mi_col color_bi): get_w1.
     by apply/leltP; rewrite bounds.
-
-(*
-  rewrite -Z.leb_antisym -Z.ltb_antisym in bounds.
-  case mi_col': (PartMaps.get mi col') => // [[b' ?]].
-  rewrite /Abstract.getv /=.
-  have neq_col: col != col'.
-    apply/eqP=> eq_col.
-*)
-    
-
-(*(
-  have [->|neq_b'b] := b' =P b.
-
-    rewrite (Abstract.free_get_fail free_b).
-*)
-admit.
-admit.
+  rewrite /Abstract.getv.
+  by rewrite (Abstract.free_get free_b neq_b).
+set newbi := Sym.mkBlockInfo _ _ _.
+do !split=> //.
++ move=> i j def w; rewrite size_set_nth (maxn_idPr _) ?index_mem //.
+  move=> lt_i lt_j.
+  rewrite !(set_nth_default ((@Sym.def_info _ _)) def) ?size_set_nth ?(maxn_idPr _) ?index_mem //.
+  rewrite !nth_set_nth /=.
+  have [->|neq_i] := i =P index bi info;
+  have [->|neq_j] := j =P index bi info => //=.
+  * rewrite /newbi /overlap /= => [[? ?]].
+    apply: (no_overlap _ _ (@Sym.def_info _ _) w) => //.
+      by rewrite index_mem.
+    by rewrite nth_index.
+  * rewrite /newbi /overlap /= => [[? ?]].
+    apply: (no_overlap _ _ (@Sym.def_info _ _) w) => //.
+      by rewrite index_mem.
+    by rewrite nth_index.
+  exact: no_overlap.
++ move=> w v.
+  rewrite (get_write_block _ write_block).
+  case: leltP => bounds_w.
+    move=> _; exists newbi; split=> //.
+    apply/(nthP (@Sym.def_info _ _)).
+    exists (index bi info); first by rewrite size_set_nth (maxn_idPr _) ?index_mem.
+    by rewrite nth_set_nth /= eqxx.
+  case/cover_info=> bi' [in_bi' bounds_bi'].
+  exists bi'; split => //.
+  apply/(nthP (@Sym.def_info _ _)).
+  exists (index bi' info); first by rewrite size_set_nth (maxn_idPr _) ?index_mem.
+  rewrite nth_set_nth /=.
+  have [eq_index|] := index bi' info =P index bi info; last by rewrite nth_index.
+  have eq_bi: bi' = bi.
+    by rewrite -(nth_index bi in_bi) -(nth_index bi in_bi') eq_index.
+  by rewrite eq_bi in bounds_bi'.
+move=> bi'.
+case/(nthP (@Sym.def_info _ _))=> i.
+rewrite size_set_nth (maxn_idPr _) ?index_mem // => lt_i.
+rewrite nth_set_nth /=.
+have [_ <-|neq_i <-] := i =P index bi info.
+  move/(_ bi in_bi)/block_info_bounds: biP => [? ?].
+  apply: BlockInfoFree=> //.
+  move=> off /= bounds_off; exists 0; rewrite (get_write_block _ write_block).
+  case: leltP=> //.
+  rewrite addwE /=; try omega.
+  by move=> ?; omega.
+move {bi'}.
+set bi' := nth _ _ _.
+have ? := @leZ_min (Sym.block_base bi').
+move/(_ bi'): biP.
+rewrite mem_nth //.
+case/(_ erefl)=> [? ? ? [? ?] ? get_bi'|? [? ?] get_bi'].
+  apply: BlockInfoLive=> //.
+  move=> off bounds_off.
+  case: {get_bi'} (get_bi' off bounds_off)=> w [ty get_bi'].
+  exists w; exists ty.
+  rewrite (get_write_block _ write_block).
+  case: leltP=> //.
+  rewrite addwE; last omega.
+  move => bounds_bi.
+  case: neq_i.
+  apply: (no_overlap _ _ (Sym.def_info (t:=mt)) (Sym.block_base bi' + off)) => //.
+    by rewrite index_mem.
+  unfold bi' in *; rewrite nth_index // /overlap.
+  by rewrite addwE; omega.
+apply: BlockInfoFree=> //.
+move=> off bounds_off.
+case: {get_bi'} (get_bi' off bounds_off)=> w get_bi'.
+exists w.
+rewrite (get_write_block _ write_block).
+case: leltP=> //.
+rewrite addwE; last omega.
+move => bounds_bi.
+case: neq_i.
+apply: (no_overlap _ _ (Sym.def_info (t:=mt)) (Sym.block_base bi' + off)) => //.
+  by rewrite index_mem.
+unfold bi' in *; rewrite nth_index // /overlap.
+by rewrite addwE; omega.
 Qed.
 
 Definition refine_reg_val v a :=
