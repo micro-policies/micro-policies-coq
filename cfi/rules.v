@@ -63,7 +63,6 @@ Definition cfi_handler (umvec : Symbolic.MVec cfi_tag) : option (Symbolic.RVec c
   end.
 
 (* Here is a more readable variant (unused at the moment) *)
-(* CH: TODO: start using or prove them equivalent :) *)
 (* NG: Found bug in store case*)
 (* NG: Found second bug*)
 Definition cfi_handler_aux (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=

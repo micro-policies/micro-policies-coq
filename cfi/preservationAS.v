@@ -70,8 +70,6 @@ Definition backwards_simulation :=
                                     syscall_preserves_valid_jmp_tags
                                     syscall_preserves_entry_tags.
 
-(* For initial states - may need to think a bit about how to structure 
-   the whole thing*)
 Lemma untag_implies_reg_refinement reg :
   RefinementAS.refine_registers valid_jmp (PartMaps.map RefinementAS.untag_atom reg) reg.
 Proof.

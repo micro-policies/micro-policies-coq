@@ -63,7 +63,7 @@ Variable stable : list (@Symbolic.syscall mt sym_params).
 
 Variable ki : (@refinement_common.kernel_invariant mt ops sym_params e).
 
-Definition masks := symbolic.rules.masks. (*is this right?*)
+Definition masks := symbolic.rules.masks.
 
 (*Used for our invariants*)
 Hypothesis syscall_preserves_instruction_tags :
@@ -100,8 +100,6 @@ Definition coerce (x : atom (word mt) (word mt)) : atom (word mt) (@cfi_tag mt) 
     | _ => (common.val x)@DATA (*this is unreachable in our case, dummy value*)
   end.
 
-(*Q: Why can't I get it to typecheck when I substitute the existential with what
-  I use to instantiate it?*)
 Lemma mem_refinement_equiv :
   forall (smem : @Symbolic.memory mt sym_params) cmem cmem',
     refinement_common.refine_memory smem cmem ->

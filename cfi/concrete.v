@@ -74,9 +74,6 @@ Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t
   forall r,
     atom_equiv (TotalMaps.get regs r) (TotalMaps.get regs' r).
 
-(* Do we also want to disallow attacker if the next step is KERNEL?
-  Isn't the violation enough? *)
-
 Inductive step_a : Concrete.state t ->
                    Concrete.state t -> Prop :=
 | step_attack : forall mem reg cache pc tpc epc mem' reg'
@@ -107,7 +104,7 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
             | _ => pc_s' == pc_s .+1
           end
         | Some KERNEL => false (* this says that if cst,cst' is in user mode then it's
-                                  not sensible to point to kernel memory.. think about it*)
+                                  not sensible to point to kernel memory*)
         | Some (ENTRY _) => false
         | None => false
       end
