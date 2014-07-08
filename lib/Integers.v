@@ -4162,3 +4162,15 @@ Delimit Scope word_unpack_scope with wu.
 End Notations.
 
 End Word.
+
+Require Import ssreflect ssrbool eqtype.
+
+Lemma int_eqP n : Equality.axiom (@Word.eq n).
+Proof.
+  move=> x y; apply: (iffP idP) => [|->].
+  by have := Word.eq_spec _ x y; case: (Word.eq x y).
+  by rewrite Word.eq_true.
+Qed.
+
+Definition int_eqMixin n := EqMixin (int_eqP n).
+Canonical int_eqType n := Eval hnf in EqType (Word.int n) (int_eqMixin n).

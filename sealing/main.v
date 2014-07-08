@@ -101,7 +101,7 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
 
 (* TODO: Where should this really live? *)
 Instance sk_defs : Sym.sealing_key := {|
- key := int32_eqType;
+ key := [eqType of int32];
  max_key := Word.repr 100;
  inc_key := fun x => Word.add x (Word.repr 1);
  ord_key := int_ordered

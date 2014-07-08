@@ -49,53 +49,8 @@ Module Int5Indexed := Int5Ordered.IntIndexed.
 Import Word.
 
 Definition int32 := int 31.
-
-Lemma int32_eqP : Equality.axiom (@eq 31).
-Proof.
-move=> x y; apply: (iffP idP) => [|->].
-  by have := Word.eq_spec _ x y; case: (Word.eq x y).
-by rewrite Word.eq_true.
-Qed.
-
-Definition int32_eqMixin := EqMixin int32_eqP.
-Canonical int32_eqType := Eval hnf in EqType int32 int32_eqMixin.
-
-
-Definition int28 := int 27. (*28 bits*)
-
-Lemma int28_eqP : Equality.axiom (@eq 27).
-Proof.
-move=> x y; apply: (iffP idP) => [|->].
-  by have := Word.eq_spec _ x y; case: (Word.eq x y).
-by rewrite Word.eq_true.
-Qed.
-
-Definition int28_eqMixin := EqMixin int28_eqP.
-Canonical int28_eqType := Eval hnf in EqType int28 int28_eqMixin.
-
 Definition regt := int 4. (* 5 bits *)
-
-Lemma regt_eqP : Equality.axiom (@eq 4).
-Proof.
-move=> x y; apply: (iffP idP) => [|->].
-  by have := Word.eq_spec _ x y; case: (Word.eq x y).
-by rewrite Word.eq_true.
-Qed.
-
-Definition regt_eqMixin := EqMixin regt_eqP.
-Canonical regt_eqType := Eval hnf in EqType regt regt_eqMixin.
-
 Definition immt := int 14. (* 15 bits *)
-
-Lemma immt_eqP : Equality.axiom (@eq 14).
-Proof.
-move=> x y; apply: (iffP idP) => [|->].
-  by have := Word.eq_spec _ x y; case: (Word.eq x y).
-by rewrite Word.eq_true.
-Qed.
-
-Definition immt_eqMixin := EqMixin immt_eqP.
-Canonical immt_eqType := Eval hnf in EqType immt immt_eqMixin.
 
 Module Int32PMap := FiniteMap      Int32Indexed.
 Module RegtPMap  := FiniteMap      Int5Indexed.
@@ -105,9 +60,9 @@ Module RegtTMap  := FiniteTotalMap Int5Indexed.
 (* CH: What's incorrect about it?  Is it the fact that you're
    abusing int instead of using a more precise type? *)
 Definition concrete_int_32_t : machine_types := {|
-  word := int32_eqType;
-  reg := regt_eqType;
-  imm := immt_eqType;
+  word := [eqType of int32];
+  reg := [eqType of regt];
+  imm := [eqType of immt];
   word_map := Int32PMap.t;
   reg_map := RegtPMap.t;
   reg_tmap := RegtTMap.t
