@@ -350,6 +350,7 @@ Definition ptr_fun (st : state t)
   | _ => None
   end.
 
+(* Not yet used *)
 Definition sizeof_fun (st : state t) : option (state t) :=
   ptr_fun st (fun x _ => (block_size x)@V(DATA)).
 
@@ -375,7 +376,7 @@ Definition eqp_fun (st : state t) : option (state t) :=
 Definition memsafe_syscalls : list (syscall t) :=
   [Syscall malloc_addr V(DATA) malloc_fun;
    Syscall free_addr V(DATA) free_fun;
-   Syscall size_addr V(DATA) sizeof_fun;
+(* Syscall size_addr V(DATA) sizeof_fun; *)
    Syscall base_addr V(DATA) basep_fun;
    Syscall eq_addr V(DATA) eqp_fun].
 

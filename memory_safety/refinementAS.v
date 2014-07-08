@@ -1388,41 +1388,6 @@ by solve_pc rpci.
   case: (refine_memory_free rmem rist in_x color_bi mi_col free_b E0) => rmem' rist'.
   by split; eassumption.
 
-(* Size *)
-
-admit.
-
-(*
-  case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
-  move/(_ x _).
-  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
-    case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
-    by rewrite inE eqxx.
-  rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
-  case: biP E H5 color_x => [|-> //].
-  move=> col b color_x [? ?] mi_col get_x ? ? ?.
-  have eq_col: col = s0 by congruence.
-  have eq_s4b: s4 = b.
-    inversion H3.
-    by rewrite eq_col H9 in mi_col; injection mi_col.
-
-case: (get_x 0)=> [|v [ty]]; first by rewrite word0; omega.
-rewrite addw0.
-move/get_amem.
-rewrite mi_col /Abstract.getv /=.
-case get_b: (PartMaps.get a_mem b) => // _.
-
-  eexists; eexists; split.
-  eapply Abstract.step_size.
-  by eauto.
-  by rewrite eq_s4b.
-  by rewrite -size_fr word_to_ZK.
-  by eauto.
-
-  by split; eassumption.
-*)
-
-
 (* Base *)
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ x _).

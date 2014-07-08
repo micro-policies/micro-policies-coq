@@ -222,6 +222,7 @@ Inductive step : state -> state -> Prop :=
     (FREE : free_fun mem ptr.1 = Some mem')
     (RA   : get reg ra = Some (VPtr pc')),
     step (mkState mem reg bl (VData free_addr)) (mkState mem' reg bl (VPtr pc'))
+(*
 | step_size : forall mem reg reg' b o fr bl pc'
     (PTR  : get reg syscall_arg1 = Some (VPtr (b,o)))
     (MEM  : get mem b = Some fr),
@@ -229,6 +230,7 @@ Inductive step : state -> state -> Prop :=
     (UPD  : upd reg syscall_ret size = Some reg')
     (RA   : get reg ra = Some (VPtr pc')),
     step (mkState mem reg bl (VData size_addr)) (mkState mem reg' bl (VPtr pc'))
+*)
 | step_base : forall mem reg reg' b o bl pc'
     (PTR  : get reg syscall_arg1 = Some (VPtr (b,o)))
     (UPD  : upd reg syscall_ret (VPtr (b,Z_to_word 0%Z)) = Some reg')
