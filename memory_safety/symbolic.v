@@ -22,25 +22,6 @@ Section WithClasses.
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 
-(* CH: This should be called color *)
-Definition block := word t.
-
-Inductive type :=
-| TypeData
-| TypePointer : block -> type.
-
-Inductive tag :=
-| TagValue : type -> tag
-| TagMemory : block -> type -> tag
-| TagFree.
-
-Local Notation DATA := TypeData.
-Local Notation PTR := TypePointer.
-Local Notation "V( ty )" := (TagValue ty) (at level 4).
-Notation "M( n , ty )" := (TagMemory n ty) (at level 4).
-Local Notation FREE := TagFree.
-Local Notation atom := (atom (word t) tag).
-
 Import PartMaps.
 
 Context `{syscall_regs t}
@@ -51,10 +32,36 @@ Open Scope word_scope.
 Local Notation word := (word t).
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
+Class color_class := {
+  color : eqType;
+  max_color : color;
+  inc_color : color -> color;
+  ord_color :> Ordered color;
+  ltb_inc : forall col, (col <? max_color -> col <? inc_color col)%ordered
+}.
+
+Context {cl : color_class}.
+
+Inductive type :=
+| TypeData
+| TypePointer : color -> type.
+
+Inductive tag :=
+| TagValue : type -> tag
+| TagMemory : color -> type -> tag
+| TagFree.
+
+Local Notation DATA := TypeData.
+Local Notation PTR := TypePointer.
+Local Notation "V( ty )" := (TagValue ty) (at level 4).
+Notation "M( n , ty )" := (TagMemory n ty) (at level 4).
+Local Notation FREE := TagFree.
+Local Notation atom := (atom word tag).
+
 Record block_info := mkBlockInfo {
   block_base : word;
   block_size : word;
-  block_color : option word
+  block_color : option color
 }.
 
 Definition block_info_eq :=
@@ -211,16 +218,16 @@ Definition rules (mvec : MVec tag) : option (RVec tag) :=
 
 End WithVectorNotations.
 
-Variable initial_block : block.
+Variable initial_color : color.
 
-(* Hypothesis: alloc never returns initial_block. *)
+(* Hypothesis: alloc never returns initial_color. *)
 
 Variable initial_pc : word.
 Variable initial_mem  : word_map t atom.
 Variable initial_registers : reg_map t atom.
-Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial_block).
+Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial_color).
 
-Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_block)).
+Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_color)).
 
 Definition type_eq t1 t2 :=
   match t1, t2 with
@@ -262,7 +269,7 @@ Global Instance sym_memory_safety : params := {
 
   handler := rules;
 
-  internal_state := (word * list block_info)%type
+  internal_state := (color * list block_info)%type
 }.
 
 
@@ -278,10 +285,10 @@ Definition write_block init base (v : atom) sz : option (Symbolic.memory t _) :=
      write_block_rec init base v (Z.to_nat (word_to_Z sz))
   else None.
 
-Definition update_block_info info x color sz :=
+Definition update_block_info info x (color : color) sz :=
   let i := index x info in
-  let block1 := mkBlockInfo (block_base x) sz (Some color) in
-  let res := set_nth block1 info i block1 in
+  let color1 := mkBlockInfo (block_base x) sz (Some color) in
+  let res := set_nth color1 info i color1 in
   if sz == block_size x then res
     else
     let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
@@ -289,7 +296,7 @@ Definition update_block_info info x color sz :=
 
 Definition malloc_fun st : option (state t) :=
   let: (color,info) := internal st in
-  if (color <? max_word)%ordered then
+  if (color <? max_color)%ordered then
   do! sz <- get (regs st) syscall_arg1;
   match sz with
     | sz@V(DATA) =>
@@ -297,7 +304,7 @@ Definition malloc_fun st : option (state t) :=
           if ohead [seq x <- info | ((sz <=? block_size x) && (block_color x == None))%ordered] is Some x then
           do! mem' <- write_block (mem st) (block_base x) 0@M(color,DATA) sz; 
           do! regs' <- upd (regs st) syscall_ret ((block_base x)@V(PTR color));
-          let color' := color + 1 in
+          let color' := inc_color color in
           do! raddr <- get (regs st) ra;
           if raddr is _@V(PTR _) then
             Some (State mem' regs' raddr (color', update_block_info info x color sz))
@@ -334,7 +341,7 @@ Definition free_fun (st : state t) : option (state t) :=
 
 (* This factors out the common part of sizeof, basep, and offp *)
 Definition ptr_fun (st : state t)
-    (f : block_info -> word -> atom) : option (state t) :=
+    (f : block_info -> color -> atom) : option (state t) :=
   let: (next_color,inf) := internal st in
   do! ptr <- get (regs st) syscall_arg1;
   match ptr return option (state t) with
@@ -384,17 +391,19 @@ End WithClasses.
 
 Canonical block_info_eqType.
 
-Notation memory t := (Symbolic.memory t (@sym_memory_safety t)).
-Notation registers t := (Symbolic.registers t (@sym_memory_safety t)).
+Notation memory t := (Symbolic.memory t (@sym_memory_safety t _)).
+Notation registers t := (Symbolic.registers t (@sym_memory_safety t _)).
 
 Module Notations.
 
-Notation DATA := (TypeData _).
+Notation DATA := TypeData.
 Notation PTR := TypePointer.
 Notation "V( ty )" := (TagValue ty) (at level 4).
 Notation "M( n , ty )" := (TagMemory n ty) (at level 4).
-Notation FREE := (TagFree _).
+Notation FREE := TagFree.
 
 End Notations.
+
+Arguments def_info t {_ _}.
 
 End Sym.
