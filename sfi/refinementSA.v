@@ -1593,10 +1593,42 @@ Proof.
           set sst' := SState M_next R_next pc'@(Sym.PC JUMPED cid_sys)
                              (SInternal Snext SiT SaJT SaST).
           assert (GOOD : forall p, Sym.good_memory_tag sst  p) by auto.
-          assert (GOOD' : forall p, Sym.good_memory_tag sst' p) by admit.
-          assert (COMPAT : tags_subsets sst sst') by admit.
+          assert (GOOD' : forall p, Sym.good_memory_tag sst' p).
+          { move => p''.
+            have [->|/eqP NEQ] := altP (p'' =P p).
+            - rewrite /Sym.good_memory_tag /Sym.sget /sst'.
+              generalize (PartMaps.get_upd_eq UPD) => EQ.
+              rewrite EQ.
+              move: GOOD => /(_ p) GOOD.
+              rewrite /Sym.good_memory_tag /sst def_xcIW in GOOD.
+              move/andP: GOOD => [GOOD1 GOOD2].
+              apply/andP. split; last by [].
+              by apply insert_unique_preserves_set_true.
+            - rewrite /Sym.good_memory_tag /Sym.sget /sst'. 
+              generalize (PartMaps.get_upd_neq NEQ UPD) => EQ.
+              rewrite EQ.
+              move: GOOD => /(_ p'') GOOD.
+              rewrite /Sym.good_memory_tag /Sym.sget /sst in GOOD.
+              exact: GOOD. }
+          assert (COMPAT : tags_subsets sst sst').
+          { move => p''.
+            have [->|/eqP NEQ] := altP (p'' =P p).
+            - rewrite def_xcIW. 
+              generalize (PartMaps.get_upd_eq UPD) => EQ.
+              rewrite /Sym.sget /sst' EQ. 
+              split; first by [].
+              split; last by [].
+              move => a. apply insert_unique_preserves.
+            - generalize (PartMaps.get_upd_neq NEQ UPD) => EQ.
+              rewrite /Sym.sget /sst /sst' EQ.
+              move: GOOD => /(_ p'') GOOD.
+              rewrite /Sym.good_memory_tag /sst /Sym.sget in GOOD.
+              case GET: (get SM p'') GOOD => [[v [? ?|c1 I1 W1|]]|] GOOD //.
+              move: GOOD.
+              case: (p'' == isolate_addr); first by case SiT.
+              case: (p'' == add_to_jump_targets_addr); first by case SaJT.
+              case: (p'' == add_to_shared_memory_addr); by [case SaST | ]. }
           rewrite /tags_subsets in COMPAT.
-          
           rename Aprev into A; rename Jprev into J; rename Sprev into S.
           
           assert (INIT :
@@ -1708,7 +1740,13 @@ Proof.
           move: GOOD GOOD' => /andP [SET_I'' SET_W''] /andP [SET_Iz SET_Wz].
           destruct COMPAT as [EQ [SUB_I'' SUB_W'']]; subst cz.
           f_equal; apply set_elem_true; auto.
-          admit.
+          have -> : sc = cid'.
+          { undo1 REFINED X1.
+            undo1 REFINED X2. by unoption. }
+          move/orP: OK => [/eqP EQ' | IN''].
+          + admit.
+          + apply SUB_I''.
+            by apply/(set_elem_true _ _ SET_I'').
         - rewrite -(lock refined_compartment); apply delete_preserves_forallb.
           eapply forallb_impl; [|apply RCOMPS].
           simpl; intros d RCSOME.
@@ -1809,7 +1847,32 @@ Proof.
                       replace c with <<Aprev,Jprev,Sprev>> in * by eauto 3.
                       congruence.
                 }
-          - admit. }
+          - rewrite /Sym.sget.  
+            rewrite /Sym.sget in NEW.
+            rewrite NEW. 
+            move: (RCTAGS a) => RCTAGSa.
+            rewrite def_xcIW in RCTAGSa.
+            move: RCTAGSa => [SET_I'' [SET_W'' [c [Hc1 Hc2]]]].
+            split3.
+            + by apply insert_unique_preserves_set_true.
+            + by [].
+            + exists c.
+              have INCOMP : <<Aprev,insert_unique a Jprev,Sprev>> :: delete <<Aprev,Jprev,Sprev>> AC ⊢ a ∈ c
+                by admit. (* Should be possible to show by reasoning over Hc1 and delete *)
+              split; first by [].
+              move => p''.
+              move: Hc2 RTAG => /(_ p'') Hc2 /(_ p'') RTAG.
+              rewrite /Sym.sget in Hc2 RTAG.
+              have [EQap''|/eqP NEQap''] := altP (p'' =P a).
+              * subst p''.
+                generalize (PartMaps.get_upd_eq UPD) => EQ.
+                rewrite EQ.
+                split; first by eauto.
+                admit.
+              * generalize (PartMaps.get_upd_neq NEQap'' UPD) => EQ.
+                rewrite EQ.
+                admit.
+        }
     + rewrite /refine_previous_b /=.
       (*eapply prove_refined_compartment; eauto 3.*)
       admit.
