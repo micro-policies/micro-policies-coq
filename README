@@ -6,3 +6,9 @@
 * Compiling
 
 $ make
+
+* The submitted manuscript [4] is in file acmccs2014_submission_243.pdf
+
+[4] (Authors elided). Programming the PUMP: Hardware-assisted micro-policies
+for security. Under review; draft version available in supplemental materials
+for POPL submission, 2014.
