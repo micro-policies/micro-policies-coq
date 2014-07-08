@@ -1,8 +1,7 @@
-
 * Prerequisites
 
-- Coq 8.4pl4 (might work with 8.4pl3 too though)
-- ssreflect 1.5
+- Coq 8.4pl4 (http://coq.inria.fr/)
+- ssreflect 1.5 (http://www.msr-inria.fr/projects/mathematical-components-2/)
 
 * Compiling
 
