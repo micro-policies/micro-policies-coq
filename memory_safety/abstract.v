@@ -146,12 +146,6 @@ Definition value_eq (x y : value) : bool :=
     | _, _ => false
   end.
 
-Lemma value_eqP : Equality.axiom value_eq.
-Admitted.
-
-Definition value_eqMixin := EqMixin value_eqP.
-Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
-
 Inductive step : state -> state -> Prop :=
 | step_nop : forall mem reg bl pc i,
              forall (PC :    getv mem pc = Some (VData i)),
