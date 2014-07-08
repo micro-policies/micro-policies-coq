@@ -1201,7 +1201,7 @@ try subst mvec;
 try rewrite /Symbolic.next_state_pc /Symbolic.next_state_reg /Symbolic.next_state_reg_and_pc /Symbolic.next_state /= /Sym.mvec_match /= in NEXT;
 match_inv;
 repeat subst_beq;
-have [miP _] := rmem;
+have [miP get_amem] := rmem;
 try have [rpcb [mi_apcb rpci]] := refine_pc_inv rpc;
 
 try match goal with
@@ -1295,6 +1295,8 @@ by solve_pc rpci.
 
 (* Syscall *)
 
+(* Malloc *)
+
   move: b Heqo E0 E3 => bi Heqo E0 E3. 
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ bi _).
@@ -1343,6 +1345,7 @@ by solve_pc rpci.
   exact: (refine_internal_state_malloc in_bounds malloc).
 
 (* Free *)
+
   generalize min_word_bound => min_bound.
   generalize max_word_bound => max_bound.
   have ? := @leZ_max (Sym.block_size x).
@@ -1385,20 +1388,29 @@ by solve_pc rpci.
   case: (refine_memory_free rmem rist in_x color_bi mi_col free_b E0) => rmem' rist'.
   by split; eassumption.
 
-(*
 (* Size *)
-  move/(_ x _): (rist).
+
+admit.
+
+(*
+  case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
+  move/(_ x _).
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
     case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
-  case: biP E H5 color_x=> [|bi ->] //.
-  move=> b col bi ? color_bi mi_b get_b size_fr E H5 color_x.
+  case: biP E H5 color_x => [|-> //].
+  move=> col b color_x [? ?] mi_col get_x ? ? ?.
   have eq_col: col = s0 by congruence.
-  rewrite eq_col in mi_b.
   have eq_s4b: s4 = b.
     inversion H3.
-    exact: (miIr miP H10 mi_b erefl).
+    by rewrite eq_col H9 in mi_col; injection mi_col.
+
+case: (get_x 0)=> [|v [ty]]; first by rewrite word0; omega.
+rewrite addw0.
+move/get_amem.
+rewrite mi_col /Abstract.getv /=.
+case get_b: (PartMaps.get a_mem b) => // _.
 
   eexists; eexists; split.
   eapply Abstract.step_size.
@@ -1408,35 +1420,34 @@ by solve_pc rpci.
   by eauto.
 
   by split; eassumption.
+*)
 
 
 (* Base *)
-  move/(_ x _): (rist).
+  case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
+  move/(_ x _).
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
     case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
-  case: biP E E0 color_x=> [|bi ->] //.
-  move=> b col bi ? color_bi mi_b get_b size_fr E E0 color_x.
+  case: biP E E0 color_x => [|-> //].
+  move=> col b color_x [? ?] mi_col get_x ? E0 ?.
   have eq_col: col = s0 by congruence.
-  rewrite eq_col in mi_b.
-  eapply (refine_registers_upd rregs) in E0; last first.
-    by rewrite -[Sym.block_base bi]addw0; econstructor.
-  case: E0 => ? [? ?].
-  have eq_s1b: s4 = b.
+  have eq_s4b: s4 = b.
     inversion H3.
-    exact: (miIr miP H8 mi_b erefl).
+    by rewrite eq_col H8 in mi_col; injection mi_col.
+
+rewrite -eq_col -[Sym.block_base x]addw0 in E0.
+  eapply (refine_registers_upd rregs) in E0; last exact: (RefinePtr _ mi_col).
+  case: E0=> ? [upd_ret ?].
+
   eexists; eexists; split.
   eapply Abstract.step_base.
   by eauto.
-  by rewrite eq_s1b.
+  by rewrite eq_s4b.
   by eauto.
 
   by split; eassumption.
-*)
-
-admit.
-admit.
 
 (* Eq *)
 
