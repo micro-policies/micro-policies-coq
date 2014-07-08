@@ -1728,14 +1728,14 @@ Proof.
     - rewrite THEN NOW; auto.
   }
 
-  assert (TSI_s0_sS : forall X,
-                        is_set X ->
-                        disjoint A' X ->
-                        tags_subsets_in
-                          X
-                          (SState SM SR pc@(Sym.PC F cid)
-                                  (SInternal Snext SiT SaJT SaST))
-                          (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)). {
+  assert (TSI_s0_sS' : forall X,
+                         is_set X ->
+                         disjoint A' X ->
+                         tags_subsets_in
+                           X
+                           (SState SM SR pc@(Sym.PC F cid)
+                                   (SInternal Snext SiT SaJT SaST))
+                           (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)). {
     intros X SET_X DJX.
     eapply tags_subsets_in_trans.
     - rewrite /tags_subsets_in /Sym.sget.
@@ -1756,7 +1756,7 @@ Proof.
                          (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)).
   {
     move=> c /delete_in_iff [NEQ IN] a.
-    apply TSI_s0_sS.
+    apply TSI_s0_sS'.
     - move/forallb_forall in AGOODS; apply AGOODS in IN; auto.
     - assert (DJ' : disjoint Aprev (Abs.address_space c)). {
         replace Aprev with (Abs.address_space <<Aprev,Jprev,Sprev>>)
@@ -1832,6 +1832,79 @@ Proof.
     - apply Abs.in_compartment_spec in IN_c_sys; tauto.
   }
 
+  assert (NEW_CIDS : forall p,
+            match
+              Sym.sget (SState SM SR pc@(Sym.PC F cid)
+                               (SInternal Snext SiT SaJT SaST))
+                       p,
+              Sym.sget (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS) p
+            with
+              | Some _@(Sym.DATA cid1 I1 W1), Some _@(Sym.DATA cid2 I2 W2) =>
+                (cid1 = cid2 /\ cid2 <> Snext /\ ~ In p A') \/
+                (cid1 = cid  /\ cid2 =  Snext /\ In p A')
+              | None , None =>
+                True
+              | _ , _ =>
+                False
+            end). {
+    move=> a; destruct (elem a A') as [IN_a | NIN_a].
+    - generalize def_sA => def_sA';
+        apply @Sym.retag_set_in_ok with (p := a) in def_sA'; try assumption.
+      move: def_sA' => [y [cidy [Iy [Wy [THEN [/eqP OK NOW]]]]]]; subst cidy.
+      rewrite /Sym.sget /= in THEN; rewrite {1}/Sym.sget /= THEN.
+      move/id in TS_sA_sJ; move/id in TS_sJ_sS.
+      specialize (TS_sA_sJ a); specialize (TS_sJ_sS a).
+      rewrite NOW in TS_sA_sJ.
+      replace (Sym.sget (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS) a)
+         with (Sym.sget (SState MS RS pcS                         siS) a)
+           by reflexivity.
+      destruct (Sym.sget sJ                     a) as [[xJ [|cidJ IJ WJ|]]|],
+               (Sym.sget (SState MS RS pcS siS) a) as [[xS [|cidS IS WS|]]|];
+        try done.
+      by repeat invh and; subst; right.
+    - assert (SET_a : is_set [a]) by auto.
+      assert (DJ_a : disjoint A' [a]). {
+        destruct A' as [|a' A']; [done|].
+        rewrite /disjoint /=.
+        destruct (a' <=> a) eqn:CMP.
+        + apply compare_eq in CMP; subst; elim NIN_a; auto.
+        + destruct (set_intersection A' [a]) as [|z zs] eqn:SI; [done|].
+          assert (IN_z : In z (set_intersection A' [a])) by (rewrite SI; auto).
+          apply set_intersection_spec in IN_z; eauto 2.
+          move: IN_z => [IN_z [?|[]]]; subst.
+          assert (z = a') by (simpl in NIN_a; tauto); subst.
+          by apply lt_irrefl in CMP.
+        + done.
+      }
+      specialize (TSI_s0_sS' [a] SET_a DJ_a a); move/id in TSI_s0_sS'.
+      destruct (Sym.sget
+                  (SState SM SR pc@(Sym.PC F cid)
+                          (SInternal Snext SiT SaJT SaST))
+                  a) as [[y [|cidy Iy Wy|]]|] eqn:ORIG,
+               (Sym.sget
+                  (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+                  a) as [[y' [|cidy' Iy' Wy'|]]|];
+        try done.
+      move: TSI_s0_sS' => [E _]; specialize (E (or_introl erefl)); subst cidy'.
+      left; repeat split; auto.
+      apply Sym.sget_lt_next in ORIG; [simpl in ORIG|assumption].
+      by move=> ?; subst; apply lt_irrefl in ORIG.
+  }
+  
+  assert (RC_prev : refined_compartment
+                      <<set_difference Aprev A', Jprev, Sprev>>
+                      (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+                      ?= cid). {
+    admit.
+  }
+
+  assert (RC_new : refined_compartment
+                     <<A',J',S'>>
+                     (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+                     ?= cid). {
+    admit.
+  }
+  
   constructor; simpl.
   - apply eq_refl.
   - move/id in def_sA; move/id in def_sJ; move/id in def_sS;
@@ -1842,7 +1915,14 @@ Proof.
     replace RS with SR by congruence.
     assumption.
   - apply RMEMS'.
-  - admit.
+  - split.
+    + rewrite (lock refined_compartment) /= -(lock refined_compartment)
+              RC_prev RC_new
+              (lock refined_compartment) /= -(lock refined_compartment).
+      eapply forallb_impl_in; [|apply delete_preserves_forallb, RCOMPS].
+      simpl; move=> c IN.
+      by eapply RC_rest in IN; rewrite IN.
+    + admit.
   - apply/andP; split; [apply eq_refl | apply/eqP; apply R_c_sys'].
   - rewrite /refine_memory /refine_mem_loc_b /pointwise in RMEMS'.
     rewrite /refine_syscall_addrs_b /= in RSC *.
