@@ -99,14 +99,36 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
       SEALED(k) --> k*4+3
 *)
 
-(* TODO: Where should this really live? *)
 Instance sk_defs : Sym.sealing_key := {|
  key := [eqType of Word.int 27];
- max_key := Word.repr 100;
+ max_key := Word.repr (Word.max_signed 27);
  inc_key := fun x => Word.add x (Word.repr 1);
  ord_key := Int28Ordered.int_ordered
 |}.
-admit.
+Proof.
+  rewrite /ordered.ltb /= /Int28Ordered.int_compare /Word.signed.
+  intros sk.
+  destruct (equiv_dec sk (Word.repr (Word.max_signed 27))) as [H7 | H7] eqn:E1; rewrite E1; first by [].
+  rewrite /Word.lt.
+  destruct (Coqlib.zlt (Word.signed sk) (Word.signed (@Word.repr 27 (Word.max_signed 27))))
+    as [H6 | H6] eqn: E2; rewrite E2; last by [].
+  intros _.
+  move: (Word.signed_range _ sk) => [H1' H2'].
+  destruct (equiv_dec sk (Word.add sk (Word.repr 1))) as [H | H] eqn:E3; rewrite E3.
+  - clear E3.
+    rewrite Word.add_signed -Word.add_repr /= !Word.repr_signed in H.
+    have H'': Word.sub sk sk = Word.sub (Word.add sk (Word.repr 1)) sk by congruence.
+    rewrite Word.sub_idem in H''.
+    assert (CONTRA: Word.add (Word.neg sk) sk = Word.add (Word.neg sk) (Word.add sk (Word.repr 1))) by congruence.
+    rewrite Word.add_commut Word.add_neg_zero -Word.add_assoc in CONTRA.
+    rewrite -(Word.add_commut _ sk) Word.add_neg_zero Word.add_zero_l in CONTRA.
+    by move: CONTRA => /esym/Word.one_not_zero CONTRA.
+  - case: (Coqlib.zlt _ _) => [E | E] {E2} //=.
+    rewrite Word.signed_repr in H6; last by [].
+    rewrite Word.add_signed Word.signed_repr in E; last by [].
+    move: (Word.signed_range 27 (Word.repr (Word.signed sk + 1)%Z)) => [H1 H2].
+    rewrite Word.signed_repr /Wordsize_28.wordsize_minus_one in E H1 H2; last by (split; omega).
+    clear - E. omega.
 Defined.
 
 Import Word.Notations.
