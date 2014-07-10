@@ -193,7 +193,7 @@ Ltac destruct_mvec_operands :=
   | ts : Empty_set |- _ => destruct ts
   end.
 
-Let symbolic_handler_concrete_cache cache umvec urvec rvec :
+Lemma symbolic_handler_concrete_cache cache umvec urvec rvec :
   cache_correct cache ->
   Symbolic.handler umvec = Some urvec ->
   Concrete.cache_lookup _ cache masks (encode_mvec (mvec_of_umvec umvec)) = Some rvec ->
@@ -217,17 +217,14 @@ Proof.
   rewrite HANDLER in E2; simpl in E2; congruence.
 Qed.
 
-Let symbolic_handler_concrete_handler mvec rvec :
+Lemma symbolic_handler_concrete_handler mvec rvec :
   Symbolic.handler mvec = Some rvec ->
   handler [eta Symbolic.handler] (encode_mvec (mvec_of_umvec mvec))
   = Some (rvec_of_urvec rvec).
 Proof.
-  intros H.
-  destruct mvec as [op tpc ti ts]. simpl.
-  rewrite op_to_wordK.
-  repeat rewrite decodeK. simpl.
-  repeat rewrite <- surjective_pairing.
-  rewrite decode_fieldsK.
+  move: mvec => [op tpc ti ts] H /=.
+  rewrite op_to_wordK !decodeK /=
+          -!surjective_pairing decode_fieldsK.
   destruct op; simpl in *;
   destruct_mvec_operands; simpl in *; now rewrite H.
 Qed.
