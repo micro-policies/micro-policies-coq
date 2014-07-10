@@ -26,12 +26,6 @@ Context {mt : machine_types}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
         {e : @encodable Symbolic.tag mt ops}.
-(*
-Local Notation smemory := (word_map mt (atom (word mt) (@Symbolic.tag sp))).
-Local Notation cmemory := (word_map mt (atom (word mt) (word mt))).
-Local Notation sregisters := (reg_map mt (atom (word mt) (@Symbolic.tag sp))).
-Local Notation cregisters := (reg_tmap mt (atom (word mt) (word mt))).
-*)
 
 Definition refine_memory (amem : Symbolic.memory mt _) (cmem : Concrete.memory mt) :=
   forall w x t,
