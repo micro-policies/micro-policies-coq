@@ -384,8 +384,8 @@ Definition rvec_of_urvec (rvec : Symbolic.RVec user_tag) : Symbolic.RVec tag :=
 Definition handler (mvec : Concrete.MVec (word t)) : option (Symbolic.RVec tag) :=
   match mvec with
   | Concrete.mkMVec op tpc ti t1 t2 t3 =>
-    match word_to_op op, decode tpc, decode ti with
-    | Some op, Some (USER tpc), Some (USER ti) =>
+    match decode tpc, decode ti, word_to_op op with
+    | Some (USER tpc), Some (USER ti), Some op =>
       let process ts :=
           do! rvec <- uhandler (Symbolic.mkMVec op tpc ti ts);
             Some (rvec_of_urvec rvec) in
@@ -406,7 +406,7 @@ Definition handler (mvec : Concrete.MVec (word t)) : option (Symbolic.RVec tag) 
         end process ts
       | None => None
       end
-    | Some NOP, Some (USER tpc), Some (ENTRY ti) =>
+    | Some (USER tpc), Some (ENTRY ti), Some NOP =>
       match uhandler (Symbolic.mkMVec SERVICE tpc ti (Vector.nil _)) with
       | Some _ =>  Some (Symbolic.mkRVec KERNEL KERNEL)
       | None => None

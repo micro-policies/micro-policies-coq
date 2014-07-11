@@ -459,9 +459,7 @@ Proof.
   destruct (CACHE _ crvec INUSER LOOKUP)
     as ([trpc tr] & ? & HIT). subst. simpl in *.
   simpl in HIT.
-  destruct (word_to_op op') as [op''|] eqn:E; try discriminate. subst op'.
-  rewrite op_to_wordK in E.
-  move: E => [E]. subst op''.
+  subst op'. rewrite op_to_wordK in HIT.
   unfold encode_mvec, encode_rvec in *. simpl in *.
   destruct op; simpl in *; match_inv;
   repeat match goal with
