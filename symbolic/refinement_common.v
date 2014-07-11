@@ -7,6 +7,7 @@ Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.exec.
 Require Import symbolic.symbolic.
+Require Import symbolic.exec.
 Require Import symbolic.rules.
 
 Open Scope nat_scope.
@@ -168,6 +169,13 @@ Definition is_nop (i : word mt) : bool :=
   | Some Nop => true
   | _ => false
   end.
+
+Lemma is_nopP : forall i, is_nop i -> decode_instr i = Some (Nop _).
+Proof.
+  rewrite /is_nop.
+  move => i.
+  by case: (decode_instr i) => [[]|] //=.
+Qed.
 
 Definition wf_entry_points (cmem : Concrete.memory mt) :=
   forall addr t,
@@ -588,6 +596,48 @@ Proof.
 
   simpl in *; try erewrite encode_kernel_tag; now rewrite decodeK.
 
+Qed.
+
+Lemma refine_mvec sst cst mvec :
+  refine_state sst cst ->
+  build_mvec table sst = Some mvec ->
+  build_cmvec mt cst = Some (encode_mvec (mvec_of_umvec_with_calls mvec)).
+Proof.
+  intros [smem sreg int mem reg cache epc pc stpc
+               ? ? REFM REFR CACHE MVE WF KI] SMVEC.
+  subst sst cst.
+  rewrite /build_mvec in SMVEC.
+  match_inv;
+  try match goal with
+  | H : ?X = _ |- _ =>
+    match X with
+    | context[match ?E with _ => _ end] =>
+      destruct E eqn:?; try discriminate H
+    end
+  end;
+  match_inv;
+  repeat match goal with
+  | a : atom _ _ |- _ => destruct a
+  end;
+  repeat match goal with
+  | GET : PartMaps.get ?mem _ = Some _,
+    REFM : refine_memory ?mem _ |- _ =>
+    apply REFM in GET
+  | GET : PartMaps.get ?reg _ = Some _,
+    REFM : refine_registers ?reg _ |- _ =>
+    apply REFR in GET
+  end; simpl;
+  repeat match goal with
+  | E : ?X = _ |- context[?X] => rewrite E; simpl
+  end; try solve [ discriminate | eexists; reflexivity ].
+  match goal with
+  | GET : Symbolic.get_syscall _ _ = Some _,
+    WF : wf_entry_points _ |- _ =>
+    let EQ := fresh "EQ" in
+    let ISNOP := fresh "ISNOP" in
+    destruct (wf_entry_points_if _ WF GET) as (? & EQ & ISNOP);
+    apply is_nopP in ISNOP; rewrite EQ ISNOP //=
+  end.
 Qed.
 
 Ltac simpl_word_lift :=

@@ -661,69 +661,6 @@ Qed.
 
 (*Case 1: umvec = Some & cmvec = Some*)
 
-Lemma umvec_implies_cmvec_aux sst cst smvec :
-  refinement_common.refine_state ki stable sst cst ->
-  build_mvec stable sst = Some smvec ->
-  exists cmvec, build_cmvec mt cst = Some cmvec.
-Proof.
-  intros REF SMVEC.
-  assert (USER := refinement_common.refine_state_in_user REF).
-  destruct REF as [smem sreg int mem reg cache epc pc stpc
-                   ? ? REFM REFR CACHE MVE WF KI].
-  subst sst cst.
-  unfold build_mvec in SMVEC.
-  destruct (get smem pc) eqn:SGET.
-  - destruct a as [w itg].
-    simpl in SMVEC.
-    destruct (decode_instr w) eqn:INST.
-    + destruct i eqn:OP;
-      unfold build_cmvec;
-      apply REFM in SGET; rewrite SGET;
-      simpl; rewrite INST;
-      unfold bind in SMVEC;
-      repeat match goal with
-        | [H: match ?Expr with _ => _ end = _ |- _] =>
-          remember (Expr) as hexpr; destruct hexpr
-      end;
-      try (eexists; reflexivity);
-      repeat match goal with
-               | [H: Some ?A = get _ _ |- _] => destruct A; symmetry in H
-             end;
-      simpl in *;
-      repeat match goal with
-               | [H : get sreg _ = Some _ |- _] =>
-                 apply REFR in H; (try rewrite H)
-               | [H : get smem _ = Some _ |- _] =>
-                 apply REFM in H; try (rewrite H)
-             end;
-      simpl; try (eexists; reflexivity);
-      try discriminate.
-    + discriminate.
-  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
-    + unfold wf_entry_points in WF.
-      remember (Symbolic.entry_tag s) eqn:TG.
-      symmetry in TG.
-      specialize (WF pc s0).
-      assert (ECALL: exists sc, Symbolic.get_syscall stable pc = Some sc
-                                /\ Symbolic.entry_tag sc = s0)
-        by (eexists; eauto).
-      apply WF in ECALL.
-      destruct (get mem pc) eqn:GET.
-      * destruct a.
-        apply andb_true_iff in ECALL.
-        destruct ECALL as [ENC CTG].
-        unfold build_cmvec.
-        rewrite GET.
-        move/eqP:ENC => DEC.
-        simpl.
-        rewrite /is_nop in DEC.
-        destruct (decode_instr val) as [[]|]; try by [].
-        eexists; reflexivity.
-      * discriminate.
-    + discriminate.
-Qed.
-
-(*wrapping the above theorem to handle common contradiction*)
 Lemma umvec_implies_cmvec sst cst smvec :
   in_user cst ->
   refine_state sst cst ->
@@ -731,7 +668,7 @@ Lemma umvec_implies_cmvec sst cst smvec :
   exists cmvec, build_cmvec mt cst = Some cmvec.
 Proof.
   intros USER [[REF | CONTRA] ?] MVEC.
-  - eapply umvec_implies_cmvec_aux; eauto.
+  - eexists. eapply refine_mvec; eauto.
   - exfalso.
     destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
@@ -778,90 +715,6 @@ Proof. (*Postponted until khandler rewrite - proved but ok.*)
     + discriminate.
 Qed.
 
-Lemma unique_cmvec_aux sst cst umvec cmvec :
-  @refinement_common.refine_state mt ops sym_params e ki stable sst cst ->
-  build_mvec stable sst = Some umvec ->
-  build_cmvec mt cst = Some cmvec ->
-  rules.encode_mvec (rules.mvec_of_umvec_with_calls umvec) = cmvec.
-Proof.
-  intros REF UMVEC CMVEC.
-  destruct REF as [smem sreg int mem reg cache epc pc stpc
-                        ? ? REFM REFR CACHE MVE WF KI].
-  subst.
-  unfold build_mvec in UMVEC.
-  destruct (get smem pc) eqn:SGET.
-  - destruct a as [v tg]. simpl in UMVEC.
-    destruct (decode_instr v) eqn:DEC.
-    + destruct i eqn:OP;
-      unfold bind in UMVEC;
-      repeat match goal with
-               | [H: match ?Expr with _ => _ end = _|- _] =>
-                 remember (Expr) as hexpr; destruct hexpr
-             end;
-      repeat match goal with
-               | [H: Some ?A = get _ _ |- _] => destruct A; symmetry in H
-             end;
-      repeat match goal with
-               | [H : get sreg _ = Some _ |- _] =>
-                 apply REFR in H
-               | [H : get smem _ = Some _ |- _] =>
-                 apply REFM in H
-             end;
-      unfold build_cmvec, bind in CMVEC;
-      repeat match goal with
-               | [H: match ?Expr with _ => _ end = _, H': ?Expr = _ |- _] =>
-                 rewrite H' in H; simpl in H'
-             end;
-      inv CMVEC;
-      inv UMVEC;
-      repeat match goal with
-               | [H: TotalMaps.get _ _ = _ |- _] => rewrite H
-             end;
-      unfold rules.mvec_of_umvec; simpl;
-      unfold rules.encode_mvec; simpl;
-      try reflexivity.
-      (*handling automation fails*)
-      * rewrite Heqhexpr in H0.
-        simpl in H0.
-        simpl in Heqhexpr0.
-        rewrite Heqhexpr0 in H0.
-        inv H0. rewrite Heqhexpr1.
-        reflexivity.
-      * rewrite Heqhexpr in H0.
-        simpl in H0. simpl in Heqhexpr1. rewrite Heqhexpr1 in H0.
-        inv H0.
-        rewrite Heqhexpr0.
-        reflexivity.
-    + discriminate.
-  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
-    { (*syscall case*)
-      inv UMVEC.
-      unfold rules.mvec_of_umvec. simpl.
-      unfold rules.encode_mvec. simpl.
-      remember (Symbolic.entry_tag s) as etag eqn:ETAG. symmetry in ETAG.
-      unfold wf_entry_points in WF.
-      specialize (WF pc etag).
-      assert (ECALL : (exists sc : Symbolic.syscall mt,
-          Symbolic.get_syscall stable pc = Some sc /\
-          Symbolic.entry_tag sc = etag))
-        by (eexists; eauto).
-      apply WF in ECALL.
-      destruct (get mem pc) eqn:GET.
-      - destruct a. apply andb_true_iff in ECALL.
-        destruct ECALL as [VAL TG].
-        move/eqP:VAL => VAL.
-        move/eqP:TG => TG.
-        unfold build_cmvec in CMVEC.
-        rewrite GET in CMVEC. simpl in CMVEC.
-        rewrite /is_nop in VAL.
-        destruct (decode_instr val) as [[]|]; try by [].
-        inv CMVEC.
-        reflexivity.
-      - discriminate.
-    }
-    { discriminate. }
-Qed.
-
 Lemma unique_cmvec sst cst umvec cmvec :
   in_user cst = true ->
   refine_state sst cst ->
@@ -872,7 +725,7 @@ Proof.
   intros USER REF MVEC CMVEC.
   destruct REF as [REF INV].
   destruct REF as [UREF | KREF].
-  - eauto using unique_cmvec_aux.
+  - erewrite -> refine_mvec in CMVEC; eauto. congruence.
   - destruct KREF as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
     apply in_user_in_kernel in USER.
