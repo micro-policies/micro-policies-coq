@@ -15,8 +15,7 @@ Variables (M : Type -> Type) (K : Type).
 Class partial_map := {
   get : forall V, M V -> K -> option V;
   set : forall V, M V -> K -> V -> M V;
-  filter : forall V, (V -> bool) -> M V -> M V;
-  map : forall V1 V2, (V1 -> V2) -> M V1 -> M V2;
+  map_filter : forall V1 V2, (V1 -> option V2) -> M V1 -> M V2;
   empty : forall V, M V
 }.
 
@@ -28,11 +27,8 @@ Class axioms (pm : partial_map) := mkAxioms {
                   ak' <> ak  ->
                   get (set km ak sk) ak' = get km ak';
 
-  filter_correctness: forall V (f : V -> bool) (m : M V) (k : K),
-                        get (filter f m) k = option_filter f (get m k);
-
-  map_correctness: forall V1 V2 (f : V1 -> V2) (m1 : M V1) (k : K),
-                     get (map f m1) k = option_map f (get m1 k);
+  map_filter_correctness : forall V1 V2 (f : V1 -> option V2) (m : M V1) (k : K),
+                             get (map_filter f m) k = bind f (get m k);
 
   empty_is_empty: forall V k, get (empty V) k = None
 
@@ -195,6 +191,38 @@ Proof.
 Qed.
 
 End upd_list.
+
+Section map.
+
+Context {M : Type -> Type} {K : Type}
+        {pm : partial_map M K} {a : axioms pm}
+        {V1 V2 : Type} (f : V1 -> V2).
+
+Definition map (m : M V1) : M V2 :=
+  map_filter (fun x => Some (f x)) m.
+
+Lemma map_correctness m k : get (map m) k = option_map f (get m k).
+Proof.
+  by rewrite /map map_filter_correctness /bind /option_map //=.
+Qed.
+
+End map.
+
+Section filter.
+
+Context {M : Type -> Type} {K : Type}
+        {pm : partial_map M K} {a : axioms pm}
+        {V : Type} (f : V -> bool).
+
+Definition filter (m : M V) : M V :=
+  map_filter (fun x => if f x then Some x else None) m.
+
+Lemma filter_correctness m k : get (filter m) k = option_filter f (get m k).
+Proof.
+  by rewrite /filter map_filter_correctness /bind /option_map //=.
+Qed.
+
+End filter.
 
 Section PartMapPointwise.
 

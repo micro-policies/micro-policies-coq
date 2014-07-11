@@ -34,8 +34,7 @@ Module NatPMap := FiniteMap NatIndexed.
 Instance nat_partial_map : PartMaps.partial_map NatPMap.t nat := {
   get V m n := NatPMap.get n m;
   set V m n v := NatPMap.set n v m;
-  filter V f m := NatPMap.filter f m;
-  map V1 V2 f m := NatPMap.map1 f m;
+  map_filter V1 V2 f m := NatPMap.map_filter f m;
   empty V := NatPMap.empty _
 }.
 
@@ -44,8 +43,7 @@ Proof.
   constructor.
   - (* get_set_eq *) intros V m n v. by apply NatPMap.gss.
   - (* get_set_neq *) intros V m n1 n2 v. by apply NatPMap.gso.
-  - (* filter_correctness *) intros V f m k. by apply NatPMap.gfilter.
-  - (* map_correctness *) intros V1 V2 f m k. by apply NatPMap.gmap1.
+  - (* map_filter_correctness *) intros V1 V2 f m k. by apply NatPMap.gmap_filter.
   - (* empty_is_empty *) intros V k. by apply NatPMap.gempty.
 Qed.
 

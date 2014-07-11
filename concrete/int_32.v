@@ -179,16 +179,14 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   word_map_class := {|
     PartMaps.get V mem i := Int32PMap.get i mem;
     PartMaps.set V mem i x := Int32PMap.set i x mem;
-    PartMaps.filter V mem p := Int32PMap.filter mem p;
-    PartMaps.map V1 V2 f mem := Int32PMap.map1 f mem;
+    PartMaps.map_filter V1 V2 mem p := Int32PMap.map_filter mem p;
     PartMaps.empty V := @Int32PMap.empty _
   |};
 
   reg_map_class := {|
     PartMaps.get V regs i := RegtPMap.get i regs;
     PartMaps.set V regs i x := RegtPMap.set i x regs;
-    PartMaps.filter V regs p := RegtPMap.filter regs p;
-    PartMaps.map V1 V2 f regs := RegtPMap.map1 f regs;
+    PartMaps.map_filter V1 V2 regs p := RegtPMap.map_filter regs p;
     PartMaps.empty V := @RegtPMap.empty _
   |};
 
@@ -255,10 +253,8 @@ Proof.
       intros V mem i x. by apply Int32PMap.gss.
     + (* get_set_neq *)
       intros V mem i i' x y. by apply Int32PMap.gso.
-    + (* filter_correctness *)
-      intros V f m k. by apply Int32PMap.gfilter.
-    + (* map_correctness *)
-      intros V1 V2 f m k. by apply Int32PMap.gmap1.
+    + (* map_filter_correctness *)
+      intros V1 V2 f m k. by apply Int32PMap.gmap_filter.
     + (* empty_is_empty *)
       intros V k. by apply Int32PMap.gempty.
   - constructor.
@@ -266,10 +262,8 @@ Proof.
       intros V mem i x. by apply RegtPMap.gss.
     + (* get_set_neq *)
       intros V mem i i' x y. by apply RegtPMap.gso.
-    + (* filter_correctness *)
-      intros V f m k. by apply RegtPMap.gfilter.
-    + (* map_correctness *)
-      intros V1 V2 f m k. by apply RegtPMap.gmap1.
+    + (* map_filter_correctness *)
+      intros V1 V2 f m k. by apply RegtPMap.gmap_filter.
     + (* empty_is_empty *)
       intros V k. by apply RegtPMap.gempty.
   - constructor.
