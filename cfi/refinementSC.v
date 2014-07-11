@@ -677,44 +677,6 @@ Proof.
     by congruence.
 Qed.
 
-Lemma uhandler_chandler_stop sst umvec :
-  build_mvec stable sst = Some umvec ->
-  uhandler umvec = None ->
-  khandler (rules.encode_mvec (rules.mvec_of_umvec_with_calls umvec)) = None.
-Proof. (*Postponted until khandler rewrite - proved but ok.*)
-  intros UMVEC UHANDLER.
-  unfold uhandler in UHANDLER. unfold Symbolic.handler in UHANDLER. simpl in UHANDLER.
-  destruct sst as [mem regs [pc tpc] int].
-  unfold build_mvec in UMVEC.
-  destruct (get mem pc) eqn:GET.
-  - destruct (decode_instr (common.val a)) eqn:INST.
-    + destruct i eqn:OP; simpl in UMVEC; unfold bind in UMVEC;
-      repeat match goal with
-        | [H: match ?Expr with _ => _ end = _ |- _] =>
-          remember (Expr) as hexpr; destruct hexpr
-      end;
-      inv UMVEC;
-      unfold cfi_handler in UHANDLER; match_inv; subst;
-      unfold khandler; simpl;
-      rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
-      simpl;
-      try match goal with
-        | [H : valid_jmp _ _ = false |- _] => rewrite H
-      end;
-       try reflexivity; repeat (rewrite rules.decodeK); try reflexivity.
-    + discriminate.
-  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
-    + unfold cfi_handler in UHANDLER.
-      inv UMVEC.
-      match_inv; subst; simpl;
-      rewrite op_to_wordK; rewrite rules.decodeK; try (rewrite rules.decodeK);
-      simpl;
-      try match goal with
-        | [H : valid_jmp _ _ = false |- _] => rewrite H
-      end; try reflexivity.
-    + discriminate.
-Qed.
-
 Lemma unique_cmvec sst cst umvec cmvec :
   in_user cst = true ->
   refine_state sst cst ->
@@ -1407,7 +1369,7 @@ Proof.
   assert (UHANDLER := Sym.is_violation_implies_stop stable sst VIOLATION UMVEC).
   assert (KERNEL := user_into_kernel_wrapped USER REF STEP NUSER').
   destruct (umvec_implies_cmvec USER REF UMVEC) as [cmvec CMVEC].
-  assert (KHANDLER := uhandler_chandler_stop _ UMVEC UHANDLER).
+  assert (KHANDLER := refine_mvec_fail _ UHANDLER).
   assert (EQ := unique_cmvec USER REF UMVEC CMVEC).
   rewrite EQ in KHANDLER. clear EQ.
   destruct (fault_steps_at_kernel USER REF STEP CMVEC KHANDLER) 

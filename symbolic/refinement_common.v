@@ -640,6 +640,25 @@ Proof.
   end.
 Qed.
 
+Lemma refine_mvec_fail umvec :
+  Symbolic.handler umvec = None ->
+  handler (rules.encode_mvec (rules.mvec_of_umvec_with_calls umvec)) = None.
+Proof.
+  move: umvec => [op tpc ti ts];
+  destruct op;
+  unfold Symbolic.mvec_operands in ts; simpl in ts;
+  repeat (
+    match goal with
+    | ts : Vector.t _ 0 |- _ => induction ts using Vector.case0
+    | ts : Vector.t _ (S _) |- _ => induction ts using caseS
+    | |- context[decode (encode _)] => rewrite decodeK
+    end; simpl
+  );
+  rewrite /handler /rules.handler /= ?op_to_wordK /=;
+  repeat rewrite ?rules.decodeK /=;
+  move => H //=; rewrite H //=.
+Qed.
+
 Ltac simpl_word_lift :=
   match goal with
   | H : context[word_lift _ (encode _)] |- _ =>
