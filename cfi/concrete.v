@@ -9,6 +9,7 @@ Require Import symbolic.symbolic.
 Require Import cfi.symbolic.
 Require Import cfi.property.
 Require Import cfi.rules.
+Require Import cfi.classes.
 Require Import symbolic.rules.
 Require Import lib.Coqlib.
 Require Import symbolic.refinement_common.
@@ -21,7 +22,8 @@ Section ConcreteSection.
 
 Context {t : machine_types}
         {ops : machine_ops t}
-        {e : @rules.encodable (@rules.cfi_tag_eqType t) t ops}.
+        {ids : @classes.cfi_id t}
+        {e : @rules.encodable rules.cfi_tag_eqType t ops}.
 
 Import PartMaps.
 Context {word_map : Type -> Type}
@@ -30,10 +32,12 @@ Context {word_map : Type -> Type}
         {reg_map : Type -> Type}
         {sr : partial_map reg_map (reg t)}.
 
-Variable valid_jmp : word t -> word t -> bool.
+Variable cfg : id -> id -> bool.
+
+Definition valid_jmp := classes.valid_jmp cfg.
+
 (*allow attacker to change only things tagged USER DATA! all the rest should be equiv*)
 
-Import PartMaps.
 
 Definition no_violation (cst : Concrete.state t) :=
   let '(Concrete.mkState mem _  _ pc@tpc _) := cst in
@@ -41,12 +45,12 @@ Definition no_violation (cst : Concrete.state t) :=
     get mem pc = Some i@(encode (USER ti)) ->
     tpc = encode (USER (INSTR (Some src))) ->
     exists dst, 
-        ti = INSTR (Some dst) /\ valid_jmp src dst = true) /\
+        ti = INSTR (Some dst) /\ cfg src dst = true) /\
   (forall i ti src,
      get mem pc = Some i@(encode (ENTRY ti)) ->
      tpc = encode (USER (INSTR (Some src))) ->
      exists dst, 
-       ti = INSTR (Some dst) /\ valid_jmp src dst = true).
+       ti = INSTR (Some dst) /\ cfg src dst = true).
 
 (*Defined in terms of atom_equiv for symbolic tags*)
 (* TODO: as a sanity check, please prove reflexivity for this and
@@ -63,7 +67,6 @@ Inductive atom_equiv : atom (word t) (word t) -> atom (word t) (word t)
                     (~ exists ut, common.tag a = encode (USER ut)) ->
                     a = a' ->
                     atom_equiv a a'.
-
 
 Definition equiv {M : Type -> Type} {Key : Type} 
            {M_class : partial_map M Key} :
@@ -93,17 +96,36 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
   match (get (Concrete.mem st) pc_s) with
     | Some i =>
       match (decode (common.tag i)) with
-        | Some (USER DATA) => false
-        | Some (USER (INSTR _)) =>
+        | Some (USER (INSTR (Some src))) =>
           match decode_instr (common.val i) with
-            | Some (Jump r) => valid_jmp pc_s pc_s'
-            | Some (Jal r) => valid_jmp pc_s pc_s'
+            | Some (Jump r)
+            | Some (Jal r) => 
+              match (get (Concrete.mem st) pc_s') with
+                | Some i' =>
+                  match (decode (common.tag i')) with
+                    | Some (USER (INSTR (Some dst))) =>
+                      cfg src dst
+                    | _ => false
+                  end
+                | _ => false
+              end
             | Some (Bnz r imm) => 
               (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
             | None => false
             | _ => pc_s' == pc_s .+1
           end
-        | Some KERNEL => false (* this says that if cst,cst' is in user mode then it's
+        | Some (USER (INSTR None)) =>
+          match decode_instr (common.val i) with
+            | Some (Jump r)
+            | Some (Jal r) =>
+              false
+            | Some (Bnz r imm) => 
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+            | None => false
+            | _ => pc_s' == pc_s .+1
+          end
+        | Some (USER DATA)
+        | Some KERNEL             (* this says that if cst,cst' is in user mode then it's
                                   not sensible to point to kernel memory*)
         | Some (ENTRY _) => false
         | None => false
@@ -111,11 +133,11 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
     | None => false
   end.
 
-Definition sp := @Sym.sym_cfi t valid_jmp.
+Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable ki : (@refinement_common.kernel_invariant t ops sp e).
+Variable ki : refinement_common.kernel_invariant.
 
-Variable stable : list (@Symbolic.syscall t sp).
+Variable stable : list (Symbolic.syscall t).
 
 (* This is basically the initial_refine assumption on preservation *)
 Definition cinitial (cs : Concrete.state t) := 
@@ -123,12 +145,10 @@ Definition cinitial (cs : Concrete.state t) :=
 
 Variable masks : Concrete.Masks.
 
-Definition in_user := @in_user t ops sp e.
-
 Import ListNotations.
 
 Definition all_attacker (xs : list (Concrete.state t)) : Prop :=
-  forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~Concrete.step _ masks x1 x2. 
+  forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~ Concrete.step _ masks x1 x2. 
 
 Lemma all_attacker_red ast ast' axs :
   all_attacker (ast :: ast' :: axs) ->

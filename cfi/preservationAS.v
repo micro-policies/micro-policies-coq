@@ -4,6 +4,7 @@ Require Import lib.partial_maps.
 Require Import lib.Coqlib.
 Require Import common.common.
 Require Import symbolic.symbolic.
+Require Import cfi.classes.
 Require Import cfi.abstract.
 Require Import cfi.symbolic.
 Require Import cfi.preservation.
@@ -20,16 +21,17 @@ Section Refinement.
 
 Context {t : machine_types}
         {ops : machine_ops t}
-        {opss : machine_ops_spec ops}.
+        {opss : machine_ops_spec ops}
+        {ids : @classes.cfi_id t}.
 
-Variable valid_jmp : word t -> word t -> bool.
+Variable cfg : classes.id -> classes.id -> bool.
 
-Definition sym_params := Sym.sym_cfi valid_jmp.
+Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable atable : list (Abs.syscall t).
-Variable stable : list (@Symbolic.syscall t sym_params).
+Variable stable : list (Symbolic.syscall t).
 
-Definition amachine :=  Abs.abstract_cfi_machine atable valid_jmp.
+Definition amachine :=  Abs.abstract_cfi_machine atable cfg.
 Definition smachine := Sym.symbolic_cfi_machine stable.
 
 (*Hypothesis*)
@@ -47,9 +49,9 @@ Hypothesis syscall_sem :
 
 Hypothesis syscall_preserves_instruction_tags :
   forall sc st st',
-    Sym.instructions_tagged valid_jmp (Symbolic.mem st) ->
+    Sym.instructions_tagged cfg (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
-    Sym.instructions_tagged valid_jmp (Symbolic.mem st').
+    Sym.instructions_tagged cfg (Symbolic.mem st').
 
 Hypothesis syscall_preserves_valid_jmp_tags :
   forall sc st st',
@@ -71,7 +73,7 @@ Definition backwards_simulation :=
                                     syscall_preserves_entry_tags.
 
 Lemma untag_implies_reg_refinement reg :
-  RefinementAS.refine_registers valid_jmp (PartMaps.map RefinementAS.untag_atom reg) reg.
+  RefinementAS.refine_registers cfg (PartMaps.map RefinementAS.untag_atom reg) reg.
 Proof.
    intros r v.
    split.
@@ -87,7 +89,7 @@ Proof.
 Qed.
 
 Lemma untag_data_implies_dmem_refinement mem :
-  RefinementAS.refine_dmemory valid_jmp
+  RefinementAS.refine_dmemory
     (PartMaps.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)) mem.
 Proof.
    intros addr v.
@@ -99,7 +101,7 @@ Proof.
    - intros GET.
      rewrite PartMaps.map_correctness in GET.
      rewrite filter_correctness in GET.
-     destruct (get mem addr) eqn:GET'; rewrite GET'.
+     destruct (get mem addr) eqn:GET'.
      + destruct a as [val tg]. 
        simpl in GET.
        destruct tg as [[id|]|]; simpl in GET.
@@ -109,14 +111,14 @@ Proof.
      + simpl in GET. congruence.
 Qed.
 
-Definition is_instr (a : atom (word t) (@cfi_tag t)) := 
+Definition is_instr (a : atom (word t) cfi_tag) := 
   match common.tag a with
     | INSTR _ => true
     | DATA => false
   end.
 
 Lemma untag_instr_implies_imem_refinement mem :
-  RefinementAS.refine_imemory valid_jmp
+  RefinementAS.refine_imemory 
     (PartMaps.map RefinementAS.untag_atom (filter is_instr mem)) mem.
 Proof.
    intros addr v.
@@ -128,7 +130,7 @@ Proof.
    - intros GET.
      rewrite PartMaps.map_correctness in GET.
      rewrite filter_correctness in GET.
-     destruct (get mem addr) eqn:GET'; rewrite GET'.
+     destruct (get mem addr) eqn:GET'.
      + destruct a as [val tg]. 
        simpl in GET.
        destruct tg as [[id|]|]; simpl in GET.
@@ -145,8 +147,8 @@ Hint Resolve untag_implies_reg_refinement.
 Theorem cfg_true_equiv (asi asj : Abs.state t) ssi ssj :
   RefinementAS.refine_state stable asi ssi ->
   RefinementAS.refine_state stable asj ssj ->
-  Abs.step atable valid_jmp asi asj -> 
-  Abs.succ atable valid_jmp asi asj = true ->
+  Abs.step atable cfg asi asj -> 
+  Abs.succ atable cfg asi asj = true ->
   Symbolic.step stable ssi ssj ->
   Sym.ssucc stable ssi ssj = true.
 Proof.
@@ -155,7 +157,7 @@ Proof.
            asj as [imem' dmem' aregs' apc' b'].
   destruct ssi as [mem regs [spc tpc] int].
   destruct ssj as [mem' regs' [spc' tpc'] int'].
-  destruct REF as [REFI [REFD [REFR [REFPC ?]]]].
+  destruct REF as [REFI [REFD [REFR [REFPC [? [? [ITG [VTG ETG]]]]]]]].
   destruct REF' as [REFI' [REFD' [REFR' [REFPC' ?]]]].
   unfold Abs.succ in ASUCC.
   unfold RefinementAS.refine_pc in REFPC; simpl in REFPC; 
@@ -169,9 +171,25 @@ Proof.
     - destruct i eqn:DECODE;
       apply REFI in GET;
       destruct GET as [id GET'];
-      rewrite GET'; simpl;
-      rewrite INST; try assumption. 
-    - discriminate.
+      rewrite GET'; destruct id; rewrite INST; simpl;
+      try assumption;
+      destruct (VTG _ _ ASUCC) 
+        as [[? ?] [[? GETSPC'] | [GETSPC' [? [GETCALL ETAG]]]]]; simpl in *;
+      unfold Abs.valid_jmp, valid_jmp in ASUCC;
+      repeat match goal with
+        | [H: get _ ?Spc = Some _@(INSTR _),
+           H1: get _ ?Spc = Some _@(INSTR (word_to_id ?Spc)) |- _] =>
+          rewrite H1 in H; inv H
+        | [H: ?Expr = _, H1: context[match ?Expr with _ => _ end] |- _] =>
+           rewrite H in H1
+        | [H: ?Expr = _ |-
+           match ?Expr with _ => _ end = _] =>
+          rewrite H
+        | [H: match ?Expr with _ => _ end = _ |-
+           match ?Expr with _ => _ end = _] =>
+          destruct Expr
+      end; try discriminate; auto.
+    - by discriminate.
   + destruct (Abs.get_syscall atable spc) eqn:GETCALL.
     - destruct (get mem spc) eqn:GET'.
       { destruct a as [v ut].
@@ -201,7 +219,7 @@ Qed.
 Theorem cfg_false_equiv asi asj ssi ssj :
   RefinementAS.refine_state stable asi ssi ->
   RefinementAS.refine_state stable asj ssj ->
-  Abs.succ atable valid_jmp asi asj = false ->
+  Abs.succ atable cfg asi asj = false ->
   Symbolic.step stable ssi ssj ->
   Sym.ssucc stable ssi ssj = false.
 Proof.
@@ -211,7 +229,7 @@ Proof.
            asj as [imem' dmem' aregs' apc' b'].
   destruct ssi as [mem reg [pc tpc] int].
   destruct ssj as [mem' reg' [pc' tpc'] int'].
-  destruct REF as [REFI [REFD [REFR [REFPC CORRECT]]]],
+  destruct REF as [REFI [REFD [REFR [REFPC [? [? [ITG [VTG ETG]]]]]]]],
            REF' as [REFI' [REFD' [REFR' [REFPC' CORRECT']]]].
   unfold RefinementAS.refine_pc in *.
   simpl in REFPC; simpl in REFPC'; destruct REFPC as [? TPC],
@@ -223,9 +241,32 @@ Proof.
     destruct GET as [id GET].
     destruct (decode_instr s) eqn:INST.
     { destruct i;
-      simpl; rewrite GET; simpl; rewrite INST; auto. 
+      simpl; rewrite GET; simpl; rewrite INST; destruct id; auto;
+      unfold Abs.valid_jmp, valid_jmp in ASUCC;
+      destruct (get mem pc') as [[v [[id|]|]]|] eqn:GET';
+      rewrite GET';
+      try match goal with
+        | [|- match Symbolic.get_syscall _ _ with _ => _ end = _] =>
+          destruct (Symbolic.get_syscall stable pc') eqn:?
+      end;
+      repeat match goal with
+               | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
+                 rewrite H
+               | [|- match Symbolic.entry_tag ?S with _ => _ end = _] =>
+                 destruct (Symbolic.entry_tag S) as [[?|]|] eqn:?
+             end;
+      repeat match goal with
+               | [H: get _ _ = Some _@(INSTR (Some _)) |- _] =>
+                 apply ITG in H
+               | [H: get _ ?Addr = None,
+                  H1: Symbolic.get_syscall _ ?Addr = Some _,
+                  H2: Symbolic.entry_tag _ = INSTR (Some _) |- _] =>
+                 apply (ETG _ _ _ H H1) in H2
+               | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
+                 rewrite H1 in H
+             end; by auto.
     }
-    { simpl. rewrite GET. rewrite INST. assumption. }
+    { simpl. rewrite GET. rewrite INST. destruct id; by reflexivity. }
   }
   { destruct (Abs.get_syscall atable pc) eqn:GETCALL.
     { simpl. 
@@ -293,7 +334,7 @@ Next Obligation. (*initial state*)
     congruence.
 Qed.
 Next Obligation.
-  destruct (Abs.succ atable valid_jmp asi asj) eqn:?.
+  destruct (Abs.succ atable cfg asi asj) eqn:?.
   - eauto using cfg_true_equiv.
   - eauto using cfg_false_equiv.
 Qed.

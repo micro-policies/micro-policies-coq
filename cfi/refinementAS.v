@@ -8,6 +8,7 @@ Require Import symbolic.symbolic.
 Require Import cfi.abstract.
 Require Import cfi.symbolic.
 Require Import cfi.rules.
+Require Import cfi.classes.
 Require Coq.Vectors.Vector.
 
 Set Implicit Arguments.
@@ -19,35 +20,32 @@ Import PartMaps.
 
 Context {t : machine_types}
         {ops : machine_ops t}
-        {opss : machine_ops_spec ops}.
+        {opss : machine_ops_spec ops}
+        {ids : @classes.cfi_id t}.
 
-Variable valid_jmp : word t -> word t -> bool.
+Variable cfg : id -> id -> bool.
 
 (* Instantiate the symbolic machine with the CFI stuff*)
-Definition sym_params := Sym.sym_cfi valid_jmp.
+Instance sym_params : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable atable : list (Abs.syscall t).
-Variable stable : list (@Symbolic.syscall t sym_params).
-
-(*Probably not needed here*)
-Definition amachine := Abs.abstract_cfi_machine atable valid_jmp.
-Definition smachine := Sym.symbolic_cfi_machine stable.
+Variable stable : list (Symbolic.syscall t).
 
 (*Refinement related definitions*)
 Definition refine_dmemory (admem : Abs.dmemory t)
-                          (smem : Sym.memory t valid_jmp) :=
+                          smem :=
   forall w (x : word t),
     get smem w = Some x@DATA <->
     get admem w = Some x. 
 
 Definition refine_imemory (aimem : Abs.imemory t)
-                          (smem : Sym.memory t valid_jmp) :=
+                          smem :=
   forall w x,
     (exists id, get smem w = Some x@(INSTR id)) <->
     get aimem w = Some x.
 
 Definition refine_registers (areg : Abs.registers t)
-                            (sreg : Sym.registers t valid_jmp) :=
+                            (sreg : Sym.registers t ids cfg) :=
   forall n (x : word t),
     (exists ut, get sreg n = Some x@ut) <->
     get areg n = Some x.
@@ -94,9 +92,9 @@ Lemma xxx : forall tpc ti,
     (tpc = DATA \/ tpc = INSTR None \/
      (exists src dst, tpc = INSTR (Some src) /\
                       ti = INSTR (Some dst) /\
-                      valid_jmp src dst = true)) <->
+                      cfg src dst = true)) <->
     (forall src, tpc = INSTR (Some src) ->
-       exists dst, ti = INSTR (Some dst) /\ valid_jmp src dst = true).
+       exists dst, ti = INSTR (Some dst) /\ cfg src dst = true).
 Proof.
   split.
   - intro H.
@@ -118,12 +116,12 @@ Qed.
 Lemma yyy : forall tpc ti,
    match tpc with
    | INSTR (Some src) =>
-     exists dst, ti = INSTR (Some dst) /\ valid_jmp src dst = true
+     exists dst, ti = INSTR (Some dst) /\ cfg src dst = true
    | _ => True
    end
     <->
     (forall src, tpc = INSTR (Some src) ->
-       exists dst, ti = INSTR (Some dst) /\ valid_jmp src dst = true).
+       exists dst, ti = INSTR (Some dst) /\ cfg src dst = true).
 Proof.
   intros tpc ti.
   split.
@@ -152,14 +150,14 @@ Definition refine_state (ast : Abs.state t)
     get smem spc = Some i@ti ->
     (cont = true <->
     (forall src, tpc = INSTR (Some src) ->
-       exists dst, ti = INSTR (Some dst) /\ valid_jmp src dst = true))) /\
+       exists dst, ti = INSTR (Some dst) /\ cfg src dst = true))) /\
   (forall sc, get smem spc = None -> 
    Symbolic.get_syscall stable spc = Some sc ->
    (cont = true <->
     (forall src, 
        tpc = INSTR (Some src) ->
        exists dst, 
-         (Symbolic.entry_tag sc) = INSTR (Some dst) /\ valid_jmp src dst))) /\
+         (Symbolic.entry_tag sc) = INSTR (Some dst) /\ cfg src dst))) /\
   Sym.invariants stable sst.
 
 Definition refine_syscall acall scall :=
@@ -269,9 +267,9 @@ Hypothesis syscall_sem :
 (*We will need stronger assumption on symbolic system calls for fwd simulation?*)
 Hypothesis syscall_preserves_instruction_tags :
   forall sc st st',
-    Sym.instructions_tagged valid_jmp (Symbolic.mem st) ->
+    Sym.instructions_tagged cfg (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
-    Sym.instructions_tagged valid_jmp (Symbolic.mem st').
+    Sym.instructions_tagged cfg (Symbolic.mem st').
 
 Hypothesis syscall_preserves_valid_jmp_tags :
   forall sc st st',
@@ -287,6 +285,8 @@ Hypothesis syscall_preserves_entry_tags :
 
 Import Vector.VectorNotations.
 
+(*OK this can certainly be shared, at least as soon as we share more on refinement definitions
+ have a look at refine_update_pointwise*)
 Lemma refine_registers_upd sreg sreg' areg r v tg v' tg' :
   refine_registers areg sreg ->
   get sreg r = Some v@tg ->
@@ -388,13 +388,15 @@ Proof.
   move/(REF _ _): E => [? ?]; congruence.
 Qed.
 
+Hint Resolve Sym.itags_preserved_by_step : invariant_db.
+Hint Resolve Sym.entry_point_tags_preserved_by_step : invariant_db.
+Hint Resolve Sym.valid_jmp_tagged_preserved_by_step : invariant_db.
 
-(*TODO: Syscalls and clean up of this mess*)
 Theorem backwards_simulation ast sst sst' :
   refine_state ast sst ->
   Symbolic.step stable sst sst' ->
   exists ast',
-    Abs.step atable valid_jmp ast ast' /\
+    Abs.step atable cfg ast ast' /\
     refine_state ast' sst'.
 Proof.
   intros REF SSTEP;
@@ -403,7 +405,8 @@ Proof.
   { (*1st case*)
     inversion SSTEP; subst;
     destruct REF 
-      as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VALIDTGS ETG]]]]]]]];
+      as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG ETG]]]]]]]];
+    simpl in *;
     (*unfoldings and case analysis on tags*)
     repeat (
         match goal with
@@ -417,8 +420,8 @@ Proof.
             unfold Symbolic.next_state_reg_and_pc in H
           | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
-        end); match_inv; subst;
-    (* switch memory updates to abstract*)
+        end); match_inv; 
+ (* switch memory updates to abstract*)
     repeat (
         match goal with
           | [H: upd ?Mem ?Addr ?V@_ = Some _, 
@@ -482,7 +485,8 @@ Proof.
     pose proof (refine_syscalls_domains refine_syscalls_correct) as DOMAIN;
     (* put into context stuff required for syscalls *)
     match goal with
-      | [H1: Symbolic.get_syscall _ ?W = Some _
+      | [H1: Symbolic.get_syscall _ ?W = Some _,
+             H2: Symbolic.run_syscall _ _ = Some ?St
          |- _] => (
           assert (EGETCALL: exists sc, Symbolic.get_syscall stable W = Some sc)
           by (eexists; eauto);
@@ -511,7 +515,8 @@ Proof.
               | [H: decode_instr _ = Some (Load _ _ _) |- Abs.step _ _ _ _] => 
                 eapply Abs.step_load; eauto
               | [H: get ?Mem ?Addr = Some ?V@?TG, H1: refine_imemory _ _, 
-                  H2: refine_dmemory _ _ |- get _ ?Addr =  _ \/ get _ ?Addr = _] => (*for load*)
+                  H2: refine_dmemory _ _ |- get _ ?Addr =  _ \/ get _ ?Addr = _] => 
+                (*for load*)
                 destruct TG; 
                   [left; 
                     assert(MEMLOAD: exists id, get Mem Addr = Some V@(INSTR id)) 
@@ -529,112 +534,100 @@ Proof.
                      H2: refine_dmemory _ _ |- _] => 
                   destruct (refine_memory_total H1 H2 Pc) as [? NOMEM];
                   destruct (NOMEM H)
-              | [H1: Symbolic.get_syscall _ _ = Some _ |- Abs.step _ _ _ _] =>
-                eapply Abs.step_syscall; eauto 
-            end);
-    unfold refine_state; 
-    (*handle final state refinement*)
+              | [H1: Symbolic.get_syscall _ _ = Some _
+                 |- Abs.step _ _ _ _] =>
+                 eapply Abs.step_syscall; eauto 
+            end); auto; (*this auto solves syscall ref*)
+    unfold refine_state;
     repeat (match goal with
-              | [H: decode_instr _ = Some (Jump _ _) 
-                   |- refine_state (Abs.State _ _ _ _ (valid_jmp ?Pc ?W)) _] =>
-                remember (valid_jmp Pc W) as b; destruct b; 
-                [left; unfold refine_normal_state; repeat (split; auto) | idtac]
               | [|- _ /\ _] => split; [eauto | idtac]
-              | [H: decode_instr _ = Some (Jump _ _) |- 
-                 Abs.step _ _ _ (_,_,_,_,false)] =>
-                  eapply Abs.step_jump; eauto
               | [H: refine_imemory ?Imem ?Mem |- refine_imemory ?Imem ?Mem] => 
                 assumption
               | [H: refine_imemory ?Imem ?Mem |- refine_imemory ?Imem ?Mem'] => 
                 eapply imem_upd_preservation; eauto
               | [|- refine_pc _ _] => unfold refine_pc; simpl; auto
               | [|- INSTR _ = DATA \/ _ ] => right; eexists; eauto
+              | [H: refine_dmemory dmem ?Mem |- get ?Mem _ = Some _] => 
+                eapply H; eauto
             end);
     (*handle the correctness part*)
     repeat match goal with
-             | [|- forall _, _] => intros
-             | [|- _ <-> _] => simpl; split; try discriminate
+             | [|- _ <-> _] => simpl; split
              | [|- true = true] => reflexivity
-           end; 
-    repeat match goal with
-             | [H: refine_dmemory dmem ?Mem |- get ?Mem _ = Some _] => 
-               eapply H; eauto
-           end; auto;
-    (*jump/jal related stuff*)
-    (*no syscall*)
-    repeat (
-        match goal with
-          | [H: INSTR _ = INSTR _ |- _] => inv H
-        end);
-    try  match goal with
-           | [H: forall _, INSTR (Some ?W) = INSTR (Some _) -> _ 
-                           |- valid_jmp _ _ = true] =>
-             destruct (H _ erefl) as [? [? ?]]
-         end;
+             | [|- _ -> _] => intros
+             | [H: INSTR _ = INSTR _ |- _ ] => inv H
+           end;
     try match goal with
-          | [H: Sym.valid_jmp_tagged _ _,
-             H1: get imem ?Pc = Some _, (*only for selecting the right thing*)
-             H': valid_jmp ?Pc _ = true |- _] => 
-            unfold Sym.valid_jmp_tagged in H;
-            destruct (H _ _ H') as [[? ?] [[? ?] | [? ?]]]
-  end;
-     repeat match goal with
-           | [H: get ?Mem ?Pc = Some ?I@_, H': get ?Mem ?Pc = Some ?I'@_ |- _] =>
-             rewrite H in H'; inversion H'
-           | [H: get ?Mem ?W = None, H': get ?Mem ?W = Some _ |- _] =>
-             rewrite H in H'; congruence
-            end;
-     subst;
-    try match goal with
-          | [H: Sym.instructions_tagged _ _, 
-              H': get ?Mem ?Pc = Some _@(INSTR _),
-              H'': get ?Mem ?W = Some _@(INSTR _)   
-             |- valid_jmp ?Pc ?W = true] =>
-            assert (EQ := ITG _ _ _ H'); 
-            assert (EQ' := ITG _ _ _ H'');
-            subst       
-          | [HE: Sym.entry_points_tagged _ _,
-              HI: Sym.instructions_tagged _ _,
-              H': get ?Mem ?Pc = Some _@(INSTR _),
-              H'': get ?Mem ?W = None,
-              H''': Symbolic.get_syscall _ ?W = Some _,
-              H'''': Symbolic.entry_tag _ = INSTR _
-              |- valid_jmp ?Pc ?W = true] =>
-              assert (EQ := HI _ _ _ H');
-              assert (EQ' := HE _ _ _ H'' H''' H''''); subst                    
+          | [H: Abs.valid_jmp _ _ _ = _ |- _] =>
+            destruct (VTG _ _ H) as [[? ?] [[? ?] | [? [? [? ?]]]]]
         end;
-     try match goal with
-           | [|- exists _, _ /\ _] => eexists; eauto
-           | [H: valid_jmp ?Pc ?W = true 
-              |- valid_jmp ?Pc ?W = true] => assumption
-         end;
-    (*handling syscall case*)
     repeat match goal with
-          | [H: exists _, Symbolic.get_syscall _ _ = Some _ /\ _ |- _] =>
-            destruct H as [? [? ?]]
-          | [H: Symbolic.get_syscall _ _ = Some _,
-             H': Symbolic.get_syscall _ _ = Some _ |- _ /\ _] =>
-            rewrite H in H'; inv H'; split; eauto
-           end; auto;
-    (*re-establishing invariants*)
-    match goal with
-      | [|- Sym.invariants _ ?St'] =>
-        unfold Sym.invariants
-    end;
-      repeat match goal with 
-        [ |- _ /\ _] => split
-             end;
+             | [H: get ?Mem ?W = _, H1: get ?Mem ?W = _ |- _] =>
+               rewrite H in H1; inv H1
+             | [H: _ = word_to_id _ |- _] => 
+               symmetry in H
+             | [H:Symbolic.get_syscall _ ?W = _, 
+                H1: Symbolic.get_syscall _ ?W = _ |- _] =>
+               rewrite H in H1; inv H1
+           end;
+     try match goal with
+          | [H: Abs.valid_jmp _ _ _ = _ |- _] =>
+            destruct (valid_jmp_true _ _ _ H) as [? [? [? ?]]]
+        end;
+    repeat match goal with
+             | [H: word_to_id ?Pc = _ , H1: word_to_id ?Pc = _ 
+                |- _] => rewrite H in H1; inv H1
+             | [H: Symbolic.entry_tag ?X = _ |- context[Symbolic.entry_tag ?X]] =>
+               rewrite H
+             | [H: word_to_id ?W = _ |- context[word_to_id ?W]] =>
+               rewrite H
+             | [H: Abs.valid_jmp _ _ _ = _ |- _] =>
+               unfold Abs.valid_jmp, valid_jmp in H
+             | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
+               rewrite H1 in H
+           end;
+    try discriminate; (*do not initialize existential when it's contradiction*)
     try match goal with
-      | [|- Sym.instructions_tagged _ _] =>
-        eauto using Sym.itags_preserved_by_step
-      | [ |- Sym.valid_jmp_tagged _ _] =>
-        eauto using Sym.valid_jmp_tagged_preserved_by_step
-      | [ |- Sym.entry_points_tagged _ _] =>
-        eauto using Sym.entry_point_tags_preserved_by_step
-        end.         
+             | [|-exists _, _] => by (eexists; eauto)
+    end;
+    (*from symbolic to abstract correctness*)
+    repeat match goal with
+             | [H: forall _, INSTR _ = INSTR _ -> _ |- _] =>
+               destruct (H _ erefl) as [? [? ?]]; clear H; subst
+             | [H: get ?Mem ?W = Some _, H1: get ?Mem ?Pc = Some _ |- 
+                Abs.valid_jmp _ ?Pc ?W = _] =>
+               apply ITG in H; apply ITG in H1;
+               unfold Abs.valid_jmp, valid_jmp;
+               rewrite H H1;
+               by assumption
+           end;
+    (*for syscall*)
+    repeat match goal with
+          | [H: get ?Mem ?W = None, H1: Symbolic.get_syscall _ ?W = Some ?Sc,
+             H2: Symbolic.entry_tag ?Sc = _ 
+             |- Abs.valid_jmp _ _ _ = _] =>
+              assert (ETAG := ETG _ _ _ H H1 H2)
+          | [H1: get ?Mem ?Pc = Some _ |- Abs.valid_jmp _ _ _ = _] =>
+            apply ITG in H1;
+            unfold Abs.valid_jmp, valid_jmp
+          | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
+            rewrite H
+          | [H: is_true (cfg ?A ?B) |- cfg ?A ?B = true] => by assumption
+        end;
+    (*re-establishing invariants*)
+   repeat  match goal with
+             | [|- Sym.invariants _ ?St'] =>
+               unfold Sym.invariants
+             | [|- _ /\ _] => split
+             | [|- Sym.instructions_tagged _ _] =>
+               eapply Sym.itags_preserved_by_step; eauto; simpl; auto
+             | [ |- Sym.valid_jmp_tagged _ _] =>
+               eapply Sym.valid_jmp_tagged_preserved_by_step; eauto; simpl; auto
+             | [ |- Sym.entry_points_tagged _ _] =>
+               eapply Sym.entry_point_tags_preserved_by_step; eauto; simpl; auto
+        end.
   }
-  { 
-    inversion SSTEP; subst;
+  { inversion SSTEP; subst;
     destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT INV]]]]]];
     match goal with 
       | [H : refine_pc _ ?Pc@_, H': get _ ?Pc = Some ?I@?Ti |- _] => 
@@ -670,8 +663,8 @@ Proof.
            end.
   }
 Qed.
-
-Definition untag_atom (a : atom (word t) (@cfi_tag t)) := common.val a.
+  
+Definition untag_atom (a : atom (word t) cfi_tag) := common.val a.
 
 Lemma reg_refinement_preserved_by_equiv : 
   forall areg reg reg',
@@ -714,7 +707,7 @@ Proof.
   - destruct (REF addr v) as [MEMSA MEMAS].
     intro GET.
     assert (EQUIV' := EQUIV addr). clear EQUIV.
-    destruct (get mem addr) eqn:GET'; simpl in GET'; rewrite GET' in EQUIV'.
+    destruct (get mem addr) eqn:GET'.
     + assert (GET'' := GET).
       destruct GET as [id GET].
       rewrite GET in EQUIV'. inversion EQUIV'; subst. 
@@ -724,7 +717,7 @@ Proof.
       by rewrite GET in EQUIV'. 
   - intro GET.
     assert (EQUIV' := EQUIV addr); clear EQUIV.
-    destruct (get mem addr) eqn:GET'; simpl in GET'; rewrite GET' in EQUIV'.
+    destruct (get mem addr) eqn:GET'.
     + destruct (get mem' addr) eqn:GET''.
       * destruct EQUIV' as [? ? TG TG' | a' a'' id' id'' TG TG' EQ].
         { unfold refine_imemory in REF. apply REF in GET.
@@ -732,13 +725,13 @@ Proof.
           rewrite GET' in GET. destruct a as [v' tg]; subst. 
           simpl in TG. congruence. }
         { subst. apply REF in GET.  destruct GET as [id''' GET]. 
-          rewrite GET' in GET. exists id'''. rewrite GET''. assumption.
+          rewrite GET' in GET. exists id'''. assumption.
         }
       * destruct EQUIV'.
     + apply REF in GET. destruct GET as [? GET]. rewrite GET in GET'. congruence.
 Qed.
 
-Definition is_data (a : atom (word t) (@cfi_tag t)) := 
+Definition is_data (a : atom (word t) cfi_tag) := 
   match common.tag a with
     | DATA => true
     | INSTR _ => false
@@ -760,7 +753,7 @@ Proof.
   + destruct (get (filter is_data mem) addr) eqn:GET'.
     * assert (FILTER := filter_correctness is_data mem).
       assert (FILTER' := FILTER addr); clear FILTER.
-      destruct (get mem addr) eqn:GET''; simpl in GET''; rewrite GET'' in FILTER'.
+      destruct (get mem addr) eqn:GET''.
       - destruct a0 as [v tg].
         destruct tg; simpl in FILTER';
         [idtac | apply REF in GET'']; congruence.
@@ -816,7 +809,7 @@ Proof.
   { apply filter_domains; auto. intros.
     assert (FILTERK := FILTER k).
     assert (EQUIVK := EQUIV k).
-    destruct (get mem k) eqn:GET, (get mem' k) eqn:GET'; rewrite GET in EQUIVK; rewrite GET.
+    destruct (get mem k) eqn:GET, (get mem' k) eqn:GET'.
     - destruct a as [v tg], a0 as [v0 tg0].
       destruct tg, tg0.
       + reflexivity.

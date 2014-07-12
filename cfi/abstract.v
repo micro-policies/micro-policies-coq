@@ -6,6 +6,7 @@ Require Import lib.utils lib.partial_maps.
 Require Import common.common.
 Require Import lib.Coqlib.
 Require Import cfi.property.
+Require Import cfi.classes.
 Require lib.list_utils.
 Set Implicit Arguments.
 
@@ -53,7 +54,11 @@ Variable table : list syscall.
 Definition get_syscall (addr : word) : option syscall :=
   List.find (fun sc => address sc == addr) table.
 
-Variable valid_jmp : word -> word -> bool.
+Context {ids : @cfi_id t}.
+
+Variable cfg : id -> id -> bool.
+
+Definition valid_jmp := classes.valid_jmp cfg.
 
 Inductive step : state -> state -> Prop :=
 | step_nop : forall imem dmem reg pc i,

@@ -8,6 +8,7 @@ Require Import symbolic.symbolic.
 Require Import symbolic.exec.
 Require Import cfi.property.
 Require Import cfi.rules.
+Require Import cfi.classes.
 Require Import lib.Coqlib.
 Set Implicit Arguments.
 
@@ -25,12 +26,16 @@ Context {opss : machine_ops_spec ops}.
 
 Import PartMaps.
 
-Variable valid_jmp : word t -> word t -> bool.
+Context {ids : @classes.cfi_id t}.
+
+Variable cfg : id -> id -> bool.
+
+Definition valid_jmp := classes.valid_jmp cfg.
 
 Program Instance sym_cfi : Symbolic.params := {
   tag := cfi_tag_eqType;
 
-  handler := rules.cfi_handler valid_jmp;
+  handler := rules.cfi_handler cfg;
 
   internal_state := unit
 }.
@@ -48,15 +53,15 @@ Definition no_violation (sst : Symbolic.state t) :=
     get mem pc = Some i@ti ->
     tpc = INSTR (Some src) ->
     exists dst, 
-        ti = INSTR (Some dst) /\ valid_jmp src dst = true) /\
+        ti = INSTR (Some dst) /\ cfg src dst = true) /\
   (forall sc, 
      get mem pc = None -> 
      Symbolic.get_syscall table pc = Some sc ->
      forall src, 
        tpc = INSTR (Some src) ->
-       exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ valid_jmp src dst).
+       exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ cfg src dst).
 
-Inductive atom_equiv : atom (word t) (@cfi_tag t) -> atom (word t) (@cfi_tag t) 
+Inductive atom_equiv : atom (word t) (@cfi_tag t ids) -> atom (word t) (@cfi_tag t ids) 
                        -> Prop :=
   | data_equiv : forall a a', 
                    tag a = DATA ->
@@ -70,7 +75,7 @@ Inductive atom_equiv : atom (word t) (@cfi_tag t) -> atom (word t) (@cfi_tag t)
 
 Definition equiv {M : Type -> Type} {Key : Type} 
            {M_class : partial_map M Key} :
-           M (atom (word t) (@cfi_tag t)) -> M (atom (word t) (@cfi_tag t)) -> Prop :=
+           M (atom (word t) (@cfi_tag t ids)) -> M (atom (word t) (@cfi_tag t ids)) -> Prop :=
   pointwise atom_equiv.
 
 Inductive step_a : Symbolic.state t ->
@@ -98,16 +103,40 @@ Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 Open Scope word_scope.
 
 Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
-  let pc_t' := common.tag (Symbolic.pc st') in
   let pc_t := common.tag (Symbolic.pc st) in
+  let pc_t' := common.tag (Symbolic.pc st') in
   let pc_s := common.val (Symbolic.pc st) in
   let pc_s' := common.val (Symbolic.pc st') in
   match (get (Symbolic.mem st) pc_s) with
     | Some i@DATA => false
-    | Some i@(INSTR _) =>
+    | Some i@(INSTR (Some src)) =>
       match decode_instr i with
-        | Some (Jump r) => valid_jmp pc_s pc_s'
-        | Some (Jal r) => valid_jmp pc_s pc_s'
+        | Some (Jump r)
+        | Some (Jal r) =>
+          match (get (Symbolic.mem st) pc_s') with
+            | Some _@(INSTR (Some dst)) =>
+              cfg src dst
+            | None =>
+                  match Symbolic.get_syscall table pc_s' with
+                    | Some sc => match Symbolic.entry_tag sc with
+                                   | INSTR (Some dst) =>
+                                     cfg src dst
+                                   | _ => false
+                                 end
+                    | None => false
+                  end
+            | _ => false
+          end
+        | Some (Bnz r imm) => 
+          (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+        | None => false
+        | _ => pc_s' == pc_s .+1
+      end
+    | Some i@(INSTR None) =>
+      match decode_instr i with
+        | Some (Jump r)
+        | Some (Jal r) =>
+          false
         | Some (Bnz r imm) => 
           (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
         | None => false
@@ -122,25 +151,25 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
 
 (*This should be enough for backwards refinement?*)
 Definition instructions_tagged (mem : memory) :=
-  forall addr i (id : word t), 
+  forall addr i id, 
     get mem addr = Some i@(INSTR (Some id)) ->
-    id = addr. 
+    word_to_id addr = Some id. 
 
 Definition entry_points_tagged (mem : memory) :=
   forall addr sc id,
     get mem addr = None ->
     Symbolic.get_syscall table addr = Some sc ->
     Symbolic.entry_tag sc = INSTR (Some id) ->
-    id = addr.
+    word_to_id addr = Some id.
 
 Definition valid_jmp_tagged (mem : memory) := 
   forall src dst,
     valid_jmp src dst = true ->
-    (exists i, get mem src = Some i@(INSTR (Some src))) /\
-    ((exists i', get mem dst = Some i'@(INSTR (Some dst))) \/
+    (exists i, get mem src = Some i@(INSTR (word_to_id src))) /\
+    ((exists i', get mem dst = Some i'@(INSTR (word_to_id dst))) \/
      get mem dst = None /\
      exists sc, Symbolic.get_syscall table dst = Some sc /\
-                (Symbolic.entry_tag sc) = INSTR (Some dst)).
+                (Symbolic.entry_tag sc) = INSTR (word_to_id dst)).
 
 
 (* These may be needed for forwards simulation, I will leave them out until
@@ -537,7 +566,7 @@ Definition violation sst :=
         | INSTR (Some src) =>
           match ti with
             | INSTR (Some dst) =>
-              valid_jmp src dst = false
+              cfg src dst = false
             | _ => true
           end
         | _ => match ti with
@@ -597,7 +626,7 @@ Proof.
 Qed.
 
 Lemma succ_false_implies_violation sst sst' :
-  invariants sst ->
+  invariants sst -> (*invariants were not used after changing to ids*)
   ssucc sst sst' = false ->
   step sst sst' ->
   False \/ violation sst'.
@@ -628,34 +657,13 @@ Proof.
   try match goal with
         | [H: (?A == ?A) = false |- _] => 
       move/eqP:H => CONTRA; destruct (CONTRA erefl)
-      end; 
+      end;
   right; unfold violation;
-  simpl; unfold get_ti; simpl;
-  destruct (get mem w) as [[i' [[dst|]|]]|] eqn:GET; try constructor;
-  try match goal with
-        |[H: get ?Mem ?W = None |- _] =>
-         destruct (Symbolic.get_syscall table W) as [sc|] eqn:GETCALL
-      end;
-  try match goal with
-        |[H: Symbolic.get_syscall _ _ = Some ?Sc |- _] =>
-         destruct (Symbolic.entry_tag sc) as [[dst|]|] eqn:ETAG
-      end;
-  try match goal with
-    | [H:valid_jmp ?Pc ?W = false,
-       H1: get ?Mem ?Pc = Some _@(INSTR (Some ?Id)),
-       H2: get ?Mem ?W = Some _@(INSTR (Some ?Id')) |- _] =>
-      assert (EQ := ITG _ _ _ H1);
-      assert (EQ' := ITG _ _ _ H2);
-      subst
-    | [H:valid_jmp ?Pc ?W = false,
-       H1: get ?Mem ?Pc = Some _@(INSTR (Some ?Id)),
-       H2 : get ?Mem ?W = None,
-       H3: Symbolic.get_syscall _ ?W = Some ?Sc,
-       H4: Symbolic.entry_tag ?Sc = _ |- _] =>
-        assert (EQ := ITG _ _ _ H1);
-        assert (EQ' := ETG _ _ _ H2 H3 H4);
-        subst
-  end; by auto.
+  simpl; unfold get_ti; simpl in *;
+  repeat match goal with
+        |[H: ?Expr = _ |- context[match ?Expr with _ => _ end]] =>
+         rewrite H
+      end; by auto.
 Qed.
 
 Lemma is_violation_implies_stop sst umvec :
@@ -700,7 +708,7 @@ Qed.
 
 End WithClasses.
 
-Notation memory t vj := (Symbolic.memory t (@sym_cfi t vj)).
-Notation registers t vj := (Symbolic.registers t (@sym_cfi t vj)).
+Notation memory t ids vj := (Symbolic.memory t (@sym_cfi t ids vj)).
+Notation registers t ids vj := (Symbolic.registers t (@sym_cfi t ids vj)).
 
 End Sym.

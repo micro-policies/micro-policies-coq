@@ -11,6 +11,7 @@ Require Import symbolic.int_32.
 Require Import symbolic.refinement_common.
 Require Import symbolic.backward.
 Require Import symbolic.rules.
+Require Import cfi.classes.
 Require Import cfi.rules.
 Require Import cfi.symbolic.
 Require Import cfi.abstract.
@@ -22,11 +23,12 @@ Let t := concrete_int_32_t.
 Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
 
-Variable valid_jmp : word t -> word t -> bool.
+Context {ids : @classes.cfi_id t}
+        {enc : rules.encodable rules.cfi_tag_eqType}.
 
-Instance sp : Symbolic.params := Sym.sym_cfi valid_jmp.
+Variable cfg : id -> id -> bool.
 
-Context {enc : rules.encodable (@rules.cfi_tag_eqType t)}.
+Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable ki : refinement_common.kernel_invariant.
 Variable stable : list (Symbolic.syscall t).
@@ -53,9 +55,9 @@ Hypothesis syscall_sem :
 
 Hypothesis syscall_preserves_instruction_tags :
   forall sc st st',
-    Sym.instructions_tagged valid_jmp (Symbolic.mem st) ->
+    Sym.instructions_tagged cfg (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
-    Sym.instructions_tagged valid_jmp (Symbolic.mem st').
+    Sym.instructions_tagged cfg (Symbolic.mem st').
 
 Hypothesis syscall_preserves_valid_jmp_tags :
   forall sc st st',
@@ -73,7 +75,7 @@ Lemma backwards_refinement_as ast sst sst' :
   RefinementAS.refine_state stable ast sst ->
   exec (Symbolic.step stable) sst sst' ->
   exists ast',
-    exec (fun ast ast' => Abs.step atable valid_jmp ast ast') ast ast' /\
+    exec (fun ast ast' => Abs.step atable cfg ast ast') ast ast' /\
     RefinementAS.refine_state stable ast' sst'.
 Proof.
   move => REF EXEC.
@@ -90,7 +92,7 @@ Lemma backwards_refinement (ast : Abs.state t) (cst cst' : Concrete.state t) :
   exec (Concrete.step _ masks) cst cst' ->
   in_user cst' = true ->
   exists ast',
-    exec (fun ast ast' => Abs.step atable valid_jmp ast ast') ast ast' /\
+    exec (fun ast ast' => Abs.step atable cfg ast ast') ast ast' /\
     refine_state ast' cst'.
 Proof.
   move => [sst SC AS] EXECC INUSER.

@@ -3,6 +3,7 @@ Require Coq.Vectors.Vector.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import lib.utils common.common symbolic.symbolic.
+Require Import cfi.classes.
 
 Set Implicit Arguments.
 Import Coq.Vectors.Vector.VectorNotations.
@@ -13,10 +14,18 @@ Section uhandler.
 Context {t : machine_types}.
 Context {ops : machine_ops t}.
 
+Context {ids : @cfi_id t}.
+
 Inductive cfi_tag : Type :=
-| INSTR : option (word t) -> cfi_tag
+| INSTR : option id -> cfi_tag
 | DATA  : cfi_tag.
 
+Definition get_id tg :=
+  match tg with
+    | DATA 
+    | INSTR None => None
+    | INSTR x => x
+  end.
 
 Definition cfi_tag_eq t1 t2 :=
   match t1, t2 with
@@ -33,14 +42,15 @@ Qed.
 Definition cfi_tag_eqMixin := EqMixin cfi_tag_eqP.
 Canonical cfi_tag_eqType := Eval hnf in EqType cfi_tag cfi_tag_eqMixin.
 
-Variable valid_jmp : word t -> word t -> bool.
+
+Variable cfg : id -> id -> bool.
 
 (* This allows loading of instructions as DATA *)
 Definition cfi_handler (umvec : Symbolic.MVec cfi_tag) : option (Symbolic.RVec cfi_tag) :=
   match umvec with
   | mkMVec   JUMP   (INSTR (Some n))  (INSTR (Some m))  _
   | mkMVec   JAL    (INSTR (Some n))  (INSTR (Some m))  _  =>
-    if valid_jmp n m then Some (mkRVec (INSTR (Some m)) DATA)
+    if cfg n m then Some (mkRVec (INSTR (Some m)) DATA)
     else None
   | mkMVec   JUMP   DATA  (INSTR (Some n))  _
   | mkMVec   JAL    DATA  (INSTR (Some n))  _   => 
@@ -49,13 +59,13 @@ Definition cfi_handler (umvec : Symbolic.MVec cfi_tag) : option (Symbolic.RVec c
   | mkMVec   JAL    DATA  (INSTR None)  _  =>
     None
   | mkMVec   STORE  (INSTR (Some n))  (INSTR (Some m))  [_ ; _ ; DATA]  =>
-    if valid_jmp n m then Some (mkRVec DATA DATA) else None
+    if cfg n m then Some (mkRVec DATA DATA) else None
   | mkMVec   STORE  DATA  (INSTR _)  [_ ; _ ; DATA]  => 
     Some (mkRVec DATA DATA)
   | mkMVec   STORE  _  _  _  => None
   | mkMVec    _    (INSTR (Some n))  (INSTR (Some m))  _  => 
     (* this includes op = SERVICE *)
-    if valid_jmp n m then Some (mkRVec DATA DATA) else None
+    if cfg n m then Some (mkRVec DATA DATA) else None
   | mkMVec    _    DATA  (INSTR _)  _  => 
     (* this includes op = SERVICE, fall-throughs checked statically *)
     Some (mkRVec DATA DATA)
@@ -86,7 +96,7 @@ Definition cfi_handler_aux (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
 Definition cfi_handler' (umvec : MVec cfi_tag) : option (RVec cfi_tag) :=
   match tpc umvec, ti umvec with
   | (INSTR (Some n)), INSTR (Some m) =>
-    if valid_jmp n m then cfi_handler_aux umvec else None
+    if cfg n m then cfi_handler_aux umvec else None
   | DATA,             INSTR _ =>
     cfi_handler_aux umvec
   | _, _ => None
@@ -107,7 +117,7 @@ Proof.
   destruct umvec as [op tpc ti ts].
   unfold cfi_handler'.
   destruct tpc as [[n|]|], ti as [[m|]|]; try (destruct op; reflexivity).
-  {  destruct op; simpl; destruct (valid_jmp n m); auto;
+  {  destruct op; simpl; destruct (cfg n m); auto;
      repeat handler_equiv_tac.
   }
   { destruct op; simpl; auto; 
