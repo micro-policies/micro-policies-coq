@@ -105,6 +105,8 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
                   match (decode (common.tag i')) with
                     | Some (USER (INSTR (Some dst))) =>
                       cfg src dst
+                    | Some (ENTRY (INSTR (Some dst))) =>
+                      is_nop (common.val i') && cfg src dst
                     | _ => false
                   end
                 | _ => false

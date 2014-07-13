@@ -117,14 +117,14 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
             | Some _@(INSTR (Some dst)) =>
               cfg src dst
             | None =>
-                  match Symbolic.get_syscall table pc_s' with
-                    | Some sc => match Symbolic.entry_tag sc with
-                                   | INSTR (Some dst) =>
-                                     cfg src dst
-                                   | _ => false
-                                 end
-                    | None => false
-                  end
+              match Symbolic.get_syscall table pc_s' with
+                | Some sc => match Symbolic.entry_tag sc with
+                               | INSTR (Some dst) =>
+                                 cfg src dst
+                               | _ => false
+                             end
+                | None => false
+              end
             | _ => false
           end
         | Some (Bnz r imm) => 
