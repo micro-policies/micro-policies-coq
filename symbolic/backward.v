@@ -54,6 +54,14 @@ Proof.
   simpl in INUSER. discriminate.
 Qed.
 
+Ltac simpl_encode :=
+  match goal with
+  | H : context[decode (encode _)] |- _ =>
+    rewrite decodeK in H; simpl in *; subst
+  | H : encode _ = encode _ |- _ =>
+    apply encode_inj in H; simpl in H; try inv H; subst
+  end.
+
 Ltac analyze_cache :=
   match goal with
   | LOOKUP : Concrete.cache_lookup _ ?cache _ ?mvec = Some ?rvec,
@@ -70,15 +78,7 @@ Ltac analyze_cache :=
     | _ \/ _ => destruct CACHEHIT as [CACHEHIT | CACHEHIT]
     | False => destruct CACHEHIT
     end;
-    try subst mvec; simpl in *; subst;
-    try match goal with
-    | H : context[decode (encode _)] |- _ =>
-      rewrite decodeK in H; simpl in *; subst
-    end;
-    try match goal with
-    | H : encode _ = encode _ |- _ =>
-      apply encode_inj in H; simpl in H; try inv H; subst
-    end
+    try subst mvec; simpl in *; try simpl_encode; subst
   | MISS   : Concrete.miss_state _ _ _ = Some ?st',
     INUSER : in_user ?st' = true |- _ =>
     destruct (miss_state_not_user _ _ MISS INUSER)
