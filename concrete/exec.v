@@ -212,4 +212,18 @@ Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
     | None => None
   end.
 
+Lemma step_build_cmvec cst cst' :
+  Concrete.step _ masks cst cst' ->
+  exists cmvec, build_cmvec cst = Some cmvec.
+Proof.
+  intros STEP.
+  inv STEP; try subst mvec;
+  unfold next_state_pc, next_state_reg_and_pc, next_state, miss_state in *;
+  match_inv; simpl in *;
+  repeat match goal with
+  | H : ?X = _ |- context[?X] => rewrite H; simpl
+  end;
+  solve [eauto].
+Qed.
+
 End Masks.

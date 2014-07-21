@@ -704,27 +704,6 @@ Qed.
 
 (*Case 3*)
 
-Lemma concrete_stuck cst :
-  build_cmvec mt cst = None ->
-  ~exists cst', Concrete.step _ masks cst cst'.
-Proof.
-  intros CMVEC (cst' & STEP).
-  destruct cst as [mem reg cache [pc tpc] epc].
-  inversion STEP; inversion ST;
-  unfold build_cmvec in CMVEC;
-  subst;
-  simpl in CMVEC;
-  repeat match goal with
-  | H: ?Expr = _, H' : match ?Expr with _ => _ end = _ |- _ =>
-    rewrite H in H'
-  | H1 : ?X = _,
-    H2 : context[?X] |- _ =>
-    rewrite H1 in H2; simpl in H2
-  end;
-  try discriminate.
-Qed.
-
-
 (*Move to refinement_common?*)
 (*Again rough statement, subject to change*)
 Lemma fault_steps_at_kernel_aux ast cst cst' cmvec :
@@ -1279,8 +1258,9 @@ Proof.
       }
       { (*case the cmvec does not exist*)
         exfalso.
-        assert (STUCK := concrete_stuck CMVEC).
-        eauto. }
+        apply step_build_cmvec in STEP.
+        destruct STEP.
+        congruence. }
 Qed.
 
 Theorem cfg_true_equiv ssi ssj csi csj :
