@@ -171,6 +171,40 @@ Ltac simpl_word_lift :=
     simpl in H
   end.
 
+Lemma initial_handler_state' cst kst cmvec cmem' :
+  forall (ISUSER : in_user cst = true)
+         (CMVEC : build_cmvec _ cst = Some cmvec)
+         (MEM : Concrete.store_mvec ops (Concrete.mem cst) cmvec = Some cmem')
+         (MISS : Concrete.cache_lookup _ (Concrete.cache cst) masks cmvec = None)
+         (STEP : Concrete.step _ masks cst kst),
+      kst = Concrete.mkState cmem'
+                             (Concrete.regs cst)
+                             (Concrete.cache cst)
+                             (Concrete.fault_handler_start _ (t := mt))@Concrete.TKernel
+                             (Concrete.pc cst).
+Proof.
+  intros.
+  rewrite (lock build_cmvec) in CMVEC.
+  inv STEP; try subst mvec;
+  unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
+         Concrete.next_state_pc, Concrete.next_state,
+         Concrete.miss_state in *;
+  match_inv; simpl in *;
+  try analyze_cache; simpl in *;
+
+  solve [
+    repeat simpl_word_lift; simpl in *; discriminate |
+    move: CMVEC;
+    rewrite -(lock build_cmvec) /=;
+    repeat match goal with
+           | E : ?X = _ |- context [?X] => rewrite E; simpl
+           end;
+    congruence
+  ].
+Qed.
+
+(* TODO: This is less generic than the above version. Should be removed eventually. *)
+
 Lemma initial_handler_state cst kst :
   forall (ISUSER : in_user cst = true)
          (WFENTRYPOINTS : wf_entry_points table (Concrete.mem cst))

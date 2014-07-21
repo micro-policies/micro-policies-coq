@@ -226,4 +226,21 @@ Proof.
   solve [eauto].
 Qed.
 
+Lemma build_cmvec_ctpc cst cmvec :
+  build_cmvec cst = Some cmvec ->
+  Concrete.ctpc cmvec = common.tag (Concrete.pc cst).
+Proof.
+  case: cst => [mem regs cache [v t] epc].
+  rewrite /build_cmvec => H.
+  match_inv.
+  repeat match goal with
+  | H : ?X = _ |- _ =>
+    match X with
+    | context [match ?Y with _ => _ end] =>
+      destruct Y; simpl in H
+    end
+  end; match_inv;
+  solve [ reflexivity | congruence ].
+Qed.
+
 End Masks.
