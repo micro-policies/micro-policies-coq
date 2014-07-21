@@ -554,17 +554,17 @@ Proof.
            destruct Expr eqn:?
        end;
    try match goal with
-     | [H: (?Pc + 1)%w = ?Pc |- _] => 
+     | [H: (?Pc + 1)%w = ?Pc |- _] =>
        rewrite H in SUCC; rewrite eqxx in SUCC; discriminate
    end.
   (*jump case*)
   unfold Sym.instructions_tagged in ITG.
   specialize (ITG _ _ _ PC). simpl in ITG. subst.
   congruence.
-  (*bnz case*) 
+  (*bnz case*)
   destruct (w == 0%w).
   - subst mem' reg'. simpl in *.
-    destruct a as [v [|]]. 
+    destruct a as [v [|]].
     + rewrite H2 in Heqo0. rewrite PC in Heqo0. inversion Heqo0. subst o i.
       rewrite INST in SUCC.
       destruct o0;
@@ -572,7 +572,7 @@ Proof.
       rewrite H2 in H; rewrite H2 in H; rewrite eqxx in H; by discriminate.
     + rewrite H2 in Heqo0. rewrite Heqo0 in PC. by inversion PC.
   - subst mem' reg'. simpl in *.
-    destruct a as [v [|]]. 
+    destruct a as [v [|]].
     + rewrite H2 in Heqo0. rewrite PC in Heqo0. inversion Heqo0. subst o i.
       rewrite INST in SUCC.
       destruct o0;
@@ -683,185 +683,6 @@ Qed.
 
 (*Case 2*)
 
-Lemma no_user_access_implies_halt_aux sst cst cmvec :
-  refinement_common.refine_state ki stable sst cst ->
-  build_mvec stable sst = None ->
-  build_cmvec mt cst = Some cmvec ->
-  khandler cmvec = None.
-Proof.
-Admitted. (*
-  intros REF SMVEC CMVEC.
-  destruct REF as [smem sreg int mem reg cache epc pc stpc
-                        ? ? REFM REFR CACHE MVE WF KI].
-  subst.
-  unfold khandler.
-  unfold build_mvec in SMVEC.
-  destruct (get smem pc) eqn:SGET.
-  - destruct a as [w itg].
-    simpl in SMVEC.
-    destruct (decode_instr w) eqn:INST.
-    Opaque Symbolic.handler. Opaque cfi_handler.
-    + destruct i eqn:OP;
-      simpl in SMVEC; try discriminate; (*nop case*)
-      apply REFM in SGET;
-      unfold bind in SMVEC;
-      repeat match goal with
-        | [H: match ?Expr with _ => _ end = _ |- _] =>
-          remember (Expr) as hexpr; destruct hexpr
-        | [H: Some ?A = get _ _ |- _] => destruct A; symmetry in H
-        | [H: None = get _ _ |- _] => symmetry in H
-      end;
-      try discriminate;
-      unfold build_cmvec in CMVEC;
-      repeat match goal with
-               |[H: get sreg ?R = Some _ |- _] =>
-                apply REFR in H
-               |[H: get smem ?Addr = Some _ |- _] =>
-                apply REFM in H
-             end;
-      unfold bind in CMVEC;
-      repeat match goal with
-        | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
-          rewrite H1 in H; simpl in H
-             end.
-      try match goal with (*for memory accesses*)
-            |[H: match get mem (common.val (TotalMaps.get _ ?R)) with _ => _ end = _,
-                 H1: TotalMaps.get _ ?R = _ |- _] => rewrite H1 in H
-          end;
-      try match goal with (*for memory accesses*)
-            |[H: match get mem (common.val (TotalMaps.get ?Reg ?R)) with _ => _ end = _
-              |- _] => destruct (TotalMaps.get Reg R) eqn:?
-          end;
-      repeat match goal with
-        | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
-          rewrite H1 in H; simpl in H
-             end; simpl in *;
-      try match goal with
-            | [H: get smem ?Addr = None,
-                  H1: match get mem ?Addr with _ => _ end = _ |- _] =>
-              destruct (get mem Addr) as [[mval mtg] |] eqn:?;
-                [ idtac | discriminate]
-          end;
-      try match goal with
-               | [H: get smem ?Addr = None, H1: get mem ?Addr = Some _@?Mtg |- _] =>
-                 destruct (rules.decode Mtg) eqn:DECMTG;
-                   [ destruct (get_mem_no_user _ REFM H H1 DECMTG) | idtac]; clear H1
-          end;
-      try match goal with
-            | [ H1: match get mem ?Addr with _ => _ end = _ |- _] =>
-              destruct (get mem Addr) as [[mval2 mtg2] |] eqn:?;
-                 [destruct (rules.decode mtg2) as [[| |] | ] eqn:DECMTG2 | discriminate]
-          end;
-      inv CMVEC;
-      repeat match goal with
-               | [H: TotalMaps.get ?Reg ?R = _ |- _] =>
-                 rewrite H
-             end;
-      repeat match goal with
-               | [|- context[TotalMaps.get ?Reg ?R]] =>
-                 destruct (TotalMaps.get Reg R) eqn:?
-             end;
-      try match goal with
-               | [H: get sreg ?R = None, H1: TotalMaps.get reg ?R = _@?Ctg |- _] =>
-                 destruct (rules.decode Ctg) eqn:DECTG1;
-                   [ destruct (get_reg_no_user _ REFR H H1 DECTG1) | idtac]; clear H1
-          end;
-      try match goal with
-              | [H: TotalMaps.get reg ?R = _@?Ctg |- _] =>
-                destruct (rules.decode Ctg) as [[| |] |] eqn:DECTG2;
-                  clear H
-            end;
-        try match goal with
-              | [H: TotalMaps.get reg ?R = _@?Ctg |- _] =>
-                destruct (rules.decode Ctg) as [[| |] |] eqn:DECTG3;
-                  clear H
-            end;
-       repeat match goal with
-                | [H: exists _, _ = rules.ENTRY _ |- _] => destruct H
-              end;
-        subst;
-      simpl;
-      try rewrite op_to_wordK;  simpl;
-      try rewrite DECTG1;
-      try rewrite DECTG2;
-      try rewrite DECTG3;
-      try rewrite DECMTG;
-      try rewrite DECMTG2;
-      repeat rewrite (rules.decodeK);
-      simpl;
-      try reflexivity.
-    + unfold build_cmvec in CMVEC.
-      apply REFM in SGET. rewrite SGET in CMVEC.
-      rewrite INST in CMVEC.
-      by discriminate.
-  - destruct (Symbolic.get_syscall stable pc) eqn:GETCALL.
-    + discriminate.
-    + unfold build_cmvec in CMVEC.
-      destruct (get mem pc) eqn:GET.
-      * destruct a as [v ctg].
-        simpl in CMVEC.
-        destruct (rules.decode ctg) eqn:DEC.
-        { destruct (get_mem_no_user pc REFM SGET GET DEC); subst.
-          - unfold rules.handler.
-            destruct (decode_instr v) eqn:INST.
-            + destruct i eqn:OP;
-              unfold bind in CMVEC;
-              try match goal with
-                      [H: match get mem ?Addr with _ => _ end = _ |- _] =>
-                      destruct (get mem Addr)
-            end;
-              inv CMVEC;
-              rewrite op_to_wordK;
-              try rewrite rules.decodeK;
-              rewrite DEC; reflexivity.
-            + discriminate.
-          - (*case fetched instr is tagged entry*)
-            destruct H as [ut H].
-            rewrite H in DEC.
-            unfold wf_entry_points in WF.
-            unfold rules.handler.
-            destruct (decode_instr v) eqn:INST.
-            + destruct i eqn:OP;
-              try (unfold bind in CMVEC;
-              try match goal with
-                      [H: match get mem ?Addr with _ => _ end = _ |- _] =>
-                      destruct (get mem Addr)
-            end;
-              inv CMVEC;
-              rewrite op_to_wordK;
-              try rewrite rules.decodeK;
-              rewrite DEC; reflexivity).
-              (*entry point and NOP, sc case*)
-              exfalso.
-              specialize (WF pc ut).
-              rewrite GET in WF.
-              apply rules.encodeK in DEC.
-              rewrite /is_nop INST DEC eqxx /= in WF.
-              have CONTRA: true = true by [].
-              apply WF in CONTRA.
-              destruct CONTRA as [? [CONTRA ?]].
-              rewrite CONTRA in GETCALL.
-              by discriminate.
-            + discriminate.
-        }
-        { unfold rules.handler.
-          destruct (decode_instr v) eqn:INST.
-          + destruct i eqn:OP;
-            try (unfold bind in CMVEC;
-              try match goal with
-                      [H: match get mem ?Addr with _ => _ end = _ |- _] =>
-                      destruct (get mem Addr)
-            end;
-              inv CMVEC;
-              rewrite op_to_wordK;
-              try rewrite rules.decodeK;
-              rewrite DEC; reflexivity).
-          + discriminate.
-        }
-      * discriminate.
-Qed.
-*)
-
 Lemma no_user_access_implies_halt sst cst cmvec :
   in_user cst = true ->
   refine_state sst cst ->
@@ -872,7 +693,9 @@ Proof.
   intros USER REF MVEC CMVEC.
   destruct REF as [REF ?].
   destruct REF as [REF | CONTRA].
-  - eauto using no_user_access_implies_halt_aux.
+  - destruct (khandler cmvec) as [rvec|] eqn:E; last by [].
+    generalize (handler_build_mvec REF CMVEC E).
+    move => [? ?] //. congruence.
   - destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
     eapply @in_user_in_kernel in USER.
@@ -1116,7 +939,7 @@ Lemma attacker_up_to ast ast' cst cst' axs cxs :
     Concrete.step _ masks csi csj /\ check csi csj = false /\
     ((exists asi, refine_traces cfi_refinementSC [asi] (csi :: csj :: tl)
                 /\ exec (@Sym.step_a mt ops ids cfg) ast asi)
-    \/ (exists asi asj atl, 
+    \/ (exists asi asj atl,
           refine_traces cfi_refinementSC (asi :: asj :: atl) (csj :: tl) /\
           Sym.all_stuck stable (asi :: asj :: atl) /\
           exec (@Sym.step_a mt ops ids cfg) ast asi /\
@@ -1493,7 +1316,7 @@ Proof.
         destruct tg as [[src|]|].
         { simpl in GET. rewrite GET /= rules.decodeK.
           destruct (decode_instr v) eqn:INST.
-          - destruct i eqn:OP; try assumption. (*TODO: fix jmp/jal copy paste*) 
+          - destruct i eqn:OP; try assumption. (*TODO: fix jmp/jal copy paste*)
             { (*jmp*)
               destruct (get smemi pcj) as [[v' tg]|] eqn:GET'.
               - assert (REFMJ := REFM pcj v' tg).
@@ -1520,7 +1343,7 @@ Proof.
                     rewrite ETAG /= rules.decodeK.
                     destruct (Symbolic.entry_tag s0) as [[?|]|] eqn:ETAG';
                     rewrite ETAG' in H2; try discriminate.
-                    apply andb_true_iff. 
+                    apply andb_true_iff.
                       by auto.
                   * by discriminate.
                 + rewrite GETCALL in H2. by discriminate.
@@ -1551,7 +1374,7 @@ Proof.
                     rewrite ETAG /= rules.decodeK.
                     destruct (Symbolic.entry_tag s0) as [[?|]|] eqn:ETAG';
                     rewrite ETAG' in H2; try discriminate.
-                    apply andb_true_iff. 
+                    apply andb_true_iff.
                       by auto.
                   * by discriminate.
                 + rewrite GETCALL in H2. by discriminate.
@@ -1642,7 +1465,7 @@ Proof.
               destruct (get cmem pc') as [[cv' ctg]|] eqn:GET'.
               { simpl.
                 destruct (rules.decode ctg) eqn:DEC.
-                - destruct t. 
+                - destruct t.
                   apply rules.encodeK in DEC. rewrite <- DEC in GET'.
                   apply REFM in GET'. rewrite GET' in SGET'.
                   by discriminate.
@@ -1704,7 +1527,7 @@ Proof.
               destruct (get cmem pc') as [[cv' ctg]|] eqn:GET'.
               { simpl.
                 destruct (rules.decode ctg) eqn:DEC.
-                - destruct t. 
+                - destruct t.
                   apply rules.encodeK in DEC. rewrite <- DEC in GET'.
                   apply REFM in GET'. rewrite GET' in SGET'.
                   by discriminate.

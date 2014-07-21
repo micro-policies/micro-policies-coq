@@ -171,7 +171,7 @@ Definition is_nop (i : word mt) : bool :=
   | _ => false
   end.
 
-Lemma is_nopP : forall i, is_nop i -> decode_instr i = Some (Nop _).
+Lemma is_nopP : forall i, is_nop i <-> decode_instr i = Some (Nop _).
 Proof.
   rewrite /is_nop.
   move => i.
@@ -201,6 +201,30 @@ Proof.
   case: (PartMaps.get cmem addr) => [[i it]|] //.
   move/andP => [H1 H2]. exists i. split; last trivial.
   by move/eqP : H2 => ->.
+Qed.
+
+Lemma wf_entry_points_only_if cmem addr i t :
+  wf_entry_points cmem ->
+  PartMaps.get cmem addr = Some i@(encode (ENTRY t)) ->
+  is_nop i ->
+  exists sc,
+    Symbolic.get_syscall table addr = Some sc /\
+    Symbolic.entry_tag sc = t.
+Proof.
+  move => WF GET ISNOP.
+  apply/WF.
+  by rewrite GET eqxx andb_true_r.
+Qed.
+
+Lemma entry_point_undefined cmem smem addr v t :
+  refine_memory smem cmem ->
+  PartMaps.get cmem addr = Some v@(encode (ENTRY t)) ->
+  PartMaps.get smem addr = None.
+Proof.
+  move => REFM GET.
+  case GET': (PartMaps.get smem addr) => [[v' t']|] //.
+  move/REFM: GET' => GET'.
+  by have: ENTRY t = USER t' by eapply encode_inj; congruence.
 Qed.
 
 Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Prop :=
@@ -490,7 +514,7 @@ Proof.
   simpl in *; left;
   do 4 eexists; repeat (split; eauto);
 
-  (* match_inv is to brutal with equalities involving dependent types *)
+  (* match_inv is too brutal with equalities involving dependent types *)
   repeat match goal with
   | H : bind _ ?X = Some _ |- _ =>
     match X with
@@ -664,6 +688,96 @@ Proof.
   rewrite /handler /rules.handler /= ?op_to_wordK /=;
   repeat rewrite ?rules.decodeK /=;
   move => H //=; rewrite H //=.
+Qed.
+
+Lemma handler_build_mvec sst cst cmvec rvec :
+  refine_state sst cst ->
+  build_cmvec mt cst = Some cmvec ->
+  handler cmvec = Some rvec ->
+  exists mvec,
+    build_mvec table sst = Some mvec.
+Proof.
+  intros [smem sreg int mem reg cache epc pc stpc
+               ? ? REFM REFR CACHE MVE WF KI].
+  subst sst cst.
+  rewrite /build_cmvec.
+  move => CMVEC.
+  match_inv;
+  match goal with
+  | H : ?X = _ |- _ =>
+    match X with
+    | context[match ?Y with _ => _ end] =>
+      destruct Y; match_inv
+    end
+  end;
+  repeat match goal with
+  | a : atom _ _ |- _ =>
+    destruct a
+  end;
+  move => HANDLER;
+  rewrite /handler /rules.handler ?decodeK /= ?op_to_wordK in HANDLER;
+  match_inv;
+  try simpl in HANDLER;
+  try match goal with
+  | OPS : Symbolic.mvec_operands _ _ |- _ =>
+    simpl in OPS;
+    repeat match goal with
+    | ts : Vector.t _ 0 |- _ => induction ts using Vector.case0
+    | ts : Vector.t _ (S _) |- _ => induction ts using caseS
+    end;
+    try simpl in OPS;
+    simpl in HANDLER
+  end;
+  try match goal with
+  | H : decode_fields _ _ = Some _ |- _ =>
+    simpl in H;
+    repeat match goal with
+    | H : bind _ ?X = Some _ |- _ =>
+      match X with
+      | context[match ?a with _ => _ end] =>
+        destruct a as [?| |];
+        try solve [inversion H];
+        simpl in H
+      end
+    end
+  end; match_inv;
+  repeat match goal with
+  | H : decode _ = Some _ |- _ => apply encodeK in H
+  end;
+  subst;
+  repeat match goal with
+  | GET : PartMaps.get ?cregs ?r = Some _@(encode (USER _)),
+    REFR : refine_registers ?sregs ?cregs |- _ =>
+    match goal with
+    | GET' : PartMaps.get sregs r = Some _ |- _ => fail 1
+    | |- _ => idtac
+    end;
+    pose proof (proj1 (REFR _ _ _) GET)
+  | GET : PartMaps.get ?cmem ?addr = Some ?w@(encode ?t),
+    REFM : refine_memory ?smem ?cmem |- _ =>
+    match t with
+    | USER _ =>
+      match goal with
+      | GET' : PartMaps.get smem addr = Some _ |- _ => fail 2
+      | |- _ => idtac
+      end;
+      pose proof (proj1 (REFM _ _ _) GET)
+    | ENTRY _ =>
+      match goal with
+      | GET' : PartMaps.get smem addr = None |- _ => fail 2
+      | WF : wf_entry_points cmem,
+        DEC : decode_instr _ = Some (Nop _) |- _ =>
+        pose proof (entry_point_undefined _ _ REFM GET);
+        destruct (wf_entry_points_only_if _ _ WF GET (proj2 (is_nopP _) DEC))
+          as (? & ? & ?)
+      end
+    end
+  end;
+  rewrite /build_mvec;
+  repeat match goal with
+  | E : ?X = _ |- context[?X] => rewrite E; simpl
+  end;
+  solve [simpl in *; eauto].
 Qed.
 
 Ltac simpl_word_lift :=
