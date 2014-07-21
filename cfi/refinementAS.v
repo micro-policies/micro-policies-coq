@@ -496,7 +496,7 @@ Proof.
                                     (Symbolic.State mem reg pc@tpc int))
             by (repeat (split; auto));
           destruct (syscalls_backwards_simulation (Abs.State imem dmem aregs pc true) 
-                                                  (Symbolic.State mem reg pc@tpc int)
+                                                  (@Symbolic.State _ sym_params mem reg pc@tpc int)
                                                   W
                                                   refine_syscalls_correct H1
                                                   REF CALL) as
