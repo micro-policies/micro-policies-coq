@@ -584,13 +584,17 @@ Definition summarize_concrete_state mem_count cache_count st :=
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := @enum _ _ _ _
                  (@Concrete.regs t st)
-                 (@TotalMaps.get _ (reg t) (@reg_tmap_class _ ops) _)
-                 (fun a => format_atom a)
+                 (@PartMaps.get _ (reg t) (@reg_map_class _ ops) _)
+                 (@omap atom sstring format_atom)
                  (Z.to_nat (Word.unsigned user_reg_max))
                  (Word.repr (word_to_Z (nat_to_word 0))) in
   let regs := map (fun r =>
                      let: (x,a) := r in
-                     ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++ a)
+                     ss "r" +++ format_nat (nat_of_Z x) +++ ss "=" +++
+                        match a with
+                        | Some a => a
+                        | None => ss "_"
+                        end)
                regs' in
   let current_instr :=
     let: addr@_ := Concrete.pc st in

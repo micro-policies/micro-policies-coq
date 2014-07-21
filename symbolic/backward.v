@@ -119,16 +119,18 @@ Proof.
   end;
 
   try match goal with
-  | OLD : TotalMaps.get ?reg ?r = _
-    |- context[TotalMaps.upd ?reg ?r ?v@(encode (USER ?t))] =>
-    (destruct (refine_registers_upd _ v _ t REFR OLD) as (? & ? & ?);
-     pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ v t _ KINV OLD))
-    || let op := current_instr_opcode in fail 3 op
+  | GET : PartMaps.get ?reg ?r = Some _,
+    UPD : PartMaps.upd ?reg ?r ?v@(encode (USER ?t)) = Some ?reg',
+    REFR : refine_registers _ ?reg |- _ =>
+    (destruct (refine_registers_upd _ v _ t REFR OLD UPD) as (? & ? & ?);
+     pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ v t _ KINV OLD UPD))
+    || let op := current_instr_opcode in fail 3 op reg
   end;
 
   try match goal with
   | GET : PartMaps.get ?cmem ?addr = Some _,
-    UPD : PartMaps.upd ?cmem ?addr _ = Some _ |- _ =>
+    UPD : PartMaps.upd ?cmem ?addr _ = Some _,
+    REFM : refine_memory _ ?cmem  |- _ =>
     (destruct (refine_memory_upd _ _ _ _ REFM GET UPD) as (? & ? & ?);
      pose proof (wf_entry_points_user_upd _ _ _ _ WFENTRYPOINTS GET UPD);
      pose proof (mvec_in_kernel_user_upd _ _ _ _ MVEC GET UPD))
@@ -136,8 +138,8 @@ Proof.
   end;
 
   repeat match goal with
-  | creg : reg_tmap _ _,
-    H : TotalMaps.get ?creg ?r = _ |- _ =>
+  | REFR : refine_registers _ ?creg,
+    H : PartMaps.get ?creg ?r = _ |- _ =>
     apply REFR in H
   end;
 

@@ -107,8 +107,7 @@ Record machine_types := {
   reg : eqType;
   imm : eqType;
   word_map : Type -> Type;
-  reg_map : Type -> Type;
-  reg_tmap : Type -> Type
+  reg_map : Type -> Type
 }.
 
 Section instr.
@@ -223,8 +222,8 @@ Class machine_ops (t : machine_types) := {
   ra : reg t;
 
   word_map_class :> PartMaps.partial_map (word_map t) (word t);
-  reg_map_class :> PartMaps.partial_map (reg_map t) (reg t);
-  reg_tmap_class :> TotalMaps.total_map (reg_tmap t) (reg t)
+  reg_map_class :> PartMaps.partial_map (reg_map t) (reg t)
+
 }.
 
 Section Functions.
@@ -281,8 +280,7 @@ Class machine_ops_spec t (ops : machine_ops t) := {
   lew_max : forall w, w <= max_word;
 
   word_map_axioms :> PartMaps.axioms word_map_class;
-  reg_map_axioms :> PartMaps.axioms reg_map_class;
-  reg_tmap_axioms :> TotalMaps.axioms reg_tmap_class
+  reg_map_axioms :> PartMaps.axioms reg_map_class
 
 }.
 

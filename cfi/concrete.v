@@ -74,8 +74,10 @@ Definition equiv {M : Type -> Type} {Key : Type}
   pointwise atom_equiv.
 
 Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t) :=
-  forall r,
-    atom_equiv (TotalMaps.get regs r) (TotalMaps.get regs' r).
+  forall r, exists x x',
+    PartMaps.get regs r = Some x /\
+    PartMaps.get regs' r = Some x' /\
+    atom_equiv x x'.
 
 Inductive step_a : Concrete.state t ->
                    Concrete.state t -> Prop :=

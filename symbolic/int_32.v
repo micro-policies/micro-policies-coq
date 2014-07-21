@@ -150,9 +150,9 @@ Program Definition concrete_initial_state
   let regs :=
         fold_left
           (fun regs r =>
-            RegtTMap.set r Word.zero@(kernelize_user_tag initial_reg_tag) regs)
+            RegtPMap.set r Word.zero@(kernelize_user_tag initial_reg_tag) regs)
           user_regs
-          (RegtTMap.init Word.zero@Word.zero) in
+          (RegtPMap.empty _) in
   {|
     Concrete.mem := mem';
     Concrete.regs := regs;

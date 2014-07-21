@@ -32,46 +32,46 @@ Definition step (st : state mt) : option (state mt) :=
     let mvec := mvec TNone TNone TNone in
     next_state_pc _ masks st mvec (pc.+1)
   | Const n r =>
-    let old := TotalMaps.get reg r in
+    do! old <- PartMaps.get reg r;
     let mvec := mvec (tag old) TNone TNone in
     next_state_reg _ masks st mvec r (imm_to_word n)
   | Mov r1 r2 =>
-    let v1 := TotalMaps.get reg r1 in
-    let old := TotalMaps.get reg r2 in
+    do! v1 <- PartMaps.get reg r1;
+    do! old <- PartMaps.get reg r2;
     let mvec := mvec (tag v1) (tag old) TNone in
     next_state_reg _ masks st mvec r2 (val v1)
   | Binop f r1 r2 r3 =>
-    let v1 := TotalMaps.get reg r1 in
-    let v2 := TotalMaps.get reg r2 in
-    let old := TotalMaps.get reg r3 in
+    do! v1 <- PartMaps.get reg r1;
+    do! v2 <- PartMaps.get reg r2;
+    do! old <- PartMaps.get reg r3;
     let mvec := mvec (tag v1) (tag v2) (tag old) in
     next_state_reg _ masks st mvec r3 (binop_denote f (val v1) (val v2))
   | Load r1 r2 =>
-    let v1 := TotalMaps.get reg r1 in
+    do! v1 <- PartMaps.get reg r1;
     do! v2 <- PartMaps.get mem (val v1);
-    let old := TotalMaps.get reg r2 in
+    do! old <- PartMaps.get reg r2;
     let mvec := mvec (tag v1) (tag v2) (tag old) in
     next_state_reg _ masks st mvec r2 (val v2)
   | Store r1 r2 =>
-    let v1 := TotalMaps.get reg r1 in
-    let v2 := TotalMaps.get reg r2 in
+    do! v1 <- PartMaps.get reg r1;
+    do! v2 <- PartMaps.get reg r2;
     do! v3 <- PartMaps.get mem (val v1);
     let mvec := mvec (tag v1) (tag v2) (tag v3) in
     next_state _ masks st mvec (fun rvec =>
       do! mem' <- PartMaps.upd mem (val v1) (val v2)@(ctr rvec);
       Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc))
   | Jump r =>
-    let v := TotalMaps.get reg r in
+    do! v <- PartMaps.get reg r;
     let mvec := mvec (tag v) TNone TNone in
     next_state_pc _ masks st mvec (val v)
   | Bnz r n =>
-    let v := TotalMaps.get reg r in
+    do! v <- PartMaps.get reg r;
     let mvec := mvec (tag v) TNone TNone in
     let pc' := pc + if (val v) == Z_to_word 0 then Z_to_word 1 else imm_to_word n in
     next_state_pc _ masks st mvec pc'
   | Jal r =>
-    let v := TotalMaps.get reg r in
-    let old := TotalMaps.get reg ra in
+    do! v <- PartMaps.get reg r;
+    do! old <- PartMaps.get reg ra;
     let mvec := mvec (tag v) (tag old) TNone in
     next_state_reg_and_pc _ masks st mvec ra (pc.+1) (val v)
   | JumpEpc =>
@@ -83,17 +83,17 @@ Definition step (st : state mt) : option (state mt) :=
       do! cache' <- add_rule ops cache masks mem;
       Some (mkState mem reg cache' (pc.+1)@(ctrpc rvec) epc))
   | GetTag r1 r2 =>
-    let v1 := TotalMaps.get reg r1 in
-    let old := TotalMaps.get reg r2 in
+    do! v1 <- PartMaps.get reg r1;
+    do! old <- PartMaps.get reg r2;
     let mvec := mvec (tag v1) (tag old) TNone in
     next_state_reg _ masks st mvec r2 (tag v1)
   | PutTag r1 r2 r3 =>
-    let v1 := TotalMaps.get reg r1 in
-    let v2 := TotalMaps.get reg r2 in
-    let old := TotalMaps.get reg r3 in
+    do! v1 <- PartMaps.get reg r1;
+    do! v2 <- PartMaps.get reg r2;
+    do! old <- PartMaps.get reg r3;
     let mvec := mvec (tag v1) (tag v2) (tag old) in
     next_state _ masks st mvec (fun rvec =>
-      let reg' := TotalMaps.upd reg r3 (val v1)@(val v2) in
+      do! reg' <- PartMaps.upd reg r3 (val v1)@(val v2);
       Some (mkState mem reg' cache (pc.+1)@(ctrpc rvec) epc))
   | Halt => None
 end.
@@ -156,37 +156,37 @@ Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
             | Const n r =>
               fun part =>
-                let old := TotalMaps.get reg r in
+                do! old <- PartMaps.get reg r;
                   Some (part (common.tag old) Concrete.TNone Concrete.TNone)
             | Mov r1 r2 =>
               fun part =>
-                let v1 := TotalMaps.get reg r1 in
-                let v2 := TotalMaps.get reg r2 in
+                do! v1 <- PartMaps.get reg r1;
+                do! v2 <- PartMaps.get reg r2;
                   Some (part (common.tag v1) (common.tag v2) Concrete.TNone)
             | Binop _ r1 r2 r3 => fun part =>
-              let v1 := TotalMaps.get reg r1 in
-              let v2 := TotalMaps.get reg r2 in
-              let v3 := TotalMaps.get reg r3 in
+              do! v1 <- PartMaps.get reg r1;
+              do! v2 <- PartMaps.get reg r2;
+              do! v3 <- PartMaps.get reg r3;
                 Some (part (common.tag v1) (common.tag v2) (common.tag v3))
             | Load r1 r2 => fun part =>
-              let w1 := TotalMaps.get reg r1 in
+              do! w1 <- PartMaps.get reg r1;
               do! w2 <- get mem (val w1);
-              let old := TotalMaps.get reg r2 in
+              do! old <- PartMaps.get reg r2;
                 Some (part (common.tag w1) (common.tag w2) (common.tag old))
             | Store r1 r2 => fun part =>
-              let w1 := TotalMaps.get reg r1 in
-              let w2 := TotalMaps.get reg r2 in
+              do! w1 <- PartMaps.get reg r1;
+              do! w2 <- PartMaps.get reg r2;
                 do! w3 <- get mem (val w1);
                 Some (part (common.tag w1) (common.tag w2) (common.tag w3))
             | Jump r => fun part =>
-              let w := TotalMaps.get reg r in
+              do! w <- PartMaps.get reg r;
                 Some (part (common.tag w) Concrete.TNone Concrete.TNone)
             | Bnz r n => fun part =>
-              let w := TotalMaps.get reg r in
+              do! w <- PartMaps.get reg r;
                 Some (part (common.tag w) Concrete.TNone Concrete.TNone)
             | Jal r => fun part =>
-              let w := TotalMaps.get reg r in
-              let old := TotalMaps.get reg ra in
+              do! w <- PartMaps.get reg r;
+              do! old <- PartMaps.get reg ra;
                 Some (part (common.tag w) (common.tag old) Concrete.TNone)
             | JumpEpc =>
               fun part =>
@@ -196,14 +196,14 @@ Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
                 Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
             | GetTag r1 r2 =>
               fun part =>
-                let w1 := TotalMaps.get reg r1 in
-                let old := TotalMaps.get reg r2 in
+                do! w1 <- PartMaps.get reg r1;
+                do! old <- PartMaps.get reg r2;
                 Some (part (common.tag w1) (common.tag old) Concrete.TNone)
             | PutTag r1 r2 r3 =>
               fun part =>
-                let w1 := TotalMaps.get reg r1 in
-                let w2 := TotalMaps.get reg r2 in
-                let old := TotalMaps.get reg r3 in
+                do! w1 <- PartMaps.get reg r1;
+                do! w2 <- PartMaps.get reg r2;
+                do! old <- PartMaps.get reg r3;
                 Some (part (common.tag w1) (common.tag w2) (common.tag old))
             | Halt => fun _ => None
           end part

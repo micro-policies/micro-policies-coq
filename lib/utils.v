@@ -1179,31 +1179,6 @@ Fixpoint ble_nat (m n:nat) : bool :=
     | S m',S n' => ble_nat m' n'
   end.
 
-Module TotalMaps.
-
-Section total_maps.
-
-Variable (M : Type -> Type) (A : Type).
-
-Class total_map := {
-  get : forall B, M B -> A -> B;
-  upd : forall B, M B -> A -> B -> M B
-}.
-
-Record axioms (tm : total_map) := mkAxioms {
-
-  get_upd_eq : forall B m key (val : B), get (upd m key val) key = val;
-
-  get_upd_neq : forall B m key key' (val : B),
-                  key' <> key ->
-                  get (upd m key val) key' = get m key'
-
-}.
-
-End total_maps.
-
-End TotalMaps.
-
 (*
 Require Import Relations.
 

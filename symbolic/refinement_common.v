@@ -35,7 +35,7 @@ Definition refine_memory (amem : Symbolic.memory mt _) (cmem : Concrete.memory m
 
 Definition refine_registers (areg : Symbolic.registers mt _) (creg : Concrete.registers mt) :=
   forall n x t,
-    TotalMaps.get creg n = x@(encode (USER t)) <->
+    PartMaps.get creg n = Some x@(encode (USER t)) <->
     PartMaps.get areg n = Some x@t.
 
 Definition in_kernel st :=
@@ -118,10 +118,11 @@ Record kernel_invariant : Type := {
       kernel_invariant_statement mem2 regs cache int;
 
   kernel_invariant_upd_reg :
-    forall mem regs cache r w1 ut1 w2 ut2 int
-           (KINV : kernel_invariant_statement mem regs cache int)
-           (GET : TotalMaps.get regs r = w1@(encode (USER ut1))),
-      kernel_invariant_statement mem (TotalMaps.upd regs r w2@(encode (USER ut2))) cache int;
+    forall mem regs1 regs2 cache r w1 ut1 w2 ut2 int
+           (KINV : kernel_invariant_statement mem regs1 cache int)
+           (GET : PartMaps.get regs1 r = Some w1@(encode (USER ut1)))
+           (UPD : PartMaps.upd regs1 r w2@(encode (USER ut2)) = Some regs2),
+      kernel_invariant_statement mem regs2 cache int;
 
   kernel_invariant_store_mvec :
     forall mem mem' mvec regs cache int
@@ -337,47 +338,55 @@ Proof.
     now apply MEM.
 Qed.
 
-Lemma refine_registers_upd areg creg r v v' t t' :
+Lemma refine_registers_upd areg creg creg' r v v' t t' :
   refine_registers areg creg ->
-  TotalMaps.get creg r = v@(encode (USER t)) ->
+  PartMaps.get creg r = Some v@(encode (USER t)) ->
+  PartMaps.upd creg r v'@(encode (USER t')) = Some creg' ->
   exists areg',
     PartMaps.upd areg r v'@t' = Some areg' /\
-    refine_registers areg' (TotalMaps.upd creg r v'@(encode (USER t'))).
+    refine_registers areg' creg'.
 Proof.
-  intros REG GET.
+  intros REG GET UPD.
   assert (GET' := proj1 (REG _ _ _) GET).
   assert (NEW := PartMaps.upd_defined v'@t' GET').
-  destruct NEW as [areg' UPD].
+  destruct NEW as [areg' UPD'].
   eexists. split; eauto.
   intros r' v'' t''.
   have [EQ|/eqP NEQ] := altP (r' =P r); simpl in *; subst.
-  - rewrite TotalMaps.get_upd_eq; try apply reg_tmap_axioms.
-    rewrite (PartMaps.get_upd_eq UPD).
+  - rewrite (PartMaps.get_upd_eq UPD).
+    rewrite (PartMaps.get_upd_eq UPD').
     split; try congruence.
     intros ?.
     assert (USER t' = USER t''); try congruence.
     eapply encode_inj; congruence.
-  - rewrite TotalMaps.get_upd_neq; try apply reg_tmap_axioms; trivial.
-    rewrite (PartMaps.get_upd_neq NEQ UPD).
+  - rewrite (PartMaps.get_upd_neq NEQ UPD).
+    rewrite (PartMaps.get_upd_neq NEQ UPD').
     now apply REG.
 Qed.
 
 Lemma refine_registers_upd' areg areg' creg r v t :
   refine_registers areg creg ->
   PartMaps.upd areg r v@t = Some areg' ->
-  refine_registers areg' (TotalMaps.upd creg r v@(encode (USER t))).
+  exists creg',
+    PartMaps.upd creg r v@(encode (USER t)) = Some creg' /\
+    refine_registers areg' creg'.
 Proof.
-  intros REF UPD r' v' t'.
+  intros REF UPD.
+  move: (PartMaps.upd_inv UPD) => [[v0 t0] /REF GET].
+  eapply PartMaps.upd_defined in GET.
+  move: GET => [creg' UPD']. rewrite -> UPD'.
+  eexists. split; first by [].
+  intros r' v' t'.
   have [EQ|/eqP NEQ] := altP (r' =P r); simpl in *.
   - subst r'.
-    rewrite TotalMaps.get_upd_eq; try apply reg_tmap_axioms.
     rewrite (PartMaps.get_upd_eq UPD).
+    rewrite (PartMaps.get_upd_eq UPD').
     split; try congruence.
     intros ?.
     assert (USER t' = USER t); try congruence.
     eapply encode_inj; try congruence.
-  - rewrite TotalMaps.get_upd_neq; try apply reg_tmap_axioms; trivial.
-    rewrite (PartMaps.get_upd_neq NEQ UPD).
+  - rewrite (PartMaps.get_upd_neq NEQ UPD).
+    rewrite (PartMaps.get_upd_neq NEQ UPD').
     now apply REF.
 Qed.
 
@@ -677,8 +686,8 @@ Definition user_mem_unchanged (cmem cmem' : Concrete.memory mt) :=
 
 Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) :=
   forall r (w : word mt) t,
-    TotalMaps.get cregs r = w@(encode (USER t)) <->
-    TotalMaps.get cregs' r = w@(encode (USER t)).
+    PartMaps.get cregs r = Some w@(encode (USER t)) <->
+    PartMaps.get cregs' r = Some w@(encode (USER t)).
 
 Import DoNotation.
 

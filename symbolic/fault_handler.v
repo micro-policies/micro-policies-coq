@@ -237,7 +237,7 @@ Let invariant (mem : Concrete.memory mt)
      Concrete.cache_lookup _ ground_rules masks mvec = Some rvec ->
      Concrete.cache_lookup _ cache masks mvec = Some rvec) /\
   (forall r, In r kernel_regs ->
-             common.tag (TotalMaps.get regs r) = Concrete.TKernel) /\
+   exists x, PartMaps.get regs r = Some x@Concrete.TKernel) /\
   pinv mem int.
 
 Lemma invariant_upd_mem :
@@ -272,10 +272,11 @@ Proof.
 Qed.
 
 Lemma invariant_upd_reg :
-  forall mem regs cache r w1 ut1 w2 ut2 int
+  forall mem regs regs' cache r w1 ut1 w2 ut2 int
          (KINV : invariant mem regs cache int)
-         (GET : TotalMaps.get regs r = w1@(encode (USER ut1))),
-    invariant mem (TotalMaps.upd regs r w2@(encode (USER ut2))) cache int.
+         (GET : PartMaps.get regs r = Some w1@(encode (USER ut1)))
+         (UPD : PartMaps.upd regs r w2@(encode (USER ut2)) = Some regs'),
+    invariant mem regs' cache int.
 Proof.
   intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   do 6 (split; eauto).
@@ -284,9 +285,11 @@ Proof.
   - subst r'.
     apply REGS in IN.
     erewrite GET, encode_kernel_tag in IN. simpl in IN.
-    apply encode_inj in IN.
+    destruct IN as [x IN].
+    have E : encode (USER ut1) = encode KERNEL by congruence.
+    apply encode_inj in E.
     discriminate.
-  - erewrite (TotalMaps.get_upd_neq (reg_tmap_axioms (t := mt))); eauto.
+  - erewrite (PartMaps.get_upd_neq E UPD); eauto.
 Qed.
 
 Lemma invariant_store_mvec mem mem' mvec regs cache int :

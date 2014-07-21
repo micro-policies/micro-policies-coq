@@ -92,14 +92,13 @@ Ltac match_data :=
     assert (PartMaps.get mem2 addr = Some x@(encode (USER t)));
     try solve [eapply USERMEM; assumption]
 
-  | H : PartMaps.upd ?amem ?addr _ = _,
+  | H : PartMaps.upd ?amem ?addr _ = Some ?amem',
     REFM : refine_memory ?amem ?cmem |- _ =>
     match goal with
-      | _ : PartMaps.upd cmem addr _ = _ |- _ => fail 1
-      | |- _ => idtac
+    | _ : refine_memory amem' ?cmem',
+      _ : PartMaps.upd cmem ?addr _ = Some ?cmem'|- _ => fail 1
+    | |- _ => idtac
     end;
-    let old := fresh "old" in
-    let Hold := fresh "Hold" in
     let cmem' := fresh "cmem'" in
     let UPD' := fresh "UPD'" in
     let REFM' := fresh "REFM'" in
@@ -109,18 +108,17 @@ Ltac match_data :=
     REFR : refine_registers ?aregs ?cregs |- _ =>
     apply REFR in H
 
-  | UPD : PartMaps.upd ?aregs ?r _ = Some _,
+  | UPD : PartMaps.upd ?aregs ?r _ = Some ?aregs',
     REFR : refine_registers ?aregs ?cregs |- _ =>
     match goal with
-    | _ : TotalMaps.get cregs r = _ |- _ => fail 1
+    | _ : refine_registers aregs' ?cregs',
+      _ : PartMaps.upd cregs r _ = Some ?cregs'|- _ => fail 1
     | |- _ => idtac
     end;
-    let old := fresh "old" in
-    let Hold := fresh "Hold" in
+    let cregs' := fresh "cregs'" in
     let UPD' := fresh "UPD'" in
-    destruct (PartMaps.upd_inv _ _ _ UPD) as [old Hold];
-    apply REFR in Hold;
-    assert (UPD' := refine_registers_upd' _ _ REFR UPD)
+    let REFR' := fresh "REFR'" in
+    destruct (refine_registers_upd' _ _ _ REFR UPD) as (cregs' & UPD' & REFR')
 
   | REFM : refine_memory ?smem ?cmem,
     USERMEM : user_mem_unchanged ?cmem ?cmem' |- _ =>
@@ -142,15 +140,15 @@ Ltac match_data :=
 
 Ltac user_data_unchanged :=
   match goal with
-  | GET : PartMaps.get _ ?addr = Some _,
-    USERMEM : user_mem_unchanged _ _
-    |- PartMaps.get _ ?addr = Some _ =>
+  | GET : PartMaps.get ?mem1 ?addr = Some _,
+    USERMEM : user_mem_unchanged ?mem1 ?mem2
+    |- PartMaps.get ?mem2 ?addr = Some _ =>
     simpl in GET, USERMEM;
     rewrite <- (USERMEM addr); eassumption
 
-  | GET : TotalMaps.get _ ?r = _,
-    USERREGS : user_regs_unchanged _ _
-    |- TotalMaps.get _ ?r = _ =>
+  | GET : PartMaps.get ?regs1 ?r = _,
+    USERREGS : user_regs_unchanged ?regs1 ?regs2
+    |- PartMaps.get ?regs2 ?r = _ =>
     simpl in GET, USERREGS;
     rewrite <- (USERREGS r); eauto
   end.
@@ -234,7 +232,7 @@ Ltac solve_refine_state :=
   repeat rewrite decodeK; simpl in *;
   try match goal with
   | USERREGS : user_regs_unchanged ?cregs _,
-    H : TotalMaps.get ?cregs ?r = _ |- _ =>
+    H : PartMaps.get ?cregs ?r = _ |- _ =>
     simpl in USERREGS; rewrite -> (USERREGS r) in H
   end;
   econstructor;
@@ -312,14 +310,14 @@ Proof.
       intros; subst rvec';
       unfold encode_mvec, encode_rvec, rvec_of_urvec in LOOKUP; simpl in *;
       match_data;
-      try solve [eexists; split;
+      solve [eexists; split;
                  [apply exec_one; solve_concrete_step|solve_refine_state]]
 
           || let op := current_instr_opcode in fail 3 "failed hit case" op
     |
       (* Cache miss case, fault handler will execute *)
       analyze_cache_miss;
-      try solve [eexists; split;
+      solve [eexists; split;
       [
         eapply re_step; trivial; [solve_concrete_step|];
         try (

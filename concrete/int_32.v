@@ -64,8 +64,7 @@ Definition concrete_int_32_t : machine_types := {|
   reg := [eqType of regt];
   imm := [eqType of immt];
   word_map := Int32PMap.t;
-  reg_map := RegtPMap.t;
-  reg_tmap := RegtTMap.t
+  reg_map := RegtPMap.t
 |}.
 
 Instance int_ordered : @Ordered (word concrete_int_32_t) (@eqType_EqDec (word concrete_int_32_t)) :=
@@ -188,14 +187,7 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     PartMaps.set V regs i x := RegtPMap.set i x regs;
     PartMaps.map_filter V1 V2 regs p := RegtPMap.map_filter regs p;
     PartMaps.empty V := @RegtPMap.empty _
-  |};
-
-  reg_tmap_class := {|
-    TotalMaps.get V regs r := RegtTMap.get r regs;
-    (* BCP/MD: Why isn't this called 'set'? *)
-    TotalMaps.upd V regs r x := RegtTMap.set r x regs
   |}
-
 
 |}.
 
@@ -266,12 +258,6 @@ Proof.
       intros V1 V2 f m k. by apply RegtPMap.gmap_filter.
     + (* empty_is_empty *)
       intros V k. by apply RegtPMap.gempty.
-  - constructor.
-    +(* get_upd_eq *)
-      intros V mem i x. simpl in *.
-      apply RegtTMap.gss.
-    + intros V mem i i' x Hneq. simpl in *.
-      apply RegtTMap.gso; assumption.
 Defined.
 
 Import Concrete.
