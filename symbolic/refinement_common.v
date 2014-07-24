@@ -2,7 +2,7 @@ Require Import List NPeano Arith Bool.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils lib.Coqlib lib.partial_maps.
+Require Import lib.Integers lib.utils lib.Coqlib lib.partial_maps.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.exec.
@@ -88,7 +88,7 @@ Lemma mvec_in_kernel_store_mvec cmem mvec :
 Proof.
   unfold mvec_in_kernel, in_mvec, Concrete.mvec_fields, Concrete.store_mvec.
   intros DEF.
-  eapply PartMaps.upd_list_defined; eauto using word_map_axioms.
+  eapply PartMaps.upd_list_defined; eauto; try apply word_map_axioms.
   simpl map. intros addr IN.
   apply DEF in IN.
   destruct IN.
@@ -145,9 +145,9 @@ Proof.
   intros _.
   apply encodeK in E.
   have [E'|//] := eqP.
-  simpl in *; subst; eauto.
-  erewrite encode_kernel_tag in E'.
-  now apply encode_inj in E'.
+  rewrite encode_kernel_tag in E'.
+  rewrite E' in E.
+  now apply encode_inj in E.
 Qed.
 
 Lemma in_user_in_kernel :
@@ -287,15 +287,14 @@ Proof.
   intros WF GET UPD addr'.
   split; intros H.
   - rewrite ->WF in H.
-    destruct (PartMaps.get cmem addr') as [[v'' t'']|] eqn:MEM; try discriminate.
-    erewrite PartMaps.get_upd_neq; eauto using word_map_axioms.
-    { now rewrite MEM. }
+    case MEM: (PartMaps.get cmem addr') H => [[v'' t'']|] H //=.
+    erewrite PartMaps.get_upd_neq; try apply word_map_axioms; eauto; first by rewrite MEM.
     intros ?. subst addr'.
     assert (EQ : t'' = encode (USER t)) by congruence. subst.
     move/andP: H => [_ H].
     by move/eqP/encode_inj: H.
   - apply WF. clear WF.
-    destruct (PartMaps.get cmem' addr') as [[v'' t'']|] eqn:GET'; try discriminate.
+    case GET': (PartMaps.get cmem' addr') H => [[v'' t'']|] H //=.
     erewrite PartMaps.get_upd_neq in GET'; eauto using word_map_axioms.
     { now rewrite GET'. }
     intros ?. subst addr'.
@@ -331,8 +330,8 @@ Lemma mvec_in_kernel_kernel_upd cmem cmem' addr w :
 Proof.
   intros MVEC UPD addr' IN.
   have [?|/eqP NEQ] := altP (addr' =P addr); simpl in *; subst.
-  - erewrite PartMaps.get_upd_eq; eauto using word_map_axioms.
-  - erewrite (PartMaps.get_upd_neq NEQ UPD).
+  - erewrite PartMaps.get_upd_eq; eauto. now apply word_map_axioms.
+  - rewrite (PartMaps.get_upd_neq NEQ UPD).
     now apply MVEC.
 Qed.
 
@@ -815,7 +814,7 @@ Definition is_syscall_return (cst cst' : Concrete.state mt) :=
   in_kernel cst && in_user cst' && (option_bool_to_bool (
     do! i <- PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst));
     do! di <- decode_instr (common.val i);
-    Some (di == Jump _ (@ra mt ops)))).
+    Some (di == Jump (@ra mt ops)))).
 
 Definition visible cst cst' :=
   in_user cst && in_user cst'.

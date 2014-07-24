@@ -1,6 +1,7 @@
 Require Import Coq.Classes.SetoidDec Coqlib utils.
 Require Import Compare_dec ZArith. (* For instances *)
 Require lib.Integers lib.FiniteMaps. (* For instances *)
+Require ssreflect.
 
 Create HintDb ordered discriminated.
 
@@ -52,22 +53,19 @@ Defined.
 
 Require Integers.
 
-Module IntOrdered (WS : Integers.WORDSIZE).
-  (* We need integers that are indexable and orderable, so... *)
-  Module IntIndexed := FiniteMaps.IntIndexed WS.
-  Import IntIndexed.
+Module IntOrdered.
   Import Integers.Word.
 
-  Instance int_eqdec : EqDec (eq_setoid IntIndexed.t) := @eqType_EqDec (@Integers.int_eqType _).
+  Instance int_eqdec n : EqDec (eq_setoid (int n)) := @eqType_EqDec (@Integers.int_eqType _).
   
-  Definition int_compare (a b : IntIndexed.t) : comparison :=
+  Definition int_compare {n} (a b : int n) : comparison :=
     if a == b
     then Eq
     else if lt a b
          then Lt
          else Gt.
   
-  Instance int_ordered : Ordered t.
+  Definition int_ordered_def n : Ordered (int n).
   Proof.
     apply Build_Ordered with int_compare; unfold int_compare; intros.
     - destruct (a == a); [reflexivity | congruence].
@@ -97,6 +95,28 @@ Module IntOrdered (WS : Integers.WORDSIZE).
       intros TRUE.
       generalize (eq_false _  _ _ NEQBC). congruence.
   Defined.
+
+  Instance int_ordered n : Ordered (int n) := ssreflect.locked (int_ordered_def n).
+
+  Lemma compare_signed n (x y : int n) : compare x y = (signed x ?= signed y)%Z.
+  Proof.
+    simpl; intros.
+    rewrite /int_ordered.  
+    rewrite <- (ssreflect.lock (int_ordered_def _)). simpl.
+    unfold int_compare,lt.    
+    destruct (@SetoidDec.equiv_dec _ _ _ x y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
+    destruct (zlt (signed x) (signed y)) as [LT | GE]; [auto with zarith|].
+    unfold Zge in GE; destruct (_ ?= _)%Z eqn:CMP.
+    + apply Z.compare_eq in CMP.
+      destruct x as [x px], y as [y py].
+      unfold signed,unsigned in CMP; simpl in CMP.
+      destruct (zlt x (half_modulus _)),(zlt y (half_modulus _)); ssubst;
+      solve [omega
+            | contradict NE; apply mkint_eq; solve [reflexivity | omega]].
+    + congruence.
+    + reflexivity.
+  Qed.
+
 End IntOrdered.
 
 Instance comparison_eqdec : EqDec (eq_setoid comparison).

@@ -2,7 +2,7 @@ Require Import List NPeano Arith Bool.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils lib.partial_maps lib.Coqlib.
+Require Import lib.Integers lib.utils lib.partial_maps lib.Coqlib.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.exec.

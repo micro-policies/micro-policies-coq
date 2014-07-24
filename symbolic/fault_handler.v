@@ -5,9 +5,9 @@ Require Import List.
 
 Import ListNotations.
 
-Require Import eqtype ssrbool.
+Require Import ssreflect eqtype ssrbool.
 
-Require Import lib.utils lib.Coqlib lib.partial_maps.
+Require Import lib.Integers lib.utils lib.Coqlib lib.partial_maps.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import symbolic.rules.
@@ -54,7 +54,7 @@ Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 Definition kernel_regs := mvec_regs ++ [rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
 
 (* For debugging -- put a telltale marker in the code *)
-Definition got_here : code := [Const _ (Z_to_imm 999) ri5; Const _ (Z_to_imm 0) ri5].
+Definition got_here : code := [Const (Z_to_imm 999) ri5; Const (Z_to_imm 0) ri5].
 
 Definition bool_to_imm (b : bool) : imm mt :=
   if b then Z_to_imm 1 else Z_to_imm 0.
@@ -63,10 +63,10 @@ Definition bool_to_imm (b : bool) : imm mt :=
    execute [f]. Warning: overwrites ri1. *)
 Definition if_ (r : reg mt) (t f : code) : code :=
   let lt := Z_to_imm (Z.of_nat (length t + 1)) in
-  let eend := [Const mt (bool_to_imm true) ri1] ++
-              [Bnz mt ri1 lt] in
+  let eend := [Const (bool_to_imm true) ri1] ++
+              [Bnz ri1 lt] in
   let lf := Z_to_imm (Z.of_nat (length f + length eend + 1)) in
-  [Bnz mt r lf] ++
+  [Bnz r lf] ++
   f ++
   eend ++
   t.
@@ -76,31 +76,31 @@ Definition if_ (r : reg mt) (t f : code) : code :=
    puts 0 in second register.  Warning: overwrites ri2.*)
 
 Definition extract_user_tag (rsrc rsucc rut : reg mt) : code :=
-  [Const _ (Z_to_imm 1) ri2] ++
-  [Binop _ AND rsrc ri2 rsucc] ++
+  [Const (Z_to_imm 1) ri2] ++
+  [Binop AND rsrc ri2 rsucc] ++
   if_ rsucc
-      ([Const _ (Z_to_imm 2) ri2] ++
-       [Binop _ SHRU rsrc ri2 rut])
+      ([Const (Z_to_imm 2) ri2] ++
+       [Binop SHRU rsrc ri2 rut])
       [].
 
 (* The inverse operation. Take a tag [t] in first register and return
    the encoding of [USER t] in the second register. Warning:
    overwrites ri2. *)
 Definition wrap_user_tag (rut rdst : reg mt) : code :=
-  [Const _ (Z_to_imm 2) ri2] ++
-  [Binop _ SHL rut ri2 ri2] ++
-  [Const _ (Z_to_imm 1) rdst] ++
-  [Binop _ OR rdst ri2 rdst].
+  [Const (Z_to_imm 2) ri2] ++
+  [Binop SHL rut ri2 ri2] ++
+  [Const (Z_to_imm 1) rdst] ++
+  [Binop OR rdst ri2 rdst].
 
 (* Similar to [extract_user_tag], but for kernel entry-point tags. *)
 Definition extract_entry_tag (rsrc rsucc rut : reg mt) : code :=
-  [Const _ (Z_to_imm 3) ri2] ++
-  [Binop _ AND rsrc ri2 rsucc] ++
-  [Const _ (Z_to_imm 2) ri2] ++
-  [Binop _ EQ rsucc ri2 rsucc] ++
+  [Const (Z_to_imm 3) ri2] ++
+  [Binop AND rsrc ri2 rsucc] ++
+  [Const (Z_to_imm 2) ri2] ++
+  [Binop EQ rsucc ri2 rsucc] ++
   if_ rsucc
-      ([Const _ (Z_to_imm 2) ri2] ++
-       [Binop _ SHRU rsrc ri2 rut])
+      ([Const (Z_to_imm 2) ri2] ++
+       [Binop SHRU rsrc ri2 rut])
       [].
 
 Definition load_mvec : code :=
@@ -108,7 +108,7 @@ Definition load_mvec : code :=
                     let '(c,addr) := acc in
                     (c ++
                      load_const addr raddr ++
-                     [Load mt raddr r],
+                     [Load raddr r],
                      addr + Z_to_word 1))%w
                  mvec_regs
                  ([],Concrete.cache_line_addr ops)).
@@ -151,10 +151,10 @@ Definition handler : code :=
                     tags in rvector. NB: system calls are now
                     required to begin with a Nop to simplify the
                     specification of the fault handler. *)
-           ([Const _ (Z_to_imm (op_to_Z NOP)) ri4] ++
-            [Binop _ EQ ri4 rop ri4] ++
+           ([Const (Z_to_imm (op_to_Z NOP)) ri4] ++
+            [Binop EQ ri4 rop ri4] ++
             if_ ri4 [] [Halt _] ++
-            [Const _ (Z_to_imm (op_to_Z SERVICE)) rop] ++
+            [Const (Z_to_imm (op_to_Z SERVICE)) rop] ++
             policy_handler ++
             load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
@@ -165,7 +165,7 @@ Definition handler : code :=
                    and run policy handler *)
                 (fold_right (fun op c =>
                                load_const (op_to_word op) ri4 ++
-                               [Binop _ EQ rop ri4 rb] ++
+                               [Binop EQ rop ri4 rb] ++
                                if_ rb
                                   (analyze_operand_tags_for_opcode op)
                                   c)
@@ -181,9 +181,9 @@ Definition handler : code :=
   (* Store rvector registers in memory, install rule in cache, and
      return from trap *)
   load_const (Concrete.Mtrpc ops) raddr ++
-  [Store _ raddr rtrpc] ++
+  [Store raddr rtrpc] ++
   load_const (Concrete.Mtr ops) raddr ++
-  [Store _ raddr rtr] ++
+  [Store raddr rtr] ++
   [AddRule _] ++
   [JumpEpc _].
 
@@ -266,7 +266,7 @@ Proof.
       assert (EQ : Concrete.TKernel = encode (USER ut)) by congruence.
       erewrite encode_kernel_tag in EQ.
       apply encode_inj in EQ. discriminate.
-    + erewrite (PartMaps.get_upd_neq E UPD).
+    + rewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
   - by eapply policy_invariant_upd_mem; eauto.
 Qed.
@@ -289,7 +289,7 @@ Proof.
     have E : encode (USER ut1) = encode KERNEL by congruence.
     apply encode_inj in E.
     discriminate.
-  - erewrite (PartMaps.get_upd_neq E UPD); eauto.
+  - rewrite (PartMaps.get_upd_neq E UPD); eauto.
 Qed.
 
 Lemma invariant_store_mvec mem mem' mvec regs cache int :
@@ -311,11 +311,9 @@ Proof.
         destruct H as [E | ?]; [inv E; eauto|]
       | H : False |- _ => inversion H
       end.
-    + erewrite PartMaps.get_upd_list_nin; eauto.
-      eapply word_map_axioms; eauto.
+    + rewrite (PartMaps.get_upd_list_nin MVEC NIN); eauto.
   - intros addr instr GET.
-    erewrite PartMaps.get_upd_list_nin; eauto.
-    { eapply word_map_axioms; eauto. }
+    rewrite (PartMaps.get_upd_list_nin MVEC); eauto.
     intros CONTRA.
     eapply MEM.
     + eapply nth_error_Some; eauto.

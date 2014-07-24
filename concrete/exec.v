@@ -2,7 +2,7 @@
 
 Require Import ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import lib.utils lib.partial_maps lib.Coqlib common.common concrete.concrete.
+Require Import lib.Integers lib.utils lib.partial_maps lib.Coqlib common.common concrete.concrete.
 Require Import List.
 
 Import ListNotations.
@@ -135,8 +135,8 @@ Proof.
     inv STEP; rewrite PC; clear PC; simpl;
     rewrite INST; clear INST; simpl; subst mvec; try subst lookup; simpl; try congruence;
     repeat match goal with
-    | H : _ = _ |- _ =>
-    rewrite ->H in *; clear H
+    | H : ?X = _ |- context[?X] =>
+      rewrite H; trivial
     end; simpl; trivial.
     + rewrite M1. simpl. trivial.
     + rewrite M1. simpl. trivial.

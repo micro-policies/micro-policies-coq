@@ -4,6 +4,8 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.ordered.
 
 Require Import lib.utils.
+Require Import lib.Integers.
+Require Import lib.FiniteMaps.
 Require Import lib.partial_maps.
 
 Import ListNotations.
@@ -103,12 +105,22 @@ Lemma opcodesP : forall op, op \in opcodes.
 Proof. by do !case. Qed.
 
 Record machine_types := {
-  word : eqType;
-  reg : eqType;
-  imm : eqType;
-  word_map : Type -> Type;
-  reg_map : Type -> Type
+  word_size_minus_one : nat;
+  reg_field_size_minus_one : nat;
+  imm_size_minus_one : nat
 }.
+
+Definition word (mt : machine_types) : Type :=
+  Word.int (word_size_minus_one mt).
+Arguments word mt : simpl never.
+
+Definition reg (mt : machine_types) : Type :=
+  Word.int (reg_field_size_minus_one mt).
+Arguments reg mt : simpl never.
+
+Definition imm (mt : machine_types) : Type :=
+  Word.int (imm_size_minus_one mt).
+Arguments imm mt : simpl never.
 
 Section instr.
 
@@ -217,12 +229,8 @@ Class machine_ops (t : machine_types) := {
   shru_word : word t -> word t -> word t;
   shl_word : word t -> word t -> word t;
   opp_word : word t -> word t;
-  ord_word :> Ordered (word t);
 
-  ra : reg t;
-
-  word_map_class :> PartMaps.partial_map (word_map t) (word t);
-  reg_map_class :> PartMaps.partial_map (reg_map t) (reg t)
+  ra : reg t
 
 }.
 
@@ -251,10 +259,16 @@ Notation "2" := (Z_to_word 2) : word_scope.
 
 Delimit Scope word_scope with w.
 
-(* CH: At some point should prove or at least test that the concrete
-   instantiation satisfies these *)
-(* ASZ: We now (June 9, 2014) have proofs of everything except decodeK (aka "the
-   hard one") for the 32-bit machine in int_32.v. *)
+(*
+Instance int_ordered mt : @Ordered (word mt) (@eqType_EqDec (word mt)) :=
+  {| compare := compare;
+     compare_refl := compare_refl;
+     compare_asym :=compare_asym;
+     compare_eq :=compare_eq;
+     compare_lt_trans :=compare_lt_trans;
+     compare_gt_trans := compare_gt_trans
+|}.
+*)
 Class machine_ops_spec t (ops : machine_ops t) := {
 
   encodeK : forall i, decode_instr (encode_instr i) = Some i;
@@ -277,10 +291,7 @@ Class machine_ops_spec t (ops : machine_ops t) := {
     x <=> y = (word_to_Z x ?= word_to_Z y)%Z;
 
   lew_min : forall w, min_word <= w;
-  lew_max : forall w, w <= max_word;
-
-  word_map_axioms :> PartMaps.axioms word_map_class;
-  reg_map_axioms :> PartMaps.axioms reg_map_class
+  lew_max : forall w, w <= max_word
 
 }.
 
@@ -700,3 +711,98 @@ Ltac current_instr_opcode :=
     let op := (eval compute in (opcode_of instr)) in
     op
   end.
+
+Module ZMap := FiniteMap(ZIndexed).
+
+Instance int_partial_map n : PartMaps.partial_map ZMap.t (Word.int n) := {
+  get V m k := ZMap.get (Word.unsigned k) m;
+  set V m k v := ZMap.set (Word.unsigned k) v m;
+  map_filter V1 V2 f m := ZMap.map_filter f m;
+  empty V := @ZMap.empty V
+}.
+
+Instance int_partial_map_axioms n : PartMaps.axioms (int_partial_map n).
+Proof.
+  constructor.
+  + (* get_set_eq *)
+    intros V mem i x. by apply ZMap.gss.
+  + (* get_set_neq *)
+    intros V mem i i' x H. apply ZMap.gso.
+    rewrite <- (Word.repr_unsigned _ i'),
+            <- (Word.repr_unsigned _ i) in H.
+    congruence.
+  + (* map_filter_correctness *)
+    intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* empty_is_empty *)
+    intros V k. by apply ZMap.gempty.
+Qed.
+
+(* XXX: AAA: Weird. for some reason, declaring a global partial map
+instance for words causes it to be unfolded when applying simpl, even
+when declaring it as "simpl never", which is probably a bug.
+
+We did not encounter the same problem before (I think) because it
+occurred at places where the map type class appeared as a parameter,
+and not as a concretely defined thing. For now, we just leave this as
+opaque. *)
+
+Global Opaque int_partial_map.
+
+Inductive word_map (mt : machine_types) T :=
+  WordMap of ZMap.t T.
+
+Let wm mt T (m : word_map mt T) := let (m) := m in m.
+
+Inductive reg_map (mt : machine_types) T :=
+  RegMap of ZMap.t T.
+
+Let rm mt T (m : reg_map mt T) := let (m) := m in m.
+
+Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt) (word mt) := {
+  get V m k := ZMap.get (Word.unsigned k) (wm m);
+  set V m k v := WordMap mt (ZMap.set (Word.unsigned k) v (wm m));
+  map_filter V1 V2 f m := WordMap mt (ZMap.map_filter f (wm m));
+  empty V := WordMap mt (@ZMap.empty V)
+}.
+
+Instance word_map_axioms (mt : machine_types) : PartMaps.axioms (word_map_class mt).
+Proof.
+  constructor.
+  + (* get_set_eq *)
+    intros V mem i x. by apply ZMap.gss.
+  + (* get_set_neq *)
+    intros V mem i i' x H. apply ZMap.gso.
+    rewrite <- (Word.repr_unsigned _ i'),
+            <- (Word.repr_unsigned _ i) in H.
+    congruence.
+  + (* map_filter_correctness *)
+    intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* empty_is_empty *)
+    intros V k. by apply ZMap.gempty.
+Qed.
+
+Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) (reg mt) := {
+  get V m k := ZMap.get (Word.unsigned k) (rm m);
+  set V m k v := RegMap mt (ZMap.set (Word.unsigned k) v (rm m));
+  map_filter V1 V2 f m := RegMap mt (ZMap.map_filter f (rm m));
+  empty V := RegMap mt (@ZMap.empty V)
+}.
+
+Instance reg_map_axioms (mt : machine_types) : PartMaps.axioms (reg_map_class mt).
+Proof.
+  constructor.
+  + (* get_set_eq *)
+    intros V mem i x. by apply ZMap.gss.
+  + (* get_set_neq *)
+    intros V mem i i' x H. apply ZMap.gso.
+    rewrite <- (Word.repr_unsigned _ i'),
+            <- (Word.repr_unsigned _ i) in H.
+    congruence.
+  + (* map_filter_correctness *)
+    intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* empty_is_empty *)
+    intros V k. by apply ZMap.gempty.
+Qed.
+
+Global Opaque word_map_class.
+Global Opaque reg_map_class.

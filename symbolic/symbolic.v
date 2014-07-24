@@ -4,7 +4,7 @@ Require Coq.Vectors.Vector.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils lib.partial_maps common.common.
+Require Import lib.Integers lib.utils lib.partial_maps common.common.
 
 Set Implicit Arguments.
 
@@ -154,14 +154,14 @@ Inductive step (st st' : state) : Prop :=
 | step_const : forall mem reg pc tpc i ti n r old told int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Const _ n r))
+    (INST : decode_instr i = Some (Const n r))
     (OLD  : get reg r = Some old@told),
     let mvec := mkMVec CONST tpc ti [told] in forall
     (NEXT : next_state_reg st mvec r (imm_to_word n) = Some st'),   step st st'
 | step_mov : forall mem reg pc tpc i ti r1 w1 t1 r2 old told int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Mov _ r1 r2))
+    (INST : decode_instr i = Some (Mov r1 r2))
     (R1W  : get reg r1 = Some w1@t1)
     (OLD  : get reg r2 = Some old@told),
     let mvec := mkMVec MOV tpc ti [t1; told] in forall
@@ -169,7 +169,7 @@ Inductive step (st st' : state) : Prop :=
 | step_binop : forall mem reg pc tpc i ti op r1 r2 r3 w1 w2 t1 t2 old told int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Binop _ op r1 r2 r3))
+    (INST : decode_instr i = Some (Binop op r1 r2 r3))
     (R1W  : get reg r1 = Some w1@t1)
     (R2W  : get reg r2 = Some w2@t2)
     (OLD  : get reg r3 = Some old@told),
@@ -179,7 +179,7 @@ Inductive step (st st' : state) : Prop :=
 | step_load : forall mem reg pc tpc i ti r1 r2 w1 w2 t1 t2 old told int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Load _ r1 r2))
+    (INST : decode_instr i = Some (Load r1 r2))
     (R1W  : get reg r1 = Some w1@t1)
     (MEM1 : get mem w1 = Some w2@t2)
     (OLD  : get reg r2 = Some old@told),
@@ -188,7 +188,7 @@ Inductive step (st st' : state) : Prop :=
 | step_store : forall mem reg pc i r1 r2 w1 w2 tpc ti t1 t2 old told int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Store _ r1 r2))
+    (INST : decode_instr i = Some (Store r1 r2))
     (R1W  : get reg r1 = Some w1@t1)
     (R2W  : get reg r2 = Some w2@t2)
     (OLD  : get mem w1 = Some old@told),
@@ -200,14 +200,14 @@ Inductive step (st st' : state) : Prop :=
 | step_jump : forall mem reg pc i r w tpc ti t1 int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Jump _ r))
+    (INST : decode_instr i = Some (Jump r))
     (RW   : get reg r = Some w@t1),
     let mvec := mkMVec JUMP tpc ti [t1] in forall
     (NEXT : next_state_pc st mvec w = Some st'),    step st st'
 | step_bnz : forall mem reg pc i r n w tpc ti t1 int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Bnz _ r n))
+    (INST : decode_instr i = Some (Bnz r n))
     (RW   : get reg r = Some w@t1),
      let mvec := mkMVec BNZ tpc ti [t1] in
      let pc' := add_word pc (if w == Z_to_word 0
@@ -216,7 +216,7 @@ Inductive step (st st' : state) : Prop :=
 | step_jal : forall mem reg pc i r w tpc ti t1 old told int
     (ST : st = State mem reg pc@tpc int)
     (PC : get mem pc = Some i@ti)
-    (INST : decode_instr i = Some (Jal _ r))
+    (INST : decode_instr i = Some (Jal r))
     (RW : get reg r = Some w@t1)
     (OLD : get reg ra = Some old@told),
      let mvec := mkMVec JAL tpc ti [t1; told] in forall
@@ -297,15 +297,15 @@ Definition stepf (st : state) : option state :=
       let: _@told := oldtold in
       let mvec := mkMVec JAL tpc ti [t1; told] in
       next_state_reg_and_pc st mvec ra (pc.+1) w
-    | JumpEpc | AddRule | GetTag _ _ | PutTag _ _ _ | Halt => 
+    | JumpEpc | AddRule | GetTag _ _ | PutTag _ _ _ | Halt =>
       None
     end
   | None =>
     match get mem pc with
-    | None => 
+    | None =>
       do! sc <- get_syscall pc;
       run_syscall sc st
-    | Some _ => 
+    | Some _ =>
       None
     end
   end.

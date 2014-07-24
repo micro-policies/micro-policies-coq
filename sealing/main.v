@@ -7,7 +7,7 @@ Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun eqtype ssrnat ssrbool.
 Require Import lib.utils lib.partial_maps common.common.
-Require Import lib.FiniteMaps.
+Require Import lib.FiniteMaps lib.ordered.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import concrete.exec.
@@ -101,18 +101,19 @@ Instance sk_defs : Sym.sealing_key := {|
  key := [eqType of Word.int 27];
  max_key := Word.repr (Word.max_signed 27);
  inc_key := fun x => Word.add x (Word.repr 1);
- ord_key := Int28Ordered.int_ordered
+ ord_key := IntOrdered.int_ordered 27
 |}.
 Proof.
-  rewrite /ordered.ltb /= /Int28Ordered.int_compare /Word.signed.
+  rewrite /ordered.ltb /IntOrdered.int_ordered -(lock (IntOrdered.int_ordered_def _))
+          /= /IntOrdered.int_compare /Word.signed.
   intros sk.
-  destruct (equiv_dec sk (Word.repr (Word.max_signed 27))) as [H7 | H7] eqn:E1; rewrite E1; first by [].
+  destruct (equiv_dec sk (Word.repr (Word.max_signed 27))) as [H7 | H7] eqn:E1; first by [].
   rewrite /Word.lt.
   destruct (Coqlib.zlt (Word.signed sk) (Word.signed (@Word.repr 27 (Word.max_signed 27))))
-    as [H6 | H6] eqn: E2; rewrite E2; last by [].
+    as [H6 | H6] eqn: E2; last by [].
   intros _.
   move: (Word.signed_range _ sk) => [H1' H2'].
-  destruct (equiv_dec sk (Word.add sk (Word.repr 1))) as [H | H] eqn:E3; rewrite E3.
+  destruct (equiv_dec sk (Word.add sk (Word.repr 1))) as [H | H] eqn:E3.
   - clear E3.
     rewrite Word.add_signed -Word.add_repr /= !Word.repr_signed in H.
     have H'': Word.sub sk sk = Word.sub (Word.add sk (Word.repr 1)) sk by congruence.
@@ -123,10 +124,11 @@ Proof.
     by move: CONTRA => /esym/Word.one_not_zero CONTRA.
   - case: (Coqlib.zlt _ _) => [E | E] {E2} //=.
     rewrite Word.signed_repr in H6; last by [].
-    rewrite Word.add_signed Word.signed_repr in E; last by [].
-    move: (Word.signed_range 27 (Word.repr (Word.signed sk + 1)%Z)) => [H1 H2].
-    rewrite Word.signed_repr /Wordsize_28.wordsize_minus_one in E H1 H2; last by (split; omega).
-    clear - E. omega.
+    rewrite Word.add_signed Word.signed_repr in E.
+    + move: (Word.signed_range 27 (Word.repr (Word.signed sk + 1)%Z)) => [H1 H2].
+      rewrite Word.signed_repr in E H1 H2; last by (compute; split; congruence).
+      clear - E. omega.
+    + change (Word.signed (Word.repr 1)) with 1%Z. omega.
 Defined.
 
 Import Word.Notations.
@@ -216,86 +218,86 @@ Definition DATA : word t := Word.repr 0.
 
 Definition transfer_function : list (instr t) :=
  let assert_DATA r := [
-   Const _ (word_to_imm DATA) ri1;
-   Binop _ EQ r ri1 ri1 ] ++
-                          if_ ri1 [] [Halt _]
+   Const (word_to_imm DATA) ri1;
+   Binop EQ r ri1 ri1 ] ++
+                        if_ ri1 [] [Halt _]
    in
  (* entry points for system calls *)
- ([ Const _ (op_to_imm SERVICE) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm SERVICE) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     []
  (* NOP *)
- ([ Const _ (op_to_imm NOP) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm NOP) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
-     [Const _ (word_to_imm DATA) rtrpc;
-      Const _ (word_to_imm DATA) rtr
+     [Const (word_to_imm DATA) rtrpc;
+      Const (word_to_imm DATA) rtr
      ])
  (* CONST *)
- ([ Const _ (op_to_imm CONST) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm CONST) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
-     [Const _ (word_to_imm DATA) rtrpc;
-      Const _ (word_to_imm DATA) rtr
+     [Const (word_to_imm DATA) rtrpc;
+      Const (word_to_imm DATA) rtr
      ])
  (* MOV *)
- ([ Const _ (op_to_imm MOV) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm MOV) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
-     [Const _ (word_to_imm DATA) rtrpc;
-      Mov _ rt1 rtr
+     [Const (word_to_imm DATA) rtrpc;
+      Mov rt1 rtr
      ])
  (* BINOPs *)
  (let binop cont b :=
-        [ Const _ (op_to_imm (BINOP b)) ri1;
-          Binop _ EQ rop ri1 ri1 ] ++
+        [ Const (op_to_imm (BINOP b)) ri1;
+          Binop EQ rop ri1 ri1 ] ++
         (if_ ri1
           (assert_DATA rtpc ++ assert_DATA rti ++
            assert_DATA rt1 ++ assert_DATA rt2 ++
-           [Const _ (word_to_imm DATA) rtrpc;
-            Const _ (word_to_imm DATA) rtr
+           [Const (word_to_imm DATA) rtrpc;
+            Const (word_to_imm DATA) rtr
            ])
           cont) in
    fold_left binop binops
  (* LOAD *)
- ([ Const _ (op_to_imm LOAD) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm LOAD) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-     [Const _ (word_to_imm DATA) rtrpc;
-      Mov _ rt2 rtr
+     [Const (word_to_imm DATA) rtrpc;
+      Mov rt2 rtr
      ])
  (* STORE *)
- ([ Const _ (op_to_imm STORE) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm STORE) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-     [Const _ (word_to_imm DATA) rtrpc;
-      Mov _ rt2 rtr
+     [Const (word_to_imm DATA) rtrpc;
+      Mov rt2 rtr
      ])
  (* JUMP *)
- ([ Const _ (op_to_imm JUMP) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm JUMP) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
-     [Const _ (word_to_imm DATA) rtrpc])
+     [Const (word_to_imm DATA) rtrpc])
  (* BNZ *)
- ([ Const _ (op_to_imm BNZ) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm BNZ) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-     [Const _ (word_to_imm DATA) rtrpc])
+     [Const (word_to_imm DATA) rtrpc])
  (* JAL *)
- ([ Const _ (op_to_imm JAL) ri1;
-    Binop _ EQ rop ri1 ri1 ] ++
+ ([ Const (op_to_imm JAL) ri1;
+    Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-     [Const _ (word_to_imm DATA) rtrpc;
-      Const _ (word_to_imm DATA) rtr])
+     [Const (word_to_imm DATA) rtrpc;
+      Const (word_to_imm DATA) rtr])
  (* Unknown opcode: Halt *)
  ([Halt _])))))))))))))))))))).
 
@@ -311,87 +313,87 @@ Definition gen_syscall_code gen : @relocatable_segment t w w :=
 
 Definition mkkey_segment : @relocatable_segment t w w :=
  gen_syscall_code (fun _ (extra : w) =>
-        [Const _ (word_to_imm extra) ri1; (* load next key *)
-         Load _ ri1 ri5;
-         Const _ (Z_to_imm 1) ri3; (* increment and store back *)
-         Binop _ ADD ri5 ri3 ri3;
-         Store _ ri1 ri3;
-         Const _ (Z_to_imm 2) ri3; (* wrap k as KEY(k): SHL by 2 and add 1 *)
-         Binop _ SHL ri5 ri3 ri4;
-         Const _ (Z_to_imm 1) ri3;
-         Binop _ ADD ri3 ri4 ri4] ++
+        [Const (word_to_imm extra) ri1; (* load next key *)
+         Load ri1 ri5;
+         Const (Z_to_imm 1) ri3; (* increment and store back *)
+         Binop ADD ri5 ri3 ri3;
+         Store ri1 ri3;
+         Const (Z_to_imm 2) ri3; (* wrap k as KEY(k): SHL by 2 and add 1 *)
+         Binop SHL ri5 ri3 ri4;
+         Const (Z_to_imm 1) ri3;
+         Binop ADD ri3 ri4 ri4] ++
         wrap_user_tag ri4 ri4 ++
-        [Const _ (Z_to_imm 0) ri5; (* payload for new key is 0, arbitrarily *)
-         PutTag _ ri5 ri4 syscall_ret; (* build the key *)
-         Jump _ ra
+        [Const (Z_to_imm 0) ri5; (* payload for new key is 0, arbitrarily *)
+         PutTag ri5 ri4 syscall_ret; (* build the key *)
+         Jump ra
          ]).
 
 Definition seal_segment : @relocatable_segment t w w :=
  gen_syscall_code (fun _ (extra : w) =>
        (* Ensure that first argument is tagged DATA, halting otherwise *)
-       [GetTag _ syscall_arg1 ri3] ++
+       [GetTag syscall_arg1 ri3] ++
        extract_user_tag ri3 rb ri3 ++
        if_ rb [] [Halt _] ++
-       [Const _ (Z_to_imm 3) ri5;
-        Binop _ AND ri3 ri5 ri5] ++
+       [Const (Z_to_imm 3) ri5;
+        Binop AND ri3 ri5 ri5] ++
        if_ ri5 [Halt _] [] ++
        (* Ensure that second argument is tagged KEY, halting otherwise *)
-       [GetTag _ syscall_arg2 ri4] ++
+       [GetTag syscall_arg2 ri4] ++
        extract_user_tag ri4 rb ri4 ++
        if_ rb [] [Halt _] ++
-       [Const _ (Z_to_imm 3) ri5;
-        Binop _ AND ri4 ri5 ri2;
-        Const _ (Z_to_imm 1) ri5;
-        Binop _ EQ ri5 ri2 ri5] ++
+       [Const (Z_to_imm 3) ri5;
+        Binop AND ri4 ri5 ri2;
+        Const (Z_to_imm 1) ri5;
+        Binop EQ ri5 ri2 ri5] ++
        if_ ri5 [] [Halt _] ++
        (* Form SEALED(k) tag from KEY(k) in ri4 *)
-       [Const _ (Z_to_imm 2) ri5;
-        Binop _ OR ri5 ri4 ri4] ++
+       [Const (Z_to_imm 2) ri5;
+        Binop OR ri5 ri4 ri4] ++
        wrap_user_tag ri4 ri4 ++
-       [PutTag _ syscall_arg1 ri4 syscall_ret] ++
+       [PutTag syscall_arg1 ri4 syscall_ret] ++
        (* Check that return PC is tagged DATA *)
-       [GetTag _ ra ri3] ++
+       [GetTag ra ri3] ++
        extract_user_tag ri3 rb ri3 ++
        if_ rb [] [Halt _] ++
-       [Const _ (Z_to_imm 0) ri5;
-        Binop _ EQ ri3 ri5 ri5] ++
-       if_ ri5 [Jump _ ra] [Halt _]
+       [Const (Z_to_imm 0) ri5;
+        Binop EQ ri3 ri5 ri5] ++
+       if_ ri5 [Jump ra] [Halt _]
  ).
 
 Definition unseal_segment : @relocatable_segment t w w :=
  gen_syscall_code (fun _ (extra : w) =>
        (* Ensure that second argument is tagged KEY, halting otherwise *)
-       [GetTag _ syscall_arg2 ri4] ++
+       [GetTag syscall_arg2 ri4] ++
        extract_user_tag ri4 rb ri4 ++
        if_ rb [] [Halt _] ++
-       [Const _ (Z_to_imm 3) ri5;
-        Binop _ AND ri4 ri5 ri2;
-        Const _ (Z_to_imm 1) ri5;
-        Binop _ EQ ri5 ri2 ri5] ++
+       [Const (Z_to_imm 3) ri5;
+        Binop AND ri4 ri5 ri2;
+        Const (Z_to_imm 1) ri5;
+        Binop EQ ri5 ri2 ri5] ++
        if_ ri5 [] [Halt _] ++
        (* Form SEALED(k) tag from KEY(k) in ri4 *)
-       [Const _ (Z_to_imm 2) ri5;
-        Binop _ OR ri5 ri4 ri4] ++
+       [Const (Z_to_imm 2) ri5;
+        Binop OR ri5 ri4 ri4] ++
        (* Ensure that first argument has a user tag (put it in ri3) *)
-       [GetTag _ syscall_arg1 ri3] ++
+       [GetTag syscall_arg1 ri3] ++
        extract_user_tag ri3 rb ri3 ++
        if_ rb [] [Halt _] ++
        (* Check that the two tags are equal (i.e. both SEALED(k)) *)
-       [Binop _ EQ ri3 ri4 ri4] ++
+       [Binop EQ ri3 ri4 ri4] ++
        if_ ri5 [] [Halt _] ++
        (* Retag the payload with DATA *)
-       [Const _ (Z_to_imm 0) ri5] ++
+       [Const (Z_to_imm 0) ri5] ++
        wrap_user_tag ri5 ri5 ++
-       [PutTag _ syscall_arg1 ri5 syscall_ret] ++
+       [PutTag syscall_arg1 ri5 syscall_ret] ++
        (* Check that return PC is tagged DATA *)
        (* (not certain this is needed, but keeping it here and above
            to make sure we satisfy refinement hypotheses...) *)
-       [GetTag _ ra ri3] ++
+       [GetTag ra ri3] ++
        extract_user_tag ri3 rb ri3 ++
        if_ rb [] [Halt _] ++
-       [Const _ (Z_to_imm 0) ri5;
-        Binop _ EQ ri3 ri5 ri5] ++
-       if_ ri5 [Jump _ ra] [Halt _]
+       [Const (Z_to_imm 0) ri5;
+        Binop EQ ri3 ri5 ri5] ++
+       if_ ri5 [Jump ra] [Halt _]
 ).
 
 Definition concrete_sealing_monitor :
@@ -577,14 +579,14 @@ Definition summarize_concrete_state mem_count cache_count st :=
   let mem' := just_somes
                (@enum _ _ _ _
                  (@Concrete.mem t st)
-                 (@PartMaps.get _ (word t) (@word_map_class _ ops) _)
+                 (@PartMaps.get _ (word t) (@word_map_class _) _)
                  (@omap atom sstring format_atom)
                  mem_count
                  (Word.repr 0)) in
   let mem := ssconcat sspace (map (fun x => let: (addr,con) := x in format_Z addr +++ ss ":" +++ con) mem') in
   let regs' := @enum _ _ _ _
                  (@Concrete.regs t st)
-                 (@PartMaps.get _ (reg t) (@reg_map_class _ ops) _)
+                 (@PartMaps.get _ (reg t) (@reg_map_class _) _)
                  (@omap atom sstring format_atom)
                  (Z.to_nat (Word.unsigned user_reg_max))
                  (Word.repr (word_to_Z (nat_to_word 0))) in
@@ -629,7 +631,7 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
   let mem' := just_somes
                (@enum _ _ _ _
                  (@Symbolic.mem t Sym.sym_sealing st)
-                 (@PartMaps.get _ (word t) (@word_map_class _ ops) _)
+                 (@PartMaps.get _ (word t) (@word_map_class _) _)
                  (@omap _ sstring (format_symbolic_atom pr_tag))
                  mem_count
                  (Word.repr 0)) in
@@ -772,24 +774,24 @@ Definition user_code (f : w -> @classes.sealing_syscall_addrs t -> list (instr t
 
 Definition hello_world0 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [
-     Const t (Z_to_imm 2) ruser1
+     Const (Z_to_imm 2) ruser1
   ]).
 
 Definition hello_world1 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun _ _ => [
-    Const t (Z_to_imm 2) ruser1;
-    Binop t ADD ruser1 ruser1 ruser2
+    Const (Z_to_imm 2) ruser1;
+    Binop ADD ruser1 ruser1 ruser2
   ]).
 
 Definition hello_world2 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t) :=
   user_code (fun _ _ =>
         [
-          Const _ (word_to_imm classes.mkkey_addr) ruser1;
-          Jal t ruser1;
-          Const _ (word_to_imm classes.seal_addr) ruser1;
-          Const _ (Z_to_imm 17) syscall_arg1;
-          Mov _ syscall_ret syscall_arg2;
-          Jal t ruser1
+          Const (word_to_imm classes.mkkey_addr) ruser1;
+          Jal ruser1;
+          Const (word_to_imm classes.seal_addr) ruser1;
+          Const (Z_to_imm 17) syscall_arg1;
+          Mov syscall_ret syscall_arg2;
+          Jal ruser1
         ]
       ).
 
@@ -797,14 +799,14 @@ Definition hello_world2 : @relocatable_segment t (@classes.sealing_syscall_addrs
 Definition hello_world3 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun _ _ =>
         [
-          Const _ (word_to_imm classes.mkkey_addr) ruser1;
-          Jal t ruser1;
-          Const _ (word_to_imm classes.seal_addr) ruser1;
-          Const _ (Z_to_imm 17) syscall_arg1;
-          Mov _ syscall_ret syscall_arg2;
-          Jal t ruser1;
-          Mov _ syscall_ret syscall_arg1;
-          Jal t ruser1
+          Const (word_to_imm classes.mkkey_addr) ruser1;
+          Jal ruser1;
+          Const (word_to_imm classes.seal_addr) ruser1;
+          Const (Z_to_imm 17) syscall_arg1;
+          Mov syscall_ret syscall_arg2;
+          Jal ruser1;
+          Mov syscall_ret syscall_arg1;
+          Jal ruser1
         ]
   ).
 
@@ -812,15 +814,15 @@ Definition hello_world3 : @relocatable_segment t (@classes.sealing_syscall_addrs
 Definition hello_world4 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun _ _ =>
         [
-          Const _ (word_to_imm classes.mkkey_addr) ruser1;
-          Jal t ruser1;
-          Mov _ syscall_ret syscall_arg2;
-          Const _ (word_to_imm classes.seal_addr) ruser1;
-          Const _ (Z_to_imm 17) syscall_arg1;
-          Jal t ruser1;
-          Mov _ syscall_ret syscall_arg1;
-          Const _ (word_to_imm classes.unseal_addr) ruser1;
-          Jal t ruser1
+          Const (word_to_imm classes.mkkey_addr) ruser1;
+          Jal ruser1;
+          Mov syscall_ret syscall_arg2;
+          Const (word_to_imm classes.seal_addr) ruser1;
+          Const (Z_to_imm 17) syscall_arg1;
+          Jal ruser1;
+          Mov syscall_ret syscall_arg1;
+          Const (word_to_imm classes.unseal_addr) ruser1;
+          Jal ruser1
         ]
   ).
 
@@ -832,16 +834,16 @@ Definition hello_world5 : @relocatable_segment t (@classes.sealing_syscall_addrs
           (* DATA BLOCK *)
           Nop _;
           (* As before, make up a key and seal 17 with it *)
-          Const _ (word_to_imm classes.mkkey_addr) ruser1;
-          Jal t ruser1;
-          Mov _ syscall_ret syscall_arg2;
-          Const _ (word_to_imm classes.seal_addr) ruser1;
-          Const _ (Z_to_imm 17) syscall_arg1;
-          Jal t ruser1;
+          Const (word_to_imm classes.mkkey_addr) ruser1;
+          Jal ruser1;
+          Mov syscall_ret syscall_arg2;
+          Const (word_to_imm classes.seal_addr) ruser1;
+          Const (Z_to_imm 17) syscall_arg1;
+          Jal ruser1;
           (* Store it in the data block and read it back *)
-          Const _ data ruser1;
-          Store t ruser1 syscall_ret;
-          Load t ruser1 ruser2
+          Const data ruser1;
+          Store ruser1 syscall_ret;
+          Load ruser1 ruser2
         ]
   ).
 
@@ -866,12 +868,12 @@ Context {implementation_correct : kernel_code_correctness monitor_invariant Sym.
 Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
 | rs_intro : forall sst m,
                refinement_common.refine_state monitor_invariant Sym.sealing_syscalls sst cst ->
-               @refinementSA.refine_state t ops sk_defs sk _ nat_partial_map m ast sst ->
+               @refinementSA.refine_state t sk_defs sk _ nat_partial_map m ast sst ->
                refine_state ast cst.
 Hint Constructors refine_state.
 
 Lemma backwards_refinement_as ast sst sst' (m : NatPMap.t _) :
-  @refinementSA.refine_state t ops sk_defs sk _ nat_partial_map m ast sst ->
+  @refinementSA.refine_state t sk_defs sk _ nat_partial_map m ast sst ->
   exec (Symbolic.step Sym.sealing_syscalls) sst sst' ->
   exists ast' m',
     exec (fun ast ast' => Abs.step ast ast') ast ast' /\

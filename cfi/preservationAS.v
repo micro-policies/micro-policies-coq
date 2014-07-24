@@ -16,7 +16,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Set Implicit Arguments.
 
 Import PartMaps.
- 
+
 Section Refinement.
 
 Context {t : machine_types}
@@ -49,9 +49,9 @@ Hypothesis syscall_sem :
 
 Hypothesis syscall_preserves_instruction_tags :
   forall sc st st',
-    Sym.instructions_tagged cfg (Symbolic.mem st) ->
+    Sym.instructions_tagged (cfg := cfg) (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
-    Sym.instructions_tagged cfg (Symbolic.mem st').
+    Sym.instructions_tagged (cfg := cfg) (Symbolic.mem st').
 
 Hypothesis syscall_preserves_valid_jmp_tags :
   forall sc st st',
@@ -66,14 +66,14 @@ Hypothesis syscall_preserves_entry_tags :
     Sym.entry_points_tagged stable (Symbolic.mem st').
 
 
-Definition backwards_simulation := 
-  RefinementAS.backwards_simulation ref_sc_correct syscall_sem 
-                                    syscall_preserves_instruction_tags 
+Definition backwards_simulation :=
+  RefinementAS.backwards_simulation ref_sc_correct syscall_sem
+                                    syscall_preserves_instruction_tags
                                     syscall_preserves_valid_jmp_tags
                                     syscall_preserves_entry_tags.
 
 Lemma untag_implies_reg_refinement reg :
-  RefinementAS.refine_registers cfg (PartMaps.map RefinementAS.untag_atom reg) reg.
+  RefinementAS.refine_registers (cfg := cfg) (PartMaps.map RefinementAS.untag_atom reg) reg.
 Proof.
    intros r v.
    split.
@@ -102,7 +102,7 @@ Proof.
      rewrite PartMaps.map_correctness in GET.
      rewrite filter_correctness in GET.
      destruct (get mem addr) eqn:GET'.
-     + destruct a as [val tg]. 
+     + destruct a as [val tg].
        simpl in GET.
        destruct tg as [[id|]|]; simpl in GET.
        * congruence.
@@ -111,14 +111,14 @@ Proof.
      + simpl in GET. congruence.
 Qed.
 
-Definition is_instr (a : atom (word t) cfi_tag) := 
+Definition is_instr (a : atom (word t) cfi_tag) :=
   match common.tag a with
     | INSTR _ => true
     | DATA => false
   end.
 
 Lemma untag_instr_implies_imem_refinement mem :
-  RefinementAS.refine_imemory 
+  RefinementAS.refine_imemory
     (PartMaps.map RefinementAS.untag_atom (filter is_instr mem)) mem.
 Proof.
    intros addr v.
@@ -131,7 +131,7 @@ Proof.
      rewrite PartMaps.map_correctness in GET.
      rewrite filter_correctness in GET.
      destruct (get mem addr) eqn:GET'.
-     + destruct a as [val tg]. 
+     + destruct a as [val tg].
        simpl in GET.
        destruct tg as [[id|]|]; simpl in GET.
        * inv GET. eexists; reflexivity.
@@ -147,33 +147,33 @@ Hint Resolve untag_implies_reg_refinement.
 Theorem cfg_true_equiv (asi asj : Abs.state t) ssi ssj :
   RefinementAS.refine_state stable asi ssi ->
   RefinementAS.refine_state stable asj ssj ->
-  Abs.step atable cfg asi asj -> 
+  Abs.step atable cfg asi asj ->
   Abs.succ atable cfg asi asj = true ->
   Symbolic.step stable ssi ssj ->
   Sym.ssucc stable ssi ssj = true.
 Proof.
   intros REF REF' ASTEP ASUCC SSTEP.
-  destruct asi as [imem dmem aregs apc b], 
+  destruct asi as [imem dmem aregs apc b],
            asj as [imem' dmem' aregs' apc' b'].
   destruct ssi as [mem regs [spc tpc] int].
   destruct ssj as [mem' regs' [spc' tpc'] int'].
   destruct REF as [REFI [REFD [REFR [REFPC [? [? [ITG [VTG ETG]]]]]]]].
   destruct REF' as [REFI' [REFD' [REFR' [REFPC' ?]]]].
   unfold Abs.succ in ASUCC.
-  unfold RefinementAS.refine_pc in REFPC; simpl in REFPC; 
+  unfold RefinementAS.refine_pc in REFPC; simpl in REFPC;
   destruct REFPC as [? TPC];
-  unfold RefinementAS.refine_pc in REFPC'; simpl in REFPC'; 
+  unfold RefinementAS.refine_pc in REFPC'; simpl in REFPC';
   destruct REFPC' as [? TPC'];
   subst.
   unfold Sym.ssucc; simpl.
-  destruct (get imem spc) eqn:GET.
+  destruct (get imem spc) as [s|] eqn:GET.
   + destruct (decode_instr s) eqn:INST.
     - destruct i eqn:DECODE;
       apply REFI in GET;
       destruct GET as [id GET'];
       rewrite GET'; destruct id; rewrite INST; simpl;
       try assumption;
-      destruct (VTG _ _ ASUCC) 
+      destruct (VTG _ _ ASUCC)
         as [[? ?] [[? GETSPC'] | [GETSPC' [? [GETCALL ETAG]]]]]; simpl in *;
       unfold Abs.valid_jmp, valid_jmp in ASUCC;
       repeat match goal with
@@ -198,7 +198,7 @@ Proof.
             by (eexists; eauto).
           apply REFI in EGET'.
           rewrite EGET' in GET. congruence.
-        * rewrite GET'. 
+        * rewrite GET'.
           destruct (get dmem spc) eqn:AGET.
           + discriminate.
           + apply REFD in GET'.
@@ -224,7 +224,7 @@ Theorem cfg_false_equiv asi asj ssi ssj :
   Sym.ssucc stable ssi ssj = false.
 Proof.
   intros REF REF' ASUCC SSTEP.
-  unfold Abs.succ in ASUCC. 
+  unfold Abs.succ in ASUCC.
   destruct asi as [imem dmem aregs apc b],
            asj as [imem' dmem' aregs' apc' b'].
   destruct ssi as [mem reg [pc tpc] int].
@@ -235,8 +235,8 @@ Proof.
   simpl in REFPC; simpl in REFPC'; destruct REFPC as [? TPC],
                                             REFPC' as [? TPC'].
   subst.
-  unfold Sym.ssucc.    
-  destruct (get imem pc) eqn:GET.
+  unfold Sym.ssucc.
+  destruct (get imem pc) as [s|] eqn:GET.
   { apply REFI in GET.
     destruct GET as [id GET].
     destruct (decode_instr s) eqn:INST.
@@ -269,21 +269,21 @@ Proof.
     { simpl. rewrite GET. rewrite INST. destruct id; by reflexivity. }
   }
   { destruct (Abs.get_syscall atable pc) eqn:GETCALL.
-    { simpl. 
+    { simpl.
       destruct (get dmem pc) eqn:GET'.
       { apply REFD in GET'. rewrite GET'. reflexivity. }
       { discriminate. }
     }
-    { simpl. 
+    { simpl.
       destruct (get mem pc) eqn:GET'.
       { destruct a. destruct tag.
-        { assert (EGET' : exists id, get mem pc = Some val@(INSTR id)) 
-               by (eexists; eauto). 
+        { assert (EGET' : exists id, get mem pc = Some val@(INSTR id))
+               by (eexists; eauto).
           apply REFI in EGET'. congruence.
         }
-        { rewrite GET'. reflexivity. } 
-      } 
-      { rewrite GET'. 
+        { rewrite GET'. reflexivity. }
+      }
+      { rewrite GET'.
         assert (SCDOMAINS := RefinementAS.refine_syscalls_domains ref_sc_correct).
         apply RefinementAS.same_domain_total with (addr' := pc) in SCDOMAINS.
         apply SCDOMAINS in GETCALL. rewrite GETCALL. reflexivity.
@@ -292,16 +292,16 @@ Proof.
   }
 Qed.
 
-Program Instance cfi_refinementAS  : 
+Program Instance cfi_refinementAS  :
   (machine_refinement amachine smachine) := {
     refine_state st st' := RefinementAS.refine_state stable st st';
 
     check st st' := true
 }.
 Next Obligation.
-  split; 
-  [intros; 
-    destruct (backwards_simulation _ REF STEP) 
+  split;
+  [intros;
+    destruct (backwards_simulation _ REF STEP)
     as [? [? ?]];
    eexists; split; eauto | discriminate].
 Qed.
@@ -317,7 +317,7 @@ Require Import Classical.
 Program Instance cfi_refinementAS_specs :
   machine_refinement_specs cfi_refinementAS.
 Next Obligation. (*step or no step*)
-  by apply classic. 
+  by apply classic.
 Qed.
 Next Obligation. (*initial state*)
   destruct H as [TPC [ITG [VTG ETG]]].
@@ -351,9 +351,9 @@ Next Obligation.
   induction H3
     as [ast cst REF | ast cst cst' axs' cxs' STEP VIS REF REF' RTRACE' |
         ast ast' cst cst' axs' cxs' STEP ASTEP' REF REF' RTRACE'|
-        ast ast' cst cst' axs' cxs' NSTEP STEP ASTEP' REF REF' RTRACE']; 
+        ast ast' cst cst' axs' cxs' NSTEP STEP ASTEP' REF REF' RTRACE'];
     subst.
-  - split. 
+  - split.
     + intros csi' csj' CONTRA.
       destruct CONTRA.
     + intros csi' IN.
@@ -401,5 +401,5 @@ Next Obligation.
         assumption.
     }
 Qed.
-        
+
 End Refinement.

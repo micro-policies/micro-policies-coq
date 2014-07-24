@@ -55,9 +55,9 @@ Hypothesis syscall_sem :
 
 Hypothesis syscall_preserves_instruction_tags :
   forall sc st st',
-    Sym.instructions_tagged cfg (Symbolic.mem st) ->
+    Sym.instructions_tagged (cfg := cfg) (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
-    Sym.instructions_tagged cfg (Symbolic.mem st').
+    Sym.instructions_tagged (cfg := cfg) (Symbolic.mem st').
 
 Hypothesis syscall_preserves_valid_jmp_tags :
   forall sc st st',

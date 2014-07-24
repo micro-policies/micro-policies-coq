@@ -3,6 +3,7 @@ Require Import Coq.Lists.List Coq.Arith.Arith Coq.ZArith.ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import lib.utils lib.partial_maps.
+Require Import lib.Integers.
 Require Import common.common.
 Require Import symbolic.symbolic.
 Require Import symbolic.exec.
@@ -52,18 +53,18 @@ Definition no_violation (sst : Symbolic.state t) :=
   (forall i ti src,
     get mem pc = Some i@ti ->
     tpc = INSTR (Some src) ->
-    exists dst, 
+    exists dst,
         ti = INSTR (Some dst) /\ cfg src dst = true) /\
-  (forall sc, 
-     get mem pc = None -> 
+  (forall sc,
+     get mem pc = None ->
      Symbolic.get_syscall table pc = Some sc ->
-     forall src, 
+     forall src,
        tpc = INSTR (Some src) ->
        exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ cfg src dst).
 
-Inductive atom_equiv : atom (word t) (@cfi_tag t ids) -> atom (word t) (@cfi_tag t ids) 
+Inductive atom_equiv : atom (word t) (@cfi_tag t ids) -> atom (word t) (@cfi_tag t ids)
                        -> Prop :=
-  | data_equiv : forall a a', 
+  | data_equiv : forall a a',
                    tag a = DATA ->
                    tag a' = DATA ->
                    atom_equiv a a'
@@ -73,7 +74,7 @@ Inductive atom_equiv : atom (word t) (@cfi_tag t ids) -> atom (word t) (@cfi_tag
                     a = a' ->
                     atom_equiv a a'.
 
-Definition equiv {M : Type -> Type} {Key : Type} 
+Definition equiv {M : Type -> Type} {Key : Type}
            {M_class : partial_map M Key} :
            M (atom (word t) (@cfi_tag t ids)) -> M (atom (word t) (@cfi_tag t ids)) -> Prop :=
   pointwise atom_equiv.
@@ -86,7 +87,7 @@ Inductive step_a : Symbolic.state t ->
                   step_a (Symbolic.State mem reg pc@tpc int)
                          (Symbolic.State mem' reg' pc@tpc int).
 
-Lemma equiv_same_domain {M : Type -> Type} {Key : Type} 
+Lemma equiv_same_domain {M : Type -> Type} {Key : Type}
            {M_class : partial_map M Key }
            (m : M (atom (word t) cfi_tag)) (m' : M (atom (word t) cfi_tag)) :
   equiv m m' ->
@@ -97,7 +98,7 @@ Proof.
   assert (EQUIV' := EQUIV k).
   destruct (get m k); destruct (get m' k); auto.
 Qed.
-                  
+
 Local Notation "x .+1" := (add_word x (Z_to_word 1)).
 
 Open Scope word_scope.
@@ -127,7 +128,7 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
               end
             | _ => false
           end
-        | Some (Bnz r imm) => 
+        | Some (Bnz r imm) =>
           (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
         | None => false
         | _ => pc_s' == pc_s .+1
@@ -137,7 +138,7 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
         | Some (Jump r)
         | Some (Jal r) =>
           false
-        | Some (Bnz r imm) => 
+        | Some (Bnz r imm) =>
           (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
         | None => false
         | _ => pc_s' == pc_s .+1
@@ -151,9 +152,9 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
 
 (*This should be enough for backwards refinement?*)
 Definition instructions_tagged (mem : memory) :=
-  forall addr i id, 
+  forall addr i id,
     get mem addr = Some i@(INSTR (Some id)) ->
-    word_to_id addr = Some id. 
+    word_to_id addr = Some id.
 
 Definition entry_points_tagged (mem : memory) :=
   forall addr sc id,
@@ -162,7 +163,7 @@ Definition entry_points_tagged (mem : memory) :=
     Symbolic.entry_tag sc = INSTR (Some id) ->
     word_to_id addr = Some id.
 
-Definition valid_jmp_tagged (mem : memory) := 
+Definition valid_jmp_tagged (mem : memory) :=
   forall src dst,
     valid_jmp src dst = true ->
     (exists i, get mem src = Some i@(INSTR (word_to_id src))) /\
@@ -217,11 +218,11 @@ Proof.
   (*unfoldings and case analysis on tags*)
     repeat (
         match goal with
-          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_pc in H
-          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg in H
-          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
           | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
@@ -246,11 +247,11 @@ Proof.
       rewrite E in GET.
       specialize (INVARIANT _ _ _ GET); assumption.
       assumption.
-   + unfold Symbolic.run_syscall in CALL. simpl in CALL. 
+   + unfold Symbolic.run_syscall in CALL. simpl in CALL.
      match_inv;  eapply syscall_preserves_instruction_tags; eauto.
 Qed.
 
-Lemma valid_jmp_tagged_preserved_by_step 
+Lemma valid_jmp_tagged_preserved_by_step
       (st : Symbolic.state t) (st' : Symbolic.state t) :
   valid_jmp_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
@@ -261,11 +262,11 @@ Proof.
     (*unfoldings and case analysis on tags*)
     repeat (
         match goal with
-          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_pc in H
-          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg in H
-          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
           | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
@@ -273,7 +274,7 @@ Proof.
   + simpl in E. simpl. unfold valid_jmp_tagged.
     intros src dst VALID.
     unfold valid_jmp_tagged in INVARIANT. simpl in INVARIANT.
-    specialize (INVARIANT _ _ VALID). 
+    specialize (INVARIANT _ _ VALID).
     destruct INVARIANT as [[isrc GET] [[idst GET'] | [GET' [sc TAG]]]].
     { have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
       - rewrite GET in OLD. congruence.
@@ -292,7 +293,7 @@ Proof.
         - exists isrc.
           eapply PartMaps.get_upd_neq in E; eauto; try apply word_map_axioms.
           rewrite <- E in GET. assumption.
-      * right. 
+      * right.
         split.
         - have [EQ|/eqP NEQ] := altP (dst =P w1); [simpl in EQ | simpl in NEQ]; subst.
           + apply PartMaps.upd_inv in E. destruct E as [? E].
@@ -304,7 +305,7 @@ Proof.
   + simpl in E. simpl. unfold valid_jmp_tagged.
     intros src dst VALID.
     unfold valid_jmp_tagged in INVARIANT. simpl in INVARIANT.
-    specialize (INVARIANT _ _ VALID). 
+    specialize (INVARIANT _ _ VALID).
     destruct INVARIANT as [[isrc GET] [[idst GET'] | [GET' [sc TAG]]]].
     { have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
       - rewrite GET in OLD. congruence.
@@ -323,7 +324,7 @@ Proof.
         - exists isrc.
           eapply PartMaps.get_upd_neq in E; eauto; try apply word_map_axioms.
           rewrite <- E in GET. assumption.
-      * right. 
+      * right.
         split.
         - have [EQ|/eqP NEQ] := altP (dst =P w1); [simpl in EQ | simpl in NEQ]; subst.
           + apply PartMaps.upd_inv in E. destruct E as [? E].
@@ -332,11 +333,11 @@ Proof.
             rewrite E. assumption.
         - exists sc. assumption.
     }
-  +  unfold Symbolic.run_syscall in CALL. simpl in CALL. 
+  +  unfold Symbolic.run_syscall in CALL. simpl in CALL.
      match_inv;  eapply syscall_preserves_valid_jmp_tags; eauto.
 Qed.
 
-Lemma entry_point_tags_preserved_by_step 
+Lemma entry_point_tags_preserved_by_step
       (st : Symbolic.state t) (st' : Symbolic.state t) :
   entry_points_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
@@ -347,11 +348,11 @@ Proof.
   (*unfoldings and case analysis on tags*)
     repeat (
         match goal with
-          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_pc in H
-          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg in H
-          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
           | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
@@ -374,7 +375,7 @@ Proof.
     - apply PartMaps.get_upd_neq with (key' := addr) in E; auto; try apply word_map_axioms.
       rewrite E in GET'. unfold entry_points_tagged in INVARIANT.
       specialize (INVARIANT _ _ _ GET' CALL ETAG); assumption.
-  + unfold Symbolic.run_syscall in CALL. simpl in CALL. 
+  + unfold Symbolic.run_syscall in CALL. simpl in CALL.
      match_inv;  eapply syscall_preserves_entry_tags; eauto.
 Qed.
 
@@ -384,17 +385,17 @@ Lemma itags_preserved_by_step_a (st : Symbolic.state t) (st' : Symbolic.state t)
   instructions_tagged (Symbolic.mem st').
 Proof.
   intros INV STEP.
-  destruct STEP. 
+  destruct STEP.
   simpl. intros addr i0 id0 GET.
   assert (MEQUIV' := MEQUIV addr).
   rewrite GET in MEQUIV'.
   destruct (get mem addr) eqn:GET'.
-  - inv MEQUIV'. 
+  - inv MEQUIV'.
     + simpl in H0. congruence.
     + specialize (INV _ _ _ GET'). assumption.
   - destruct MEQUIV'.
 Qed.
-    
+
 Lemma valid_jmp_tagged_preserved_by_step_a
       (st : Symbolic.state t) (st' : Symbolic.state t) :
   valid_jmp_tagged (Symbolic.mem st) ->
@@ -406,17 +407,17 @@ Proof.
   simpl; intros src dst VALID. unfold valid_jmp_tagged in INVARIANT.
   assert (MEQUIVS := MEQUIV src).
   assert (MEQUIVD := MEQUIV dst).
-  destruct (INVARIANT _ _ VALID) as [[isrc GET] [[idst GET'] | [GET' [sc [CALL TAG]]]]]; 
+  destruct (INVARIANT _ _ VALID) as [[isrc GET] [[idst GET'] | [GET' [sc [CALL TAG]]]]];
     clear INVARIANT.
   { rewrite GET in MEQUIVS; rewrite GET' in MEQUIVD.
     split.
     - destruct (get mem' src) eqn:GETS.
-      + inversion MEQUIVS; subst. 
+      + inversion MEQUIVS; subst.
         * simpl in H; congruence.
         * eexists; eauto.
       + destruct MEQUIVS.
     - destruct (get mem' dst) eqn:GETD.
-      + inv MEQUIVD. 
+      + inv MEQUIVD.
         * simpl in H. congruence.
         * left. eexists; eauto.
       + destruct MEQUIVD.
@@ -434,7 +435,7 @@ Proof.
   }
 Qed.
 
-Lemma entry_point_tags_preserved_by_step_a 
+Lemma entry_point_tags_preserved_by_step_a
       (st : Symbolic.state t) (st' : Symbolic.state t) :
   entry_points_tagged (Symbolic.mem st) ->
   step_a st st' ->
@@ -465,9 +466,9 @@ Hint Resolve entry_point_tags_preserved_by_step_a : invariant_db.
 Hint Resolve valid_jmp_tagged_preserved_by_step : invariant_db.
 Hint Resolve valid_jmp_tagged_preserved_by_step_a : invariant_db.
 
-Definition invariants st := 
+Definition invariants st :=
   instructions_tagged (Symbolic.mem st) /\
-  valid_jmp_tagged (Symbolic.mem st) /\ 
+  valid_jmp_tagged (Symbolic.mem st) /\
   entry_points_tagged (Symbolic.mem st).
 
 Lemma invariants_preserved_by_step st st' :
@@ -476,7 +477,7 @@ Lemma invariants_preserved_by_step st st' :
   invariants st'.
 Proof.
   intros INV STEP.
-  destruct INV as [ITG [VTG ETG]]. 
+  destruct INV as [ITG [VTG ETG]].
   split; eauto with invariant_db.
 Qed.
 
@@ -486,11 +487,11 @@ Lemma invariants_preserved_by_step_a st st' :
   invariants st'.
 Proof.
   intros INV STEP.
-  destruct INV as [ITG [VTG ETG]]. 
+  destruct INV as [ITG [VTG ETG]].
   split; eauto with invariant_db.
 Qed.
 
-Definition initial (s : Symbolic.state t) := 
+Definition initial (s : Symbolic.state t) :=
   (common.tag (Symbolic.pc s)) = DATA /\
   invariants s.
 
@@ -537,21 +538,21 @@ Qed.
 Program Instance symbolic_cfi_machine : cfi_machine := {|
   state := Symbolic.state t;
   initial s := initial s;
-  
+
   step := Symbolic.step table;
   step_a := step_a;
-  
+
   succ := ssucc;
-  stopping := stopping  
+  stopping := stopping
  |}.
 
 Import DoNotation.
 Import Vector.VectorNotations.
 
-Definition get_ti sst := 
+Definition get_ti sst :=
   match get (Symbolic.mem sst) (common.val (Symbolic.pc sst)) with
     | Some i@ti => Some ti
-    | None => 
+    | None =>
       match Symbolic.get_syscall table (common.val (Symbolic.pc sst)) with
         | Some sc => Some (Symbolic.entry_tag sc)
         | None => None
@@ -589,14 +590,14 @@ Proof.
   - specialize (MEQUIV pc).
     unfold get_ti.
     simpl.
-    destruct (get mem pc) as [[i ti]|] eqn:GET; rewrite GET.
-    { destruct (get mem' pc) as[[i' ti']|] eqn:GET'; rewrite GET'.
+    destruct (get mem pc) as [[i ti]|] eqn:GET.
+    { destruct (get mem' pc) as[[i' ti']|] eqn:GET'.
       - inversion MEQUIV as [? ? EQ1 EQ2 EQ3 EQ4|? ? ? ? EQ1 EQ2 EQ3]; subst.
         + simpl in EQ1, EQ2. subst. by reflexivity.
         + inv EQ3. by reflexivity.
       - by destruct MEQUIV.
     }
-    { destruct (get mem' pc) as[[i' ti']|] eqn:GET'; rewrite GET'.
+    { destruct (get mem' pc) as[[i' ti']|] eqn:GET'.
       - destruct MEQUIV.
       - by reflexivity.
     }
@@ -638,25 +639,25 @@ Proof.
   rewrite PC in SUCC; try rewrite INST in SUCC;
   repeat (
       match goal with
-        | [H: Symbolic.next_state_pc _ _ _ = _ |- _] => 
+        | [H: Symbolic.next_state_pc _ _ _ = _ |- _] =>
           unfold Symbolic.next_state_pc in H
-        | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] => 
+        | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] =>
           unfold Symbolic.next_state_reg in H
-        | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] => 
+        | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
           unfold Symbolic.next_state_reg_and_pc in H
         | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
           unfold Symbolic.next_state in H; simpl in H
       end); subst; match_inv; simpl in SUCC;
-  try match goal with 
-        | [H: _ || _ = false |- _] => 
+  try match goal with
+        | [H: _ || _ = false |- _] =>
           apply orb_false_iff in H;
             destruct H as [? ?];
             destruct (w == 0);
             unfold pc' in *
       end;
   try match goal with
-        | [H: (?A == ?A) = false |- _] => 
-      move/eqP:H => CONTRA; destruct (CONTRA erefl)
+        | [H: (?A == ?A) = false |- _] =>
+          by rewrite eqxx in H
       end;
   right; unfold violation;
   simpl; unfold get_ti; simpl in *;
@@ -684,7 +685,7 @@ Proof.
       simpl in UMVEC;
       unfold bind in UMVEC;
       repeat match goal with
-               | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] => 
+               | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
              rewrite H1 in H
                | [H: match ?Expr with _ => _ end = _ |- _ ] =>
                  destruct Expr eqn:?
@@ -698,7 +699,7 @@ Proof.
   -  (*get mem pc = None*)
     rewrite GET in VIO UMVEC.
     destruct (Symbolic.get_syscall table pc) as [sc|] eqn:GETCALL.
-    + destruct tpc as [[src|]|], (Symbolic.entry_tag sc) as [[dst|]|]; 
+    + destruct tpc as [[src|]|], (Symbolic.entry_tag sc) as [[dst|]|];
       try (by inversion VIO);
       inv UMVEC; try reflexivity.
       unfold Symbolic.handler; simpl; unfold cfi_handler;

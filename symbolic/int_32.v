@@ -40,24 +40,24 @@ Instance concrete_int_32_fh : fault_handler_params t := {
      should be strictly smaller than word. However, it should work
      fine when used on small immediates *)
   load_const := fun (x : word t) (r : reg t) =>
-    [Const _ (word_to_imm x) r]
+    [Const (word_to_imm x) r]
 }.
 
 Open Scope bool_scope.
 Open Scope Z_scope.
 
-Fixpoint insert_from {A : Type} (i : int32) (l : list A)
-                     (mem : Int32PMap.t A) : Int32PMap.t A :=
+Fixpoint insert_from {A : Type} (i : Word.int 31) (l : list A)
+                     (mem : word_map t A) : word_map t A :=
   match l with
     | []      => mem
-    | h :: l' => insert_from (Word.add i Word.one) l' (Int32PMap.set i h mem)
+    | h :: l' => insert_from (Word.add i Word.one) l' (PartMaps.set mem i h)
   end.
 
-Fixpoint constants_from {A : Type} (i : int32) (n : nat) (x : A)
-                        (mem : Int32PMap.t A) : Int32PMap.t A :=
+Fixpoint constants_from {A : Type} (i : Word.int 31) (n : nat) (x : A)
+                        (mem : word_map t A) : word_map t A :=
   match n with
     | O    => mem
-    | S n' => constants_from (Word.add i Word.one) n' x (Int32PMap.set i x mem)
+    | S n' => constants_from (Word.add i Word.one) n' x (PartMaps.set mem i x)
   end.
 
 Definition w := word concrete_int_32_t.
@@ -121,11 +121,11 @@ Definition build_monitor_memory
     let mem :=
        ( constants_from Word.zero 8 cacheCell
        ∘ insert_from base_addr kernel )
-       (Int32PMap.empty _) in
+       (PartMaps.empty) in
      (mem, user_code_addr, syscall_addrs)
    | _ =>
      (* Should not happen *)
-     (Int32PMap.empty _, Word.repr 0, [])
+     (PartMaps.empty, Word.repr 0, [])
    end.
 
 (* BCP: Register initialization may need to be generalized at some
@@ -150,9 +150,9 @@ Program Definition concrete_initial_state
   let regs :=
         fold_left
           (fun regs r =>
-            RegtPMap.set r Word.zero@(kernelize_user_tag initial_reg_tag) regs)
+            PartMaps.set regs r Word.zero@(kernelize_user_tag initial_reg_tag))
           user_regs
-          (RegtPMap.empty _) in
+          (PartMaps.empty) in
   {|
     Concrete.mem := mem';
     Concrete.regs := regs;

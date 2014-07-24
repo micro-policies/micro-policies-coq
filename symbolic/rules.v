@@ -30,7 +30,7 @@ Require Coq.Vectors.Vector.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.Coqlib lib.utils common.common concrete.concrete symbolic.symbolic.
+Require Import lib.Coqlib lib.Integers lib.utils common.common concrete.concrete symbolic.symbolic.
 Import DoNotation.
 Import Concrete.
 

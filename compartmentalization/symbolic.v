@@ -2,7 +2,7 @@ Require Import List. Import ListNotations.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.utils lib.ordered lib.partial_maps common.common.
+Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import lib.list_utils lib.set_utils.
 Require Import compartmentalization.common.
@@ -534,7 +534,7 @@ Theorem supd_preserves_regs : forall s p v s',
 Proof.
   move=> [mem reg pc [next iT aJT aST]] /= p v s' SUPD;
     rewrite /supd /= in SUPD.
-  destruct (upd mem p v) eqn:UPD; rewrite UPD in SUPD.
+  destruct (upd mem p v).
   - by inversion SUPD; subst.
   - by destruct (p == isolate_addr);
          [|destruct (p == add_to_jump_targets_addr);
@@ -548,7 +548,7 @@ Theorem supd_preserves_pc : forall s p v s',
 Proof.
   move=> [mem reg pc [next iT aJT aST]] /= p v s' SUPD;
     rewrite /supd /= in SUPD.
-  destruct (upd mem p v) eqn:UPD; rewrite UPD in SUPD.
+  destruct (upd mem p v).
   - by inversion SUPD; subst.
   - by destruct (p == isolate_addr);
          [|destruct (p == add_to_jump_targets_addr);
@@ -562,7 +562,7 @@ Theorem supd_preserves_next_id : forall s p v s',
 Proof.
   move=> [mem reg pc [next iT aJT aST]] /= p v s' SUPD;
     rewrite /supd /= in SUPD.
-  destruct (upd mem p v) eqn:UPD; rewrite UPD in SUPD.
+  destruct (upd mem p v).
   - by inversion SUPD; subst.
   - by destruct (p == isolate_addr);
          [|destruct (p == add_to_jump_targets_addr);
@@ -592,7 +592,7 @@ Proof.
     destruct LaS as [|caS IaS WaS|]; try done.
   destruct GOOD as [NEQiaJ [NEQiaS [NEQaJaS [LTi [LTaJ [LTaS GOOD]]]]]].
   rewrite /sget in SGET.
-  destruct (get mem p) eqn:GET.
+  destruct (get mem p) eqn:GET; rewrite GET in SGET.
   - rewrite SGET in GET; eapply GOOD; eassumption.
   - destruct (p == isolate_addr);              [by inversion SGET; subst|].
     destruct (p == add_to_jump_targets_addr);  [by inversion SGET; subst|].
@@ -1027,7 +1027,7 @@ Proof.
   intros p x c I W GET'.
   move/id in TAGS; specialize TAGS with p.
   rewrite /sget GET' in TAGS.
-  destruct (get mem p) as [[y [|cy Iy Wy|]]|] eqn:GET; rewrite GET in TAGS;
+  destruct (get mem p) as [[y [|cy Iy Wy|]]|] eqn:GET;
    try done; subst.
   - apply GOOD in GET; assumption.
   - by destruct (p == isolate_addr) eqn:EQ_I;
@@ -1202,7 +1202,7 @@ Qed.
     
 End WithClasses.
 
-Notation memory    t := (Symbolic.memory    t sym_compartmentalization).
-Notation registers t := (Symbolic.registers t sym_compartmentalization).
+Notation memory    t := (Symbolic.memory    t (@sym_compartmentalization t)).
+Notation registers t := (Symbolic.registers t (@sym_compartmentalization t)).
 
 End Sym.

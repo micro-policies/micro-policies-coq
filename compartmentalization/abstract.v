@@ -2,7 +2,7 @@ Require Import List Arith Sorted Bool.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.utils lib.partial_maps lib.ordered common.common.
+Require Import lib.Integers lib.utils lib.partial_maps lib.ordered common.common.
 Require Import lib.list_utils lib.set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
 
@@ -29,7 +29,7 @@ Context (t            : machine_types)
 
 Open Scope word_scope.
 Local Notation word  := (word t).
-Local Notation value := (eqtype.Equality.sort word).
+Local Notation value := word.
 Local Notation memory := (word_map t word).
 Local Notation registers := (reg_map t word).
 
@@ -248,7 +248,7 @@ Inductive step (MM MM' : state) : Prop :=
 
 | step_const :   forall pc R M C sk prev c x rdest R'
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Const _ x rdest)
+                   (INST  : decode M pc ?= Const x rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (UPD   : upd R rdest (imm_to_word x) ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
@@ -256,7 +256,7 @@ Inductive step (MM MM' : state) : Prop :=
 
 | step_mov   :   forall pc R M C sk prev c rsrc rdest x R'
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Mov _ rsrc rdest)
+                   (INST  : decode M pc ?= Mov rsrc rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GET   : get R rsrc ?= x)
                    (UPD   : upd R rdest x ?= R')
@@ -265,7 +265,7 @@ Inductive step (MM MM' : state) : Prop :=
 
 | step_binop :   forall pc R M C sk prev c op rsrc1 rsrc2 rdest x1 x2 R'
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Binop _ op rsrc1 rsrc2 rdest)
+                   (INST  : decode M pc ?= Binop op rsrc1 rsrc2 rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR1 : get R rsrc1 ?= x1)
                    (GETR2 : get R rsrc2 ?= x2)
@@ -275,7 +275,7 @@ Inductive step (MM MM' : state) : Prop :=
 
 | step_load  :   forall pc R M C sk prev c rpsrc rdest p x R'
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Load _ rpsrc rdest)
+                   (INST  : decode M pc ?= Load rpsrc rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR  : get R rpsrc ?= p)
                    (GETM  : get M p     ?= x)
@@ -285,7 +285,7 @@ Inductive step (MM MM' : state) : Prop :=
 
 | step_store :   forall pc R M C sk prev c rsrc rpdest x p M'
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Store _ rpdest rsrc)
+                   (INST  : decode M pc ?= Store rpdest rsrc)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETRS : get R rpdest ?= p)
                    (GETRD : get R rsrc   ?= x)
@@ -296,7 +296,7 @@ Inductive step (MM MM' : state) : Prop :=
 
 | step_jump  :   forall pc R M C sk prev c rtgt pc'
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Jump _ rtgt)
+                   (INST  : decode M pc ?= Jump rtgt)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR  : get R rtgt ?= pc')
                    (NEXT  : MM' = State pc' R M C JUMPED c),
@@ -304,7 +304,7 @@ Inductive step (MM MM' : state) : Prop :=
 
 | step_bnz   :   forall pc R M C sk prev c rsrc x b
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Bnz _ rsrc x)
+                   (INST  : decode M pc ?= Bnz rsrc x)
                    (GETR  : get R rsrc ?= b)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (NEXT  : MM' = State (pc + (if b == 0
@@ -318,7 +318,7 @@ Inductive step (MM MM' : state) : Prop :=
  * [Note Fancy JAL] below. *)
 | step_jal   :   forall pc R M C c sk prev rtgt pc' R'
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : decode M pc ?= Jal _ rtgt)
+                   (INST  : decode M pc ?= Jal rtgt)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (GETR  : get R rtgt ?= pc')
                    (UPDR  : upd R ra (pc + 1) ?= R')
@@ -823,7 +823,7 @@ Proof.
     induction C as [|ch C]; intros p ICO c IC; [inversion IC|]; simpl in *.
   destruct set_elem by auto.
   - congruence.
-  - inversion IC; subst; [simpl in *; congruence | eapply IHC; eauto].
+  - inversion IC; subst; [simpl in *; solve [intuition] | eapply IHC; eauto].
 Qed.
 (*Global*) Hint Resolve in_compartment_opt_missing_correct.
 
@@ -843,7 +843,7 @@ Proof.
   - exists <<A,J,S>>; simpl;
       (destruct set_elem by
         (eapply good_compartment_decomposed__is_set_address_space; auto));
-      [reflexivity | congruence].
+      [reflexivity | intuition].
   - simpl; (destruct set_elem by auto); eauto.
 Qed.
 (*Global*) Hint Resolve in_compartment_opt_present.
@@ -874,7 +874,7 @@ Proof.
     simpl.
   - (destruct set_elem by
       (eapply good_compartment_decomposed__is_set_address_space; auto));
-    [reflexivity | congruence].
+    [reflexivity | intuition].
   - (destruct set_elem by auto); [|apply IHIC; eauto 4].
     assert (IN : In c C) by eauto 2; assert (IN2 : In2 ch c (ch :: C)) by auto.
     apply in_compartment__in_address_space in IC.
@@ -1706,9 +1706,8 @@ Proof.
       move=> /= a GET.
       destruct (get M a) eqn:GET';
         [clear GET; rename GET' into GET | discriminate].
-      eapply defined_preserved in GET; try eassumption.
-      * by destruct GET as [v GET']; rewrite GET'.
-      * apply word_map_axioms.
+      destruct (defined_preserved GET UPDR) as [v GET'].
+      by rewrite GET'.
     + unfold syscall_address_space in *; cbv [address_space] in *.
       destruct A as [|sc [|]]; auto.
       move/andP in SAS; apply/andP.
@@ -1913,7 +1912,7 @@ Proof.
             in_compartment_opt_correct
         in STEP; eauto 3.
       apply in_app_iff; replace c0 with c in * by eauto 3; assumption.
-    + rewrite (PartMaps.get_upd_neq NE UPDR) in DIFF; congruence.
+    + rewrite (PartMaps.get_upd_neq NE UPDR) in DIFF. by intuition.
   - (* Syscall *)
     unfold get_syscall,table in *; simpl in *.
     repeat match type of GETSC with
@@ -1942,7 +1941,7 @@ Module Notations.
 (* Repeated notations *)
 Notation memory t := (word_map t (word t)).
 Notation registers t := (reg_map t (word t)).
-Notation "<< A , J , S >>" := (Compartment _ A J S) (format "<< A , J , S >>").
+Notation "<< A , J , S >>" := (@Compartment _ A J S) (format "<< A , J , S >>").
 Notation "C ⊢ p ∈ c" := (in_compartment p C c) (at level 70).
 Notation "C ⊢ p1 , p2 , .. , pk ∈ c" :=
   (and .. (and (C ⊢ p1 ∈ c) (C ⊢ p2 ∈ c)) .. (C ⊢ pk ∈ c))

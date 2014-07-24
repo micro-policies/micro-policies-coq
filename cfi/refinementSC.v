@@ -1,6 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import Coq.Lists.List.
+Require Import lib.Integers.
 Require Import lib.utils.
 Require Import lib.partial_maps.
 Require Import lib.Coqlib.
@@ -43,9 +44,9 @@ Definition masks := symbolic.rules.masks.
 (*Used for our invariants*)
 Hypothesis syscall_preserves_instruction_tags :
   forall sc st st',
-    Sym.instructions_tagged cfg (Symbolic.mem st) ->
+    Sym.instructions_tagged (cfg := cfg) (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
-    Sym.instructions_tagged cfg (Symbolic.mem st').
+    Sym.instructions_tagged (cfg := cfg) (Symbolic.mem st').
 
 Hypothesis syscall_preserves_valid_jmp_tags :
   forall sc st st',
@@ -314,37 +315,29 @@ Proof.
   split.
   { intro SCALL.
     apply INV in SCALL.
-    destruct (get mem addr) eqn:GET.
-    - destruct a as [v ctg].
-      destruct (get mem' addr) eqn:GET'.
-      + destruct a as [v' ctg'].
-        inversion MEQUIV
+    case: (get mem addr) INV MEQUIV SCALL => [[v ctg]|] INV MEQUIV SCALL; last by [].
+    case: (get mem' addr) MEQUIV => [[v' ctg']|] MEQUIV; last by [].
+    inversion MEQUIV
           as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
-        * inv EQ1.
-          apply andb_true_iff in SCALL.
-          destruct SCALL as [? SCALL].
-          move/eqP/rules.encode_inj: SCALL => CONTRA.
-          inversion CONTRA.
-        * simpl in *. inv EQ. assumption.
-      + destruct MEQUIV.
-    - discriminate.
+    - inv EQ1.
+      apply andb_true_iff in SCALL.
+      destruct SCALL as [? SCALL].
+      move/eqP/rules.encode_inj: SCALL => CONTRA.
+      inversion CONTRA.
+    - simpl in *. inv EQ. assumption.
   }
   { intro CALL.
-    destruct (get mem' addr) eqn:GET'.
-    - destruct a as [v' ctg'].
-      destruct (get mem addr) eqn:GET.
-      + destruct a as [v ctg].
-        inversion MEQUIV
+    case: (get mem' addr) INV MEQUIV CALL => [[v' ctg']|] //= INV MEQUIV CALL.
+    case: (get mem addr) INV MEQUIV => [[v ctg]|] //= INV MEQUIV.
+    inversion MEQUIV
           as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
-        * inv EQ2.
-          apply andb_true_iff in CALL.
-          destruct CALL as [? CALL].
-          move/eqP/rules.encode_inj: CALL => CONTRA.
-          inversion CONTRA.
-        * simpl in *. inv EQ. apply INV in CALL.
-          assumption.
-      + destruct MEQUIV.
-    - discriminate.
+    + inv EQ2.
+      apply andb_true_iff in CALL.
+      destruct CALL as [? CALL].
+      move/eqP/rules.encode_inj: CALL => CONTRA.
+      inversion CONTRA.
+    + simpl in *. inv EQ. apply INV in CALL.
+      assumption.
   }
 Qed.
 
@@ -868,11 +861,11 @@ Lemma attacker_up_to ast ast' cst cst' axs cxs :
     Conc.all_attacker masks (hd ++ [csi]) /\
     Concrete.step _ masks csi csj /\ check csi csj = false /\
     ((exists asi, refine_traces cfi_refinementSC [asi] (csi :: csj :: tl)
-                /\ exec (@Sym.step_a mt ops ids cfg) ast asi)
+                /\ exec (@Sym.step_a mt ids cfg) ast asi)
     \/ (exists asi asj atl,
           refine_traces cfi_refinementSC (asi :: asj :: atl) (csj :: tl) /\
           Sym.all_stuck stable (asi :: asj :: atl) /\
-          exec (@Sym.step_a mt ops ids cfg) ast asi /\
+          exec (@Sym.step_a mt ids cfg) ast asi /\
           refine_state asi csi)).
 Proof.
   intros ALLA ALLS CSTEP RTRACE.
@@ -1260,23 +1253,22 @@ Proof.
                 destruct (Symbolic.get_syscall stable pcj) eqn:GETCALL.
                 + rewrite GETCALL in H2.
                   unfold wf_entry_points in WF.
-                  specialize (WF pcj (Symbolic.entry_tag s0)).
+                  specialize (WF pcj (Symbolic.entry_tag s)).
                   assert (ECALL : exists sc : Symbolic.syscall mt,
                                     Symbolic.get_syscall stable pcj = Some sc /\
-                                    Symbolic.entry_tag sc = Symbolic.entry_tag s0)
+                                    Symbolic.entry_tag sc = Symbolic.entry_tag s)
                     by (eexists; eauto).
                   apply WF in ECALL.
-                  destruct (get cmemi pcj) as [[v' tg]|] eqn:CGET.
-                  * apply andb_true_iff in ECALL.
-                    destruct ECALL as [ISNOP ETAG].
-                    simpl.
-                    move/eqP:ETAG => ETAG.
-                    rewrite ETAG /= rules.decodeK.
-                    destruct (Symbolic.entry_tag s0) as [[?|]|] eqn:ETAG';
+                  case: (get cmemi pcj) ECALL => [[v' tg]|] ECALL //.
+                  apply andb_true_iff in ECALL.
+                  destruct ECALL as [ISNOP ETAG].
+                  simpl.
+                  move/eqP:ETAG => ETAG.
+                  rewrite ETAG /= rules.decodeK.
+                  destruct (Symbolic.entry_tag s) as [[?|]|] eqn:ETAG';
                     rewrite ETAG' in H2; try discriminate.
-                    apply andb_true_iff.
-                      by auto.
-                  * by discriminate.
+                  apply andb_true_iff.
+                  by auto.
                 + rewrite GETCALL in H2. by discriminate.
             }
             { (*jal*)
@@ -1291,23 +1283,22 @@ Proof.
                 destruct (Symbolic.get_syscall stable pcj) eqn:GETCALL.
                 + rewrite GETCALL in H2.
                   unfold wf_entry_points in WF.
-                  specialize (WF pcj (Symbolic.entry_tag s0)).
+                  specialize (WF pcj (Symbolic.entry_tag s)).
                   assert (ECALL : exists sc : Symbolic.syscall mt,
                                     Symbolic.get_syscall stable pcj = Some sc /\
-                                    Symbolic.entry_tag sc = Symbolic.entry_tag s0)
+                                    Symbolic.entry_tag sc = Symbolic.entry_tag s)
                     by (eexists; eauto).
                   apply WF in ECALL.
-                  destruct (get cmemi pcj) as [[v' tg]|] eqn:CGET.
-                  * apply andb_true_iff in ECALL.
-                    destruct ECALL as [ISNOP ETAG].
-                    simpl.
-                    move/eqP:ETAG => ETAG.
-                    rewrite ETAG /= rules.decodeK.
-                    destruct (Symbolic.entry_tag s0) as [[?|]|] eqn:ETAG';
+                  case: (get cmemi pcj) ECALL => [[v' tg]|] ECALL //.
+                  apply andb_true_iff in ECALL.
+                  destruct ECALL as [ISNOP ETAG].
+                  simpl.
+                  move/eqP:ETAG => ETAG.
+                  rewrite ETAG /= rules.decodeK.
+                  destruct (Symbolic.entry_tag s) as [[?|]|] eqn:ETAG';
                     rewrite ETAG' in H2; try discriminate.
-                    apply andb_true_iff.
-                      by auto.
-                  * by discriminate.
+                  apply andb_true_iff.
+                  by auto.
                 + rewrite GETCALL in H2. by discriminate.
             }
           - by discriminate.
@@ -1404,10 +1395,10 @@ Proof.
                 - unfold wf_entry_points in WF.
                   destruct (Symbolic.get_syscall stable pc') eqn:GETCALL.
                   + rewrite GETCALL in H1.
-                    specialize (WF pc' (Symbolic.entry_tag s1)).
+                    specialize (WF pc' (Symbolic.entry_tag s0)).
                     assert (ECALL: (exists sc : Symbolic.syscall mt,
                                Symbolic.get_syscall stable pc' = Some sc /\
-                               Symbolic.entry_tag sc = Symbolic.entry_tag s1))
+                               Symbolic.entry_tag sc = Symbolic.entry_tag s0))
                       by (eexists; eauto).
                     apply WF in ECALL.
                     rewrite GET' in ECALL.
@@ -1415,7 +1406,7 @@ Proof.
                     move/eqP:CTG => CTG.
                     rewrite CTG in DEC.
                     rewrite rules.decodeK in DEC. inv DEC.
-                    destruct (Symbolic.entry_tag s1) as [[?|]|] eqn:ETAG; rewrite ETAG in H1;
+                    destruct (Symbolic.entry_tag s0) as [[?|]|] eqn:ETAG; rewrite ETAG in H1;
                     auto.
                     apply andb_false_iff. right.
                     by assumption.
@@ -1425,14 +1416,14 @@ Proof.
                       destruct (is_nop cv') eqn:NOP.
                       { exfalso.
                         apply rules.encodeK in DEC.
-                        specialize (WF pc' (INSTR (Some s1))).
+                        specialize (WF pc' (INSTR (Some s0))).
                         assert (CONTRA: match get cmem pc' with
                                           | Some i@it =>
-                                            is_nop i && (it == rules.encode (rules.ENTRY (INSTR (Some s1))))
+                                            is_nop i && (it == rules.encode (rules.ENTRY (INSTR (Some s0))))
                                           | None => false
                                         end = true).
                         { rewrite GET'. apply andb_true_iff. rewrite <- DEC.
-                          split; auto. rewrite eqxx. by reflexivity. }
+                          split; auto. by rewrite eqxx. }
                         apply WF in CONTRA. destruct CONTRA as [? [CONTRA ?]].
                         rewrite CONTRA in GETCALL. by discriminate.
                       }
@@ -1466,10 +1457,10 @@ Proof.
                 - unfold wf_entry_points in WF.
                   destruct (Symbolic.get_syscall stable pc') eqn:GETCALL.
                   + rewrite GETCALL in H1.
-                    specialize (WF pc' (Symbolic.entry_tag s1)).
+                    specialize (WF pc' (Symbolic.entry_tag s0)).
                     assert (ECALL: (exists sc : Symbolic.syscall mt,
                                Symbolic.get_syscall stable pc' = Some sc /\
-                               Symbolic.entry_tag sc = Symbolic.entry_tag s1))
+                               Symbolic.entry_tag sc = Symbolic.entry_tag s0))
                       by (eexists; eauto).
                     apply WF in ECALL.
                     rewrite GET' in ECALL.
@@ -1477,7 +1468,7 @@ Proof.
                     move/eqP:CTG => CTG.
                     rewrite CTG in DEC.
                     rewrite rules.decodeK in DEC. inv DEC.
-                    destruct (Symbolic.entry_tag s1) as [[?|]|] eqn:ETAG; rewrite ETAG in H1;
+                    destruct (Symbolic.entry_tag s0) as [[?|]|] eqn:ETAG; rewrite ETAG in H1;
                     auto.
                     apply andb_false_iff. right.
                     by assumption.
@@ -1487,10 +1478,10 @@ Proof.
                       destruct (is_nop cv') eqn:NOP.
                       { exfalso.
                         apply rules.encodeK in DEC.
-                        specialize (WF pc' (INSTR (Some s1))).
+                        specialize (WF pc' (INSTR (Some s0))).
                         assert (CONTRA: match get cmem pc' with
                                           | Some i@it =>
-                                            is_nop i && (it == rules.encode (rules.ENTRY (INSTR (Some s1))))
+                                            is_nop i && (it == rules.encode (rules.ENTRY (INSTR (Some s0))))
                                           | None => false
                                         end = true).
                         { rewrite GET'. apply andb_true_iff. rewrite <- DEC.

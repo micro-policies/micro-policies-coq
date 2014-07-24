@@ -2,7 +2,7 @@ Require Import Coq.Lists.List Coq.Arith.Arith.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils lib.partial_maps.
+Require Import lib.Integers lib.utils lib.partial_maps.
 Require Import common.common.
 Require Import lib.Coqlib.
 Require Import cfi.property.
@@ -67,52 +67,52 @@ Inductive step : state -> state -> Prop :=
              step (State imem dmem reg pc true) (State imem dmem reg pc.+1 true)
 | step_const : forall imem dmem reg reg' pc i n r,
              forall (FETCH : get imem pc = Some i),
-             forall (INST : decode_instr i = Some (Const _ n r)),
+             forall (INST : decode_instr i = Some (Const n r)),
              forall (UPD : upd reg r (imm_to_word n) = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_mov : forall imem dmem reg reg' pc i r1 r2 w1,
              forall (FETCH : get imem pc = Some i),
-             forall (INST : decode_instr i = Some (Mov _ r1 r2)),
+             forall (INST : decode_instr i = Some (Mov r1 r2)),
              forall (R1W : get reg r1 = Some w1),
              forall (UPD : upd reg r2 w1 = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_binop : forall imem dmem reg reg' pc i f r1 r2 r3 w1 w2,
              forall (FETCH : get imem pc = Some i),
-             forall (INST : decode_instr i = Some (Binop _ f r1 r2 r3)),
+             forall (INST : decode_instr i = Some (Binop f r1 r2 r3)),
              forall (R1W : get reg r1 = Some w1),
              forall (R2W : get reg r2 = Some w2),
              forall (UPD : upd reg r3 (binop_denote f w1 w2) = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_load : forall imem dmem reg reg' pc i r1 r2 w1 w2,
              forall (FETCH : get imem pc = Some i),
-             forall (INST : decode_instr i = Some (Load _ r1 r2)),
+             forall (INST : decode_instr i = Some (Load r1 r2)),
              forall (R1W : get reg r1 = Some w1),
              forall (MEM1 : get imem w1 = Some w2 \/ get dmem w1 = Some w2),
              forall (UPD : upd reg r2 w2 = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_store : forall imem dmem dmem' reg pc i r1 r2 w1 w2,
              forall (FETCH : get imem pc = Some i),
-             forall (INST : decode_instr i = Some (Store _ r1 r2)),
+             forall (INST : decode_instr i = Some (Store r1 r2)),
              forall (R1W : get reg r1 = Some w1),
              forall (R2W : get reg r2 = Some w2),
              forall (UPD : upd dmem w1 w2 = Some dmem'),
              step (State imem dmem reg pc true) (State imem dmem' reg pc.+1 true)
 | step_jump : forall imem dmem reg pc i r w b,
              forall (FETCH : get imem pc = Some i),
-             forall (INST : decode_instr i = Some (Jump _ r)),
+             forall (INST : decode_instr i = Some (Jump r)),
              forall (RW : get reg r = Some w),
              forall (VALID : valid_jmp pc w = b),
              step (State imem dmem reg pc true) (State imem dmem reg w b)
 | step_bnz : forall imem dmem reg pc i r n w,
              forall (FETCH : get imem pc = Some i),
-             forall (INST : decode_instr i = Some (Bnz _ r n)),
+             forall (INST : decode_instr i = Some (Bnz r n)),
              forall (RW : get reg r = Some w),
              let pc' := add_word pc (if w == Z_to_word 0 then Z_to_word 1
                                      else imm_to_word n) in
              step (State imem dmem reg pc true) (State imem dmem reg pc' true)
 | step_jal : forall imem dmem reg reg' pc i r w b,
              forall (FETCH : get imem pc = Some i),
-             forall (INST : decode_instr i = Some (Jal _ r)),
+             forall (INST : decode_instr i = Some (Jal r)),
              forall (RW : get reg r = Some w),
              forall (UPD : upd reg ra (pc.+1) = Some reg'),
              forall (VALID : valid_jmp pc w = b),

@@ -3,7 +3,7 @@ Ltac type_of x := type of x.
 
 Require Import lib.Coqlib.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import lib.utils lib.partial_maps common.common symbolic.symbolic.
+Require Import lib.Integers lib.utils lib.partial_maps common.common symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
 
@@ -387,7 +387,7 @@ Qed.
 Definition mi_malloc b base col : meminj :=
   PartMaps.set mi col (b,base).
 
-Lemma get_write_block_rec base v : forall n init w mem',
+Lemma get_write_block_rec (base : word mt) (v : atom (word mt) Sym.tag) : forall n init (w : word mt) mem',
   Sym.write_block_rec init base v n = Some mem' ->
   Z.of_nat n <= word_to_Z max_word ->
   word_to_Z base + Z.of_nat n <= word_to_Z max_word ->
@@ -413,7 +413,7 @@ apply: word_to_Z_inj.
 by rewrite addwE Z_to_wordK; omega.
 Qed.
 
-Lemma get_write_block: forall smem base sz v w mem',
+Lemma get_write_block: forall smem base sz (v : atom (word mt) Sym.tag) w mem',
   Sym.write_block smem base v sz = Some mem' ->
   0 <= word_to_Z sz ->
   PartMaps.get mem' w = if word_to_Z base <=? word_to_Z w <? word_to_Z base + word_to_Z sz then Some v else PartMaps.get smem w.
@@ -450,7 +450,7 @@ have eq_base: Sym.block_base bi' = Sym.block_base bi.
   by rewrite /off [_ - _]addwC addwA subww add0w get_w1.
 have<-//: bi' = bi.
 rewrite -(nth_index bi' in_bi') -(nth_index bi' in_bi).
-have->//: index bi' info = index bi info.  
+have->//: index bi' info = index bi info.
 apply: (no_overlap _ _ bi (Sym.block_base bi)).
 + by rewrite index_mem.
 + by rewrite index_mem.
@@ -684,19 +684,19 @@ Qed.
 
 
 Lemma refine_registers_malloc mi aregs sregs amem amem' bl sz newb base col :
-  fresh_color mi col -> 
+  fresh_color mi col ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   refine_registers mi aregs sregs ->
   refine_registers (mi_malloc mi newb base col) aregs sregs.
 Proof.
   intros.
   unfold refine_registers. unfold mi_malloc.
-  eapply PartMaps.refine_extend_map with 
-    (P := refine_reg_val) 
+  eapply PartMaps.refine_extend_map with
+    (P := refine_reg_val)
     (f := fun mi' col' nb' => mi = mi' /\ col = col' /\ (newb,base) = nb'); auto.
   intros ? ? ? ? ? [E1 [E2 [R]]]. subst k1 km.
-  unfold refine_reg_val. destruct v2; destruct tag; auto. 
-  eapply refine_val_malloc; eauto. 
+  unfold refine_reg_val. destruct v2; destruct tag; auto.
+  eapply refine_val_malloc; eauto.
 Qed.
 
 Lemma meminj_spec_malloc mi amem smem amem' info bl sz newb base col :
@@ -722,10 +722,10 @@ Qed.
 
 Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col smem' :
   refine_memory mi amem smem ->
-  0 <= word_to_Z sz -> 
+  0 <= word_to_Z sz ->
   refine_internal_state mi bl smem (col, info) ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
-  Sym.write_block smem base 0@M(col, DATA) sz = Some smem' -> 
+  Sym.write_block smem base 0@M(col, DATA) sz = Some smem' ->
   refine_memory (mi_malloc mi newb base col) amem' smem'.
 Proof.
 case=> miP rmem sznneg rist malloc.
@@ -773,7 +773,7 @@ Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color s
   Sym.block_color bi = None ->
   bi \in info ->
   refine_internal_state mi bl smem (color, info) ->
-  Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz = Some smem' -> 
+  Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz = Some smem' ->
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
     (newb :: bl) smem' (Sym.inc_color color, Sym.update_block_info info bi color sz).
 Proof.
@@ -987,7 +987,7 @@ case: i lt_i => [|i] lt_i /=.
   have [/andP [/Z.leb_le le_bi /Z.ltb_lt le_biD]|_] :=
       boolP (word_to_Z (Sym.block_base bi) <=?
              word_to_Z (Sym.block_base bi + sz + off) <?
-             word_to_Z (Sym.block_base bi) + word_to_Z sz).  
+             word_to_Z (Sym.block_base bi) + word_to_Z sz).
     by rewrite !addwE in le_bi le_biD; omega.
   have [|_ _ get_bi] := biP bi in_bi; first by rewrite color_bi.
   rewrite -addwA.
@@ -1100,22 +1100,22 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
 - by rewrite binop_addDr; constructor.
 - by rewrite binop_addDl;  constructor.
 - by rewrite binop_subDl; constructor.
-- eexists. 
-  revert hyp. simpl. 
-  have [nonces_eq|nonces_neq] := altP (nonce1 =P nonce2). 
+- eexists.
+  revert hyp. simpl.
+  have [nonces_eq|nonces_neq] := altP (nonce1 =P nonce2).
   +  subst. intro hyp. inv hyp.
-     rewrite mi_b2 in mi_b1; subst.  inv mi_b1. 
+     rewrite mi_b2 in mi_b1; subst.  inv mi_b1.
      split. rewrite eq_refl. auto.
      rewrite binop_sub_add2l. constructor.
-  +  intro X; inv X. 
-- eexists. 
-  revert hyp. simpl. 
+  +  intro X; inv X.
+- eexists.
+  revert hyp. simpl.
   have [nonces_eq|nonces_neq] := altP (nonce1 =P nonce2).
-  + subst. intro hyp; inv hyp. 
-    rewrite mi_b2 in mi_b1; subst. inv mi_b1. 
+  + subst. intro hyp; inv hyp.
+    rewrite mi_b2 in mi_b1; subst. inv mi_b1.
     split. rewrite eq_refl. auto.
     rewrite binop_eq_add2l. constructor.
-  + intro X; inv X. 
+  + intro X; inv X.
 Transparent binop_denote.
 Qed.
 
@@ -1147,16 +1147,24 @@ try have [rpcb [mi_apcb rpci]] := refine_pc_inv rpc;
 
 try match goal with
 | GETCALL : Symbolic.get_syscall _ _ = Some _,
-  CALL : Symbolic.run_syscall _ _ = Some _ |- _ =>
-  move: GETCALL CALL;
+  CALL : Symbolic.run_syscall _ _ = Some _,
+  PC : PartMaps.get _ ?pc = None |- _ =>
+  (move: GETCALL CALL;
   case: int rist => color info rist;
   rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=;
-  (have->: s = pc by inversion rpc);
-  repeat case: ifP=> [/eqP <- /= [<-] /= | ? //];
-  rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
-  match_inv
+  match goal with
+  | rpc : refine_val _ _ ?pc (PTR ?s) |- _ =>
+    (have->: s = pc by inversion rpc);
+    repeat case: ifP=> [/eqP <- /= [<-] /= | ? //];
+    rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
+    match_inv
+  | rpc : refine_val _ (Abstract.VData _ ?s) ?pc _ |- _ =>
+    (have->: s = pc by inversion rpc);
+    repeat case: ifP=> [/eqP <- /= [<-] /= | ? //];
+    rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
+    match_inv
+  end) || let op := current_instr_opcode in fail 5 "system_calls"
 end;
-
 
 repeat match goal with
   | GET : PartMaps.get ?reg ?r = Some ?v@V(?ty),
@@ -1237,8 +1245,7 @@ by solve_pc rpci.
 (* Syscall *)
 
 (* Malloc *)
-
-  move: b Heqo E0 E3 => bi Heqo E0 E3. 
+  move: b Heqo E0 E3 => bi Heqo E0 E3.
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ bi _).
   have: bi \in [seq x <- info
@@ -1293,29 +1300,29 @@ by solve_pc rpci.
   have ? := @leZ_max (Sym.block_size x).
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ x _).
-  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
-    case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
+  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s].
+    case: [seq x0 <- info | Sym.block_color x0 == Some s] E => //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x in_x].
   rewrite in_x => /(_ erefl) biP.
   case: biP E E0 E1 color_x in_x => [|->] //.
   move=> col b color_bi [? ?] mi_col get_x E E0 E1 color_x in_x.
   case/andP: E1 => ? ?.
-  have [? ?]: word_to_Z (Sym.block_base x) <= word_to_Z val <
+  have [E1 E2]: word_to_Z (Sym.block_base x) <= word_to_Z val <
             word_to_Z (Sym.block_base x) + (word_to_Z (Sym.block_size x)).
     split; first exact/word_to_Z_le/leb_le.
     rewrite -addwE; last omega.
     exact/word_to_Z_lt/ltb_lt.
 
   have [fr get_b]: exists fr, PartMaps.get a_mem b = Some fr.
-    case/(_ (val - Sym.block_base x)): get_x => [|w [ty]].
-    by rewrite subwE; omega.
+    case/(_ (val - Sym.block_base x)): get_x => [|w' [ty]].
+    rewrite subwE; omega.
     case: rmem => _ rmem.
     move/rmem.
     rewrite mi_col /Abstract.getv /=.
     by case: (PartMaps.get a_mem b) => // fr _; exists fr.
-  have eq_col: col = s0 by congruence.
-  have eq_s4b: s4 = b.
+  have eq_col: col = s by congruence.
+  have eq_s4b: s2 = b.
     inversion H3.
     by rewrite eq_col H8 in mi_col; injection mi_col.
 
@@ -1333,14 +1340,14 @@ by solve_pc rpci.
 (* Base *)
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ x _).
-  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s0].
-    case: [seq x0 <- info | Sym.block_color x0 == Some s0] E=> //= ? ? [->].
+  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s].
+    case: [seq x0 <- info | Sym.block_color x0 == Some s] E=> //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
   case: biP E E0 color_x => [|-> //].
   move=> col b color_x [? ?] mi_col get_x ? E0 ?.
-  have eq_col: col = s0 by congruence.
-  have eq_s4b: s4 = b.
+  have eq_col: col = s by congruence.
+  have eq_s4b: s2 = b.
     inversion H3.
     by rewrite eq_col H8 in mi_col; injection mi_col.
 
@@ -1377,7 +1384,7 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
   inversion rarg1.
   inversion rarg2.
 
-  have [eq_arg1b|neq_arg1b] := altP (arg1b =P s0).
+  have [eq_arg1b|neq_arg1b] := altP (arg1b =P s).
     move: H4 H8; rewrite eq_arg1b => -> [-> ->].
     by rewrite eqxx (inj_eq (addwI base0)) => upd_ret.
   have/negbTE->//: b != b0.

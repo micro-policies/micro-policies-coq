@@ -1,7 +1,7 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype.
-Require Import lib.utils lib.ordered lib.partial_maps. Import PartMaps.
+Require Import lib.Integers lib.utils lib.ordered lib.partial_maps. Import PartMaps.
 Require Import common.common symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
@@ -53,7 +53,7 @@ Proof.
   - intros g g' e. subst.
     rewrite get_set_neq in g => //. rewrite get_set_neq in g' => //.
     by eauto.
-Qed.    
+Qed.
 
 Section WithFixedKeyMap.
 
@@ -119,11 +119,11 @@ Qed.
 
 (* helping the type class resolution a bit seems needed *)
 Definition refine_upd_reg (aregs : Abs.registers t) (sregs : Sym.registers t) :=
-  @refine_upd_pointwise _ _ _ _ _ _ _ _ _ refine_val_atom aregs sregs.
+  @refine_upd_pointwise _ _ _ _ [eqType of reg t] _ _ _ _ refine_val_atom aregs sregs.
 
 (* not yet used, but it should be helpful for store *)
 Definition refine_upd_mem (amem : Abs.memory t) (smem : Sym.memory t) :=
-  @refine_upd_pointwise _ _ _ _ _ _ _ _ _ refine_val_atom amem smem.
+  @refine_upd_pointwise _ _ _ _ [eqType of word t] _ _ _ _ refine_val_atom amem smem.
 
 End WithFixedKeyMap.
 
@@ -201,7 +201,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
       unfold Abs.decode. rewrite PC. now apply INST.
     + split4; now trivial.
   - (* CONST *)
-    REFINE_INSTR PC ti rmem rpc NEXT. 
+    REFINE_INSTR PC ti rmem rpc NEXT.
     apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
@@ -212,7 +212,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
       eassumption.
     + split4; now trivial.
   - (* MOV *)
-    REFINE_INSTR PC ti rmem rpc NEXT.  
+    REFINE_INSTR PC ti rmem rpc NEXT.
     apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct (refine_get_pointwise_inv rreg R1W) as [v [g rva]].
@@ -229,16 +229,16 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
     apply bind_inv in NEXT; destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
-    destruct t1; destruct t2; try discriminate stag. 
-       injection stag; intro H; subst; clear stag. simpl in *.  
-    destruct (refine_get_pointwise_inv rreg R1W) as [v1 [g1 rva1]].        
+    destruct t1; destruct t2; try discriminate stag.
+       injection stag; intro H; subst; clear stag. simpl in *.
+    destruct (refine_get_pointwise_inv rreg R1W) as [v1 [g1 rva1]].
     apply refine_val_data in rva1; subst.
-    destruct (refine_get_pointwise_inv rreg R2W) as [v2 [g2 rva2]].        
-    apply refine_val_data in rva2; subst. 
-    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption|]. 
-    instantiate (1:= Abs.VData (binop_denote op w1 w2)); reflexivity. 
+    destruct (refine_get_pointwise_inv rreg R2W) as [v2 [g2 rva2]].
+    apply refine_val_data in rva2; subst.
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption|].
+    instantiate (1:= Abs.VData (binop_denote op w1 w2)); reflexivity.
     eexists. exists km. split.
-    + eapply Abs.step_binop; [reflexivity | | | | | reflexivity]. 
+    + eapply Abs.step_binop; [reflexivity | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
       eassumption.
@@ -246,48 +246,48 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* LOAD *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]]. 
-    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]]. 
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; try discriminate stag.
-       injection stag; intro H; subst; clear stag; simpl in *. 
-    destruct (refine_get_pointwise_inv rreg R1W) as [v [g rva]].        
+       injection stag; intro H; subst; clear stag; simpl in *.
+    destruct (refine_get_pointwise_inv rreg R1W) as [v [g rva]].
     apply refine_val_data in rva; subst.
     destruct (refine_get_pointwise_inv rmem MEM1) as [vm [gm rvam]].
-    edestruct refine_upd_reg as [args' [H1 H2]]; [eassumption | | eassumption|]. 
+    edestruct refine_upd_reg as [args' [H1 H2]]; [eassumption | | eassumption|].
     eassumption.
     eexists. exists km. split.
-    + eapply Abs.step_load; [reflexivity | | | | | reflexivity]. 
+    + eapply Abs.step_load; [reflexivity | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
       eassumption.
       eassumption.
-    + split4; now trivial. 
+    + split4; now trivial.
   - (* STORE *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]]. 
-    apply bind_inv in NEXT. destruct NEXT as [smem' [upd NEXT]]. 
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply bind_inv in NEXT. destruct NEXT as [smem' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; try discriminate stag.
-       injection stag; intro H; subst; clear stag; simpl in *. 
-    destruct (refine_get_pointwise_inv rreg R1W) as [v1 [g1 rva1]].        
+       injection stag; intro H; subst; clear stag; simpl in *.
+    destruct (refine_get_pointwise_inv rreg R1W) as [v1 [g1 rva1]].
     apply refine_val_data in rva1; subst.
-    destruct (refine_get_pointwise_inv rreg R2W) as [v2 [g2 rva2]].        
+    destruct (refine_get_pointwise_inv rreg R2W) as [v2 [g2 rva2]].
     edestruct refine_upd_mem as [amem' [? ?]]; [eassumption | | eassumption|].
     eassumption.
-    eexists. exists km. split. 
-    + eapply Abs.step_store; [reflexivity | | | | | reflexivity]. 
+    eexists. exists km. split.
+    + eapply Abs.step_store; [reflexivity | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
       eassumption.
       eassumption.
-    + split4; now trivial. 
+    + split4; now trivial.
   - (* JUMP *)
-    REFINE_INSTR PC ti rmem rpc NEXT. 
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]]. 
+    REFINE_INSTR PC ti rmem rpc NEXT.
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; try discriminate stag.
-       injection stag; intro H; subst; clear stag; simpl in *. 
+       injection stag; intro H; subst; clear stag; simpl in *.
     destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
     apply refine_val_data in rva; subst; simpl.
     eexists. exists km. split.
@@ -296,11 +296,11 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
       eassumption.
     + split4; now trivial.
   - (* BNZ *)
-    REFINE_INSTR PC ti rmem rpc NEXT. 
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]]. 
+    REFINE_INSTR PC ti rmem rpc NEXT.
+    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; try discriminate stag.
-       injection stag; intro H; subst; clear stag; simpl in *. 
+       injection stag; intro H; subst; clear stag; simpl in *.
     destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
     apply refine_val_data in rva; subst; simpl.
     eexists. exists km. split.
@@ -310,7 +310,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* JAL - not system call *)
     (* copy paste (all cases) *)
-    REFINE_INSTR PC ti rmem rpc NEXT.  
+    REFINE_INSTR PC ti rmem rpc NEXT.
     apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
     apply bind_inv in NEXT. destruct NEXT as [sregs' [upd' NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
@@ -330,16 +330,16 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
   - (* system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    erewrite (@pointwise_none _ _ _ _ _ _ _ _ amem smem apc rmem) in PC.  
+    erewrite (@pointwise_none _ _ _ _ _ _ _ _ amem smem apc rmem) in PC.
     simpl in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
       have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];
       move => GETCALL ; injection GETCALL; move {GETCALL} => ?; subst.
     + {(* mkkey *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]]. 
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL; move: CALL.
-    case lt_skey : (skey <? Sym.max_key) => // CALL. 
+    case lt_skey : (skey <? Sym.max_key) => // CALL.
     apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     apply bind_inv in CALL. destruct CALL as [ret [GET CALL]].
     destruct ret as [ret [| |]]; try done.
@@ -365,8 +365,8 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
 
     eexists. exists (set km (Abs.mkkey_f akeys) skey). split.
     + eapply Abs.step_mkkey; [reflexivity | | |eassumption | reflexivity].
-      unfold Abs.decode. now rewrite PC. 
-      eassumption. 
+      unfold Abs.decode. now rewrite PC.
+      eassumption.
     + split4; trivial; try reflexivity.
         by eauto using refine_mem_set_km.
       split3. (* the interesting part: reestablish refinement on keys *)
@@ -378,12 +378,12 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
           rewrite -> get_set_neq => //.
           destruct rins as [rins1 _]. apply rins1. tauto.
       - (* symbolic keys *)
-        move => ak sk /=. 
+        move => ak sk /=.
         have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)) => hsk.
         + subst. rewrite -> get_set_eq in hsk => //.
           injection hsk => hsk'. clear hsk.
           rewrite hsk'.
-          by rewrite Sym.ltb_inc -?hsk' ?lt_skey //. 
+          by rewrite Sym.ltb_inc -?hsk' ?lt_skey //.
         + rewrite -> get_set_neq in hsk => //.
           destruct rins as [_ [rins2 _]]. eapply ltb_trans. eapply rins2.
           eassumption.
@@ -396,20 +396,20 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     }
     + {(* seal *)
     (* break up the effects of the system call *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]]. 
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL.
     apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
     destruct tp; try discriminate CALL.
     apply bind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
     destruct tk; try discriminate CALL.
     apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
-    apply bind_inv in CALL. 
+    apply bind_inv in CALL.
     destruct CALL as [[ret [| |]] [GET CALL]]; try discriminate CALL.
     injection CALL; intro H; subst; clear CALL.
     apply (refine_get_pointwise_inv rreg) in GET.
     move: GET => [v1 [GET REF]].
     apply refine_val_data in REF. subst v1.
-    
+
     (* 2 register lookups *)
     destruct (refine_get_pointwise_inv rreg gp) as [vp [ggp H]].
     destruct vp; try contradiction H. simpl in H. subst.
@@ -425,7 +425,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     }
     + {(* unseal -- very similar to seal *)
     (* break up the effects of the system call *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]]. 
+    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL.
     apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
     destruct tp; try discriminate CALL.
@@ -435,7 +435,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     (* additional: equality check between keys *)
     have [eq_s CALL|//] := eqP.
     apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
-    apply bind_inv in CALL. 
+    apply bind_inv in CALL.
     destruct CALL as [[ret [| |]] [GET CALL]]; try discriminate CALL.
     injection CALL; intro H; subst; clear CALL.
     apply (refine_get_pointwise_inv rreg) in GET.
@@ -485,7 +485,7 @@ Definition forward_simulation := forall km ast ast' sst,
    /\
    (exists (i : word t) (r : reg t) (ti t1 : Sym.stag) (sc : Symbolic.syscall t),
       (get (Symbolic.mem sst) (val (Symbolic.pc sst)) = Some i@ti) /\
-      (decode_instr i = Some (Jal _ r)) /\
+      (decode_instr i = Some (Jal r)) /\
       (get (Symbolic.regs sst) r = Some mkkey_addr@t1) /\
       (Symbolic.get_syscall Sym.sealing_syscalls mkkey_addr = Some sc) /\
       (Symbolic.sem sc sst = None))

@@ -1,6 +1,6 @@
 Require Import List Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import lib.utils lib.partial_maps lib.ordered.
+Require Import lib.Integers lib.utils lib.partial_maps lib.ordered.
 Require Import common.common memory_safety.classes.
 
 Import DoNotation.
@@ -153,18 +153,18 @@ Inductive step : state -> state -> Prop :=
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg bl (VPtr pc.+1))
 | step_const : forall mem reg reg' bl pc i n r,
              forall (PC :    getv mem pc = Some (VData i)),
-             forall (INST :  decode_instr i = Some (Const _ n r)),
+             forall (INST :  decode_instr i = Some (Const n r)),
              forall (UPD :   upd reg r (VData (imm_to_word n)) = Some reg'),
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg' bl (VPtr pc.+1))
 | step_mov : forall mem reg reg' bl pc i r1 r2 w1,
              forall (PC :    getv mem pc = Some (VData i)),
-             forall (INST :  decode_instr i = Some (Mov _ r1 r2)),
+             forall (INST :  decode_instr i = Some (Mov r1 r2)),
              forall (R1W :   get reg r1 = Some w1),
              forall (UPD :   upd reg r2 w1 = Some reg'),
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg' bl (VPtr pc.+1))
 | step_binop : forall mem reg reg' bl pc i f r1 r2 r3 v1 v2 v3,
              forall (PC :    getv mem pc = Some (VData i)),
-             forall (INST :  decode_instr i = Some (Binop _ f r1 r2 r3)),
+             forall (INST :  decode_instr i = Some (Binop f r1 r2 r3)),
              forall (R1W :   get reg r1 = Some v1),
              forall (R2W :   get reg r2 = Some v2),
              forall (BINOP : lift_binop f v1 v2 = Some v3),
@@ -172,14 +172,14 @@ Inductive step : state -> state -> Prop :=
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg' bl (VPtr pc.+1))
 | step_load : forall mem reg reg' bl pc i r1 r2 pt v,
              forall (PC :    getv mem pc = Some (VData i)),
-             forall (INST :  decode_instr i = Some (Load _ r1 r2)),
+             forall (INST :  decode_instr i = Some (Load r1 r2)),
              forall (R1W :   get reg r1 = Some (VPtr pt)),
              forall (MEM1 :  getv mem pt = Some v),
              forall (UPD :   upd reg r2 v = Some reg'),
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg' bl (VPtr pc.+1))
 | step_store : forall mem mem' reg bl pc b off i r1 r2 fr fr' v,
              forall (PC :    getv mem pc = Some (VData i)),
-             forall (INST :  decode_instr i = Some (Store _ r1 r2)),
+             forall (INST :  decode_instr i = Some (Store r1 r2)),
              forall (R1W :   get reg r1 = Some (VPtr (b,off))),
              forall (R2W :   get reg r2 = Some v),
              forall (MEM1 :  get mem b = Some fr),
@@ -188,12 +188,12 @@ Inductive step : state -> state -> Prop :=
              step (mkState mem reg bl (VPtr pc)) (mkState mem' reg bl (VPtr pc.+1))
 | step_jump : forall mem reg bl pc i r pt,
              forall (PC :    getv mem pc = Some (VData i)),
-             forall (INST :  decode_instr i = Some (Jump _ r)),
+             forall (INST :  decode_instr i = Some (Jump r)),
              forall (RW :    get reg r = Some (VPtr pt)),
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg bl (VPtr pt))
 | step_bnz : forall mem reg bl pc i r n w,
              forall (PC :    getv mem pc = Some (VData i)),
-             forall (INST :  decode_instr i = Some (Bnz _ r n)),
+             forall (INST :  decode_instr i = Some (Bnz r n)),
              forall (RW :    get reg r = Some (VData w)),
              let             off_pc' := add_word (snd pc) (if w == Z_to_word 0
                                                    then Z_to_word 1
@@ -201,7 +201,7 @@ Inductive step : state -> state -> Prop :=
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg bl (VPtr (fst pc,off_pc')))
 | step_jal : forall mem reg reg' bl pc i r v,
              forall (PC :       getv mem pc = Some (VData i)),
-             forall (INST :     decode_instr i = Some (Jal _ r)),
+             forall (INST :     decode_instr i = Some (Jal r)),
              forall (RW :       get reg r = Some v),
              forall (UPD :      upd reg ra (VPtr (pc.+1)) = Some reg'),
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg' bl v)

@@ -1,5 +1,6 @@
 Require Import ssreflect ssrbool eqtype.
 
+Require Import lib.Integers.
 Require Import lib.Coqlib.
 Require Import lib.utils.
 Require Import lib.partial_maps.
@@ -37,7 +38,7 @@ Instance sp : Symbolic.params := Sym.sym_memory_safety t.
 Context {enc : encodable (@Symbolic.tag (Sym.sym_memory_safety t))}
         {monitor_invariant : @kernel_invariant _ _ _ enc}
         {syscall_addrs : @memory_syscall_addrs t}
-        {ap : Abstract.abstract_params (word t)}
+        {ap : Abstract.abstract_params [eqType of word t]}
         {apspec : Abstract.params_spec ap}
         {alloc : @Abstract.allocator t _ _}
         {allocspec : Abstract.allocator_spec alloc}.
