@@ -639,107 +639,6 @@ Proof.
   repeat invh and; subst; auto.
 Qed.
 
-Lemma refined_compartment_preserved : forall sst sst' c cid,
-  (forall p, Sym.good_memory_tag sst  p) ->
-  (forall p, Sym.good_memory_tag sst' p) ->
-  tags_subsets sst sst' ->
-  refined_compartment c sst  ?= cid ->
-  refined_compartment c sst' ?= cid.
-Proof.
-  clear S I; intros sst sst' [A J S] cid GOOD GOOD' COMPAT.
-  rewrite /tags_subsets in COMPAT.
-  rewrite /refined_compartment /=.
-
-  assert (INIT :
-    (do! sxs <- map_options (Sym.sget sst) A;
-     the =<< map_options (Sym.stag_compartment ∘ slabel) sxs)
-    =
-    (do! sxs' <- map_options (Sym.sget sst') A;
-     the =<< map_options (Sym.stag_compartment ∘ slabel) sxs')).
-  {
-    rewrite (lock the) 2!bind_assoc -(lock the) 2!map_options_bind; f_equal.
-    induction A as [|a A]; simpl in *; [reflexivity|].
-    specialize COMPAT with a.
-    destruct (Sym.sget sst  a) as [[x  [|c  I  W|]]|],
-             (Sym.sget sst' a) as [[x' [|c' I' W'|]]|];
-      try done; destruct COMPAT as [EQ _]; subst; simpl.
-    rewrite IHA; reflexivity.
-  }
-
-  set MAP_J := map_options _ J; set MAP_J' := map_options _ J.
-  assert (EQ_ALL_J : forall sc,
-            (forallb (set_elem sc) <$> MAP_J)  ?= true ->
-            (forallb (set_elem sc) <$> MAP_J') ?= true). {
-    subst MAP_J MAP_J'; intros sc; simpl.
-    induction J as [|a J]; [reflexivity|simpl].
-    specialize COMPAT with a; specialize GOOD with a; specialize GOOD' with a.
-    rewrite /Sym.good_memory_tag in GOOD GOOD'.
-    destruct (Sym.sget sst  a) as [[x  [|c  I  W|]]|],
-             (Sym.sget sst' a) as [[x' [|c' I' W'|]]|];
-      try done; simpl.
-    move: GOOD GOOD' => /andP [SET_I SET_W] /andP [SET_I' SET_W'].
-    destruct COMPAT as [EQ [SUB_I SUB_W]]; subst.
-    let unMO ys MO := match goal with
-                        |- context[map_options ?f J] =>
-                        destruct (map_options f J) as [ys|] eqn:MO
-                      end
-    in unMO ys MO; unMO ys' MO'; try done; simpl in *.
-    - specialize SUB_I with sc.
-      move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
-      + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
-      + destruct (forallb _ ys); try done.
-        destruct (forallb _ ys'); try done.
-        lapply IHJ; [inversion 1 | auto].
-    - destruct (forallb _ ys).
-      + lapply IHJ; [inversion 1 | auto].
-      + rewrite Bool.andb_false_r; inversion 1.
-  }
-
-  set MAP_S := map_options _ S; set MAP_S' := map_options _ S.
-  assert (EQ_ALL_S : forall sc,
-            (forallb (set_elem sc) <$> MAP_S)  ?= true ->
-            (forallb (set_elem sc) <$> MAP_S') ?= true). {
-    subst MAP_S MAP_S'; intros sc; simpl.
-    induction S as [|a S' IHS];
-      [reflexivity | simpl; clear S; rename S' into S].
-    specialize COMPAT with a; specialize GOOD with a; specialize GOOD' with a.
-    rewrite /Sym.good_memory_tag in GOOD GOOD'.
-    destruct (Sym.sget sst  a) as [[x  [|c  I  W|]]|],
-             (Sym.sget sst' a) as [[x' [|c' I' W'|]]|];
-      try done; simpl.
-    move: GOOD GOOD' => /andP [SET_I SET_W] /andP [SET_I' SET_W'].
-    destruct COMPAT as [EQ [SUB_I SUB_W]]; subst.
-    let unMO ys MO := match goal with
-                        |- context[map_options ?f S] =>
-                        destruct (map_options f S) as [ys|] eqn:MO
-                      end
-    in unMO ys MO; unMO ys' MO'; try done; simpl in *.
-    - specialize SUB_W with sc.
-      move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
-      + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
-      + destruct (forallb _ ys); try done.
-        destruct (forallb _ ys'); try done.
-        lapply IHS; [inversion 1 | auto].
-    - destruct (forallb _ ys).
-      + lapply IHS; [inversion 1 | auto].
-      + rewrite Bool.andb_false_r; inversion 1.
-  }
-
-  intros REFINED; rewrite bind_assoc in REFINED.
-  match type of REFINED with
-    | (do! _ <- ?X; _) ?= _ =>
-      destruct X as [sc|] eqn:def_sc; simpl in REFINED; [|done]
-  end.
-  rewrite bind_assoc -INIT def_sc; simpl.
-  specialize EQ_ALL_J with sc; specialize EQ_ALL_S with sc.
-  destruct (forallb _ <$> MAP_J) as [[]|] eqn:ALL_J; simpl in REFINED; try done.
-  destruct (forallb _ <$> MAP_S) as [[]|] eqn:ALL_S; simpl in REFINED; try done.
-  lapply EQ_ALL_J; [clear EQ_ALL_J; intro ALL_J' | done].
-  lapply EQ_ALL_S; [clear EQ_ALL_S; intro ALL_S' | done].
-  destruct (forallb _ <$> MAP_J') as [[]|]; try done.
-  destruct (forallb _ <$> MAP_S') as [[]|]; done.
-Qed.
-
 Lemma refined_compartment_untouched_preserved : forall sst sst' c cid,
   (forall p, Sym.good_memory_tag sst  p) ->
   (forall p, Sym.good_memory_tag sst' p) ->
@@ -842,7 +741,19 @@ Proof.
   destruct (forallb _ <$> MAP_S') as [[]|]; done.
 Qed.
 
-Lemma refined_compartment_isSome_preserved : forall sst sst' c,
+Lemma refined_compartment_all_untouched_preserved : forall sst sst' c cid,
+  (forall p, Sym.good_memory_tag sst  p) ->
+  (forall p, Sym.good_memory_tag sst' p) ->
+  tags_subsets sst sst' ->
+  refined_compartment c sst  ?= cid ->
+  refined_compartment c sst' ?= cid.
+Proof.
+  move=> sst sst' c cid GOOD GOOD' TS;
+    apply refined_compartment_untouched_preserved;
+    try apply tags_subsets_any_in; assumption.
+Qed.
+
+Lemma refined_compartment_all_untouched_isSome_preserved : forall sst sst' c,
   (forall p, Sym.good_memory_tag sst  p) ->
   (forall p, Sym.good_memory_tag sst' p) ->
   tags_subsets sst sst' ->
@@ -851,61 +762,8 @@ Lemma refined_compartment_isSome_preserved : forall sst sst' c,
 Proof.
   intros sst sst' c cid GOOD GOOD' COMPAT.
   destruct (refined_compartment c sst) eqn:RC; [|done].
-  eapply refined_compartment_preserved in RC; try eassumption.
+  eapply refined_compartment_all_untouched_preserved in RC; try eassumption.
   by rewrite RC.
-Qed.
-
-Lemma forallb_map_options_insert_unique : forall {A B} `{ord : Ordered A}
-                                                 p (f : A -> option B) xs a,
-  (p <$> f a) ?= true ->
-  (forallb p <$> map_options f xs) =
-  (forallb p <$> map_options f (insert_unique a xs)).
-Proof.
-  intros until 0; intros OK.
-  destruct (forallb p <$> map_options f xs) as [[]|] eqn:ALL.
-  - destruct (map_options f xs) as [ys|] eqn:MO; [move: ALL => [ALL] | done].
-    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
-    + f_equal; symmetry; apply forallb_forall.
-      intros y IN.
-      move/map_options_in in MO'; apply MO' in IN.
-      move: IN => [x [fx /insert_unique_spec [? | IN]]]; subst.
-      * by rewrite fx in OK; move: OK => [OK].
-      * move/map_options_in in MO.
-        assert (EX : exists x, f x ?= y /\ In x xs) by by exists x.
-        apply MO in EX.
-        by move/forallb_forall in ALL; apply ALL in EX.
-    + apply map_options_none in MO'.
-      move: MO' => [x [/insert_unique_spec [? | IN] NONE]];
-        [subst; rewrite NONE in OK; done|].
-      assert (MO_SOME : is_some (map_options f xs)) by by rewrite MO.
-      move/map_options_somes in MO_SOME; apply MO_SOME in IN.
-      by rewrite NONE in IN.
-  - destruct (map_options f xs) as [ys|] eqn:MO; [move: ALL => [ALL'] | done].
-    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
-    + f_equal; symmetry.
-      apply Bool.negb_true_iff; apply/negP.
-      apply Bool.negb_true_iff in ALL'; move/negP in ALL'.
-      move=> /forallb_forall ALL; apply ALL'; clear ALL'; apply/forallb_forall.
-      intros y IN; apply ALL.
-      move/map_options_in in MO; move/map_options_in in MO'.
-      apply MO in IN; apply MO'.
-      move: IN => [x [fx IN]]; exists x; split; auto.
-    + apply map_options_none in MO'.
-      move: MO' => [x [/insert_unique_spec [? | IN] NONE]];
-        [subst; rewrite NONE in OK; done|].
-      assert (MO_SOME : is_some (map_options f xs)) by by rewrite MO.
-      move/map_options_somes in MO_SOME; apply MO_SOME in IN.
-      by rewrite NONE in IN.
-  - destruct (map_options f xs) as [ys|] eqn:MO; [done | clear ALL OK].
-    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
-    + move/map_options_none in MO.
-      move: MO => [x [IN fx]].
-      assert (MO'_SOME : is_some (map_options f (insert_unique a xs))) by
-        by rewrite MO'.
-      assert (IN' : In x (insert_unique a xs)) by auto.
-      move/map_options_somes in MO'_SOME; apply MO'_SOME in IN'.
-      by rewrite fx in IN'.
-    + reflexivity.
 Qed.
 
 Lemma refined_compartment_same : forall sst sst' c,
@@ -985,6 +843,59 @@ Proof.
            (Sym.sget sst' q) as [[y' [|did' K' V'|]]|];
     try done.
 Abort.
+
+Lemma forallb_map_options_insert_unique : forall {A B} `{ord : Ordered A}
+                                                 p (f : A -> option B) xs a,
+  (p <$> f a) ?= true ->
+  (forallb p <$> map_options f xs) =
+  (forallb p <$> map_options f (insert_unique a xs)).
+Proof.
+  intros until 0; intros OK.
+  destruct (forallb p <$> map_options f xs) as [[]|] eqn:ALL.
+  - destruct (map_options f xs) as [ys|] eqn:MO; [move: ALL => [ALL] | done].
+    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
+    + f_equal; symmetry; apply forallb_forall.
+      intros y IN.
+      move/map_options_in in MO'; apply MO' in IN.
+      move: IN => [x [fx /insert_unique_spec [? | IN]]]; subst.
+      * by rewrite fx in OK; move: OK => [OK].
+      * move/map_options_in in MO.
+        assert (EX : exists x, f x ?= y /\ In x xs) by by exists x.
+        apply MO in EX.
+        by move/forallb_forall in ALL; apply ALL in EX.
+    + apply map_options_none in MO'.
+      move: MO' => [x [/insert_unique_spec [? | IN] NONE]];
+        [subst; rewrite NONE in OK; done|].
+      assert (MO_SOME : is_some (map_options f xs)) by by rewrite MO.
+      move/map_options_somes in MO_SOME; apply MO_SOME in IN.
+      by rewrite NONE in IN.
+  - destruct (map_options f xs) as [ys|] eqn:MO; [move: ALL => [ALL'] | done].
+    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
+    + f_equal; symmetry.
+      apply Bool.negb_true_iff; apply/negP.
+      apply Bool.negb_true_iff in ALL'; move/negP in ALL'.
+      move=> /forallb_forall ALL; apply ALL'; clear ALL'; apply/forallb_forall.
+      intros y IN; apply ALL.
+      move/map_options_in in MO; move/map_options_in in MO'.
+      apply MO in IN; apply MO'.
+      move: IN => [x [fx IN]]; exists x; split; auto.
+    + apply map_options_none in MO'.
+      move: MO' => [x [/insert_unique_spec [? | IN] NONE]];
+        [subst; rewrite NONE in OK; done|].
+      assert (MO_SOME : is_some (map_options f xs)) by by rewrite MO.
+      move/map_options_somes in MO_SOME; apply MO_SOME in IN.
+      by rewrite NONE in IN.
+  - destruct (map_options f xs) as [ys|] eqn:MO; [done | clear ALL OK].
+    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
+    + move/map_options_none in MO.
+      move: MO => [x [IN fx]].
+      assert (MO'_SOME : is_some (map_options f (insert_unique a xs))) by
+        by rewrite MO'.
+      assert (IN' : In x (insert_unique a xs)) by auto.
+      move/map_options_somes in MO'_SOME; apply MO'_SOME in IN'.
+      by rewrite fx in IN'.
+    + reflexivity.
+Qed.
 
 Theorem isolate_create_set_refined : forall AM SM,
   refine_memory AM SM ->
@@ -2388,7 +2299,7 @@ Proof.
         - rewrite -(lock refined_compartment); apply delete_preserves_forallb.
           eapply forallb_impl; [|apply RCOMPS].
           simpl; intros d RCSOME.
-          eapply refined_compartment_isSome_preserved in RCSOME;
+          eapply refined_compartment_all_untouched_isSome_preserved in RCSOME;
             try apply RCSOME; eauto 3.
           + intros a; specialize SGMEM with a;
               rewrite /Sym.good_memory_tag in SGMEM *.
