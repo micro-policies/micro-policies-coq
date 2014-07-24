@@ -54,6 +54,17 @@ Notation sstep := Sym.step.
 Hint Immediate word_map_axioms.
 Hint Immediate reg_map_axioms.
 
+(* Avoiding some type class resolution problems *)
+Hint Resolve (Abs.good_compartment__is_set_address_space (spec := spec)).
+Hint Resolve (Abs.good_compartment__is_set_jump_targets  (spec := spec)).
+Hint Resolve (Abs.good_compartment__is_set_store_targets (spec := spec)).
+Hint Resolve (Abs.good_compartment_decomposed__is_set_address_space
+                (spec := spec)).
+Hint Resolve (Abs.good_compartment_decomposed__is_set_jump_targets
+                (spec := spec)).
+Hint Resolve (Abs.good_compartment_decomposed__is_set_store_targets
+                (spec := spec)).
+
 Arguments Sym.sget {_ _ _} s p : simpl never.
 Arguments Sym.supd {_ _} s p v : simpl never.
 
@@ -1106,8 +1117,6 @@ Proof.
     assert (Abs.good_compartment <<Aprev,Jprev,Sprev>>) by eauto 2.
     apply set_elem_true;
       [apply set_union_preserves_set; eauto 2 | by apply set_union_spec].
-    + admit. (* XXX: similar *)
-    + admit. (* XXX: similar *)
   }
 
   generalize RREGS => RREGS';
@@ -1148,9 +1157,8 @@ Proof.
   }
   assert (IN_pc' : In pc' Aprev) by
     (apply Abs.in_compartment_spec in IC_pc'; tauto).
-  assert (ELEM_pc' : set_elem pc' Aprev).
-  { move/forallb_forall in AGOODS. apply set_elem_true; eauto 3.
-    admit. (* XXX: Similar *) }
+  assert (ELEM_pc' : set_elem pc' Aprev) by
+    (move/forallb_forall in AGOODS; apply set_elem_true; eauto 3).
   rewrite -(lock Abs.in_compartment_opt) /= ELEM_pc' /= eq_refl.
 
   assert (IN_Jsys : In pc' (Abs.jump_targets c_sys)). {
@@ -1182,7 +1190,7 @@ Proof.
   }
   have -> : set_elem pc' (Abs.jump_targets c_sys) by
     (apply Abs.in_compartment_spec in IN_c; destruct IN_c;
-     move/forallb_forall in AGOODS; apply set_elem_true; eauto 3; admit). (* XXX: Similar here *)
+     move/forallb_forall in AGOODS; apply set_elem_true; eauto 3).
 
   eexists; split; [reflexivity|].
 
@@ -2008,10 +2016,12 @@ Proof.
       move: SGOOD_sS => /andP [] //.
   }
 
-  assert (ELEM_Jsys : set_elem pc' (Abs.jump_targets c_sys)).
-  { move: IN_c_sys => /(Abs.in_compartment_spec _) [IN_c_sys1 IN_c_sys2].
-    move/forallb_forall in AGOODS. apply set_elem_true; last by [].
-    admit. (* XXX: auto used to work here, but started failing for some reason...*) }
+  assert (ELEM_Jsys : set_elem pc' (Abs.jump_targets c_sys)). {
+    move: IN_c_sys => /(Abs.in_compartment_spec _) [IN_c_sys1 IN_c_sys2].
+    move/forallb_forall in AGOODS.
+    apply set_elem_true; auto.
+  }
+    
   rewrite ELEM_Jsys.
 
   eexists; split; [reflexivity|].
@@ -2261,7 +2271,6 @@ Proof.
     move=> c /delete_in_iff [NEQ IN] a.
     apply TSI_s0_sS'.
     - move/forallb_forall in AGOODS; apply AGOODS in IN; auto.
-      admit. (* XXX: Similar failure as above *)
     - assert (DJ' : disjoint Aprev (Abs.address_space c)). {
         replace Aprev with (Abs.address_space <<Aprev,Jprev,Sprev>>)
           by reflexivity.
@@ -2271,7 +2280,6 @@ Proof.
       }
       apply disjoint_subset with (ys := Aprev); try assumption.
       + move/forallb_forall in AGOODS; apply AGOODS in IN; auto.
-        admit. (* XXX: Similar failure *)
       + apply subset_spec; assumption.
   }
 
@@ -2572,8 +2580,7 @@ Proof.
   have -> : set_elem p (set_union Aprev Sprev). {
     assert (Abs.good_compartment <<Aprev,Jprev,Sprev>>) by eauto 2.
     apply set_elem_true;
-      [apply set_union_preserves_set; eauto 2 | by apply set_union_spec]; admit.
-    (* XXX: Similar *)
+      [apply set_union_preserves_set; eauto 2 | by apply set_union_spec].
   }
 
   generalize RREGS => RREGS';
@@ -2614,8 +2621,8 @@ Proof.
   }
   assert (IN_pc' : In pc' Aprev) by
     (apply Abs.in_compartment_spec in IC_pc'; tauto).
-  assert (ELEM_pc' : set_elem pc' Aprev). by
-    (move/forallb_forall in AGOODS; apply set_elem_true; eauto 3; admit). (* XXX: Same here *)
+  assert (ELEM_pc' : set_elem pc' Aprev) by
+    (move/forallb_forall in AGOODS; apply set_elem_true; eauto 3).
   rewrite -(lock Abs.in_compartment_opt) /= ELEM_pc' /= eq_refl.
 
   assert (IN_Jsys : In pc' (Abs.jump_targets c_sys)). {
@@ -2645,7 +2652,7 @@ Proof.
   }
   have -> : set_elem pc' (Abs.jump_targets c_sys) by
     (apply Abs.in_compartment_spec in IN_c; destruct IN_c;
-     move/forallb_forall in AGOODS; apply set_elem_true; eauto 3; admit). (* Same here *)
+     move/forallb_forall in AGOODS; apply set_elem_true; eauto 3).
 
   eexists; split; [reflexivity|].
 
