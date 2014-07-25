@@ -345,7 +345,7 @@ Proof.
         case GET': (PartMaps.get smem pc) => [[? ?]|] //.
         move/REFM: GET' => GET'.
         rewrite GETPC in GET'.
-        move: GET' => [[? H]].
+        move: GET' => [? H].
         by apply encode_inj in H.
       - econstructor; eauto. }
   - destruct (syscalls_correct_disallowed_case _ _ KINV REFM REFR CACHE MVEC

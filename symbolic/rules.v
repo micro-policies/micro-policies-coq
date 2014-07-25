@@ -62,7 +62,7 @@ Lemma tag_eqP : Equality.axiom tag_eq.
 Proof.
 move=> [ut1| |sct1] [ut2| |sct2] /=;
 try (by apply: (iffP idP));
-apply: (iffP eqP) => [[]|[<-]] //;
+apply: (iffP eqP) => [|[<-]] //;
 congruence.
 Qed.
 
