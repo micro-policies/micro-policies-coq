@@ -314,7 +314,7 @@ Proof.
 Qed.
 
 (* Just for clarity *)
-Let TCopy := TNone.
+Let TCopy : word t := TNone.
 
 Definition ground_rules : Concrete.rules (word t) :=
   let mk op := Concrete.mkMVec (op_to_word op) TKernel TKernel

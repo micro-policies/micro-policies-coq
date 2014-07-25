@@ -54,18 +54,19 @@ Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
 Definition kernel_regs := mvec_regs ++ [rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
 
 (* For debugging -- put a telltale marker in the code *)
-Definition got_here : code := [Const (Z_to_imm 999) ri5; Const (Z_to_imm 0) ri5].
+Definition got_here : code := [Const (Word.repr 999) ri5; Const Word.zero ri5].
 
+(* TODO: Not needed anymore *)
 Definition bool_to_imm (b : bool) : imm mt :=
-  if b then Z_to_imm 1 else Z_to_imm 0.
+  if b then Word.one else Word.zero.
 
 (* Test value in [r]. If true (i.e., not zero), execute [t]. Otherwise,
    execute [f]. Warning: overwrites ri1. *)
 Definition if_ (r : reg mt) (t f : code) : code :=
-  let lt := Z_to_imm (Z.of_nat (length t + 1)) in
+  let lt := Word.reprn (length t + 1) in
   let eend := [Const (bool_to_imm true) ri1] ++
               [Bnz ri1 lt] in
-  let lf := Z_to_imm (Z.of_nat (length f + length eend + 1)) in
+  let lf := Word.reprn (length f + length eend + 1) in
   [Bnz r lf] ++
   f ++
   eend ++
@@ -76,10 +77,10 @@ Definition if_ (r : reg mt) (t f : code) : code :=
    puts 0 in second register.  Warning: overwrites ri2.*)
 
 Definition extract_user_tag (rsrc rsucc rut : reg mt) : code :=
-  [Const (Z_to_imm 1) ri2] ++
+  [Const (Word.repr 1) ri2] ++
   [Binop AND rsrc ri2 rsucc] ++
   if_ rsucc
-      ([Const (Z_to_imm 2) ri2] ++
+      ([Const (Word.repr 2) ri2] ++
        [Binop SHRU rsrc ri2 rut])
       [].
 
@@ -87,19 +88,19 @@ Definition extract_user_tag (rsrc rsucc rut : reg mt) : code :=
    the encoding of [USER t] in the second register. Warning:
    overwrites ri2. *)
 Definition wrap_user_tag (rut rdst : reg mt) : code :=
-  [Const (Z_to_imm 2) ri2] ++
+  [Const (Word.repr 2) ri2] ++
   [Binop SHL rut ri2 ri2] ++
-  [Const (Z_to_imm 1) rdst] ++
+  [Const (Word.repr 1) rdst] ++
   [Binop OR rdst ri2 rdst].
 
 (* Similar to [extract_user_tag], but for kernel entry-point tags. *)
 Definition extract_entry_tag (rsrc rsucc rut : reg mt) : code :=
-  [Const (Z_to_imm 3) ri2] ++
+  [Const (Word.repr 3) ri2] ++
   [Binop AND rsrc ri2 rsucc] ++
-  [Const (Z_to_imm 2) ri2] ++
+  [Const (Word.repr 2) ri2] ++
   [Binop EQ rsucc ri2 rsucc] ++
   if_ rsucc
-      ([Const (Z_to_imm 2) ri2] ++
+      ([Const (Word.repr 2) ri2] ++
        [Binop SHRU rsrc ri2 rut])
       [].
 
@@ -109,9 +110,9 @@ Definition load_mvec : code :=
                     (c ++
                      load_const addr raddr ++
                      [Load raddr r],
-                     addr + Z_to_word 1))%w
+                     addr + Word.one))%w
                  mvec_regs
-                 ([],Concrete.cache_line_addr ops)).
+                 ([],Concrete.cache_line_addr _)).
 
 (* Take as input an mvector of high-level tags (in the appropriate
    registers, as set above), and computes the policy handler on
@@ -151,10 +152,10 @@ Definition handler : code :=
                     tags in rvector. NB: system calls are now
                     required to begin with a Nop to simplify the
                     specification of the fault handler. *)
-           ([Const (Z_to_imm (op_to_Z NOP)) ri4] ++
+           ([Const (Word.repr (op_to_Z NOP)) ri4] ++
             [Binop EQ ri4 rop ri4] ++
             if_ ri4 [] [Halt _] ++
-            [Const (Z_to_imm (op_to_Z SERVICE)) rop] ++
+            [Const (Word.repr (op_to_Z SERVICE)) rop] ++
             policy_handler ++
             load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
@@ -180,9 +181,9 @@ Definition handler : code :=
       [Halt _] ++
   (* Store rvector registers in memory, install rule in cache, and
      return from trap *)
-  load_const (Concrete.Mtrpc ops) raddr ++
+  load_const (Concrete.Mtrpc mt) raddr ++
   [Store raddr rtrpc] ++
-  load_const (Concrete.Mtr ops) raddr ++
+  load_const (Concrete.Mtr mt) raddr ++
   [Store raddr rtr] ++
   [AddRule _] ++
   [JumpEpc _].
@@ -191,7 +192,7 @@ Section invariant.
 
 Context {s : machine_ops_spec ops}
         {ap : Symbolic.params}
-        {e : encodable Symbolic.tag}.
+        {e : @encodable Symbolic.tag mt}.
 
 Record policy_invariant : Type := {
   policy_invariant_statement :> Concrete.memory mt -> Symbolic.internal_state -> Prop;
@@ -206,7 +207,7 @@ Record policy_invariant : Type := {
   policy_invariant_store_mvec :
     forall mem mem' mvec int
            (KINV : policy_invariant_statement mem int)
-           (MVEC : Concrete.store_mvec ops mem mvec = Some mem'),
+           (MVEC : Concrete.store_mvec mem mvec = Some mem'),
     policy_invariant_statement mem' int
 
 }.
@@ -217,25 +218,25 @@ Let invariant (mem : Concrete.memory mt)
               (regs : Concrete.registers mt)
               (cache : Concrete.rules (word mt))
               (int : Symbolic.internal_state) : Prop :=
-  (forall addr : word mt, In addr (Concrete.rvec_fields ops) ->
+  (forall addr : word mt, In addr (Concrete.rvec_fields _) ->
                           exists w : word mt, PartMaps.get mem addr = Some w@Concrete.TKernel) /\
   (forall addr instr,
      nth_error handler addr = Some instr ->
-     PartMaps.get mem (add_word (Concrete.fault_handler_start ops) (Z_to_word (Z.of_nat addr))) =
+     PartMaps.get mem (Word.add (Concrete.fault_handler_start mt) (Word.reprn addr)) =
      Some (encode_instr instr)@Concrete.TKernel) /\
   (* FIXME:
      This really shouldn't be included here, since it doesn't mention
      either the memory or the register bank. Try to put this somewhere else. *)
   (forall addr, addr < length handler ->
-                ~ In (add_word (Concrete.fault_handler_start ops) (Z_to_word (Z.of_nat addr)))
+                ~ In (Word.add (Concrete.fault_handler_start mt) (Word.reprn addr))
                      (Concrete.mvec_and_rvec_fields _)) /\
   (forall mvec rvec,
      Concrete.ctpc mvec = Concrete.TKernel ->
-     Concrete.cache_lookup _ cache masks mvec = Some rvec ->
-     Concrete.cache_lookup _ ground_rules masks mvec = Some rvec) /\
+     Concrete.cache_lookup cache masks mvec = Some rvec ->
+     Concrete.cache_lookup ground_rules masks mvec = Some rvec) /\
   (forall mvec rvec,
-     Concrete.cache_lookup _ ground_rules masks mvec = Some rvec ->
-     Concrete.cache_lookup _ cache masks mvec = Some rvec) /\
+     Concrete.cache_lookup ground_rules masks mvec = Some rvec ->
+     Concrete.cache_lookup cache masks mvec = Some rvec) /\
   (forall r, In r kernel_regs ->
    exists x, PartMaps.get regs r = Some x@Concrete.TKernel) /\
   pinv mem int.
@@ -260,12 +261,13 @@ Proof.
     + rewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
   - intros addr' i GET'.
-    case E: (Concrete.fault_handler_start _ + Z_to_word (Z.of_nat addr') == addr)%w; move/eqP: E => E.
+    case E: (Concrete.fault_handler_start _ + Word.reprn addr' == addr)%w; move/eqP: E => E.
     + subst addr.
       specialize (@PROG _ _ GET').
-      assert (EQ : Concrete.TKernel = encode (USER ut)) by congruence.
-      erewrite encode_kernel_tag in EQ.
-      apply encode_inj in EQ. discriminate.
+      rewrite PROG in GET.
+      move: GET => [_ CONTRA].
+      rewrite encode_kernel_tag in CONTRA.
+      apply encode_inj in CONTRA. discriminate.
     + rewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
   - by eapply policy_invariant_upd_mem; eauto.
@@ -294,14 +296,14 @@ Qed.
 
 Lemma invariant_store_mvec mem mem' mvec regs cache int :
   forall (KINV : invariant mem regs cache int)
-         (MVEC : Concrete.store_mvec ops mem mvec = Some mem'),
+         (MVEC : Concrete.store_mvec mem mvec = Some mem'),
     invariant mem' regs cache int.
 Proof.
   intros (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   do 7 (try split; eauto).
   - intros addr IN.
     destruct (in_dec (fun x y : word mt => @eqType_EqDec _ x y)
-                     addr (Concrete.mvec_fields ops)) as [IN' | NIN].
+                     addr (Concrete.mvec_fields mt)) as [IN' | NIN].
     + destruct (PartMaps.get_upd_list_in MVEC IN')
         as (v' & IN'' & GET).
       rewrite GET. clear GET.
@@ -346,6 +348,6 @@ Arguments rti {_ _}.
 Arguments rt1 {_ _}.
 Arguments rt2 {_ _}.
 Arguments rt3 {_ _}.
-Arguments if_ {_ _ _} r t f.
-Arguments extract_user_tag {_ _ _} rsrc rsucc rut.
-Arguments wrap_user_tag {_ _ _} rut rdst.
+Arguments if_ {_ _} r t f.
+Arguments extract_user_tag {_ _} rsrc rsucc rut.
+Arguments wrap_user_tag {_ _} rut rdst.

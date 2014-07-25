@@ -106,6 +106,7 @@ Proof. by do !case. Qed.
 
 Record machine_types := {
   word_size_minus_one : nat;
+  word_size_lb : (6 <= word_size_minus_one)%coq_nat;
   reg_field_size_minus_one : nat;
   imm_size_minus_one : nat
 }.
@@ -201,101 +202,83 @@ Class machine_ops (t : machine_types) := {
   encode_instr : instr t -> word t;
   decode_instr : word t -> option (instr t);
 
-  (* CH: I think it would be nicer to have Z_to_imm be partial *)
-  (* BCP: +1 *)
-  Z_to_imm : Z -> imm t;
-  imm_to_word : imm t -> word t;
-  (*
-    (* BCP: Was tempted to add this -- but will it cause any
-       problems?? (Should probably be partial too, I guess.) *)
-    (* AAA: Can't we just define it using word_to_Z and Z_to_imm? *)
-    word_to_imm : word t -> imm t;
-    (* I guess so.  But it means that word has a kind of privileged
-       place among the three machine types, and I don't have a clear
-       intuition of why that is. *)
-  *)
-
-  min_word : word t;
-  max_word : word t;
-  (* CH: I think it would be nicer to have Z_to_imm be partial *)
-  Z_to_word : Z -> word t;
-  word_to_Z : word t -> Z;
-
-  add_word : word t -> word t -> word t;
-  mul_word : word t -> word t -> word t;
-  and_word : word t -> word t -> word t;
-  or_word  : word t -> word t -> word t;
-  xor_word : word t -> word t -> word t;
-  shru_word : word t -> word t -> word t;
-  shl_word : word t -> word t -> word t;
-  opp_word : word t -> word t;
-
   ra : reg t
-
 }.
 
-Section Functions.
-
-Context {t : machine_types}
-        {op : machine_ops t}.
-
-Definition nat_to_word (n : nat) : word t := Z_to_word (Z.of_nat n).
-Definition word_to_nat (w : word t) : nat := Z.to_nat (word_to_Z w).
-Definition word_to_imm (w : word t) : imm t := Z_to_imm (word_to_Z w).
-Arguments nat_to_word /.
-Arguments word_to_nat /.
-Arguments word_to_imm /.
-
-End Functions.
-
-Notation "+%w" := add_word.
-Notation "-%w" := opp_word.
-Notation "x + y" := (add_word x y) : word_scope.
-Notation "- x" := (opp_word x) : word_scope.
-Notation "x - y" := (add_word x (opp_word y)) : word_scope.
-Notation "0" := (Z_to_word 0) : word_scope.
-Notation "1" := (Z_to_word 1) : word_scope.
-Notation "2" := (Z_to_word 2) : word_scope.
+Notation "+%w" := Word.add.
+Notation "-%w" := Word.neg.
+Notation "x + y" := (Word.add x y) : word_scope.
+Notation "- x" := (Word.neg x) : word_scope.
+Notation "x - y" := (Word.sub x y) : word_scope.
+Notation "0" := (Word.zero) : word_scope.
+Notation "1" := (Word.one) : word_scope.
+Notation "2" := (Word.repr 2) : word_scope.
 
 Delimit Scope word_scope with w.
 
-(*
-Instance int_ordered mt : @Ordered (word mt) (@eqType_EqDec (word mt)) :=
-  {| compare := compare;
-     compare_refl := compare_refl;
-     compare_asym :=compare_asym;
-     compare_eq :=compare_eq;
-     compare_lt_trans :=compare_lt_trans;
-     compare_gt_trans := compare_gt_trans
-|}.
-*)
 Class machine_ops_spec t (ops : machine_ops t) := {
 
-  encodeK : forall i, decode_instr (encode_instr i) = Some i;
-
-  min_word_bound : (word_to_Z min_word <= 0)%Z;
-
-  max_word_bound : (31 < word_to_Z max_word)%Z;
-
-  word_to_ZK : forall w, Z_to_word (word_to_Z w) = w;
-
-  Z_to_wordK : forall z,
-                 (word_to_Z min_word <= z <= word_to_Z max_word)%Z ->
-                 word_to_Z (Z_to_word z) = z;
-
-  addwP : forall x y, (Z_to_word x + Z_to_word y)%w = Z_to_word (x + y)%Z;
-
-  oppwP : forall x, (- Z_to_word x)%w = Z_to_word (- x)%Z;
-
-  word_to_Z_compare : forall x y,
-    x <=> y = (word_to_Z x ?= word_to_Z y)%Z;
-
-  lew_min : forall w, min_word <= w;
-  lew_max : forall w, w <= max_word
+  encodeK : forall i, decode_instr (encode_instr i) = Some i
 
 }.
 
-Section WordArith.
+Definition min_word t : word t := Word.repr (Word.min_signed (word_size_minus_one t)).
+
+Definition max_word t : word t := Word.repr (Word.max_signed (word_size_minus_one t)).
+
+Lemma signed_min_word t :
+  Word.signed (min_word t) = Word.min_signed (word_size_minus_one t).
+Proof.
+  rewrite /min_word Word.signed_repr; first by [].
+  split; first by omega.
+  move: (Word.min_signed_neg (word_size_minus_one t)).
+  move: (Word.max_signed_pos (word_size_minus_one t)).
+  move => *. omega.
+Qed.
+
+Lemma signed_max_word t :
+  Word.signed (max_word t) = Word.max_signed (word_size_minus_one t).
+Proof.
+  rewrite /max_word Word.signed_repr; first by [].
+  split; last by omega.
+  move: (Word.min_signed_neg (word_size_minus_one t)).
+  move: (Word.max_signed_pos (word_size_minus_one t)).
+  move => *. omega.
+Qed.
+
+Lemma min_word_bound t : (Word.signed (min_word t) <= 0)%Z.
+Proof.
+rewrite signed_min_word -(Word.signed_zero (word_size_minus_one t)).
+apply (proj1 (Word.signed_range _ _)).
+Qed.
+
+Lemma max_word_bound t : (31 < Word.signed (max_word t))%Z.
+Proof.
+rewrite signed_max_word /Word.max_signed Word.half_modulus_power
+        /Word.zwordsize /Word.wordsize.
+zify. clear H.
+case: t => [s Hs ? ?]. simpl.
+have ->: (31 = two_p 5 - 1)%Z by [].
+suffices: (two_p 5 < two_p (Z.succ (Z.of_nat s) - 1))%Z by (move => ?; omega).
+apply Coqlib.two_p_monotone_strict.
+omega.
+Qed.
+
+Lemma lew_min t (w : word t) : min_word t <= w.
+Proof.
+rewrite /le IntOrdered.compare_signed signed_min_word.
+move: (Word.signed_range _ w) => H1 /Z.compare_gt_iff => H2.
+omega.
+Qed.
+
+Lemma lew_max t (w : word t) : w <= max_word t.
+Proof.
+rewrite /le IntOrdered.compare_signed signed_max_word.
+move: (Word.signed_range _ w) => H1 /Z.compare_gt_iff => H2.
+omega.
+Qed.
+
+Section Ops.
 
 Local Open Scope word_scope.
 
@@ -307,94 +290,88 @@ Definition bool_to_word (b : bool) : word t := if b then 1 else 0.
 
 Definition binop_denote (f : binop) : word t -> word t -> word t :=
   match f with
-  | ADD => add_word
-  | SUB => fun w1 w2 => add_word w1 (opp_word w2)
-  | MUL => mul_word
+  | ADD => Word.add
+  | SUB => Word.sub
+  | MUL => Word.mul
   | EQ  => fun w1 w2 => bool_to_word (w1 == w2)
   | LEQ => fun w1 w2 => bool_to_word (leb w1 w2)
-  | AND => and_word
-  | OR => or_word
-  | XOR => xor_word
-  | SHRU => shru_word
-  | SHL => shl_word
+  | AND => Word.and
+  | OR => Word.or
+  | XOR => Word.xor
+  | SHRU => Word.shru
+  | SHL => Word.shl
   end.
 
-Lemma word_to_Z_inj : injective word_to_Z.
-Proof. exact (can_inj word_to_ZK). Qed.
+Lemma addwP : forall x y, (Word.repr x + Word.repr y)%w = (Word.repr (x + y)%Z) :> word t.
+Proof. exact: Word.add_repr. Qed.
 
-Lemma word0 : word_to_Z 0 = 0%Z.
-Proof.
-generalize min_word_bound => min_word_bound.
-generalize max_word_bound => max_word_bound.
-rewrite Z_to_wordK //; split; omega.
-Qed.
+Lemma oppwP : forall x, (- Word.repr x)%w = Word.repr (- x)%Z :> word t.
+Proof. exact: Word.neg_repr. Qed.
 
-Lemma addwA : associative +%w.
+Lemma addwA n : associative (@Word.add n).
 Proof.
 intros x y z.
-rewrite <-(word_to_ZK x), <-(word_to_ZK y), <-(word_to_ZK z), !addwP.
-now rewrite Z.add_assoc.
+by rewrite Word.add_assoc.
 Qed.
 
-Lemma addwC : commutative +%w.
+Lemma addwC n : commutative (@Word.add n).
 Proof.
 intros x y.
-now rewrite <-(word_to_ZK x), <-(word_to_ZK y), !addwP, Z.add_comm.
+apply Word.add_commut.
 Qed.
 
-Lemma add0w : left_id 0 +%w.
+Lemma add0w n : left_id 0 (@Word.add n).
 Proof.
-now intros x; rewrite <-(word_to_ZK x), addwP, Z.add_0_l.
+exact: Word.add_zero_l.
 Qed.
 
-Lemma addNw : left_inverse 0 -%w +%w.
+Lemma addNw n : left_inverse 0 (@Word.neg n) +%w.
 Proof.
 intros x.
-rewrite <-(word_to_ZK x), oppwP, addwP.
-now rewrite Z.add_opp_diag_l. (* What a name! *)
+by rewrite addwC Word.add_neg_zero.
 Qed.
 
-Lemma addw0 : right_id 0 +%w.
+Lemma addw0 n : right_id 0 (@Word.add n).
 Proof.
-now intros x; rewrite <-(word_to_ZK x), addwP, Z.add_0_r.
+move => x. by rewrite Word.add_zero.
 Qed.
 
-Lemma addwN : right_inverse 0 -%w +%w.
-Proof. now intros x; rewrite addwC addNw. Qed.
+Lemma addwN n : right_inverse 0 (@Word.neg n) +%w.
+Proof. move => x. now rewrite Word.add_neg_zero. Qed.
 Definition subww := addwN.
 
-Lemma addKw : left_loop -%w +%w.
+Lemma addKw n : left_loop (@Word.neg n) +%w.
 Proof.
 now intros x y; rewrite addwA addNw add0w.
 Qed.
 
-Lemma addNKw : rev_left_loop -%w +%w.
+Lemma addNKw n : rev_left_loop (@Word.neg n) +%w.
 Proof.
 now intros x y; rewrite addwA addwN add0w.
 Qed.
 
-Lemma addwK : right_loop -%w +%w.
+Lemma addwK n : right_loop (@Word.neg n) +%w.
 Proof.
 now intros x y; rewrite <-addwA, addwN, addw0.
 Qed.
 
-Lemma addwNK : rev_right_loop -%w +%w.
+Lemma addwNK n : rev_right_loop (@Word.neg n) +%w.
 Proof.
 now intros x y; rewrite <-addwA, addNw, addw0.
 Qed.
 
 Definition subwK := addwNK.
 
-Lemma addwI : right_injective +%w.
+Lemma addwI n : right_injective (@Word.add n).
 Proof. intros x; exact (can_inj (addKw x)). Qed.
 
-Lemma addIw : left_injective +%w.
+Lemma addIw n : left_injective (@Word.add n).
 Proof. intros y; exact (can_inj (addwK y)). Qed.
 
 (* If more lemmas are needed, please copy the statements and proofs
 from ssralg.v in ssreflect to keep the nice structure. *)
 
-End WordArith.
+End Ops.
 
 Section WordCompare.
 
@@ -414,50 +391,52 @@ Local Ltac reflect thm :=
 
 Local Ltac comparison :=
   intros until 0; unfold lt,gt,le,ge,Zlt,Zgt,Zle,Zge;
-  rewrite word_to_Z_compare; split; auto.
+  rewrite IntOrdered.compare_signed; split; auto.
 
 Ltac comparison_b :=
   intros; unfold ltb,gtb,leb,geb,Z.ltb,Z.gtb,Z.leb,Z.geb;
-  rewrite word_to_Z_compare; destruct (word_to_Z _ ?= word_to_Z _); reflexivity.
+  rewrite IntOrdered.compare_signed; destruct (Word.signed _ ?= Word.signed _); reflexivity.
 
-Theorem word_to_Z_lt : forall x y, x <  y <-> (word_to_Z x <  word_to_Z y)%Z.
+Theorem word_signed_lt : forall n (x y : Word.int n), x <  y <-> (Word.signed x <  Word.signed y)%Z.
 Proof. comparison. Qed.
 
-Theorem word_to_Z_gt : forall x y, x >  y <-> (word_to_Z x >  word_to_Z y)%Z.
+Theorem word_signed_gt : forall n (x y : Word.int n), x >  y <-> (Word.signed x >  Word.signed y)%Z.
 Proof. comparison. Qed.
 
-Theorem word_to_Z_le : forall x y, x <= y <-> (word_to_Z x <= word_to_Z y)%Z.
+Theorem word_signed_le : forall n (x y : Word.int n), x <= y <-> (Word.signed x <= Word.signed y)%Z.
 Proof. comparison. Qed.
 
-Theorem word_to_Z_ge : forall x y, x >= y <-> (word_to_Z x >= word_to_Z y)%Z.
+Theorem word_signed_ge : forall n (x y : Word.int n), x >= y <-> (Word.signed x >= Word.signed y)%Z.
 Proof. comparison. Qed.
 
-Theorem word_to_Z_ltb : forall x y, x <?  y = (word_to_Z x <?  word_to_Z y)%Z.
+Theorem word_signed_ltb : forall n (x y : Word.int n), x <?  y = (Word.signed x <?  Word.signed y)%Z.
 Proof. comparison_b. Qed.
 
-Theorem word_to_Z_gtb : forall x y, x >?  y = (word_to_Z x >?  word_to_Z y)%Z.
+Theorem word_signed_gtb : forall n (x y : Word.int n), x >?  y = (Word.signed x >?  Word.signed y)%Z.
 Proof. comparison_b. Qed.
 
-Theorem word_to_Z_leb : forall x y, x <=? y = (word_to_Z x <=? word_to_Z y)%Z.
+Theorem word_signed_leb : forall n (x y : Word.int n), x <=? y = (Word.signed x <=? Word.signed y)%Z.
 Proof. comparison_b. Qed.
 
-Theorem word_to_Z_geb : forall x y, x >=? y = (word_to_Z x >=? word_to_Z y)%Z.
+Theorem word_signed_geb : forall n (x y : Word.int n), x >=? y = (Word.signed x >=? Word.signed y)%Z.
 Proof. comparison_b. Qed.
 
-Corollary lew_minmax' : min_word <= max_word.
+(*
+Corollary lew_minmax' : @min_word t <= max_word.
 Proof.
-  generalize min_word_bound,max_word_bound; rewrite word_to_Z_le; omega.
+  generalize min_word_bound,max_word_bound; rewrite word_signed_le; omega.
 Qed.
 
 Corollary lew_minmax : forall w, min_word <= w <= max_word.
 Proof. split; [apply lew_min | apply lew_max]. Qed.
+*)
 
 (*
 Lemma lew_add2l x y z :
   x + y <= x + z <-> y <= z.
 Proof.
-rewrite !word_to_Z_le.
-rewrite -[x]word_to_ZK -{1}[y]word_to_ZK -{1}[z]word_to_ZK.
+rewrite !word_signed_le.
+rewrite -[x]Word.signedK -{1}[y]Word.signedK -{1}[z]Word.signedK.
 rewrite !addwP.
 rewrite !Z_to_wordK.
 omega.
@@ -465,34 +444,37 @@ omega.
 Qed.
 *)
 
-Lemma addwE x y :
-  (word_to_Z min_word <= word_to_Z x + word_to_Z y <= word_to_Z max_word)%Z ->
-  word_to_Z (x + y) = (word_to_Z x + word_to_Z y)%Z.
+Lemma addwE (x y : word t) :
+  (Word.signed (min_word t) <= Word.signed x + Word.signed y <= Word.signed (max_word t))%Z ->
+  Word.signed (x + y) = (Word.signed x + Word.signed y)%Z.
 Proof.
-move=> ?.
-rewrite -{1}[x]word_to_ZK -{1}[y]word_to_ZK.
+rewrite signed_min_word signed_max_word.
+move => ?.
+rewrite -{1}[x]Word.repr_signed -{1}[y]Word.repr_signed.
 rewrite addwP.
-by rewrite Z_to_wordK.
+by rewrite Word.signed_repr.
 Qed.
 
-Lemma oppwE x :
-  (word_to_Z min_word <= - word_to_Z x <= word_to_Z max_word)%Z ->
-  word_to_Z (- x) = (- word_to_Z x)%Z.
+Lemma oppwE (x : word t) :
+  (Word.signed (min_word t) <= - Word.signed x <= Word.signed (max_word t))%Z ->
+  Word.signed (- x) = (- Word.signed x)%Z.
 Proof.
+rewrite signed_min_word signed_max_word.
 move=> ?.
-rewrite -{1}[x]word_to_ZK.
+rewrite -{1}[x]Word.repr_signed.
 rewrite oppwP.
-by rewrite Z_to_wordK.
+by rewrite Word.signed_repr.
 Qed.
 
-Lemma subwE x y :
-(word_to_Z min_word <= word_to_Z x - word_to_Z y <= word_to_Z max_word)%Z ->
-  word_to_Z (x - y) = (word_to_Z x - word_to_Z y)%Z.
+Lemma subwE (x y : word t) :
+(Word.signed (min_word t) <= Word.signed x - Word.signed y <= Word.signed (max_word t))%Z ->
+  Word.signed (x - y) = (Word.signed x - Word.signed y)%Z.
 Proof.
+rewrite signed_min_word signed_max_word.
 move=> ?.
-rewrite -{1}[x]word_to_ZK -{1}[y]word_to_ZK.
+rewrite -{1}[x]Word.repr_signed -{1}[y]Word.repr_signed Word.sub_add_opp.
 rewrite oppwP addwP.
-by rewrite Z_to_wordK.
+by rewrite Word.signed_repr.
 Qed.
 
 End WordCompare.
@@ -504,9 +486,6 @@ Context {t : machine_types}
         {ops : machine_ops_spec op}.
 
 Local Open Scope Z.
-
-(* If you change opcodes below, please update this accordingly *)
-Definition max_opcode := 21.
 
 (* this is similar to (but simpler than) decode *)
 Definition Z_to_op (z : Z) : option opcode :=
@@ -566,43 +545,46 @@ Definition op_to_Z (o : opcode) : Z :=
   | SERVICE    => 24
   end.
 
+Definition max_opcode := 24.
+
+Lemma max_opcodeP o : 0 <= op_to_Z o <= max_opcode.
+Proof. by move: o; do! case; split; apply/Z.leb_le. Qed.
+
+Lemma op_to_ZK : pcancel op_to_Z Z_to_op.
+Proof. by do! case. Qed.
+
+Lemma Z_to_opK : ocancel Z_to_op op_to_Z.
+Proof.
+  move => x. rewrite /Z_to_op.
+  repeat match goal with
+  | |- context[match ?x with _ => _ end] =>
+    destruct x; simpl; try reflexivity
+  end.
+Qed.
+
 Definition word_to_op (w : word t) : option opcode :=
-  Z_to_op (word_to_Z w).
+  Z_to_op (Word.unsigned w).
 
 Definition op_to_word (o : opcode) : word t :=
-  Z_to_word (op_to_Z o).
+  Word.repr (op_to_Z o).
 
 Lemma op_to_wordK : pcancel op_to_word word_to_op.
 Proof.
   unfold pcancel, word_to_op, op_to_word; intros o.
-  assert (H1 := max_word_bound).
-  assert (H2 := min_word_bound).
-  rewrite Z_to_wordK; destruct o; try reflexivity; simpl; try omega;   destruct b; try reflexivity; omega.
-Qed.
-
-Lemma word_to_opK : ocancel word_to_op op_to_word.
-Proof.
-  unfold ocancel, oapp, word_to_op, op_to_word.
-  intros o; destruct (Z_to_op (word_to_Z o)) as [o'|] eqn:H; try reflexivity.
-  remember (word_to_Z o) as w.
-  unfold Z_to_op in H.
-  repeat match goal with
-  | H : match ?w with _ => _ end = Some _ |- _ =>
-    destruct w; try solve [inversion H]
-  end;
-  match goal with
-  | H : Some _ = Some _ |- _ => inversion H; subst; clear H
-  end;
-  simpl;
-  rewrite Heqw;
-  apply word_to_ZK.
+  rewrite Word.unsigned_repr ?op_to_ZK //=.
+  move: t (max_opcodeP o) => [s Hs ? ?] /= H.
+  rewrite /max_opcode in H.
+  have: Word.max_unsigned 5 <= Word.max_unsigned s.
+  { rewrite /Word.max_unsigned !Word.modulus_power.
+    suffices: two_p (Word.zwordsize 5) <= two_p (Word.zwordsize s) by move => *; omega.
+    apply Coqlib.two_p_monotone.
+    rewrite /Word.zwordsize /Word.wordsize. zify. omega. }
+  have ->: Word.max_unsigned 5 = 63 by [].
+  move => ?. omega.
 Qed.
 
 Lemma op_to_word_inj : injective op_to_word.
 Proof. now apply (pcan_inj op_to_wordK). Qed.
-
-Definition op_to_imm (o : opcode) : imm t :=
-  Z_to_imm (op_to_Z o).
 
 End Coding.
 
@@ -673,8 +655,8 @@ Definition concat_and_measure_relocatable_segments
        let (l1,gen1) := acc in
        let (l2,gen2) := seg in
        let gen := fun (base : word t) (rest : Args) =>
-                       (gen1 base rest)
-                    ++ (gen2 (add_word base (nat_to_word l1)) rest) in
+                       gen1 base rest
+                    ++ gen2 (Word.add base (Word.reprn l1)) rest in
        let newseg := (l1+l2, gen) in
        (newseg, addrs ++ [l1]))
     segs

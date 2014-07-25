@@ -65,7 +65,7 @@ Hint Resolve (Abs.good_compartment_decomposed__is_set_jump_targets
 Hint Resolve (Abs.good_compartment_decomposed__is_set_store_targets
                 (spec := spec)).
 
-Arguments Sym.sget {_ _ _} s p : simpl never.
+Arguments Sym.sget {_ _} s p : simpl never.
 Arguments Sym.supd {_ _} s p v : simpl never.
 
 Canonical compartment_eqType :=
@@ -919,7 +919,7 @@ Proof.
   erewrite refined_mem_value; [|eassumption].
   set G := get SM p; destruct G as [[wpairs ?]|]; subst; simpl; try done.
 
-  remember (word_to_nat wpairs) as pairs; clear Heqpairs.
+  remember (BinInt.Z.to_nat (Word.signed wpairs)) as pairs; clear Heqpairs.
   remember (p + 1)%w as start; clear Heqstart; move: start.
 
   induction pairs as [|pairs]; simpl; [reflexivity | intros start].
@@ -1624,7 +1624,7 @@ Proof.
     eapply Sym.fresh_preserves_good in def_c'_si'; eassumption.
   }
   rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p [x [I [W def_cid]]]].
-  destruct (Snext == max_word) eqn:SMALL_Snext; move/eqP in SMALL_Snext;
+  destruct (Snext == max_word t) eqn:SMALL_Snext; move/eqP in SMALL_Snext;
     inversion def_c'_si'; subst c' si'; clear def_c'_si'.
 
   assert (REFINED_cid : forall Snext,
@@ -2021,7 +2021,7 @@ Proof.
     move/forallb_forall in AGOODS.
     apply set_elem_true; auto.
   }
-    
+
   rewrite ELEM_Jsys.
 
   eexists; split; [reflexivity|].
@@ -2731,7 +2731,7 @@ Proof.
       * solve_permitted_now_in.
       * unfold upd; rewrite /refine_registers /pointwise in RREGS;
           specialize RREGS with r.
-        destruct (get AR r) eqn:GET;
+        case: (get AR r) RREGS => [a|] RREGS;
           [reflexivity | rewrite OLD in RREGS; done].
     + constructor; simpl;
         try solve [done | eapply prove_refined_compartment';
@@ -3105,7 +3105,7 @@ Proof.
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
     evar (AR' : registers t);
-      exists (AState (pc + (if w == 0 then 1 else imm_to_word n))%w
+      exists (AState (pc + (if w == 0 then 1 else Word.casts n))%w
                      AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_bnz; try reflexivity.
@@ -3157,8 +3157,7 @@ Proof.
       * unfold upd; rewrite /refine_registers /pointwise in RREGS.
         match goal with |- context[get AR ?ra] =>
           (* This finds the type class instances *)
-          specialize RREGS with ra;
-          destruct (get AR ra) eqn:GET';
+          case: (get AR ra) (RREGS ra) => {RREGS} RREGS;
             [reflexivity | rewrite OLD in RREGS; done]
         end.
     + constructor; simpl;

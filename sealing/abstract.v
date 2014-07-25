@@ -27,14 +27,14 @@ Class sealing_key := {
 
   (* This function is total, so key has to be infinite *)
   mkkey_f : list key -> key;
- 
+
   (* This ensures freshness without fixing a generation strategy *)
   mkkey_fresh : forall ks, ~In (mkkey_f ks) ks
 }.
 
 Context {sk : sealing_key}.
 
-Inductive value := 
+Inductive value :=
 | VData   : word t        -> value
 | VKey    :           key -> value
 | VSealed : word t -> key -> value.
@@ -46,7 +46,7 @@ Local Notation registers := (reg_map t value).
 
 Open Scope word_scope.
 
-Local Notation "x .+1" := (add_word x (Z_to_word 1)) (at level 60).
+Local Notation "x .+1" := (Word.add x Word.one) (at level 60).
 
 Record state := State {
   mem : memory;
@@ -73,7 +73,7 @@ Inductive step (st st' : state) : Prop :=
 | step_const : forall mem reg reg' pc n r ks
     (ST   : st = State mem reg pc ks)
     (INST : decode mem pc =? Const n r)
-    (UPD  : upd reg r (VData (imm_to_word n)) =? reg')
+    (UPD  : upd reg r (VData (Word.casts n)) =? reg')
     (NEXT : st' = State mem reg' (pc.+1) ks),   step st st'
 | step_mov : forall mem reg reg' pc r1 v1 r2 ks
     (ST   : st = State mem reg pc ks)
@@ -111,8 +111,8 @@ Inductive step (st st' : state) : Prop :=
     (ST   : st = State mem reg pc ks)
     (INST : decode mem pc =? Bnz r n)
     (RW   : get reg r =? VData w),
-    let pc' := add_word pc (if w == Z_to_word 0
-                            then Z_to_word 1 else imm_to_word n) in forall
+    let pc' := Word.add pc (if w == Word.zero
+                            then Word.one else Word.casts n) in forall
     (NEXT : st' = State mem reg pc' ks),   step st st'
 | step_jal : forall mem reg reg' pc r w ks
     (ST   : st = State mem reg pc ks)
@@ -149,7 +149,7 @@ Definition stepf (st : state) : option state :=
     | Some Nop =>
       Some (State mem reg (pc.+1) keys)
     | Some (Const n r) =>
-      do! reg' <- PartMaps.upd reg r (VData (imm_to_word n));
+      do! reg' <- PartMaps.upd reg r (VData (Word.casts n));
       Some (State mem reg' (pc.+1) keys)
     | Some (Mov r1 r2) =>
       do! v <- PartMaps.get reg r1;
@@ -158,7 +158,7 @@ Definition stepf (st : state) : option state :=
     | Some (Binop b r1 r2 r3) =>
       do! v1 <- PartMaps.get reg r1;
       do! v2 <- PartMaps.get reg r2;
-      if v1 is VData i1 then if v2 is VData i2 then 
+      if v1 is VData i1 then if v2 is VData i2 then
         do! reg' <- PartMaps.upd reg r3 (VData (binop_denote b i1 i2));
         Some (State mem reg' (pc.+1) keys)
       else None else None
@@ -184,8 +184,8 @@ Definition stepf (st : state) : option state :=
     | Some (Bnz r n) =>
       do! vr <- PartMaps.get reg r;
       if vr is VData c then
-        let pc' := pc + if c == Z_to_word 0 
-                        then Z_to_word 1 else imm_to_word n in
+        let pc' := pc + if c == Word.zero
+                        then Word.one else Word.casts n in
         Some (State mem reg pc' keys)
       else None
     | Some (Jal r) =>
@@ -194,14 +194,14 @@ Definition stepf (st : state) : option state :=
         do! reg' <- PartMaps.upd reg ra (VData (pc.+1));
         Some (State mem reg' i keys)
       else None
-    | Some JumpEpc | Some AddRule | Some (GetTag _ _) 
+    | Some JumpEpc | Some AddRule | Some (GetTag _ _)
     | Some (PutTag _ _ _) | Some Halt =>
     None
     | None =>
     if pc == mkkey_addr then
       let k := mkkey_f keys in
       let keys' := k :: keys in
-      do! reg' <- PartMaps.upd reg syscall_ret (VKey k);        
+      do! reg' <- PartMaps.upd reg syscall_ret (VKey k);
       do! ret <- PartMaps.get reg ra;
       if ret is VData pc' then
         Some (State mem reg' pc' keys')
@@ -228,7 +228,7 @@ Definition stepf (st : state) : option state :=
           else None
         else None
       else None else None
-    else 
+    else
       None
     end.
 
@@ -238,25 +238,25 @@ Definition stepf (st : state) : option state :=
 (* Building initial machine states *)
 
 Program Definition abstract_initial_state
-      (user_mem : relocatable_segment classes.sealing_syscall_addrs value) 
+      (user_mem : relocatable_segment classes.sealing_syscall_addrs value)
       (base_addr : word t)
       (user_regs : list (reg t))
-    : state := 
+    : state :=
   let (_, gen) := user_mem in
-  let mem_contents := gen base_addr ssa in 
-  let mem := 
+  let mem_contents := gen base_addr ssa in
+  let mem :=
     snd (fold_left
-      (fun x c => let: (i,m) := x in 
-                  (add_word (Z_to_word 1) i, PartMaps.set m i c))
+      (fun x c => let: (i,m) := x in
+                  (Word.add Word.one i, PartMaps.set m i c))
       mem_contents
       (base_addr, PartMaps.empty))
       in
-  let regs := 
+  let regs :=
         fold_left
-          (fun regs r => PartMaps.set regs r (VData (Z_to_word 0)))
+          (fun regs r => PartMaps.set regs r (VData Word.zero))
            user_regs
            PartMaps.empty in
-  {|  
+  {|
     mem := mem;
     regs := regs;
     pc := base_addr;

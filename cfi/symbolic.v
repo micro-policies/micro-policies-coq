@@ -99,7 +99,7 @@ Proof.
   destruct (get m k); destruct (get m' k); auto.
 Qed.
 
-Local Notation "x .+1" := (add_word x (Z_to_word 1)).
+Local Notation "x .+1" := (Word.add x Word.one).
 
 Open Scope word_scope.
 
@@ -129,7 +129,7 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
             | _ => false
           end
         | Some (Bnz r imm) =>
-          (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+          (pc_s' == pc_s .+1) || (pc_s' == pc_s + Word.casts imm)
         | None => false
         | _ => pc_s' == pc_s .+1
       end
@@ -139,7 +139,7 @@ Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
         | Some (Jal r) =>
           false
         | Some (Bnz r imm) =>
-          (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+          (pc_s' == pc_s .+1) || (pc_s' == pc_s + Word.casts imm)
         | None => false
         | _ => pc_s' == pc_s .+1
       end

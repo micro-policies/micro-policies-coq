@@ -26,7 +26,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
-        {e : @encodable Symbolic.tag mt ops}
+        {e : @encodable Symbolic.tag mt}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
@@ -46,7 +46,7 @@ Hint Unfold Concrete.next_state_pc.
 Hint Unfold Concrete.next_state.
 Hint Unfold Concrete.miss_state.
 
-Let in_kernel_user t : Concrete.is_kernel_tag _ (encode (USER t)) = false.
+Let in_kernel_user t : Concrete.is_kernel_tag (encode (USER t)) = false.
 Proof.
   unfold Concrete.is_kernel_tag.
   erewrite encode_kernel_tag.
@@ -172,12 +172,12 @@ Qed.
 
 Ltac solve_concrete_step :=
   match goal with
-  | LOOKUP : Concrete.cache_lookup _ _ _ _ = _ |- _ =>
+  | LOOKUP : Concrete.cache_lookup _ _ _ = _ |- _ =>
     econstructor (solve [eauto; try solve [user_data_unchanged];
                          repeat autounfold; simpl;
                          simpl in LOOKUP; rewrite LOOKUP;
                          match goal with
-                         | STORE : Concrete.store_mvec _ _ _ = Some _ |- _ =>
+                         | STORE : Concrete.store_mvec _ _ = Some _ |- _ =>
                            rewrite STORE
                          | |- _ => idtac
                          end;
@@ -194,7 +194,7 @@ Ltac destruct_mvec_operands :=
 Lemma symbolic_handler_concrete_cache cache umvec urvec rvec :
   cache_correct cache ->
   Symbolic.handler umvec = Some urvec ->
-  Concrete.cache_lookup _ cache masks (encode_mvec (mvec_of_umvec umvec)) = Some rvec ->
+  Concrete.cache_lookup cache masks (encode_mvec (mvec_of_umvec umvec)) = Some rvec ->
   rvec = encode_rvec (rvec_of_urvec urvec).
 Proof.
   intros CACHE HANDLER LOOKUP.
@@ -262,7 +262,7 @@ Ltac analyze_cache_miss :=
     MVEC : mvec_in_kernel ?cmem,
     KINV : kernel_invariant_statement _ ?cmem _ ?cache _,
     CACHE : cache_correct ?cache,
-    LOOKUP : Concrete.cache_lookup _ ?cache _ (encode_mvec (mvec_of_umvec ?mvec)) = None,
+    LOOKUP : Concrete.cache_lookup ?cache _ (encode_mvec (mvec_of_umvec ?mvec)) = None,
     HANDLER : Symbolic.handler ?mvec = Some _ |- _ =>
     let cmvec := constr:(encode_mvec (mvec_of_umvec mvec)) in
     let STORE := fresh "STORE" in
@@ -302,7 +302,7 @@ Proof.
   | HANDLER : Symbolic.handler ?mvec = Some ?rvec |- _ =>
     destruct rvec;
     let cmvec := constr:(encode_mvec (mvec_of_umvec mvec)) in
-    destruct (Concrete.cache_lookup _ cache masks cmvec) as [rvec' | ] eqn:LOOKUP;
+    destruct (Concrete.cache_lookup cache masks cmvec) as [rvec' | ] eqn:LOOKUP;
 
     [
       (* Cache hit case *)
@@ -342,16 +342,16 @@ Proof.
     move: (CALL) => CALL'. rewrite /Symbolic.run_syscall /= in CALL'.
     rewrite /cache_allows_syscall GETCALL /= in NOTALLOWED.
     match type of NOTALLOWED with
-    | context[Concrete.cache_lookup _ _ _ ?x] =>
+    | context[Concrete.cache_lookup _ _ ?x] =>
       set (cmvec := x);
-      destruct (Concrete.cache_lookup _ _ masks x) eqn:LOOKUP; first by []
+      destruct (Concrete.cache_lookup _ masks x) eqn:LOOKUP; first by []
     end.
     match type of CALL' with
     | context[Symbolic.handler ?mvec] =>
       destruct (Symbolic.handler mvec) eqn:HANDLER; last by []
     end.
     assert (HANDLER' : handler Symbolic.handler cmvec = Some (Symbolic.mkRVec KERNEL KERNEL)).
-    { by rewrite /handler /= op_to_wordK 2!decodeK HANDLER. }
+    { by rewrite /handler /= 2!decodeK HANDLER. }
     destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE].
     pose proof (store_mvec_mvec_in_kernel _ _ STORE).
     pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE).

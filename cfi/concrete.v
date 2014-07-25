@@ -23,7 +23,7 @@ Section ConcreteSection.
 Context {t : machine_types}
         {ops : machine_ops t}
         {ids : @classes.cfi_id t}
-        {e : @rules.encodable rules.cfi_tag_eqType t ops}.
+        {e : @rules.encodable rules.cfi_tag_eqType t}.
 
 Import PartMaps.
 Context {word_map : Type -> Type}
@@ -44,21 +44,21 @@ Definition no_violation (cst : Concrete.state t) :=
   (forall i ti src,
     get mem pc = Some i@(encode (USER ti)) ->
     tpc = encode (USER (INSTR (Some src))) ->
-    exists dst, 
+    exists dst,
         ti = INSTR (Some dst) /\ cfg src dst = true) /\
   (forall i ti src,
      get mem pc = Some i@(encode (ENTRY ti)) ->
      tpc = encode (USER (INSTR (Some src))) ->
-     exists dst, 
+     exists dst,
        ti = INSTR (Some dst) /\ cfg src dst = true).
 
 (*Defined in terms of atom_equiv for symbolic tags*)
 (* TODO: as a sanity check, please prove reflexivity for this and
    the other attacker relations. That will ensure that the attacker
    can at least keep things the same. *)
-Inductive atom_equiv : atom (word t) (word t) -> atom (word t) (word t) 
+Inductive atom_equiv : atom (word t) (word t) -> atom (word t) (word t)
                        -> Prop :=
-  | user_equiv : forall a a' v v' ut ut', 
+  | user_equiv : forall a a' v v' ut ut',
                    a = v@(encode (USER ut)) ->
                    a' = v'@(encode (USER ut')) ->
                    Sym.atom_equiv v@ut v'@ut' ->
@@ -68,7 +68,7 @@ Inductive atom_equiv : atom (word t) (word t) -> atom (word t) (word t)
                     a = a' ->
                     atom_equiv a a'.
 
-Definition equiv {M : Type -> Type} {Key : Type} 
+Definition equiv {M : Type -> Type} {Key : Type}
            {M_class : partial_map M Key} :
            M (atom (word t) (word t))-> M (atom (word t) (word t))-> Prop :=
   pointwise atom_equiv.
@@ -88,7 +88,7 @@ Inductive step_a : Concrete.state t ->
                   step_a (Concrete.mkState mem reg cache pc@tpc epc)
                          (Concrete.mkState mem' reg' cache pc@tpc epc).
 
-Local Notation "x .+1" := (add_word x (Z_to_word 1)).
+Local Notation "x .+1" := (Word.add x Word.one).
 Local Open Scope word_scope.
 
 Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
@@ -101,7 +101,7 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
         | Some (USER (INSTR (Some src))) =>
           match decode_instr (common.val i) with
             | Some (Jump r)
-            | Some (Jal r) => 
+            | Some (Jal r) =>
               match (get (Concrete.mem st) pc_s') with
                 | Some i' =>
                   match (decode (common.tag i')) with
@@ -113,8 +113,8 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
                   end
                 | _ => false
               end
-            | Some (Bnz r imm) => 
-              (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+            | Some (Bnz r imm) =>
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + Word.casts imm)
             | None => false
             | _ => pc_s' == pc_s .+1
           end
@@ -123,8 +123,8 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
             | Some (Jump r)
             | Some (Jal r) =>
               false
-            | Some (Bnz r imm) => 
-              (pc_s' == pc_s .+1) || (pc_s' == pc_s + imm_to_word imm)
+            | Some (Bnz r imm) =>
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + Word.casts imm)
             | None => false
             | _ => pc_s' == pc_s .+1
           end
@@ -144,7 +144,7 @@ Variable ki : refinement_common.kernel_invariant.
 Variable stable : list (Symbolic.syscall t).
 
 (* This is basically the initial_refine assumption on preservation *)
-Definition cinitial (cs : Concrete.state t) := 
+Definition cinitial (cs : Concrete.state t) :=
   exists ss, Sym.initial stable ss /\ refine_state ki stable ss cs.
 
 Variable masks : Concrete.Masks.
@@ -152,7 +152,7 @@ Variable masks : Concrete.Masks.
 Import ListNotations.
 
 Definition all_attacker (xs : list (Concrete.state t)) : Prop :=
-  forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~ Concrete.step _ masks x1 x2. 
+  forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~ Concrete.step _ masks x1 x2.
 
 Lemma all_attacker_red ast ast' axs :
   all_attacker (ast :: ast' :: axs) ->
@@ -170,13 +170,13 @@ Definition stopping (ss : list (Concrete.state t)) : Prop :=
   \/
   (exists user kernel,
     ss = user ++ kernel /\
-    all_attacker user /\ forallb in_user user /\ 
+    all_attacker user /\ forallb in_user user /\
     forallb in_kernel kernel).
 
 Program Instance concrete_cfi_machine : cfi_machine := {|
   state := Concrete.state t;
   initial s := cinitial s;
-  
+
   step s1 s2 := Concrete.step ops masks s1 s2;
   step_a := step_a;
 

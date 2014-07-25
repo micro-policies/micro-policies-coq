@@ -30,7 +30,7 @@ Context `{syscall_regs t}
 Open Scope word_scope.
 
 Local Notation word := (word t).
-Local Notation "x .+1" := (add_word x (Z_to_word 1)).
+Local Notation "x .+1" := (Word.add x Word.one).
 
 Class color_class := {
   color : eqType;
@@ -277,12 +277,12 @@ Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=
   match n with
   | O => Some mem
   | S p => do! mem' <- write_block_rec mem base v p;
-           upd mem' (base + Z_to_word (Z.of_nat p)) v
+           upd mem' (base + Word.reprn p) v
   end.
 
-Definition write_block init base (v : atom) sz : option (Symbolic.memory t _) :=
-  if word_to_Z base + word_to_Z sz <=? word_to_Z max_word  then
-     write_block_rec init base v (Z.to_nat (word_to_Z sz))
+Definition write_block init base (v : atom) (sz : word) : option (Symbolic.memory t _) :=
+  if Word.signed base + Word.signed sz <=? Word.max_signed (word_size_minus_one t) then
+     write_block_rec init base v (Z.to_nat (Word.signed sz))
   else None.
 
 Definition update_block_info info x (color : color) sz :=
@@ -302,7 +302,7 @@ Definition malloc_fun st : option (state t) :=
     | sz@V(DATA) =>
       if (0 <? sz)%ordered then
           if ohead [seq x <- info | ((sz <=? block_size x) && (block_color x == None))%ordered] is Some x then
-          do! mem' <- write_block (mem st) (block_base x) 0@M(color,DATA) sz; 
+          do! mem' <- write_block (mem st) (block_base x) 0@M(color,DATA) sz;
           do! regs' <- upd (regs st) syscall_ret ((block_base x)@V(PTR color));
           let color' := inc_color color in
           do! raddr <- get (regs st) ra;
@@ -368,8 +368,8 @@ Definition eqp_fun (st : state t) : option (state t) :=
   do! ptr2 <- get (regs st) syscall_arg2;
   match ptr1, ptr2 return option (state t) with
   | ptr1@V(PTR color1), ptr2@V(PTR color2) =>
-    let b := if (color1 == color2) && (ptr1 == ptr2) then Z_to_word 1%Z
-             else Z_to_word 0%Z in
+    let b := if (color1 == color2) && (ptr1 == ptr2) then Word.one
+             else Word.zero in
     do! regs' <- upd (regs st) syscall_ret b@V(DATA);
     do! raddr <- get (regs st) ra;
     if raddr is _@V(PTR _) then
@@ -404,6 +404,6 @@ Notation FREE := TagFree.
 
 End Notations.
 
-Arguments def_info t {_ _}.
+Arguments def_info t {_}.
 
 End Sym.

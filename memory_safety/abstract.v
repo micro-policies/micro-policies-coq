@@ -51,7 +51,7 @@ Definition registers := reg_map t value.
 Open Scope word_scope.
 
 Local Notation word := (word t).
-Local Notation "x .+1" := (fst x, (add_word (snd x) (Z_to_word 1))).
+Local Notation "x .+1" := (fst x, (Word.add (snd x) Word.one)).
 
 Record state := mkState {
   mem : memory;
@@ -69,10 +69,11 @@ Class allocator := {
 
 }.
 
+(* TODO: change to unsigned *)
 Definition getv (mem : memory) (ptr : pointer) :=
   match get mem (fst ptr) with
   | None => None
-  | Some fr => index_list_Z (word_to_Z (snd ptr)) fr
+  | Some fr => index_list_Z (Word.signed (snd ptr)) fr
   end.
 
 Class allocator_spec (alloc : allocator) := {
@@ -154,7 +155,7 @@ Inductive step : state -> state -> Prop :=
 | step_const : forall mem reg reg' bl pc i n r,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Const n r)),
-             forall (UPD :   upd reg r (VData (imm_to_word n)) = Some reg'),
+             forall (UPD :   upd reg r (VData (Word.casts n)) = Some reg'),
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg' bl (VPtr pc.+1))
 | step_mov : forall mem reg reg' bl pc i r1 r2 w1,
              forall (PC :    getv mem pc = Some (VData i)),
@@ -183,7 +184,7 @@ Inductive step : state -> state -> Prop :=
              forall (R1W :   get reg r1 = Some (VPtr (b,off))),
              forall (R2W :   get reg r2 = Some v),
              forall (MEM1 :  get mem b = Some fr),
-             forall (UPDFR : update_list_Z (word_to_Z off) v fr = Some fr'),
+             forall (UPDFR : update_list_Z (Word.signed off) v fr = Some fr'),
              forall (UPD :   upd mem b fr' = Some mem'),
              step (mkState mem reg bl (VPtr pc)) (mkState mem' reg bl (VPtr pc.+1))
 | step_jump : forall mem reg bl pc i r pt,
@@ -195,9 +196,9 @@ Inductive step : state -> state -> Prop :=
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Bnz r n)),
              forall (RW :    get reg r = Some (VData w)),
-             let             off_pc' := add_word (snd pc) (if w == Z_to_word 0
-                                                   then Z_to_word 1
-                                                   else imm_to_word n) in
+             let             off_pc' := Word.add (snd pc) (if w == Word.zero
+                                                   then Word.one
+                                                   else Word.casts n) in
              step (mkState mem reg bl (VPtr pc)) (mkState mem reg bl (VPtr (fst pc,off_pc')))
 | step_jal : forall mem reg reg' bl pc i r v,
              forall (PC :       getv mem pc = Some (VData i)),
@@ -208,7 +209,7 @@ Inductive step : state -> state -> Prop :=
 | step_malloc : forall mem mem' reg reg' bl sz b pc'
     (SIZE  : get reg syscall_arg1 = Some (VData sz))
     (ALLOC : malloc_fun mem bl sz = (mem', b))
-    (UPD   : upd reg syscall_ret (VPtr (b,Z_to_word 0%Z)) = Some reg')
+    (UPD   : upd reg syscall_ret (VPtr (b,Word.zero)) = Some reg')
     (RA    : get reg ra = Some (VPtr pc')),
     step (mkState mem reg bl (VData malloc_addr)) (mkState mem' reg' (b::bl) (VPtr pc'))
 | step_free : forall mem mem' reg ptr bl pc'
@@ -227,7 +228,7 @@ Inductive step : state -> state -> Prop :=
 *)
 | step_base : forall mem reg reg' b o bl pc'
     (PTR  : get reg syscall_arg1 = Some (VPtr (b,o)))
-    (UPD  : upd reg syscall_ret (VPtr (b,Z_to_word 0%Z)) = Some reg')
+    (UPD  : upd reg syscall_ret (VPtr (b,Word.zero)) = Some reg')
     (RA   : get reg ra = Some (VPtr pc')),
     step (mkState mem reg bl (VData base_addr)) (mkState mem reg' bl (VPtr pc'))
 | step_eq : forall mem reg reg' v1 v2 bl pc'

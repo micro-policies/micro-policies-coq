@@ -30,7 +30,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {ids : @classes.cfi_id mt}
-        {e : rules.encodable rules.cfi_tag_eqType}.
+        {e : @rules.encodable rules.cfi_tag_eqType mt}.
 
 Variable cfg : id -> id -> bool.
 
@@ -590,7 +590,7 @@ Definition uhandler := @Symbolic.handler sp.
 
 (*XXX: Move these to refinement_common*)
 Lemma get_reg_no_user sreg reg r v ctg t :
-  @refinement_common.refine_registers mt ops sp e sreg reg ->
+  @refinement_common.refine_registers mt sp e sreg reg ->
   get sreg r = None ->
   PartMaps.get reg r = Some v@ctg ->
   rules.decode ctg = Some t ->
@@ -607,7 +607,7 @@ Proof.
 Qed.
 
 Lemma get_mem_no_user smem mem addr v ctg t :
-  @refinement_common.refine_memory mt ops sp e smem mem ->
+  @refinement_common.refine_memory mt sp e smem mem ->
   get smem addr = None ->
   get mem addr = Some v@ctg ->
   rules.decode ctg = Some t ->
@@ -703,17 +703,17 @@ Lemma fault_steps_at_kernel_aux ast cst cst' cmvec :
   build_cmvec mt cst = Some cmvec ->
   khandler cmvec = None ->
   exists cmem',
-  Concrete.store_mvec ops (Concrete.mem cst) cmvec = Some cmem' /\
+  Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem' /\
   cst' = Concrete.mkState cmem'
                           (Concrete.regs cst)
                           (Concrete.cache cst)
-                          (Concrete.fault_handler_start _ (t := mt))@Concrete.TKernel
+                          (Concrete.fault_handler_start mt)@Concrete.TKernel
                           (Concrete.pc cst).
 Proof.
   intros REF CSTEP CMVEC KHANDLER.
   destruct REF as [smem sreg int cmem creg cache epc pc tpc
                          ASI CSI REFM REFR CACHE MVEC WF KI].
-  case LOOKUP: (Concrete.cache_lookup _ cache masks cmvec) => [rvec|].
+  case LOOKUP: (Concrete.cache_lookup cache masks cmvec) => [rvec|].
   - have ISUSER: rules.word_lift (fun x => rules.is_user x) (Concrete.ctpc cmvec) = true.
     { move: CMVEC => /(build_cmvec_ctpc _) ->.
       by rewrite CSI /rules.word_lift ?rules.decodeK /=. }
@@ -735,11 +735,11 @@ Lemma fault_steps_at_kernel ast cst cst' cmvec :
   build_cmvec mt cst = Some cmvec ->
   khandler cmvec = None ->
   exists cmem',
-  Concrete.store_mvec ops (Concrete.mem cst) cmvec = Some cmem' /\
+  Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem' /\
   cst' = Concrete.mkState cmem'
                           (Concrete.regs cst)
                           (Concrete.cache cst)
-                          (Concrete.fault_handler_start _ (t := mt))@Concrete.TKernel
+                          (Concrete.fault_handler_start mt)@Concrete.TKernel
                           (Concrete.pc cst).
 Proof.
   intros USER REF STEP MVEC HANDLER.

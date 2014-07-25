@@ -214,7 +214,7 @@ Arguments syscalls_separated M C /.
 
 Definition syscalls_present (C : list compartment) : bool :=
   forallb (is_some ∘ (in_compartment_opt C) ∘ address) table.
-          
+
 Definition good_state (MM : state) : bool :=
   elem (previous MM) (compartments MM) &&
   good_compartments (compartments MM) &&
@@ -250,7 +250,7 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Const x rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (UPD   : upd R rdest (imm_to_word x) ?= R')
+                   (UPD   : upd R rdest (Word.casts x) ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
@@ -309,7 +309,7 @@ Inductive step (MM MM' : state) : Prop :=
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (NEXT  : MM' = State (pc + (if b == 0
                                                then 1
-                                               else imm_to_word x))
+                                               else Word.casts x))
                                         R M C INTERNAL c),
                         step MM MM'
 
@@ -531,7 +531,7 @@ Theorem non_overlapping_spec : forall C,
 Proof.
   intros C GOOD; unfold non_overlapping.
   rewrite <-all_pairs_in2_comm, all_pairs_spec; [reflexivity|eauto 2].
-Qed.  
+Qed.
 
 Corollary non_overlapping_spec' : forall C,
   good_compartments C = true ->
@@ -775,7 +775,7 @@ Proof.
   contradict OUT; eauto 2.
 Qed.
 (*Global*) Hint Resolve unique_must_be_here.
- 
+
 Theorem in_same_compartment__overlapping : forall C p c1 c2,
   good_compartment c1 = true -> good_compartment c2 = true ->
   C ⊢ p ∈ c1 ->
@@ -795,7 +795,7 @@ Qed.
 (*Global*) Hint Resolve in_same_compartment__overlapping.
 
 Theorem in_compartment_opt_correct : forall C p c,
-  forallb good_compartment C = true -> 
+  forallb good_compartment C = true ->
   in_compartment_opt C p ?= c -> C ⊢ p ∈ c.
 Proof.
   clear.
@@ -809,7 +809,7 @@ Qed.
 (*Global*) Hint Resolve in_compartment_opt_correct.
 
 Corollary in_compartment_opt_correct' : forall C p c,
-  good_compartments C = true -> 
+  good_compartments C = true ->
   in_compartment_opt C p ?= c -> C ⊢ p ∈ c.
 Proof. auto. Qed.
 (*Global*) Hint Resolve in_compartment_opt_correct'.
@@ -1183,7 +1183,7 @@ Proof.
     apply/negP; intro SAS'; subst c.
     rewrite /syscall_address_space (lock elem) /= in SAS'.
     destruct A as [|sc [|]]; auto.
-    apply permitted_now_in_spec in def_c_sys; eauto 3. 
+    apply permitted_now_in_spec in def_c_sys; eauto 3.
     move/id in def_c_sys; move/id in NONEMPTY_A_A'; move/id in SUBSET_A'.
     assert (NIN_pc : ~ In sc A'). {
       apply nonempty_iff_in in NONEMPTY_A_A'.
@@ -1594,8 +1594,8 @@ Proof.
     end;
     repeat f_equal; try congruence.
   match goal with
-    |- (match ?b1 == 0 with true => 1 | false => imm_to_word ?x1 end) =
-       (match ?b2 == 0 with true => 1 | false => imm_to_word ?x2 end) =>
+    |- (match ?b1 == 0 with true => 1 | false => Word.casts ?x1 end) =
+       (match ?b2 == 0 with true => 1 | false => Word.casts ?x2 end) =>
     replace b2 with b1 by congruence; replace x2 with x1 by congruence
   end; reflexivity.
 Qed.
@@ -1768,7 +1768,7 @@ Proof.
                      destruct (permitted_now_in C sk prev pc0);
                      [eauto | discriminate]
   end.
-Qed.    
+Qed.
 
 Theorem was_in_compartment : forall `(STEP : step MM MM'),
   good_state MM ->
@@ -1799,7 +1799,7 @@ Proof.
         destruct STEP as [IC STEP]; exists c; split; [exact IC|];
         assert (good_compartment c) by eauto;
         apply permitted_now_in_spec in PNI; simpl in *; eauto 3;
-        
+
         destruct PNI as [IC' [-> | [EQ IN_J]]];
           [|solve [discriminate | right; auto]];
         left; apply in_compartment_spec in IC'; tauto ].

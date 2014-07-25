@@ -205,7 +205,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= Abs.VData (imm_to_word n)). reflexivity.
+    instantiate (1:= Abs.VData (Word.casts n)). reflexivity.
     eexists. exists km. split.
     + eapply Abs.step_const; [reflexivity | | | reflexivity]. (* extra goal *)
       unfold Abs.decode. rewrite PC. now apply INST.
@@ -350,7 +350,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
 
     assert(refine_val_atom (set km (Abs.mkkey_f akeys) skey)
               (Abs.VKey t (Abs.mkkey_f akeys))
-              (max_word@(Sym.KEY skey))) as rva.
+              ((max_word t)@(Sym.KEY skey))) as rva.
       unfold refine_val_atom, refine_key. by rewrite get_set_eq.
 
     (* need to show freshness for new abstract key to be able to use

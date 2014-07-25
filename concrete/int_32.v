@@ -21,14 +21,12 @@ Import DoNotation.
 
 Import Word.
 
-(* These types will yield an incorrect (but still executable/useful) encoding *)
-(* CH: What's incorrect about it?  Is it the fact that you're
-   abusing int instead of using a more precise type? *)
-Definition concrete_int_32_t : machine_types := {|
+Program Definition concrete_int_32_t : machine_types := {|
   word_size_minus_one := 31;
   reg_field_size_minus_one := 4;
   imm_size_minus_one := 14
 |}.
+Solve Obligations using omega.
 
 Import Word.Notations.
 Import ListNotations.
@@ -96,35 +94,6 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     | SERVICE => None (* Not a real instruction *)
     end;
 
-  Z_to_imm := repr;
-
-  imm_to_word i := repr (unsigned i);
-
-  min_word := repr (min_signed 31);
-  (* ASZ: If this is `max_unsigned`, then `word_to_Z` needs to be `unsigned`,
-     but then `opp_word` breaks. *)
-  max_word := repr (max_signed 31);
-
-  Z_to_word := repr;
-
-  word_to_Z := signed;
-
-  add_word := add;
-
-  mul_word := mul;
-
-  and_word := and;
-
-  or_word := or;
-
-  xor_word := xor;
-
-  shru_word := shru;
-
-  shl_word := shl;
-
-  opp_word := neg;
-
   ra := repr 0
 
 |}.
@@ -134,32 +103,15 @@ Open Scope Z_scope.
 Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
   constructor.
-  - Opaque pack.
-    Opaque unpack.
-    Opaque unpack2.
-    unfold encode_instr,decode_instr,concrete_int_32_ops.
-      intros; destruct i; simpl;
-      rewrite packU /= pack2K encode_opcodeK /= ?packK //.
-    Transparent pack.
-    Transparent unpack.
-    Transparent unpack2.
-  - vm_compute; inversion 1.
-  - reflexivity.
-  - simpl. apply repr_signed.
-  - simpl; intros. apply signed_repr. compute -[Zle] in *; omega.
-  - exact: add_repr.
-  - exact: neg_repr.
-  - exact: IntOrdered.compare_signed.
-  - intros w.
-    assert (min_signed 31 <= word_to_Z w) by apply signed_range.
-    unfold min_word,word_to_Z,concrete_int_32_ops,le in *.
-    rewrite IntOrdered.compare_signed signed_repr; first by assumption.
-    generalize (signed_range 31 (repr 0)). simpl. omega.
-  - intros w.
-    assert (word_to_Z w <= max_signed 31) by apply signed_range.
-    unfold max_word,word_to_Z,concrete_int_32_ops,le in *.
-    rewrite IntOrdered.compare_signed signed_repr /=; first by assumption.
-    generalize (signed_range 31 (repr 0)); omega.
+  Opaque pack.
+  Opaque unpack.
+  Opaque unpack2.
+  unfold encode_instr,decode_instr,concrete_int_32_ops.
+  intros; destruct i; simpl;
+  rewrite packU /= pack2K encode_opcodeK /= ?packK //.
+  Transparent pack.
+  Transparent unpack.
+  Transparent unpack2.
 Defined.
 
 Import Concrete.

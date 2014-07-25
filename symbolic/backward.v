@@ -26,7 +26,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
-        {e : @encodable Symbolic.tag mt ops}
+        {e : @encodable Symbolic.tag mt}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
@@ -41,7 +41,7 @@ Hint Resolve kernel_invariant_upd_reg.
 Hint Resolve kernel_invariant_store_mvec.
 
 Let miss_state_not_user st st' mvec :
-  Concrete.miss_state ops st mvec = Some st' ->
+  Concrete.miss_state st mvec = Some st' ->
   in_user st' = true ->
   False.
 Proof.
@@ -64,13 +64,13 @@ Ltac simpl_encode :=
 
 Ltac analyze_cache :=
   match goal with
-  | LOOKUP : Concrete.cache_lookup _ ?cache _ ?mvec = Some ?rvec,
+  | LOOKUP : Concrete.cache_lookup ?cache _ ?mvec = Some ?rvec,
     PC     : PartMaps.get _ ?pc = Some ?i@_,
     INST   : decode_instr ?i = Some _,
     INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
     CACHE  : cache_correct ?cache |- _ =>
     unfold in_user in INUSER; simpl in INUSER;
-    assert (CACHEHIT := analyze_cache mvec _ CACHE LOOKUP INUSER (erefl _));
+    assert (CACHEHIT := analyze_cache mvec CACHE LOOKUP INUSER (erefl _));
     simpl in CACHEHIT;
     repeat match type of CACHEHIT with
     | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
@@ -79,7 +79,7 @@ Ltac analyze_cache :=
     | False => destruct CACHEHIT
     end;
     try subst mvec; simpl in *; try simpl_encode; subst
-  | MISS   : Concrete.miss_state _ _ _ = Some ?st',
+  | MISS   : Concrete.miss_state _ _ = Some ?st',
     INUSER : in_user ?st' = true |- _ =>
     destruct (miss_state_not_user _ _ MISS INUSER)
   end.
@@ -174,13 +174,13 @@ Ltac simpl_word_lift :=
 Lemma initial_handler_state' cst kst cmvec cmem' :
   forall (ISUSER : in_user cst = true)
          (CMVEC : build_cmvec _ cst = Some cmvec)
-         (MEM : Concrete.store_mvec ops (Concrete.mem cst) cmvec = Some cmem')
-         (MISS : Concrete.cache_lookup _ (Concrete.cache cst) masks cmvec = None)
+         (MEM : Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem')
+         (MISS : Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None)
          (STEP : Concrete.step _ masks cst kst),
       kst = Concrete.mkState cmem'
                              (Concrete.regs cst)
                              (Concrete.cache cst)
-                             (Concrete.fault_handler_start _ (t := mt))@Concrete.TKernel
+                             (Concrete.fault_handler_start mt)@Concrete.TKernel
                              (Concrete.pc cst).
 Proof.
   intros.
@@ -214,11 +214,11 @@ Lemma initial_handler_state cst kst :
          (CACHE : cache_correct (Concrete.cache cst))
          (STEP : Concrete.step _ masks cst kst),
     exists cmem' mvec,
-      Concrete.store_mvec ops (Concrete.mem cst) mvec = Some cmem' /\
+      Concrete.store_mvec (Concrete.mem cst) mvec = Some cmem' /\
       kst = Concrete.mkState cmem'
                              (Concrete.regs cst)
                              (Concrete.cache cst)
-                             (Concrete.fault_handler_start _ (t := mt))@Concrete.TKernel
+                             (Concrete.fault_handler_start mt)@Concrete.TKernel
                              (Concrete.pc cst).
 Proof.
   intros.
@@ -234,7 +234,7 @@ Proof.
   (* Syscall case *)
   rewrite /cache_allows_syscall /= in NCALL.
   match goal with
-  | H : Concrete.cache_lookup _ _ _ {| Concrete.cti := encode (ENTRY ?ti) |} = _ |- _ =>
+  | H : Concrete.cache_lookup _ _ {| Concrete.cti := encode (ENTRY ?ti) |} = _ |- _ =>
     move: H => LOOKUP;
     have [sc [GETCALL ENTRYTAG]]: exists sc, Symbolic.get_syscall table pc = Some sc /\
                                              Symbolic.entry_tag sc = ti

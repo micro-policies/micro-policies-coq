@@ -2,7 +2,7 @@ Require Import List. Import ListNotations.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils lib.ordered lib.partial_maps common.common.
+Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import sealing.classes.
 
@@ -86,13 +86,13 @@ Program Instance sym_sealing : params := {
   internal_state := key  (* next key to generate *)
 }.
 
-Import DoNotation. 
+Import DoNotation.
 
 Definition mkkey (s : state t) : option (state t) :=
   let 'State mem reg pc@pct key := s in
-  if key <? max_key then 
+  if key <? max_key then
     let key' := inc_key key in
-    do! reg' <- upd reg syscall_ret (max_word@(KEY key));
+    do! reg' <- upd reg syscall_ret ((max_word t)@(KEY key));
     do! ret  <- get reg ra;
     match ret with
     | _@DATA => Some (State mem reg' ret key')

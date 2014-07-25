@@ -35,8 +35,8 @@ Instance sp : Symbolic.params := Sym.sym_memory_safety t.
    enough bits to define the encoding. We should fix this by choosing
    a different type for blocks.*)
 
-Context {enc : encodable (@Symbolic.tag (Sym.sym_memory_safety t))}
-        {monitor_invariant : @kernel_invariant _ _ _ enc}
+Context {enc : @encodable (@Symbolic.tag (Sym.sym_memory_safety t)) t}
+        {monitor_invariant : @kernel_invariant _ _ enc}
         {syscall_addrs : @memory_syscall_addrs t}
         {ap : Abstract.abstract_params [eqType of word t]}
         {apspec : Abstract.params_spec ap}

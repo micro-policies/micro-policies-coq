@@ -1,9 +1,9 @@
-Require Import List Arith Sorted Bool.
+Require Import List ZArith Arith Sorted Bool.
 Require Import Coq.Classes.SetoidDec.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.utils lib.partial_maps common.common.
+Require Import lib.Integers lib.utils lib.partial_maps common.common.
 Require Import lib.set_utils compartmentalization.ranges.
 
 Set Bullet Behavior "Strict Subproofs".
@@ -41,7 +41,7 @@ Fixpoint isolate_get_ranges (M : Map V)
 Definition isolate_create_set (M : Map V)
                               (base : word t) : option (list (word t)) :=
   do! pairs <- get M base;
-  isolate_get_ranges M (base + 1) (word_to_nat (to_word pairs)).
+  isolate_get_ranges M (base + 1) (Z.to_nat (Word.signed (to_word pairs))).
 
 Local Notation "x ?= y" := (x = Some y) (at level 70, no associativity).
 

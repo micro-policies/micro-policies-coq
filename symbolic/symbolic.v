@@ -94,7 +94,7 @@ Open Scope word_scope.
 
 Local Notation word := (word t).
 Let atom := (atom word tag).
-Local Notation "x .+1" := (add_word x (Z_to_word 1)).
+Local Notation "x .+1" := (Word.add x Word.one).
 
 Local Notation memory := (word_map t atom).
 Local Notation registers := (reg_map t atom).
@@ -157,7 +157,7 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode_instr i = Some (Const n r))
     (OLD  : get reg r = Some old@told),
     let mvec := mkMVec CONST tpc ti [told] in forall
-    (NEXT : next_state_reg st mvec r (imm_to_word n) = Some st'),   step st st'
+    (NEXT : next_state_reg st mvec r (Word.casts n) = Some st'),   step st st'
 | step_mov : forall mem reg pc tpc i ti r1 w1 t1 r2 old told int
     (ST   : st = State mem reg pc@tpc int)
     (PC   : get mem pc = Some i@ti)
@@ -210,8 +210,8 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode_instr i = Some (Bnz r n))
     (RW   : get reg r = Some w@t1),
      let mvec := mkMVec BNZ tpc ti [t1] in
-     let pc' := add_word pc (if w == Z_to_word 0
-                             then Z_to_word 1 else imm_to_word n) in forall
+     let pc' := Word.add pc (if w == Word.zero
+                             then Word.one else Word.casts n) in forall
     (NEXT : next_state_pc st mvec pc' = Some st'),     step st st'
 | step_jal : forall mem reg pc i r w tpc ti t1 old told int
     (ST : st = State mem reg pc@tpc int)
@@ -241,7 +241,7 @@ Definition stepf (st : state) : option state :=
       do! old <- PartMaps.get reg r;
       let: _@told := old in
       let mvec := mkMVec CONST tpc ti [told] in
-      next_state_reg st mvec r (imm_to_word n)
+      next_state_reg st mvec r (Word.casts n)
     | Mov r1 r2 =>
       do! a1 <- PartMaps.get reg r1;
       let: w1@t1 := a1 in
@@ -286,8 +286,8 @@ Definition stepf (st : state) : option state :=
     | Bnz r n =>
       do! a <- PartMaps.get reg r;
       let: w@t1 := a in
-      let pc' := add_word pc (if w == Z_to_word 0
-                              then Z_to_word 1 else imm_to_word n) in
+      let pc' := Word.add pc (if w == Word.zero
+                              then Word.one else Word.casts n) in
       let mvec := mkMVec BNZ tpc ti [t1] in
       next_state_pc st mvec pc'
     | Jal r =>

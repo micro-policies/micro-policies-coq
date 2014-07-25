@@ -24,7 +24,7 @@ Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
 
 Context {ids : @classes.cfi_id t}
-        {enc : rules.encodable rules.cfi_tag_eqType}.
+        {enc : @rules.encodable rules.cfi_tag_eqType t}.
 
 Variable cfg : id -> id -> bool.
 

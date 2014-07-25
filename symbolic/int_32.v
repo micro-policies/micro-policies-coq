@@ -40,7 +40,7 @@ Instance concrete_int_32_fh : fault_handler_params t := {
      should be strictly smaller than word. However, it should work
      fine when used on small immediates *)
   load_const := fun (x : word t) (r : reg t) =>
-    [Const (word_to_imm x) r]
+    [Const (Word.casts x) r]
 }.
 
 Open Scope bool_scope.
@@ -76,7 +76,7 @@ Definition kernelize_syscall (seg : @relocatable_segment concrete_int_32_t w w)
   let (l,gen) := seg in
   ((l + 1)%nat, fun b rest =>
         (* ENTRY tag with constant ut *)
-        (encode_instr (Nop _))@(Z_to_word 2) ::
+        (encode_instr (Nop _))@(Word.repr 2) ::
         map (fun x => x@Concrete.TKernel) (gen b rest)).
 
 Definition kernelize_user_tag t : Word.int 31 :=
@@ -110,12 +110,12 @@ Definition build_monitor_memory
        (map kernelize_syscall syscalls)) in
   match offsets with
   | _ :: extra_state_offset :: syscall_offsets =>
-    let base_addr := fault_handler_start concrete_int_32_ops in
-    let extra_state_addr := add_word base_addr
-                                     (nat_to_word extra_state_offset) in
-    let user_code_addr := add_word base_addr (nat_to_word kernel_length) in
+    let base_addr := fault_handler_start _ in
+    let extra_state_addr := Word.add base_addr
+                                     (Word.reprn extra_state_offset) in
+    let user_code_addr := Word.add base_addr (Word.reprn kernel_length) in
     let syscall_addrs :=
-        map (fun off => add_word base_addr (nat_to_word off))
+        map (fun off => Word.add base_addr (Word.reprn off))
             syscall_offsets in
     let kernel := gen_kernel base_addr extra_state_addr in
     let mem :=
@@ -180,7 +180,7 @@ Program Definition symbolic_initial_state
   let mem :=
     snd (fold_left
       (fun x c => let: (i,m) := x in
-                  (add_word (Z_to_word 1) i, PartMaps.set m i c))
+                  (Word.add Word.one i, PartMaps.set m i c))
       mem_contents
       ((common.val base_addr), PartMaps.empty))
       in

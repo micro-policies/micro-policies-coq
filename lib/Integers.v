@@ -218,6 +218,9 @@ Definition one  := repr 1.
 Definition mone := repr (-1).
 Definition iwordsize := repr zwordsize.
 
+Definition reprn (x: nat) : int :=
+  repr (Z.of_nat x).
+
 Lemma mkint_eq:
   forall x y Px Py, x = y -> mkint x Px = mkint y Py.
 Proof.
@@ -232,6 +235,20 @@ Proof.
   rewrite (H _ _ Px1 Py1).
   rewrite (H _ _ Px2 Py2).
   reflexivity.
+Qed.
+
+Lemma unsigned_inj x y : unsigned x = unsigned y -> x = y.
+Proof.
+  destruct x, y. simpl. apply mkint_eq.
+Qed.
+
+Lemma signed_inj x y : signed x = signed y -> x = y.
+Proof.
+  unfold signed.
+  destruct (zlt (unsigned x) half_modulus) as [E1|E1],
+           (zlt (unsigned y) half_modulus) as [E2|E2];
+  intros H; try solve [apply unsigned_inj; omega];
+  destruct x, y; simpl in *; omega.
 Qed.
 
 Lemma eq_dec: forall (x y: int), {x = y} + {x <> y}.
@@ -3865,6 +3882,7 @@ Arguments is_false {_} _.
 Arguments is_true {_} _.
 Arguments notbool {_} _.
 Arguments repr {_} _.
+Arguments reprn {_} _.
 Arguments unsigned {_} _.
 Arguments signed {_} _.
 Arguments unsigned_range {_} _.
@@ -3878,6 +3896,12 @@ Arguments and {_} _ _.
 Arguments or {_} _ _.
 Arguments xor {_} _ _.
 Arguments neg {_} _.
+
+Definition castu {n m} (w : int n) : int m :=
+  repr (unsigned w).
+
+Definition casts {n m} (w : int n) : int m :=
+  repr (signed w).
 
 (* Given a word of size (S n) , extract a work of size (S s) starting at position p
    (counting positions from 0) *)

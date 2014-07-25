@@ -19,7 +19,7 @@ Context {ops : machine_ops mt}.
 
 Open Scope word_scope.
 
-Local Notation "x .+1" := (x + Z_to_word 1).
+Local Notation "x .+1" := (x + Word.one).
 
 (* TODO: mt should be named t, or vice versa, globally! *)
 Definition step (st : state mt) : option (state mt) :=
@@ -30,69 +30,69 @@ Definition step (st : state mt) : option (state mt) :=
   match instr with
   | Nop =>
     let mvec := mvec TNone TNone TNone in
-    next_state_pc _ masks st mvec (pc.+1)
+    next_state_pc masks st mvec (pc.+1)
   | Const n r =>
     do! old <- PartMaps.get reg r;
     let mvec := mvec (tag old) TNone TNone in
-    next_state_reg _ masks st mvec r (imm_to_word n)
+    next_state_reg masks st mvec r (Word.casts n)
   | Mov r1 r2 =>
     do! v1 <- PartMaps.get reg r1;
     do! old <- PartMaps.get reg r2;
     let mvec := mvec (tag v1) (tag old) TNone in
-    next_state_reg _ masks st mvec r2 (val v1)
+    next_state_reg masks st mvec r2 (val v1)
   | Binop f r1 r2 r3 =>
     do! v1 <- PartMaps.get reg r1;
     do! v2 <- PartMaps.get reg r2;
     do! old <- PartMaps.get reg r3;
     let mvec := mvec (tag v1) (tag v2) (tag old) in
-    next_state_reg _ masks st mvec r3 (binop_denote f (val v1) (val v2))
+    next_state_reg masks st mvec r3 (binop_denote f (val v1) (val v2))
   | Load r1 r2 =>
     do! v1 <- PartMaps.get reg r1;
     do! v2 <- PartMaps.get mem (val v1);
     do! old <- PartMaps.get reg r2;
     let mvec := mvec (tag v1) (tag v2) (tag old) in
-    next_state_reg _ masks st mvec r2 (val v2)
+    next_state_reg masks st mvec r2 (val v2)
   | Store r1 r2 =>
     do! v1 <- PartMaps.get reg r1;
     do! v2 <- PartMaps.get reg r2;
     do! v3 <- PartMaps.get mem (val v1);
     let mvec := mvec (tag v1) (tag v2) (tag v3) in
-    next_state _ masks st mvec (fun rvec =>
+    next_state masks st mvec (fun rvec =>
       do! mem' <- PartMaps.upd mem (val v1) (val v2)@(ctr rvec);
       Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc))
   | Jump r =>
     do! v <- PartMaps.get reg r;
     let mvec := mvec (tag v) TNone TNone in
-    next_state_pc _ masks st mvec (val v)
+    next_state_pc masks st mvec (val v)
   | Bnz r n =>
     do! v <- PartMaps.get reg r;
     let mvec := mvec (tag v) TNone TNone in
-    let pc' := pc + if (val v) == Z_to_word 0 then Z_to_word 1 else imm_to_word n in
-    next_state_pc _ masks st mvec pc'
+    let pc' := pc + if (val v) == Word.zero then Word.one else Word.casts n in
+    next_state_pc masks st mvec pc'
   | Jal r =>
     do! v <- PartMaps.get reg r;
     do! old <- PartMaps.get reg ra;
     let mvec := mvec (tag v) (tag old) TNone in
-    next_state_reg_and_pc _ masks st mvec ra (pc.+1) (val v)
+    next_state_reg_and_pc masks st mvec ra (pc.+1) (val v)
   | JumpEpc =>
     let mvec := mvec (tag epc) TNone TNone in
-    next_state_pc _ masks st mvec (val epc)
+    next_state_pc masks st mvec (val epc)
   | AddRule =>
     let mvec := mvec TNone TNone TNone in
-    next_state _ masks st mvec (fun rvec =>
-      do! cache' <- add_rule ops cache masks mem;
+    next_state masks st mvec (fun rvec =>
+      do! cache' <- add_rule cache masks mem;
       Some (mkState mem reg cache' (pc.+1)@(ctrpc rvec) epc))
   | GetTag r1 r2 =>
     do! v1 <- PartMaps.get reg r1;
     do! old <- PartMaps.get reg r2;
     let mvec := mvec (tag v1) (tag old) TNone in
-    next_state_reg _ masks st mvec r2 (tag v1)
+    next_state_reg masks st mvec r2 (tag v1)
   | PutTag r1 r2 r3 =>
     do! v1 <- PartMaps.get reg r1;
     do! v2 <- PartMaps.get reg r2;
     do! old <- PartMaps.get reg r3;
     let mvec := mvec (tag v1) (tag v2) (tag old) in
-    next_state _ masks st mvec (fun rvec =>
+    next_state masks st mvec (fun rvec =>
       do! reg' <- PartMaps.upd reg r3 (val v1)@(val v2);
       Some (mkState mem reg' cache (pc.+1)@(ctrpc rvec) epc))
   | Halt => None

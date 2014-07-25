@@ -27,7 +27,7 @@ Context {opss : machine_ops_spec ops}.
 Open Scope word_scope.
 
 Local Notation word := (word t).
-Local Notation "x .+1" := (add_word x (Z_to_word 1)).
+Local Notation "x .+1" := (Word.add x Word.one).
 
 Local Notation imemory := (word_map t word).
 Local Notation dmemory := (word_map t word).
@@ -68,7 +68,7 @@ Inductive step : state -> state -> Prop :=
 | step_const : forall imem dmem reg reg' pc i n r,
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Const n r)),
-             forall (UPD : upd reg r (imm_to_word n) = Some reg'),
+             forall (UPD : upd reg r (Word.casts n) = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_mov : forall imem dmem reg reg' pc i r1 r2 w1,
              forall (FETCH : get imem pc = Some i),
@@ -107,8 +107,8 @@ Inductive step : state -> state -> Prop :=
              forall (FETCH : get imem pc = Some i),
              forall (INST : decode_instr i = Some (Bnz r n)),
              forall (RW : get reg r = Some w),
-             let pc' := add_word pc (if w == Z_to_word 0 then Z_to_word 1
-                                     else imm_to_word n) in
+             let pc' := Word.add pc (if w == Word.zero then Word.one
+                                     else Word.casts n) in
              step (State imem dmem reg pc true) (State imem dmem reg pc' true)
 | step_jal : forall imem dmem reg reg' pc i r w b,
              forall (FETCH : get imem pc = Some i),
@@ -120,17 +120,17 @@ Inductive step : state -> state -> Prop :=
 | step_syscall : forall imem dmem dmem' reg reg' pc pc' sc,
                  forall (FETCH : get imem pc = None),
                  forall (NOUSERM : get dmem pc = None),
-                 forall (GETCALL : get_syscall pc = Some sc), 
+                 forall (GETCALL : get_syscall pc = Some sc),
                  forall (CALL : sem sc (State imem dmem reg pc true) =
                                 Some (State imem dmem' reg' pc' true)),
-                 step (State imem dmem reg pc true) 
+                 step (State imem dmem reg pc true)
                       (State imem dmem' reg' pc' true).
 
 Inductive step_a : state -> state -> Prop :=
 | step_attack : forall imem dmem dmem' reg reg' pc b
              (MSAME: same_domain dmem dmem')
              (RSAME: same_domain reg reg'),
-             step_a (State imem dmem reg pc b) 
+             step_a (State imem dmem reg pc b)
                     (State imem dmem' reg' pc b).
 
 (* Extending valid_jmp to a complete allowed CFG *)
@@ -142,11 +142,11 @@ Definition succ (st : state) (st' : state) : bool :=
       match decode_instr i with
         | Some (Jump r) => valid_jmp pc pc'
         | Some (Jal r) => valid_jmp pc pc'
-        | Some (Bnz r imm) => (pc' == pc .+1) || (pc' == pc + imm_to_word imm)
+        | Some (Bnz r imm) => (pc' == pc .+1) || (pc' == pc + Word.casts imm)
         | None => false
         | _ => pc' == pc .+1
       end
-    | None => 
+    | None =>
       match get dmem pc with
         | Some _ => false
         | None =>
@@ -161,7 +161,7 @@ Definition succ (st : state) (st' : state) : bool :=
       end
   end.
 
-Definition initial (s : state) := 
+Definition initial (s : state) :=
   cont s = true.
 
 Definition all_attacker (xs : list state) : Prop :=
@@ -187,7 +187,7 @@ Program Instance abstract_cfi_machine : cfi_machine := {|
 Lemma step_succ_violation ast ast' :
    succ ast ast' = false ->
    step ast ast' ->
-   cont ast = true /\ cont ast' = false. 
+   cont ast = true /\ cont ast' = false.
 Proof.
   intros SUCC STEP.
   inversion STEP; subst; simpl in SUCC; rewrite FETCH in SUCC;
@@ -195,7 +195,7 @@ Proof.
   try (rewrite eqxx in SUCC; congruence);
   try (destruct (w == 0)); try (rewrite eqxx ?orbT in SUCC);
   try (rewrite RW in SUCC);
-  try rewrite GETCALL NOUSERM in SUCC; 
+  try rewrite GETCALL NOUSERM in SUCC;
   try congruence; auto.
 Qed.
 
@@ -253,7 +253,7 @@ Proof.
     by (simpl; right; auto).
   auto.
 Qed.
-  
+
 Lemma stuck_states_preserved_by_a asi tl :
   all_attacker (asi :: tl) ->
   cont asi = false ->
@@ -264,7 +264,7 @@ Proof.
   induction tl; intros.
   - destruct IN.
   - destruct IN as [? | IN].
-    + subst. 
+    + subst.
       assert (IN2: In2 asi asj (asi :: asj :: tl))
         by (simpl; auto).
       apply ALLATTACKER in IN2.
@@ -303,12 +303,12 @@ Proof.
         simpl; repeat (split;auto).
         intros ? ? IN2. destruct IN2.
         intros ? ? IN2. destruct IN2.
-        unfold stopping. 
+        unfold stopping.
         intros si sj CONTRA. by destruct CONTRA.
         intros si IN. destruct IN as [? | IN]; [subst | destruct IN].
         destruct (step_succ_violation SUCC STEP) as [H1 H2].
         intros (? & CONTRA).
-        inv CONTRA; simpl in H2; by discriminate.     
+        inv CONTRA; simpl in H2; by discriminate.
   + apply interm_equiv_intermrev in INTERM.
     destruct (IHINTERM INIT) as [TSAFE | [sv1 [sv2 [hs [tl VIOLATION]]]]].
     { unfold trace_has_cfi in TSAFE.
@@ -346,15 +346,15 @@ Proof.
         simpl; rewrite <- app_assoc. repeat (split; auto).
         intros ? ? IN2.
         destruct IN2.
-        unfold stopping. 
+        unfold stopping.
         intros ? ? CONTRA. destruct CONTRA.
         intros si IN.
         destruct IN as [? | IN]; [subst | destruct IN].
         destruct (step_succ_violation SUCC STEP) as [H1 H2].
         intros (? & CONTRA).
-        inv CONTRA; simpl in H2; by discriminate.   
+        inv CONTRA; simpl in H2; by discriminate.
     }
-    { (*Case a violation occurs in the trace*) 
+    { (*Case a violation occurs in the trace*)
      induction xs using rev_ind; [inversion INTERM | subst; clear IHxs].
      destruct VIOLATION as [LST [VIO [T1 [T2 STOPS]]]].
      rewrite LST in INTERM. simpl in *.
@@ -366,15 +366,15 @@ Proof.
        right.
        rewrite LST.
        exists sv1; exists sv2; exists hs; exists (tl ++ [s'']).
-       split. 
+       split.
        { rewrite <- app_assoc. by reflexivity. }
-       { split. 
+       { split.
          { simpl; split; by auto. }
          { split; [assumption | simpl].
            split.
            - intros si sj IN2 STEP.
              induction tl using rev_ind.
-             * simpl in IN2. 
+             * simpl in IN2.
                destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
                inv STEP; simpl in H2; discriminate.
              * clear IHtl.
@@ -404,7 +404,7 @@ Proof.
              { (*all attacker*)
                intros si sj IN2.
                destruct tl using rev_ind.
-               - simpl in IN2. 
+               - simpl in IN2.
                  destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
                  change (hs ++ [sv1; si]) with (hs ++ [sv1] ++ [si]) in INTERM.
                  rewrite app_assoc in INTERM.
@@ -427,7 +427,7 @@ Proof.
                - destruct IN as [? | IN].
                  + subst. intros (? & CONTRA).
                    destruct (step_succ_violation SUCC VSTEP) as [H3 H4].
-                   inv CONTRA; simpl in H3; by discriminate.  
+                   inv CONTRA; simpl in H3; by discriminate.
                  + destruct IN as [? | CONTRA].
                    * subst. intros (? & CONTRA).
                      destruct (step_succ_violation SUCC VSTEP) as [H3 H4].
@@ -436,7 +436,7 @@ Proof.
                      apply interm_last_step in INTERM. subst.
                      assert (EQ:= step_a_violation STEPA).
                      rewrite EQ in H4.
-                     inv CONTRA; simpl in H4; by discriminate. 
+                     inv CONTRA; simpl in H4; by discriminate.
                    * destruct CONTRA.
                - clear IHtl.
                  rewrite app_comm_cons in IN.
@@ -444,7 +444,7 @@ Proof.
                  destruct IN as [IN | ?]; subst.
                  + apply ALLSTUCK; by assumption.
                  + rewrite <- LST in INTERM.
-                   assert (EQ:= interm_last_step INTERM); 
+                   assert (EQ:= interm_last_step INTERM);
                    apply list_theorem in LST; subst.
                    subst.
                    unfold all_stuck in ALLSTUCK.
@@ -465,15 +465,15 @@ Proof.
      - right.
        rewrite LST.
        exists sv1; exists sv2; exists hs; exists (tl ++ [s'']).
-       split. 
+       split.
        { rewrite <- app_assoc. by reflexivity. }
-       { split. 
+       { split.
          { simpl; split; by auto. }
          { split; [assumption | simpl].
            split.
            - intros si sj IN2 STEP'.
              induction tl using rev_ind.
-             * simpl in IN2. 
+             * simpl in IN2.
                destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
                inv STEP'; simpl in H2; discriminate.
              * clear IHtl.
@@ -496,7 +496,7 @@ Proof.
                  assert (IN: In si (sv2 :: tl ++ [si]))
                    by (eauto using list_utils.in_last).
                  apply ALLSTUCK in IN.
-                 assert (ESTEP : exists s, step si s) 
+                 assert (ESTEP : exists s, step si s)
                    by (eexists; eauto).
                  destruct (IN ESTEP).
            - unfold stopping.
@@ -504,7 +504,7 @@ Proof.
              { (*all attacker*)
                intros si sj IN2.
                destruct tl using rev_ind.
-               - simpl in IN2. 
+               - simpl in IN2.
                  destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
                  change (hs ++ [sv1; si]) with (hs ++ [sv1] ++ [si]) in INTERM.
                  rewrite app_assoc in INTERM.
@@ -533,7 +533,7 @@ Proof.
                - destruct IN as [? | IN].
                  + subst. intros (? & CONTRA).
                    destruct (step_succ_violation SUCC VSTEP) as [H3 H4].
-                   inv CONTRA; simpl in H3; by discriminate.  
+                   inv CONTRA; simpl in H3; by discriminate.
                  + destruct IN as [? | CONTRA].
                    * subst. intros (? & CONTRA).
                      destruct (step_succ_violation SUCC VSTEP) as [H3 H4].
@@ -543,7 +543,7 @@ Proof.
                      assert (IN: In s' [s']) by (simpl; auto).
                      apply ALLSTUCK in IN.
                      exfalso.
-                     apply IN. eexists; eauto. 
+                     apply IN. eexists; eauto.
                    * destruct CONTRA.
                - clear IHtl.
                  rewrite app_comm_cons in IN.
@@ -551,7 +551,7 @@ Proof.
                  destruct IN as [IN | ?]; subst.
                  + apply ALLSTUCK; by assumption.
                  + rewrite <- LST in INTERM.
-                   assert (EQ:= interm_last_step INTERM); 
+                   assert (EQ:= interm_last_step INTERM);
                    apply list_theorem in LST; subst.
                    subst.
                    unfold all_stuck in ALLSTUCK.
@@ -563,7 +563,7 @@ Proof.
                   apply IN; eexists; eauto.
              }
          }
-       }           
+       }
     }
 Qed.
 

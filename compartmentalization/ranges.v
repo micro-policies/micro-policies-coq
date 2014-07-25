@@ -1,6 +1,6 @@
 Require Import List Bool ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import lib.utils common.common lib.ordered.
+Require Import lib.Integers lib.utils common.common lib.ordered.
 Require Import lib.list_utils lib.set_utils.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -22,28 +22,25 @@ Fixpoint range' (meas : nat) (l h : word) : list word :=
     | S meas' , Gt => []
   end.
 
-Lemma addw_succ : forall w1 w2,
-  w1 < w2 -> word_to_Z (w1 + Z_to_word 1)%w = (word_to_Z w1 + 1)%Z.
+Lemma addw_succ : forall w1 w2 : word,
+  w1 < w2 -> Word.signed (w1 + 1)%w = (Word.signed w1 + 1)%Z.
 Proof.
-  intros x y LT.
-  rewrite <- (word_to_ZK x) at 1; rewrite <- (word_to_ZK 1).
-  rewrite addwP.
-  repeat rewrite Z_to_wordK;
-    try solve [ reflexivity
-              | generalize min_word_bound, max_word_bound; omega ].
-  assert (word_to_Z min_word <= word_to_Z x)%Z by
-    (rewrite <- word_to_Z_le; apply lew_min).
-  assert (word_to_Z y <= word_to_Z max_word)%Z by 
-    (rewrite <- word_to_Z_le; apply lew_max).
-  assert (word_to_Z x < word_to_Z max_word)%Z by
-    (apply word_to_Z_lt in LT; omega).
+  move => x y LT.
+  rewrite -{1}(Word.repr_signed _ x) /Word.one Word.add_repr.
+  apply Word.signed_repr.
+  rewrite /lt IntOrdered.compare_signed in LT.
+  move: (Word.signed_range _ x) (Word.signed_range _ y) => *.
+  have ?: (Word.signed x < Word.signed y)%Z by auto.
   omega.
-Qed.  
+Qed.
 
-Lemma lebw_succ : forall x y, x < y -> x <? x + 1 = true.
+Lemma lebw_succ : forall x y : word, x < y -> x <? x + 1 = true.
 Proof.
-  intros x y LT. apply addw_succ in LT.
-  rewrite word_to_Z_ltb LT Z.ltb_lt; omega.
+  move => x y /(addw_succ _) H.
+  rewrite /ltb !IntOrdered.compare_signed H.
+  case E: (Word.signed _ ?= Word.signed _ + _)%Z => //=.
+  - move/Z.compare_eq_iff: E => E. omega.
+  - move/Z.compare_gt_iff: E => E. omega.
 Qed.
 
 Theorem range'_set : forall meas l h,
@@ -53,8 +50,8 @@ Proof.
   intros l h; destruct (l <=> h) eqn:CMP; try reflexivity.
   simpl; rewrite IHmeas.
   destruct meas; simpl; [reflexivity|].
-  destruct (l + 1 <=> h) eqn:CMP';
-    solve [ reflexivity | rewrite andb_true_r; eapply lebw_succ; eassumption ].
+  case CMP': (l + 1 <=> h); try
+    try solve [ reflexivity | rewrite andb_true_r; eapply lebw_succ; eassumption ].
 Qed.
 
 Theorem range'_elts_ok : forall meas l h e,
@@ -73,7 +70,7 @@ Proof.
 Qed.
 
 Definition range (l h : word) :=
-  range' (Z.to_nat ((word_to_Z h - word_to_Z l) + 1)%Z) l h.
+  range' (Z.to_nat ((Word.signed h - Word.signed l) + 1)%Z) l h.
 
 Corollary range_set : forall l h, is_set (range l h) = true.
 Proof. intros until 0; apply range'_set. Qed.
@@ -83,14 +80,14 @@ Corollary range_elts_ok : forall l h e,
   In e (range l h) -> l <= e <= h.
 Proof. intros until 0; apply range'_elts_ok. Qed.
 
-Lemma addw_le : forall x y,
+Lemma addw_le : forall x y : word,
   x < y -> x + 1 <= y.
 Proof.
-  intros x y LT.
-  apply word_to_Z_le.
-  erewrite addw_succ by eassumption.
-  apply word_to_Z_lt in LT.
-  omega.
+  move => x y LT.
+  rewrite /le IntOrdered.compare_signed (addw_succ _ _ LT).
+  move => /Z.compare_gt_iff ?.
+  rewrite /lt IntOrdered.compare_signed in LT.
+  move: LT => /Z.compare_lt_iff LT. omega.
 Qed.
 
 Theorem range_elts_all : forall l h e,
@@ -98,11 +95,16 @@ Theorem range_elts_all : forall l h e,
 Proof.
   unfold range; intros l h e [LE EH];
     assert (LH : l <= h) by eauto with ordered.
-  remember (Z.to_nat ((word_to_Z h - word_to_Z l) + 1)%Z) as meas eqn:meas_def'.
-  assert (meas_def : meas = S (Z.to_nat (word_to_Z h - word_to_Z l))). {
-    rewrite Z2Nat.inj_add in meas_def'; try solve [vm_compute; inversion 1].
+  remember (Z.to_nat ((Word.signed h - Word.signed l) + 1)%Z) as meas eqn:meas_def'.
+  assert (meas_def : meas = S (Z.to_nat (Word.signed h - Word.signed l))). {
+    rewrite Z2Nat.inj_add in meas_def'.
     - rewrite plus_comm in meas_def'; simpl in meas_def'; exact meas_def'.
-    - apply Z.le_0_sub, word_to_Z_le; exact LH.
+    - clear meas.
+      move: LH => /(le__lt_or_eq _ _) [LH | ->].
+      + rewrite /lt IntOrdered.compare_signed in LH.
+        move/Z.compare_lt_iff: LH => LH. omega.
+      + move/Z.compare_gt_iff => H. omega.
+    - move/Z.compare_gt_iff => ?. omega.
   }
   clear meas_def'; gdep e; gdep h; gdep l; induction meas; intros;
     simpl in *; inversion meas_def; subst; clear meas_def.
@@ -113,13 +115,13 @@ Proof.
   - simpl. apply le__lt_or_eq in LE; destruct LE as [LE | LE]; auto.
     right; apply IHmeas; eauto using addw_le.
     erewrite addw_succ by eassumption.
-    replace (word_to_Z h - (word_to_Z l + 1))%Z
-       with (word_to_Z h - word_to_Z l - 1)%Z
+    replace (Word.signed h - (Word.signed l + 1))%Z
+       with (Word.signed h - Word.signed l - 1)%Z
          by omega.
     rewrite <- Z2Nat.inj_succ.
     + f_equal; omega.
-    + rewrite Z.sub_1_r; apply Zlt_0_le_0_pred, Z.lt_0_sub, word_to_Z_lt;
-        exact CMP.
+    + rewrite IntOrdered.compare_signed in CMP.
+      move/Z.compare_lt_iff: CMP => CMP. omega.
   - contradiction.
 Qed.
 

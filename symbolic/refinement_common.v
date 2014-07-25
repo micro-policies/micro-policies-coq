@@ -26,7 +26,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
-        {e : @encodable Symbolic.tag mt ops}.
+        {e : @encodable Symbolic.tag mt}.
 
 Definition refine_memory (amem : Symbolic.memory mt _) (cmem : Concrete.memory mt) :=
   forall w x t,
@@ -38,9 +38,9 @@ Definition refine_registers (areg : Symbolic.registers mt _) (creg : Concrete.re
     PartMaps.get creg n = Some x@(encode (USER t)) <->
     PartMaps.get areg n = Some x@t.
 
-Definition in_kernel st :=
+Definition in_kernel (st : Concrete.state mt) :=
   let pct := common.tag (Concrete.pc st) in
-  Concrete.is_kernel_tag _ pct.
+  Concrete.is_kernel_tag pct.
 Hint Unfold in_kernel.
 
 Definition in_user st :=
@@ -53,12 +53,12 @@ Let handler := handler (fun x => Symbolic.handler x).
 Definition cache_correct cache :=
   forall cmvec crvec,
     word_lift (fun x => is_user x) (Concrete.ctpc cmvec) = true ->
-    Concrete.cache_lookup ops cache masks cmvec = Some crvec ->
+    Concrete.cache_lookup cache masks cmvec = Some crvec ->
     exists rvec,
       crvec = encode_rvec rvec /\
       handler cmvec = Some rvec.
 
-Definition in_mvec addr := In addr (Concrete.mvec_fields _).
+Definition in_mvec addr := In addr (Concrete.mvec_fields mt).
 
 Definition mvec_in_kernel (cmem : Concrete.memory mt) :=
   forall addr,
@@ -66,7 +66,7 @@ Definition mvec_in_kernel (cmem : Concrete.memory mt) :=
     exists w : (word mt), PartMaps.get cmem addr = Some w@Concrete.TKernel.
 
 Lemma store_mvec_mvec_in_kernel cmem cmem' mvec :
-  Concrete.store_mvec ops cmem mvec = Some cmem' ->
+  Concrete.store_mvec cmem mvec = Some cmem' ->
   mvec_in_kernel cmem'.
 Proof.
   unfold Concrete.store_mvec, mvec_in_kernel, in_mvec.
@@ -84,7 +84,7 @@ Qed.
 Lemma mvec_in_kernel_store_mvec cmem mvec :
   mvec_in_kernel cmem ->
   exists cmem',
-    Concrete.store_mvec ops cmem mvec = Some cmem'.
+    Concrete.store_mvec cmem mvec = Some cmem'.
 Proof.
   unfold mvec_in_kernel, in_mvec, Concrete.mvec_fields, Concrete.store_mvec.
   intros DEF.
@@ -127,7 +127,7 @@ Record kernel_invariant : Type := {
   kernel_invariant_store_mvec :
     forall mem mem' mvec regs cache int
            (KINV : kernel_invariant_statement mem regs cache int)
-           (MVEC : Concrete.store_mvec ops mem mvec = Some mem'),
+           (MVEC : Concrete.store_mvec mem mvec = Some mem'),
       kernel_invariant_statement mem' regs cache int
 }.
 
@@ -138,7 +138,7 @@ Hint Resolve kernel_invariant_store_mvec.
 Variable ki : kernel_invariant.
 
 Lemma is_user_pc_tag_is_kernel_tag tg :
-  word_lift (fun x => is_user x) tg = true -> Concrete.is_kernel_tag _ tg = false.
+  word_lift (fun x => is_user x) tg = true -> Concrete.is_kernel_tag tg = false.
 Proof.
   unfold word_lift, is_user, Concrete.is_kernel_tag.
   destruct (decode tg) as [[ut| |]|] eqn:E; try discriminate.
@@ -452,7 +452,7 @@ Import Vector.VectorNotations.
 
 Lemma analyze_cache cache cmvec crvec op :
   cache_correct cache ->
-  Concrete.cache_lookup _ cache masks cmvec = Some crvec ->
+  Concrete.cache_lookup cache masks cmvec = Some crvec ->
   word_lift (fun t => is_user t) (Concrete.ctpc cmvec) = true ->
   Concrete.cop cmvec = op_to_word op ->
   exists tpc, Concrete.ctpc cmvec = encode (USER tpc) /\
@@ -527,7 +527,7 @@ Proof.
 Qed.
 
 Let miss_state_not_user st st' mvec :
-  Concrete.miss_state ops st mvec = Some st' ->
+  Concrete.miss_state st mvec = Some st' ->
   in_user st' = true ->
   False.
 Proof.
@@ -542,13 +542,13 @@ Qed.
 
 Ltac analyze_cache :=
   match goal with
-  | LOOKUP : Concrete.cache_lookup _ ?cache _ ?mvec = Some ?rvec,
+  | LOOKUP : Concrete.cache_lookup ?cache _ ?mvec = Some ?rvec,
     PC     : PartMaps.get _ ?pc = Some ?i@_,
     INST   : decode_instr ?i = Some _,
     INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
     CACHE  : cache_correct ?cache |- _ =>
     unfold in_user in INUSER; simpl in INUSER;
-    assert (CACHEHIT := analyze_cache mvec _ CACHE LOOKUP INUSER (erefl _));
+    assert (CACHEHIT := analyze_cache mvec CACHE LOOKUP INUSER (erefl _));
     simpl in CACHEHIT;
     repeat match type of CACHEHIT with
     | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
@@ -831,7 +831,7 @@ Definition cache_allows_syscall (cst : Concrete.state mt) : bool :=
     let cmvec := Concrete.mkMVec (op_to_word NOP)
                                  (common.tag (Concrete.pc cst)) (encode (ENTRY (Symbolic.entry_tag sc)))
                                  Concrete.TNone Concrete.TNone Concrete.TNone in
-    match Concrete.cache_lookup _ (Concrete.cache cst) masks cmvec with
+    match Concrete.cache_lookup (Concrete.cache cst) masks cmvec with
     | Some _ => true
     | None => false
     end
@@ -848,7 +848,7 @@ Class kernel_code_correctness : Prop := {
     (* and calling the handler on the current m-vector succeeds and returns rvec... *)
     handler cmvec = Some rvec ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
-    Concrete.store_mvec ops mem cmvec = Some mem' ->
+    Concrete.store_mvec mem cmvec = Some mem' ->
     (* and the concrete rule cache is correct (in the sense that every
        rule it holds is exactly the concrete representations of
        some (mvec,rvec) pair in the relation defined by the [handler]
@@ -862,13 +862,13 @@ Class kernel_code_correctness : Prop := {
     exists st',
       kernel_user_exec
         (Concrete.mkState mem' reg cache
-                          (Concrete.fault_handler_start (t := mt) _)@Concrete.TKernel
+                          (Concrete.fault_handler_start _)@Concrete.TKernel
                           old_pc)
         st' /\
       (* then the new cache is still correct... *)
       cache_correct (Concrete.cache st') /\
       (* and the new cache now contains a rule mapping mvec to rvec... *)
-      Concrete.cache_lookup _ (Concrete.cache st') masks cmvec = Some (encode_rvec rvec) /\
+      Concrete.cache_lookup (Concrete.cache st') masks cmvec = Some (encode_rvec rvec) /\
       (* and the mvec has been tagged as kernel data (BCP: why is this important??) *)
       mvec_in_kernel (Concrete.mem st') /\
       (* and we've arrived at the return address that was in epc with
@@ -890,13 +890,13 @@ Class kernel_code_correctness : Prop := {
     (* and calling the handler on mvec FAILS... *)
     handler cmvec = None ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
-    Concrete.store_mvec ops mem cmvec = Some mem' ->
+    Concrete.store_mvec mem cmvec = Some mem' ->
     (* then if we start the concrete machine in kernel mode and let it
        run, it will never reach a user-mode state. *)
     in_kernel st' = false ->
     ~ exec (Concrete.step _ masks)
       (Concrete.mkState mem' reg cache
-                        (Concrete.fault_handler_start (t := mt) _)@Concrete.TKernel
+                        (Concrete.fault_handler_start _)@Concrete.TKernel
                         old_pc)
       st';
 

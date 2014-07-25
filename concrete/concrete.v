@@ -48,11 +48,11 @@ Let rules := rules (word t).
 Let atom := atom (word t) (word t).
 
 (* If we were doing good modularization, these would be abstract! *)
-Definition cache_line_addr : word t := Z_to_word 0.
+Definition cache_line_addr : word t := Word.zero.
 (* BCP: Call it fault_handler_addr? *)
-Definition fault_handler_start : word t := Z_to_word 8.
-Definition TNone   : word t := Z_to_word 42.  (* Recognizable enough? *)
-Definition TKernel : word t := Z_to_word 0.
+Definition fault_handler_start : word t := Word.repr 8.
+Definition TNone   : word t := Word.repr 42.  (* Recognizable enough? *)
+Definition TKernel : word t := Word.repr 0.
 
 Context {spops : machine_ops_spec ops}.
 
@@ -69,14 +69,14 @@ Proof.
     apply word_map_axioms.
 Qed.
 
-Definition Mop : word t := add_word cache_line_addr (Z_to_word 0).
-Definition Mtpc : word t := add_word cache_line_addr (Z_to_word 1).
-Definition Mti : word t := add_word cache_line_addr (Z_to_word 2).
-Definition Mt1 : word t := add_word cache_line_addr (Z_to_word 3).
-Definition Mt2 : word t := add_word cache_line_addr (Z_to_word 4).
-Definition Mt3 : word t := add_word cache_line_addr (Z_to_word 5).
-Definition Mtrpc : word t := add_word cache_line_addr (Z_to_word 6).
-Definition Mtr : word t := add_word cache_line_addr (Z_to_word 7).
+Definition Mop : word t := Word.add cache_line_addr (Word.repr 0).
+Definition Mtpc : word t := Word.add cache_line_addr (Word.repr 1).
+Definition Mti : word t := Word.add cache_line_addr (Word.repr 2).
+Definition Mt1 : word t := Word.add cache_line_addr (Word.repr 3).
+Definition Mt2 : word t := Word.add cache_line_addr (Word.repr 4).
+Definition Mt3 : word t := Word.add cache_line_addr (Word.repr 5).
+Definition Mtrpc : word t := Word.add cache_line_addr (Word.repr 6).
+Definition Mtr : word t := Word.add cache_line_addr (Word.repr 7).
 
 Definition mvec_fields := [Mop; Mtpc; Mti; Mt1; Mt2; Mt3].
 Definition rvec_fields := [Mtrpc; Mtr].
@@ -184,7 +184,7 @@ Section ConcreteSection.
 
 Variable masks : Masks.
 
-Local Notation "x .+1" := (add_word x (Z_to_word 1)).
+Local Notation "x .+1" := (Word.add x Word.one).
 
 (* The mvector is written at fixed locations in kernel memory where
    the fault handler can access them (using the same addresses as for
@@ -239,7 +239,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (Const n r)),
     forall (OLD : PartMaps.get reg r = Some old@told),
     let mvec := mkMVec (op_to_word CONST) tpc ti told TNone TNone in
-    forall (NEXT : next_state_reg st mvec r (imm_to_word n) = Some st'),
+    forall (NEXT : next_state_reg st mvec r (Word.casts n) = Some st'),
       step st st'
 | step_mov :
     forall mem reg cache pc epc r1 w1 r2 tpc i ti t1 old told,
@@ -304,7 +304,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (Bnz r n)),
     forall (REG : PartMaps.get reg r = Some w@t1),
     let mvec := mkMVec (op_to_word BNZ) tpc ti t1 TNone TNone in
-    let pc' := pc + if w == Z_to_word 0 then Z_to_word 1 else imm_to_word n in
+    let pc' := pc + if w == Word.repr 0 then Word.repr 1 else Word.casts n in
     forall (NEXT : next_state_pc st mvec pc' = Some st'),
       step st st'
 | step_jal :
@@ -373,5 +373,5 @@ End Concrete.
 
 Arguments Concrete.state t.
 Arguments Concrete.mkState {_} _ _ _ _ _.
-Arguments Concrete.TNone {t _}.
-Arguments Concrete.TKernel {t _}.
+Arguments Concrete.TNone {t}.
+Arguments Concrete.TKernel {t}.
