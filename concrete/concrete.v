@@ -14,11 +14,12 @@ Open Scope bool_scope.
 Open Scope Z_scope.
 Open Scope word_scope.
 
-(* CH: Why aren't these Ts instantiated with (word t) right away?  Is
+(* CH (old): Why aren't these Ts instantiated with (word t) right away?  Is
    there any other instantiation of this? If this is so general, why
    doesn't it replace the MVec and RVec in fault_handler_spec.v?  (we
    would need to distinguish between the type of tags and the type of
    opcodes for that) *)
+(* CH (new): to me it seems we should just replace T by (word t) *)
 Record MVec (T : Type) : Type := mkMVec {
   cop  : T;
   ctpc : T;
