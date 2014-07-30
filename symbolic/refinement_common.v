@@ -810,12 +810,6 @@ Definition option_bool_to_bool (ob : option bool) :=
   | _ => false
   end.
 
-Definition is_syscall_return (cst cst' : Concrete.state mt) :=
-  in_kernel cst && in_user cst' && (option_bool_to_bool (
-    do! i <- PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst));
-    do! di <- decode_instr (common.val i);
-    Some (di == Jump (@ra mt ops)))).
-
 Definition visible cst cst' :=
   in_user cst && in_user cst'.
 
