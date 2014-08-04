@@ -257,7 +257,7 @@ Definition stepf (st : state) : option state :=
       do! a3 <- PartMaps.get reg r3;
       let: _@told := a3 in
       let mvec := mkMVec (BINOP op) tpc ti [t1;t2;told] in
-      next_state_reg st mvec r2 (binop_denote op w1 w2)
+      next_state_reg st mvec r3 (binop_denote op w1 w2)
     | Load r1 r2 =>
       do! a1 <- PartMaps.get reg r1;
       let: w1@t1 := a1 in
@@ -310,7 +310,49 @@ Definition stepf (st : state) : option state :=
     end
   end.
 
-(* TODO: Prove correctness! *)
+Lemma atom_eta : forall a : atom, a = (val a)@(common.tag a).
+Proof. destruct a; reflexivity. Qed.
+
+Ltac atom_eta :=
+  match goal with
+  | |- ?t = _ => apply (eq_trans (atom_eta t) (erefl _))
+  end.
+
+Lemma stepP : 
+  forall st st',
+    stepf st = Some st' <->
+    step st st'.
+Proof.
+  intros st st'. split; intros STEP.
+  { destruct st as [mem reg [pc tpc] int].
+    simpl in STEP. 
+    destruct (get mem pc) as [[i ti]|] eqn:GET; 
+    rewrite GET in STEP; apply bind_inv in STEP.
+    - destruct STEP as (instr & INSTR & STEP).
+      destruct instr; try discriminate;
+          repeat match goal with
+             | STEP : (do! x <- ?t; _) = Some _ |- _ =>
+               destruct t eqn:?; simpl in STEP; try discriminate
+             | x : common.atom _ _ |- _ =>
+               destruct x; simpl in *
+             | rv : RVec _ |- _ =>
+               destruct rv; simpl in *
+             | H : Some _ = Some _ |- _ =>
+               inversion H; subst
+           end;
+          econstructor (solve [eauto | atom_eta]).
+    - destruct STEP as (sc & GETCALL & STEP).
+      econstructor(solve [eauto | atom_eta]).
+  }
+  { unfold stepf.
+    inversion STEP; subst; rewrite PC; try (subst mvec);
+    simpl;
+    repeat match goal with
+             | [H: ?Expr = _ |- context[?Expr]] =>
+               rewrite H; simpl
+           end; by reflexivity.
+  }
+Qed.
 
 End WithClasses.
 

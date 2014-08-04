@@ -230,8 +230,6 @@ Proof.
       eapply IHxs; eauto.
 Qed.
 
-
-
 Lemma all_attacker_red ast ast' axs :
   all_attacker (ast :: ast' :: axs) ->
   all_attacker (ast' :: axs).
@@ -279,6 +277,131 @@ Proof.
       eapply IHtl; eauto.
 Qed.
 
+Lemma stuck_trace s s' xs s'' :
+  interm (cfi_step abstract_cfi_machine) (s :: xs) s s'' ->
+  cont s = false ->
+  In s' (s :: xs) ->
+  ~ exists s''', step s' s'''.
+Proof.
+  intros INTERM CONT IN (s''' & STEP).
+  induction INTERM as [? ? STEP'|? ? ? ? STEP' INTERM'].
+  - destruct IN as [? | IN]; subst.
+    + inv STEP; by discriminate.
+    + destruct IN as [? | IN]; [subst | inv IN].
+      destruct STEP' as [STEPA | STEPN].
+      * inv STEPA; simpl in *;
+        inv STEP; by discriminate.
+      * inv STEPN; by discriminate.
+  - destruct IN as [? | IN]; 
+    [inv STEP; by discriminate | subst].
+    destruct STEP' as [STEPA | STEPN].
+    + inv STEPA. 
+      simpl in *.
+      by auto.
+    + inv STEPN; by discriminate.
+Qed.
+
+Theorem cfi : cfi abstract_cfi_machine.
+Proof.
+  unfold cfi.
+  intros.
+  clear INIT.
+  induction INTERM as [s s' STEP | s s' s'' xs STEP INTERM ].
+  - unfold trace_has_at_most_one_violation.
+    destruct STEP as [STEPA | STEPN].
+    + left. unfold trace_has_cfi.
+      intros si sj INTRACE STEP.
+      destruct (succ si sj) eqn:SUCC; first assumption.
+      destruct (step_succ_violation SUCC STEP) as [CONT1 CONT2].
+      assert (CONTRA := step_a_violation STEPA).
+      destruct INTRACE as [[? ?]|INTRACE]; 
+        [subst; by congruence | by (inv INTRACE)].
+    + unfold trace_has_cfi.
+      destruct (succ s s') eqn:SUCC.
+      * left. intros.
+        destruct INTRACE as [[? ?]|INTRACE]; 
+        [subst; by assumption | by (inv INTRACE)].
+      * right.
+        exists s; exists s'; do 2 exists [].
+        simpl; repeat split; try (auto || intros ? ? IN2; by (destruct IN2)).
+        intros ? IN [s0 STEP].
+        destruct IN as [? | IN]; [subst | destruct IN].
+        destruct (step_succ_violation SUCC STEPN) as [H1 H2].
+        inv STEP; simpl in H2; by discriminate.
+  - unfold trace_has_at_most_one_violation in IHINTERM.
+    destruct IHINTERM as [TCFI | [sv1 [sv2 [hs [tl VIOLATION]]]]].
+    { (*case no violation in the trace*)
+      destruct STEP as [STEPA | STEPN].
+      - left. unfold trace_has_cfi.
+        intros si sj INTRACE STEP.
+        destruct (succ si sj) eqn:SUCC; first assumption.
+        destruct (step_succ_violation SUCC STEP) as [CONT1 CONT2];
+        assert (CONTRA := step_a_violation STEPA);
+        destruct xs; first (by inv INTRACE);
+        apply interm_first_step in INTERM; subst;
+        destruct INTRACE as [[? ?]|INTRACE]; 
+          [subst; by congruence | auto].
+      - destruct (succ s s') eqn:SUCC.
+        + left. intros ? ? INTRACE STEP.
+          destruct xs; first (by inv INTRACE).
+          apply interm_first_step in INTERM; subst.
+          destruct INTRACE as [[? ?]|INTRACE];
+            [subst; by assumption | by auto].
+        + right.
+          destruct xs; first (by inv INTERM).
+          assert (EQ := interm_first_step INTERM); subst.
+          exists s; exists s'; exists []; exists xs.
+          simpl; repeat split;
+          try (auto || intros ? ? IN2; by (destruct IN2)).
+          { intros ? ? IN2.
+            assert (STEP := interm_in2_step INTERM IN2).
+            destruct STEP as [STEPA | STEPN']; first (by assumption).
+            unfold trace_has_cfi in TCFI.
+            exfalso.
+            destruct (step_succ_violation SUCC STEPN) as [CONT1 CONT2].
+            clear TCFI SUCC.
+            apply In2_implies_In in IN2.
+            eapply stuck_trace; eauto.
+          }
+          { intros x IN (s0 & STEP).
+            destruct (step_succ_violation SUCC STEPN) as [CONT1 CONT2].
+            eapply stuck_trace; eauto.
+          }
+    }
+    { destruct VIOLATION as [LST [[STEPV SUCC] [HCFI [TCFI STOP]]]].
+      right.
+      exists sv1; exists sv2; exists (s :: hs); exists tl.
+      repeat split; 
+        try solve [rewrite LST; reflexivity 
+                  | auto 
+                  | simpl in STOP; destruct STOP; assumption].
+      intros si sj IN2 STEPN.
+      destruct hs.
+      - destruct IN2 as [[? ?]|CONTRA];
+        [subst | destruct CONTRA].
+        destruct (succ si sj) eqn:SUCC'; first (by assumption).
+        destruct (step_succ_violation SUCC' STEPN) as [CONT1 CONT2].
+        inv STEPV; by discriminate.
+      - destruct IN2 as [[? ?]|IN2]; subst.
+        + destruct (succ si sj) eqn:SUCC'; first (by assumption).
+          destruct (step_succ_violation SUCC' STEPN) as [CONT1 CONT2].
+          exfalso.
+          simpl in INTERM.
+          remember (hs ++ sv1 :: sv2 :: tl) as lst.
+          assert (Heq: sj :: hs ++ sv1 :: sv2 :: tl = sj :: lst)
+            by (rewrite Heqlst; reflexivity).
+          rewrite Heq in INTERM.
+          assert (IN: In sv1 ((sj :: hs) ++ sv1 :: (sv2 :: tl)))
+            by (apply list_utils.in_anywhere).
+          simpl ((sj :: hs) ++ sv1 :: sv2 :: tl) in IN.
+          rewrite  Heq in IN.
+          assert (EQ := interm_first_step INTERM); subst.
+          eapply stuck_trace; eauto.
+        + apply HCFI; by assumption.
+    }
+Qed.
+
+(*
 Theorem cfi : cfi abstract_cfi_machine.
 Proof.
  unfold cfi. intros.
@@ -565,7 +688,7 @@ Proof.
          }
        }
     }
-Qed.
+Qed.*)
 
 End WithClasses.
 

@@ -311,6 +311,47 @@ Next Obligation.
 Qed.
 
 Import ListNotations.
+(*
+Require Import lib.Integers.
+Import Word.
+Goal forall (pc pc' : atom (word t) (Symbolic.tag)),
+       {pc = pc'} + {pc <> pc'}.
+Proof.
+  intros [val tag] [val' tag'].
+  destruct (eq_dec val val'); subst.
+  - destruct (tag == tag') eqn:H; move/eqP:H=>H.
+    + subst. by left; reflexivity.
+    + right. intros CONTRA.
+      inv CONTRA. by auto.
+  - right. intros CONTRA.
+    inv CONTRA. by auto.
+Qed. 
+
+
+Hypothesis st_eq_dec : forall (st : Symbolic.state t) st', {st = st'} + {st <> st'}.
+Hypothesis step_determ : forall st st' st'', 
+                         Symbolic.step stable st st' ->
+                         Symbolic.step stable st st'' ->
+                         st' = st''.
+
+Lemma step_dec st st' :
+  Symbolic.step stable st st' \/ ~ Symbolic.step stable st st'.
+Proof.
+  destruct (Symbolic.stepf stable st) as [s|] eqn:STEPF;
+  repeat match goal with
+    | [H: Symbolic.stepf _ _ = Some ?S' |- _] =>
+      apply Symbolic.stepP in H;
+        destruct (st_eq_dec S' st'); subst
+    | [H: ?Expr |- ?Expr \/ _] => left; assumption
+    | [H: _ <> _ |- _ \/ ~ _] => right; intros ?; eauto using step_determ
+    | [H: Symbolic.stepf _ _ = None |- _] =>
+      right; intro CONTRA; apply Symbolic.stepP in CONTRA;
+      by congruence
+  end. 
+
+*)
+
+
 
 Require Import Classical.
 
