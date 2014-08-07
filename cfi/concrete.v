@@ -23,7 +23,7 @@ Section ConcreteSection.
 Context {t : machine_types}
         {ops : machine_ops t}
         {ids : @classes.cfi_id t}
-        {e : @rules.encodable rules.cfi_tag_eqType t}.
+        {e : rules.encodable t [eqType of cfi_tag]}.
 
 Import PartMaps.
 Context {word_map : Type -> Type}

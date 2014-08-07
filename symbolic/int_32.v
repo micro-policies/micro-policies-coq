@@ -156,7 +156,7 @@ Program Definition concrete_initial_state
   {|
     Concrete.mem := mem';
     Concrete.regs := regs;
-    Concrete.cache := ground_rules;
+    Concrete.cache := ground_rules _;
     Concrete.pc := user_mem_addr@(kernelize_user_tag initial_pc_tag);
     Concrete.epc := Word.zero@Word.zero
   |}.
@@ -165,14 +165,14 @@ Program Definition concrete_initial_state
 
 Context {sp: Symbolic.params}.
 
-Let sym_atom := @common.atom (word t) Symbolic.tag.
+Let sym_atom k := @common.atom (word t) (@Symbolic.ttypes sp k).
 
 Program Definition symbolic_initial_state
       {Addrs}
-      (user_mem : relocatable_segment Addrs sym_atom)
-      (base_addr : sym_atom) (syscall_addrs : Addrs)
+      (user_mem : relocatable_segment Addrs (sym_atom Symbolic.M))
+      (base_addr : sym_atom Symbolic.P) (syscall_addrs : Addrs)
       (user_regs : list (reg t))
-      (initial_reg_value : sym_atom)
+      (initial_reg_value : sym_atom Symbolic.R)
       (initial_internal_state : Symbolic.internal_state)
       : @Symbolic.state t sp :=
   let (_, gen) := user_mem in

@@ -1,4 +1,4 @@
-Require Import ssreflect ssrbool.
+Require Import ssreflect ssrbool eqtype.
 
 Require Import lib.Coqlib.
 Require Import lib.utils.
@@ -23,7 +23,7 @@ Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
 Existing Instance sp.
 
-Context {enc : @encodable (@Symbolic.tag sp) t}
+Context {enc : encodable t (@Sym.stag_eqType t)}
         {monitor_invariant : kernel_invariant}
         {syscall_addrs : compartmentalization_syscall_addrs t}.
 

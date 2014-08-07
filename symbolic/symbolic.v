@@ -5,6 +5,7 @@ Require Coq.Vectors.Vector.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import lib.Integers lib.utils lib.partial_maps common.common.
+Require Import lib.hlist.
 
 Set Implicit Arguments.
 
@@ -14,38 +15,76 @@ Import ListNotations.
 Module Symbolic.
 
 (* BCP/AAA: Should some of this be shared with the concrete machine? *)
-Definition nfields (op : opcode) : option (nat * nat) :=
+
+(* CH: These could move to common.v?  But they would be useful only if
+       we want to make the concrete machine dependently typed too; and
+       we probably don't want to do that. *)
+
+Inductive tag_kind : Type := R | M | P.
+
+Definition inputs (op : opcode) : list tag_kind :=
   match op with
-  | NOP => Some (0, 0)
-  | CONST => Some (1, 1)
-  | MOV => Some (2, 1)
-  | BINOP _ => Some (3, 1)
-  | LOAD => Some (3, 1)
-  | STORE => Some (3, 1)
-  | JUMP => Some (1, 0)
-  | BNZ => Some (1, 0)
-  | JAL => Some (2, 1)
-  | SERVICE => Some (0, 0)
-  | JUMPEPC | ADDRULE | GETTAG | PUTTAG | HALT => None
+  | NOP     => []
+  | CONST   => [R]
+  | MOV     => [R;R]
+  | BINOP _ => [R;R;R]
+  | LOAD    => [R;M;R]
+  | STORE   => [R;R;M]
+  | JUMP    => [R]
+  | BNZ     => [R]
+  | JAL     => [R;R]
+  | SERVICE => []
+  (* the other opcodes are not used by the symbolic machine *)
+  | JUMPEPC => [P]
+  | ADDRULE => []
+  | GETTAG  => [R;R]
+  | PUTTAG  => [R;R;R]
+  | HALT    => [] (* CH: in a way this is used by symbolic machine;
+                         it just causes it to get stuck as it should *)
   end.
 
-Definition mvec_operands T (fs : option (nat * nat)) : Type :=
-  match fs with
-  | Some fs => Vector.t T (fst fs)
-  | None => Empty_set
+Definition outputs (op : opcode) : option tag_kind :=
+  match op with
+  | NOP     => None
+  | CONST   => Some R
+  | MOV     => Some R
+  | BINOP _ => Some R
+  | LOAD    => Some R
+  | STORE   => Some M
+  | JUMP    => None
+  | BNZ     => None
+  | JAL     => Some R
+  | SERVICE => None
+  (* the other opcodes are not used by the symbolic machine *)
+  | JUMPEPC => None
+  | ADDRULE => None
+  | GETTAG  => Some R
+  | PUTTAG  => None
+  | HALT    => None
   end.
 
-Record MVec T : Type := mkMVec {
+Section WithTagTypes.
+
+Variable tag_type : tag_kind -> eqType.
+
+Record IVec : Type := mkIVec {
   op  : opcode;
-  tpc : T;
-  ti  : T;
-  ts  : mvec_operands T (nfields op)
+  tpc : tag_type P;
+  ti  : tag_type M;
+  ts  : hlist tag_type (inputs op)
 }.
 
-Record RVec T : Type := mkRVec {
-  trpc : T;
-  tr   : T
+Definition type_of_result (o : option tag_kind) :=
+  odflt [eqType of unit] (option_map tag_type o).
+
+Record OVec (op : opcode) : Type := mkOVec {
+  trpc : tag_type P;
+  tr   : type_of_result (outputs op)
 }.
+
+End WithTagTypes.
+
+Arguments mkIVec {_} _ _ _ _.
 
 Open Scope bool_scope.
 (* Open Scope Z_scope. *)
@@ -58,32 +97,9 @@ Context (t : machine_types)
 Import PartMaps.
 
 Class params := {
-  (* CH: One nice extension could be to distinguish different tag
-     types. In many policies the tags on the pc, the tags on registers,
-     and the tags on memory (including instructions which are also
-     stored in memory) are morally drawn from different types. Sure,
-     one can squeeze them all into one big disjoint union, but that's
-     inefficient and conceptually inelegant given that we have a
-     better way of dealing with overlaps (pc != registers != memory).
-     Even for kernel protection itself ENTRY is only used for tagging
-     memory, and the is_call flag for USER is only used for the pc tag.
-     If we implement this extension the big comment explaining this
-     at the beginning of rules.v would become instead a set of types.
-     Would this extension be hard to add / complicate other things? *)
-  (* BCP: One worry that I have about this is that, in some policies,
-     it may be convenient to do things like writing a rule that copies
-     the tag from the current instruction to the next PC.  If we make
-     these type distinctions, such rules would have to be disallowed,
-     no? *)
-  (* CH: The symbolic handler has to be well-typed, so if the tag
-     types are instantiated differently, the error you describe would
-     be caught by the (Coq) type checker. It would be allowed if some
-     of the tag types are instantiated to the same type though.  If
-     all tag types are instantiated with the same type we would
-     basically get the current behavior. *)
-  tag : eqType;
+  ttypes :> tag_kind -> eqType;
 
-  handler : MVec tag -> option (RVec tag);
+  transfer : forall (iv : IVec ttypes), option (OVec ttypes (op iv));
 
   internal_state : Type
 }.
@@ -93,22 +109,24 @@ Context {sp : params}.
 Open Scope word_scope.
 
 Local Notation word := (word t).
-Let atom := (atom word tag).
+Let atom := (atom word).
 Local Notation "x .+1" := (Word.add x Word.one).
 
-Local Notation memory := (word_map t atom).
-Local Notation registers := (reg_map t atom).
+Local Notation memory := (word_map t (atom (ttypes M))).
+Local Notation registers := (reg_map t (atom (ttypes R))).
 
 Record state := State {
   mem : memory;
   regs : registers;
-  pc : atom;
+  pc : atom (ttypes P);
   internal : internal_state
 }.
 
+(* CH: TODO: should make the entry_tags part of the state
+   (for compartmentalization they need to be mutable) *)
 Record syscall := Syscall {
   address : word;
-  entry_tag : tag;
+  entry_tag : ttypes M;
   sem : state -> option state
 }.
 
@@ -118,111 +136,114 @@ Definition get_syscall (addr : word) : option syscall :=
   find (fun sc => address sc == addr) table.
 
 Definition run_syscall (sc : syscall) (st : state) : option state :=
-  match handler (mkMVec SERVICE (common.tag (pc st)) (entry_tag sc) (Vector.nil _)) with
+  match transfer (mkIVec SERVICE (common.tag (pc st)) (entry_tag sc) tt) with
   | Some _ => sem sc st
   | None => None
   end.
 
-Definition next_state (st : state) (mvec : MVec tag)
-                      (k : RVec tag -> option state) : option state :=
-  do! rvec <- handler mvec;
-    k rvec.
+Definition next_state (st : state) (iv : IVec ttypes)
+                      (k : OVec ttypes (op iv) -> option state) : option state :=
+  do! ov <- transfer iv;
+    k ov.
 
-Definition next_state_reg_and_pc (st : state) (mvec : MVec tag) r x pc'
-    : option state :=
-  next_state st mvec (fun rvec =>
-    do! regs' <- upd (regs st) r x@(tr rvec);
-    Some (State (mem st) regs' pc'@(trpc rvec) (internal st))).
+Definition next_state_reg_and_pc (st : state) (iv : @IVec ttypes)
+  (r : reg t) (x : word) (pc' : word) : option state :=
+  next_state st iv (fun ov =>
+    match outputs (op iv) as o return (type_of_result _ o -> option state) with
+      | Some R => fun tr' =>
+          do! regs' <- upd (regs st) r x@tr';
+          Some (State (mem st) regs' pc'@(trpc ov) (internal st))
+      | _ => fun _ => None
+    end (tr ov)).
 
-Definition next_state_reg (st : state) (mvec : MVec tag) r x : option state :=
+Definition next_state_reg (st : state) (mvec : @IVec ttypes) r x : option state :=
   next_state_reg_and_pc st mvec r x (val (pc st)).+1.
 
-Definition next_state_pc (st : state) (mvec : MVec tag) x : option state :=
-  next_state st mvec (fun rvec =>
-    Some (State (mem st) (regs st) x@(trpc rvec) (internal st))).
+Definition next_state_pc (st : state) (mvec : @IVec ttypes) x : option state :=
+  next_state st mvec (fun ov =>
+    Some (State (mem st) (regs st) x@(trpc ov) (internal st))).
 
-Import Vector.VectorNotations.
+Import HListNotations.
 
-(* Consider renaming int to extra... *)
 Inductive step (st st' : state) : Prop :=
-| step_nop : forall mem reg pc tpc i ti int
-    (ST   : st = State mem reg pc@tpc int)
+| step_nop : forall mem reg pc tpc i ti extra
+    (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Nop _)),
-    let mvec := mkMVec NOP tpc ti [] in forall
+    let mvec := mkIVec NOP tpc ti [] in forall
     (NEXT : next_state_pc st mvec (pc.+1) = Some st'),    step st st'
-| step_const : forall mem reg pc tpc i ti n r old told int
-    (ST   : st = State mem reg pc@tpc int)
+| step_const : forall mem reg pc tpc i ti n r old told extra
+    (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Const n r))
     (OLD  : get reg r = Some old@told),
-    let mvec := mkMVec CONST tpc ti [told] in forall
+    let mvec := mkIVec CONST tpc ti [told] in forall
     (NEXT : next_state_reg st mvec r (Word.casts n) = Some st'),   step st st'
-| step_mov : forall mem reg pc tpc i ti r1 w1 t1 r2 old told int
-    (ST   : st = State mem reg pc@tpc int)
+| step_mov : forall mem reg pc tpc i ti r1 w1 t1 r2 old told extra
+    (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Mov r1 r2))
     (R1W  : get reg r1 = Some w1@t1)
     (OLD  : get reg r2 = Some old@told),
-    let mvec := mkMVec MOV tpc ti [t1; told] in forall
+    let mvec := mkIVec MOV tpc ti [t1; told] in forall
     (NEXT : next_state_reg st mvec r2 w1 = Some st'),   step st st'
-| step_binop : forall mem reg pc tpc i ti op r1 r2 r3 w1 w2 t1 t2 old told int
-    (ST   : st = State mem reg pc@tpc int)
+| step_binop : forall mem reg pc tpc i ti op r1 r2 r3 w1 w2 t1 t2 old told extra
+    (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Binop op r1 r2 r3))
     (R1W  : get reg r1 = Some w1@t1)
     (R2W  : get reg r2 = Some w2@t2)
     (OLD  : get reg r3 = Some old@told),
-    let mvec := mkMVec (BINOP op) tpc ti [t1; t2; told] in forall
+    let mvec := mkIVec (BINOP op) tpc ti [t1; t2; told] in forall
     (NEXT : next_state_reg st mvec r3 (binop_denote op w1 w2) = Some st'),
       step st st'
-| step_load : forall mem reg pc tpc i ti r1 r2 w1 w2 t1 t2 old told int
-    (ST   : st = State mem reg pc@tpc int)
+| step_load : forall mem reg pc tpc i ti r1 r2 w1 w2 t1 t2 old told extra
+    (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Load r1 r2))
     (R1W  : get reg r1 = Some w1@t1)
     (MEM1 : get mem w1 = Some w2@t2)
     (OLD  : get reg r2 = Some old@told),
-    let mvec := mkMVec LOAD tpc ti [t1; t2; told] in forall
+    let mvec := mkIVec LOAD tpc ti [t1; t2; told] in forall
     (NEXT : next_state_reg st mvec r2 w2 = Some st'),    step st st'
-| step_store : forall mem reg pc i r1 r2 w1 w2 tpc ti t1 t2 old told int
-    (ST   : st = State mem reg pc@tpc int)
+| step_store : forall mem reg pc i r1 r2 w1 w2 tpc ti t1 t2 old told extra
+    (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Store r1 r2))
     (R1W  : get reg r1 = Some w1@t1)
     (R2W  : get reg r2 = Some w2@t2)
     (OLD  : get mem w1 = Some old@told),
-    let mvec := mkMVec STORE tpc ti [t1; t2; told] in forall
-    (NEXT : next_state st mvec (fun rvec =>
-                 do! mem' <- upd mem w1 w2@(tr rvec);
-                 Some (State mem' reg (pc.+1)@(trpc rvec) int)) = Some st'),
+    let mvec := mkIVec STORE tpc ti [t1; t2; told] in forall
+    (NEXT : next_state st mvec (fun ov =>
+                 do! mem' <- upd mem w1 w2@(tr ov);
+                 Some (State mem' reg (pc.+1)@(trpc ov) extra)) = Some st'),
               step st st'
-| step_jump : forall mem reg pc i r w tpc ti t1 int
-    (ST   : st = State mem reg pc@tpc int)
+| step_jump : forall mem reg pc i r w tpc ti t1 extra
+    (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Jump r))
     (RW   : get reg r = Some w@t1),
-    let mvec := mkMVec JUMP tpc ti [t1] in forall
+    let mvec := mkIVec JUMP tpc ti [t1] in forall
     (NEXT : next_state_pc st mvec w = Some st'),    step st st'
-| step_bnz : forall mem reg pc i r n w tpc ti t1 int
-    (ST   : st = State mem reg pc@tpc int)
+| step_bnz : forall mem reg pc i r n w tpc ti t1 extra
+    (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Bnz r n))
     (RW   : get reg r = Some w@t1),
-     let mvec := mkMVec BNZ tpc ti [t1] in
+     let mvec := mkIVec BNZ tpc ti [t1] in
      let pc' := Word.add pc (if w == Word.zero
                              then Word.one else Word.casts n) in forall
     (NEXT : next_state_pc st mvec pc' = Some st'),     step st st'
-| step_jal : forall mem reg pc i r w tpc ti t1 old told int
-    (ST : st = State mem reg pc@tpc int)
+| step_jal : forall mem reg pc i r w tpc ti t1 old told extra
+    (ST : st = State mem reg pc@tpc extra)
     (PC : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Jal r))
     (RW : get reg r = Some w@t1)
     (OLD : get reg ra = Some old@told),
-     let mvec := mkMVec JAL tpc ti [t1; told] in forall
+     let mvec := mkIVec JAL tpc ti [t1; told] in forall
     (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'), step st st'
-| step_syscall : forall mem reg pc sc tpc int
-    (ST : st = State mem reg pc@tpc int)
+| step_syscall : forall mem reg pc sc tpc extra
+    (ST : st = State mem reg pc@tpc extra)
     (PC : get mem pc = None)
     (GETCALL : get_syscall pc = Some sc)
     (CALL : run_syscall sc st = Some st'), step st st'.
@@ -235,19 +256,19 @@ Definition stepf (st : state) : option state :=
     do! instr <- decode_instr i;
     match instr with
     | Nop =>
-      let mvec := mkMVec NOP tpc ti [] in
+      let mvec := mkIVec NOP tpc ti [] in
       next_state_pc st mvec (pc.+1)
     | Const n r =>
       do! old <- PartMaps.get reg r;
       let: _@told := old in
-      let mvec := mkMVec CONST tpc ti [told] in
-      next_state_reg st mvec r (Word.casts n)
+      let ivec := mkIVec CONST tpc ti [told] in
+      next_state_reg st ivec r (Word.casts n)
     | Mov r1 r2 =>
       do! a1 <- PartMaps.get reg r1;
       let: w1@t1 := a1 in
       do! a2 <- PartMaps.get reg r2;
       let: _@told := a2 in
-      let mvec := mkMVec MOV tpc ti [t1;told] in
+      let mvec := mkIVec MOV tpc ti [t1;told] in
       next_state_reg st mvec r2 w1
     | Binop op r1 r2 r3 =>
       do! a1 <- PartMaps.get reg r1;
@@ -256,7 +277,7 @@ Definition stepf (st : state) : option state :=
       let: w2@t2 := a2 in
       do! a3 <- PartMaps.get reg r3;
       let: _@told := a3 in
-      let mvec := mkMVec (BINOP op) tpc ti [t1;t2;told] in
+      let mvec := mkIVec (BINOP op) tpc ti [t1;t2;told] in
       next_state_reg st mvec r3 (binop_denote op w1 w2)
     | Load r1 r2 =>
       do! a1 <- PartMaps.get reg r1;
@@ -265,7 +286,7 @@ Definition stepf (st : state) : option state :=
       let: w2@t2 := amem in
       do! a2 <- PartMaps.get reg r2;
       let: _@told := a2 in
-      let mvec := mkMVec LOAD tpc ti [t1;t2;told] in
+      let mvec := mkIVec LOAD tpc ti [t1;t2;told] in
       next_state_reg st mvec r2 w2
     | Store r1 r2 =>
       do! a1 <- PartMaps.get reg r1;
@@ -274,28 +295,28 @@ Definition stepf (st : state) : option state :=
       let: _@told := amem in
       do! a2 <- PartMaps.get reg r2;
       let: w2@t2 := a2 in
-      let mvec := mkMVec STORE tpc ti [t1;t2;told] in
-      next_state st mvec (fun rvec =>
-         do! mem' <- upd mem w1 w2@(tr rvec);
-         Some (State mem' reg (pc.+1)@(trpc rvec) extra))
+      let mvec := mkIVec STORE tpc ti [t1;t2;told] in
+      next_state st mvec (fun ov =>
+         do! mem' <- upd mem w1 w2@(tr ov);
+         Some (State mem' reg (pc.+1)@(trpc ov) extra))
     | Jump r =>
       do! a <- PartMaps.get reg r;
       let: w@t1 := a in
-      let mvec := mkMVec JUMP tpc ti [t1] in
+      let mvec := mkIVec JUMP tpc ti [t1] in
       next_state_pc st mvec w
     | Bnz r n =>
       do! a <- PartMaps.get reg r;
       let: w@t1 := a in
       let pc' := Word.add pc (if w == Word.zero
                               then Word.one else Word.casts n) in
-      let mvec := mkMVec BNZ tpc ti [t1] in
-      next_state_pc st mvec pc'
+      let ivec := mkIVec BNZ tpc ti [t1] in
+      next_state_pc st ivec pc'
     | Jal r =>
       do! a <- PartMaps.get reg r;
       let: w@t1 := a in
       do! oldtold <- PartMaps.get reg ra;
       let: _@told := oldtold in
-      let mvec := mkMVec JAL tpc ti [t1; told] in
+      let mvec := mkIVec JAL tpc ti [t1; told] in
       next_state_reg_and_pc st mvec ra (pc.+1) w
     | JumpEpc | AddRule | GetTag _ _ | PutTag _ _ _ | Halt =>
       None
@@ -310,23 +331,15 @@ Definition stepf (st : state) : option state :=
     end
   end.
 
-Lemma atom_eta : forall a : atom, a = (val a)@(common.tag a).
-Proof. destruct a; reflexivity. Qed.
-
-Ltac atom_eta :=
-  match goal with
-  | |- ?t = _ => apply (eq_trans (atom_eta t) (erefl _))
-  end.
-
-Lemma stepP : 
+Lemma stepP :
   forall st st',
     stepf st = Some st' <->
     step st st'.
 Proof.
   intros st st'. split; intros STEP.
   { destruct st as [mem reg [pc tpc] int].
-    simpl in STEP. 
-    destruct (get mem pc) as [[i ti]|] eqn:GET; 
+    simpl in STEP.
+    destruct (get mem pc) as [[i ti]|] eqn:GET;
     rewrite GET in STEP; apply bind_inv in STEP.
     - destruct STEP as (instr & INSTR & STEP).
       destruct instr; try discriminate;
@@ -335,14 +348,14 @@ Proof.
                destruct t eqn:?; simpl in STEP; try discriminate
              | x : common.atom _ _ |- _ =>
                destruct x; simpl in *
-             | rv : RVec _ |- _ =>
+             | rv : OVec _ |- _ =>
                destruct rv; simpl in *
              | H : Some _ = Some _ |- _ =>
                inversion H; subst
            end;
-          econstructor (solve [eauto | atom_eta]).
+      econstructor (solve [eauto]).
     - destruct STEP as (sc & GETCALL & STEP).
-      econstructor(solve [eauto | atom_eta]).
+      econstructor (solve [eauto]).
   }
   { unfold stepf.
     inversion STEP; subst; rewrite PC; try (subst mvec);
@@ -356,12 +369,13 @@ Qed.
 
 End WithClasses.
 
-Notation memory t s := (word_map t (atom (word t) (@tag s))).
-Notation registers t s := (reg_map t (atom (word t) (@tag s))).
+Notation memory t s := (word_map t (atom (word t) (@ttypes s M))).
+Notation registers t s := (reg_map t (atom (word t) (@ttypes s R))).
 
 End Symbolic.
 
 Arguments Symbolic.state t {_}.
 Arguments Symbolic.State {_ _} _ _ _ _.
 Arguments Symbolic.syscall t {_}.
-Arguments Symbolic.mkMVec {T} op _ _ _.
+Arguments Symbolic.mkIVec {tag_type} op _ _ _.
+Arguments Symbolic.mkOVec {tag_type op} _ _.

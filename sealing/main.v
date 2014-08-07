@@ -172,7 +172,7 @@ Proof.
   by move => H [<-].
 Qed.
 
-Instance encodable_tag : @encodable Sym.stag_eqType t := {|
+Instance encodable_tag : @encodable t Sym.stag_eqType := {|
   encode t :=
     match t with
     | USER ut => Word.pack [29; 1] [encode_sealing_tag ut; Word.one]%wp
@@ -620,7 +620,7 @@ Definition summarize_concrete_state mem_count cache_count st :=
 (* ---------------------------------------------------------------- *)
 (* Printing symbolic states *)
 
-Definition format_symbolic_atom (pr_tag : @Symbolic.tag (@Sym.sym_sealing sk_defs) -> sstring) a :=
+Definition format_symbolic_atom k (pr_tag : @Symbolic.ttypes (@Sym.sym_sealing sk_defs) k -> sstring) a :=
   let: w1@t2 := a in
     match decode_instr w1 with
       Some i => ss "(" +++ format_instr i +++ ss ")@" +++ pr_tag t2
@@ -666,7 +666,7 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
 Definition format_int {n} (i : Word.int n) :=
   format_Z (Word.unsigned i).
 
-Definition format_sealing_tag (t : @Symbolic.tag (@Sym.sym_sealing sk_defs)):=
+Definition format_sealing_tag k (t : @Symbolic.ttypes (@Sym.sym_sealing sk_defs) k):=
   match t with
     Sym.DATA => ss "DATA"
   | Sym.KEY k => ss "KEY(" +++ format_int k +++ ss ")"
@@ -674,7 +674,7 @@ Definition format_sealing_tag (t : @Symbolic.tag (@Sym.sym_sealing sk_defs)):=
   end.
 
 Definition summarize_symbolic_sealing_state mem_count st :=
-  summarize_symbolic_state mem_count st format_sealing_tag.
+  summarize_symbolic_state mem_count st (@format_sealing_tag Symbolic.M).
 
 (* ---------------------------------------------------------------- *)
 (* Printing abstract states *)

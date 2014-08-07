@@ -2945,8 +2945,8 @@ Proof.
       * unfold upd; rewrite GETM1; reflexivity.
     + assert (SAME :
                 equilabeled
-                  (SState mem  reg pc@(Sym.PC F cid')             int)
-                  (SState mem' reg (pc+1)%w@(Sym.PC INTERNAL cid) int)). {
+                  (SState mem  reg pc@(Sym.PC F cid')             extra)
+                  (SState mem' reg (pc+1)%w@(Sym.PC INTERNAL cid) extra)). {
         rewrite /equilabeled; intros p.
         destruct (p == w1) eqn:EQ_w1; move/eqP in EQ_w1; [subst p|].
         - apply get_upd_eq in def_mem'; auto.
@@ -3037,7 +3037,7 @@ Proof.
         do 3 (erewrite (get_upd_neq (key := w1) (m' := mem')); eauto 2).
         andb_true_split; auto.
       * rewrite /Sym.good_internal /= in RINT *.
-        destruct int as [next iT aJT aST].
+        destruct extra as [next iT aJT aST].
         destruct iT,aJT,aST; auto.
         destruct RINT as [? [? [? [? [? [? RINT]]]]]].
         repeat (split; [solve [auto]|]).
@@ -3179,7 +3179,7 @@ Proof.
           [ move/eqP in EQ; subst
           | discriminate ]]];
       inversion GETCALL; subst;
-      rewrite /Symbolic.run_syscall /Symbolic.handler /sym_compartmentalization
+      rewrite /Symbolic.run_syscall /Symbolic.transfer /sym_compartmentalization
               /Sym.compartmentalization_handler /Symbolic.sem
         in CALL;
       [ eapply isolate_refined              in CALL

@@ -34,15 +34,15 @@ Variable cfg : id -> id -> bool.
 Definition valid_jmp := classes.valid_jmp cfg.
 
 Program Instance sym_cfi : Symbolic.params := {
-  tag := cfi_tag_eqType;
+  ttypes := cfi_tags;
 
-  handler := rules.cfi_handler cfg;
+  transfer := rules.cfi_handler cfg;
 
   internal_state := unit
 }.
 
-Local Notation memory := (word_map t (atom (word t) (@Symbolic.tag sym_cfi))).
-Local Notation registers := (reg_map t (atom (word t) (@Symbolic.tag sym_cfi))).
+Local Notation memory := (Symbolic.memory t sym_cfi).
+Local Notation registers := (Symbolic.registers t sym_cfi).
 
 Variable table : list (Symbolic.syscall t).
 
@@ -669,13 +669,13 @@ Qed.
 
 Lemma is_violation_implies_stop sst umvec :
   violation sst ->
-  build_mvec table sst = Some umvec ->
-  Symbolic.handler umvec = None.
+  build_ivec table sst = Some umvec ->
+  Symbolic.transfer umvec = None.
 Proof.
   intros VIO UMVEC.
   unfold violation in VIO.
   destruct sst as [mem reg [pc tpc] int].
-  unfold build_mvec in UMVEC.
+  unfold build_ivec in UMVEC.
   simpl in UMVEC, VIO.
   unfold get_ti in VIO. simpl in VIO.
   destruct (get mem pc) as [[i itg]|] eqn:GET.
@@ -693,7 +693,7 @@ Proof.
                  destruct Expr eqn:?
          end;
       inv UMVEC; try reflexivity;
-      unfold Symbolic.handler; simpl; unfold cfi_handler;
+      unfold Symbolic.transfer; simpl; unfold cfi_handler;
       try rewrite VIO; try reflexivity.
     destruct (tag a1); by reflexivity.
   -  (*get mem pc = None*)
@@ -702,7 +702,7 @@ Proof.
     + destruct tpc as [[src|]|], (Symbolic.entry_tag sc) as [[dst|]|];
       try (by inversion VIO);
       inv UMVEC; try reflexivity.
-      unfold Symbolic.handler; simpl; unfold cfi_handler;
+      unfold Symbolic.transfer; simpl; unfold cfi_handler;
       try rewrite VIO; by reflexivity.
     + by discriminate.
 Qed.

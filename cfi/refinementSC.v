@@ -30,7 +30,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {ids : @classes.cfi_id mt}
-        {e : @rules.encodable rules.cfi_tag_eqType mt}.
+        {e : @rules.encodable mt rules.cfi_tag_eqType}.
 
 Variable cfg : id -> id -> bool.
 
@@ -61,10 +61,10 @@ Hypothesis syscall_preserves_entry_tags :
     Sym.entry_points_tagged stable (Symbolic.mem st').
 
 Definition refine_state_no_inv (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sp e ki stable sst cst.
+  @refine_state_weak mt ops sp (fun _ => e) ki stable sst cst.
 
 Definition refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sp e ki stable sst cst /\
+  @refine_state_weak mt ops sp (fun _ => e) ki stable sst cst /\
   Sym.invariants stable sst.
 
 Definition is_user (x : atom (word mt) (word mt)) :=
@@ -93,7 +93,7 @@ Proof.
     { intro CGET.
       rewrite PartMaps.map_correctness. rewrite filter_correctness.
       rewrite CGET. simpl.
-      destruct (is_user v@(rules.encode (rules.USER (user_tag:=cfi_tag_eqType) tg))) eqn:USER.
+      destruct (is_user v@(rules.encode (rules.USER (user_tag:=cfi_tags Symbolic.M) tg))) eqn:USER.
       + simpl. unfold coerce. simpl. rewrite rules.decodeK. reflexivity.
       + unfold is_user in USER. simpl in USER.
         unfold rules.word_lift in USER.
@@ -204,7 +204,7 @@ Proof.
       rewrite PartMaps.map_filter_correctness.
       rewrite CGET'. simpl.
       unfold creg_to_sreg.
-      destruct (is_user v@(rules.encode (rules.USER (user_tag:=cfi_tag_eqType) tg))) eqn:USER.
+      destruct (is_user v@(rules.encode (rules.USER (user_tag:=cfi_tags Symbolic.R) tg))) eqn:USER.
       + simpl. unfold coerce. simpl. rewrite rules.decodeK. reflexivity.
       + unfold is_user in USER. simpl in USER.
         unfold rules.word_lift in USER.
@@ -464,13 +464,13 @@ Proof.
       destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
       unfold kernel_exec in KEXEC.
       apply restricted_exec_snd in KEXEC.
-      unfold in_user in VIS.
+      unfold in_user in VIS. admit. (*
       apply in_user_in_kernel in VIS.
-      rewrite VIS in KEXEC. discriminate.
+      rewrite VIS in KEXEC. discriminate. *)
     }
     { (*and taking an invisible step*)
       intro VIS.
-      assert (REFW : @refine_state_weak mt ops sp e ki stable ast cst)
+      assert (REFW : @refine_state_weak mt ops sp (fun _ => e) ki stable ast cst)
         by (right; auto).
       destruct (backwards_simulation REFW STEP) as [REFW' | [ast' [STEP' REF']]].
       - left. split; auto.
@@ -585,12 +585,12 @@ Proof.
   by discriminate.
 Qed.
 
-Definition khandler := rules.handler (@Symbolic.handler sp).
-Definition uhandler := @Symbolic.handler sp.
+Definition khandler := rules.handler (fun _ => e) (@Symbolic.transfer sp).
+Definition uhandler := @Symbolic.transfer sp.
 
 (*XXX: Move these to refinement_common*)
 Lemma get_reg_no_user sreg reg r v ctg t :
-  @refinement_common.refine_registers mt sp e sreg reg ->
+  @refinement_common.refine_registers mt sp (fun _ => e) sreg reg ->
   get sreg r = None ->
   PartMaps.get reg r = Some v@ctg ->
   rules.decode ctg = Some t ->
@@ -607,7 +607,7 @@ Proof.
 Qed.
 
 Lemma get_mem_no_user smem mem addr v ctg t :
-  @refinement_common.refine_memory mt sp e smem mem ->
+  @refinement_common.refine_memory mt sp (fun _ => e) smem mem ->
   get smem addr = None ->
   get mem addr = Some v@ctg ->
   rules.decode ctg = Some t ->
@@ -644,30 +644,31 @@ Qed.
 Lemma umvec_implies_cmvec sst cst smvec :
   in_user cst ->
   refine_state sst cst ->
-  build_mvec stable sst = Some smvec ->
+  build_ivec stable sst = Some smvec ->
   exists cmvec, build_cmvec mt cst = Some cmvec.
 Proof.
   intros USER [[REF | CONTRA] ?] MVEC.
-  - eexists. eapply refine_mvec; eauto.
+  - eexists. eapply refine_ivec; eauto.
   - exfalso.
     destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
     unfold in_user in USER.
-    eapply @in_user_in_kernel in USER.
-    by congruence.
+    admit. (*eapply @in_user_in_kernel in USER.
+    by congruence.*)
 Qed.
 
 Lemma unique_cmvec sst cst umvec cmvec :
   in_user cst = true ->
   refine_state sst cst ->
-  build_mvec stable sst = Some umvec ->
+  build_ivec stable sst = Some umvec ->
   build_cmvec mt cst = Some cmvec ->
-  rules.encode_mvec (rules.mvec_of_umvec_with_calls umvec) = cmvec.
+  rules.encode_ivec (fun _ => e) (rules.ivec_of_uivec umvec) = cmvec.
 Proof.
   intros USER REF MVEC CMVEC.
   destruct REF as [REF INV].
   destruct REF as [UREF | KREF].
-  - erewrite -> refine_mvec in CMVEC; eauto. congruence.
+  - erewrite -> refine_ivec in CMVEC; eauto.
+    by move: CMVEC => [<-].
   - destruct KREF as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
     eapply @in_user_in_kernel in USER.
@@ -679,7 +680,7 @@ Qed.
 Lemma no_user_access_implies_halt sst cst cmvec :
   in_user cst = true ->
   refine_state sst cst ->
-  build_mvec stable sst = None ->
+  build_ivec stable sst = None ->
   build_cmvec mt cst = Some cmvec ->
   khandler cmvec = None.
 Proof.
@@ -687,7 +688,7 @@ Proof.
   destruct REF as [REF ?].
   destruct REF as [REF | CONTRA].
   - destruct (khandler cmvec) as [rvec|] eqn:E; last by [].
-    generalize (handler_build_mvec REF CMVEC E).
+    generalize (handler_build_ivec REF CMVEC E).
     move => [? ?] //. congruence.
   - destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
@@ -717,8 +718,10 @@ Proof.
   - have ISUSER: rules.word_lift (fun x => rules.is_user x) (Concrete.ctpc cmvec) = true.
     { move: CMVEC => /(build_cmvec_ctpc _) ->.
       by rewrite CSI /rules.word_lift ?rules.decodeK /=. }
-    move: (CACHE _ _ ISUSER LOOKUP) => [? [? HANDLER]].
-    by rewrite /khandler HANDLER in KHANDLER.
+    move: (CACHE _ _ ISUSER LOOKUP) => [? [? [HANDLER1 [HANDLER2 [HANDLER3 HANDLER4]]]]].
+    rewrite /khandler /rules.handler HANDLER1 /= rules.decode_ivecK
+            /= rules.ivec_of_uivec_privileged (negbTE HANDLER4) in KHANDLER.
+    admit.
   - generalize (mvec_in_kernel_store_mvec cmvec MVEC).
     move => {MVEC} [cmem' MVEC].
     eexists cmem'.
@@ -1090,7 +1093,7 @@ Qed.
 
 Lemma violation_implies_kexec sst cst cst' umvec sxs cxs :
   Sym.violation stable sst ->
-  build_mvec stable sst = Some umvec ->
+  build_ivec stable sst = Some umvec ->
   in_user cst = true ->
   check cst cst' = false ->
   Concrete.step ops masks cst cst' ->
@@ -1105,7 +1108,7 @@ Proof.
   assert (UHANDLER := Sym.is_violation_implies_stop stable sst VIOLATION UMVEC).
   assert (KERNEL := user_into_kernel_wrapped USER REF STEP NUSER').
   destruct (umvec_implies_cmvec USER REF UMVEC) as [cmvec CMVEC].
-  assert (KHANDLER := refine_mvec_fail _ UHANDLER).
+  assert (KHANDLER := refine_ivec_fail _ UHANDLER).
   assert (EQ := unique_cmvec USER REF UMVEC CMVEC).
   rewrite EQ in KHANDLER. clear EQ.
   destruct (fault_steps_at_kernel USER REF STEP CMVEC KHANDLER)
@@ -1129,7 +1132,7 @@ Proof.
         inversion EC.
         subst cmemt cregt cachet cpct epct.
         assert (KEXEC:=
-                  @handler_correct_disallowed_case mt ops sp e ki
+                  @handler_correct_disallowed_case mt ops sp (fun _ => e) ki
                                                    stable _ cmem
                                                    cmem' cmvec cregs
                                                    cache (pc@ctpct) int cst''
@@ -1147,7 +1150,7 @@ Qed.
 
 Lemma no_umvec_implies_kexec sst cst cst' sxs cxs :
   Sym.violation stable sst ->
-  build_mvec stable sst = None ->
+  build_ivec stable sst = None ->
   in_user cst = true ->
   check cst cst' = false ->
   Concrete.step ops masks cst cst' ->
@@ -1185,7 +1188,7 @@ Proof.
                 inversion EC.
                 subst cmemt cregt cachet cpct epct.
                 assert (KEXEC:=
-                      @handler_correct_disallowed_case mt ops sp e ki
+                      @handler_correct_disallowed_case mt ops sp (fun _ => e) ki
                                                        stable _ cmem
                                                        cmem' cmvec cregs
                                                        cache (pc@ctpct) int cst''
@@ -1321,8 +1324,11 @@ Proof.
             rewrite <- DEC in GET'.
             simpl in GET'. apply REFM in GET'. subst.
             rewrite GET' in GET. discriminate.
-          - inversion H3;
-            inv ST; simpl in *; try congruence.
+          - admit. (*inversion H3;
+            inv ST; simpl in *; try congruence.*)
+          - admit.
+          - admit.
+          - admit.
         }
     + destruct KREFJ as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
@@ -1601,7 +1607,7 @@ Proof.
     destruct IN as [? | CONTRA];
       [subst | destruct CONTRA].
       by auto.
-    destruct (build_mvec stable asj) as [umvec|] eqn:UMVEC.
+    destruct (build_ivec stable asj) as [umvec|] eqn:UMVEC.
     + (*case the umvec for asj exists*)
         by eauto using violation_implies_kexec.
     + (*case where the umvec for asj does not exist*)
@@ -1663,7 +1669,7 @@ Proof.
                by (apply forallb_forall; auto).
              specialize (ALLU _ IN). by auto.
            }
-           destruct (build_mvec stable asj') as [umvec|] eqn:UMVEC.
+           destruct (build_ivec stable asj') as [umvec|] eqn:UMVEC.
            - (*case the umvec exists*)
              eauto using violation_implies_kexec.
            - (*case the umvec does not exist*)
@@ -1695,7 +1701,7 @@ Proof.
            assert (USERN: in_user csn = true)
              by (inv STEPAN; auto).
            destruct ctl; [by inversion RTRACE |idtac].
-           destruct (build_mvec stable asi') as [umvec|] eqn:UMVEC.
+           destruct (build_ivec stable asi') as [umvec|] eqn:UMVEC.
             - (*case the umvec exists*)
              assert (KERNEL := violation_implies_kexec VIOLATION' UMVEC USERI'
                                                        CHECK CSTEP REFN RTRACE).

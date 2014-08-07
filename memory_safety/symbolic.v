@@ -1,6 +1,7 @@
 Require Import List Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
 Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
+Require Import lib.hlist.
 Require Import symbolic.symbolic memory_safety.classes.
 
 Import Symbolic.
@@ -78,157 +79,6 @@ Qed.
 Definition block_info_eqMixin := EqMixin block_info_eqP.
 Canonical block_info_eqType := Eval hnf in EqType block_info block_info_eqMixin.
 
-Section WithVectorNotations.
-Import Vector.VectorNotations.
-
-(* Convient wrapper for making writing rules easier. Move somewhere else *)
-Require Import Coq.Numbers.NaryFunctions.
-
-Fixpoint nfun_vec_ap {A B n} : forall (f : nfun A n B) (v : Vector.t A n), B :=
-  match n with
-  | O => fun f _ => f
-  | S n' => fun f v => nfun_vec_ap (f (Vector.hd v)) (Vector.tl v)
-  end.
-
-Fixpoint const_nfun {A B n} (b : B) : nfun A n B :=
-  match n with
-  | O => b
-  | S n' => fun _ => const_nfun b
-  end.
-
-Definition mvec_dest A B op :=
-  match nfields op with
-  | Some nf => nfun A nf.1 B
-  | None => Empty_set -> B
-  end.
-
-Definition mvec_const_dest {A B} op (b : B) : mvec_dest A B op :=
-  match nfields op as nf
-                  return match nf with
-                         | Some nf => nfun A nf.1 B
-                         | None => Empty_set -> B
-                         end
-  with
-  | Some nf => const_nfun b
-  | None => fun contra => match contra with end
-  end.
-
-Definition mvec_match {A B} op : forall (fs : mvec_operands A (nfields op))
-                                        (f : mvec_dest A B op), B :=
-  match nfields op as nf
-                   return match nf with
-                          | Some nf => Vector.t A nf.1
-                          | None => Empty_set
-                          end ->
-                          match nf with
-                          | Some nf => nfun A nf.1 B
-                          | None => Empty_set -> B
-                          end -> B
-  with
-  | Some nf => fun fs f => nfun_vec_ap f fs
-  | None => fun fs f => match fs with end
-  end.
-
-Definition rules (mvec : MVec tag) : option (RVec tag) :=
-  match mvec with
-  | mkMVec SERVICE V(DATA) ti ts => Some (mkRVec V(DATA) V(DATA))
-  | mkMVec op V(PTR b) ti ts =>
-    if ti is M(b', DATA) then
-    if b == b' then
-      let ret tpc tr := Some (mkRVec tpc tr) in
-      let retv tr := ret V(PTR b) tr in
-      mvec_match ts
-                 match op return mvec_dest _ (option (RVec tag)) op with
-                 | NOP => retv V(DATA)
-                 | CONST => fun _ => retv V(DATA)
-                 | MOV => fun t1 t2 =>
-                   match t1 with
-                   | V(ty) => retv V(ty)
-                   | _ => None
-                   end
-                 | BINOP bo => fun t1 t2 _ =>
-                   match bo with
-                   | ADD =>
-                     match t1, t2 with
-                     | V(DATA), V(DATA) => Some (mkRVec V(PTR b) V(DATA))
-                     | V(PTR b1), V(DATA) => Some (mkRVec V(PTR b) V(PTR b1))
-                     | V(DATA), V(PTR b2) => Some (mkRVec V(PTR b) V(PTR b2))
-                     | _, _ => None
-                     end
-                   | SUB =>
-                     match t1, t2 with
-                     | V(DATA), V(DATA) => Some (mkRVec V(PTR b) V(DATA))
-                     | V(PTR b1), V(DATA) => Some (mkRVec V(PTR b) V(PTR b1))
-                     | V(PTR b1), V(PTR b2) =>
-                       if b1 == b2 then Some (mkRVec V(PTR b) V(DATA))
-                       else None
-                     | _, _ => None
-                     end
-                   | EQ =>
-                     match t1, t2 with
-                     | V(DATA), V(DATA) => Some (mkRVec V(PTR b) V(DATA))
-                     | V(PTR b1), V(PTR b2) =>
-                       if b1 == b2 then Some (mkRVec V(PTR b) V(DATA))
-                       else None
-                     | _, _ => None
-                     end
-                   | _ =>
-                     match t1, t2 with
-                     | V(DATA), V(DATA) => Some (mkRVec V(PTR b) V(DATA))
-                     | _, _ => None
-                     end
-                   end
-                 | LOAD => fun t1 t2 _ =>
-                   match t1, t2 with
-                   | V(PTR b1), M(b2,ty) =>
-                     if b1 == b2 then Some (mkRVec V(PTR b) V(ty))
-                     else None
-                   | _, _ => None
-                   end
-                 | STORE => fun t1 t2 t3 =>
-                   match t1, t2, t3 with
-                   | V(PTR b1), V(ty), M(bd,_) =>
-                     if b1 == bd then Some (mkRVec V(PTR b) M(bd,ty))
-                     else None
-                   | _, _, _ => None
-                   end
-                 | JUMP => fun t =>
-                   match t with
-                   | V(PTR b') =>
-                     ret V(PTR b') V(DATA)
-                   | _ => None
-                   end
-                 | BNZ => fun t =>
-                   match t with
-                   | V(DATA) => retv V(DATA)
-                   | _ => None
-                   end
-                 | JAL => fun t _ =>
-                   match t with
-                   | V(ty) => ret V(ty) V(PTR b)
-                   | _ => None
-                   end
-                 | JUMPEPC as op | ADDRULE as op | GETTAG as op
-                 | PUTTAG as op | HALT as op | SERVICE as op =>
-                     @mvec_const_dest tag (option (RVec tag)) op None
-                 end
-    else None else None
-  | _ => None
-  end.
-
-End WithVectorNotations.
-
-Variable initial_color : color.
-
-(* Hypothesis: alloc never returns initial_color. *)
-
-Variable initial_pc : word.
-Variable initial_mem  : word_map t atom.
-Variable initial_registers : reg_map t atom.
-Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial_color).
-
-Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_color)).
-
 Definition type_eq t1 t2 :=
   match t1, t2 with
     | TypeData, TypeData => true
@@ -264,13 +114,104 @@ Qed.
 Definition tag_eqMixin := EqMixin tag_eqP.
 Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 
-Global Instance sym_memory_safety : params := {
-  tag := tag_eqType;
+Section WithHListNotations.
+Import HListNotations.
 
-  handler := rules;
+Definition ms_tags : tag_kind -> eqType := fun _ => [eqType of tag].
+
+Definition rules_normal (op : opcode) (c : color)
+           (ts : hlist ms_tags (inputs op)) : option (OVec ms_tags op) :=
+  let ret  := fun rtpc (rt : type_of_result ms_tags (outputs op)) => Some (@mkOVec ms_tags op rtpc rt) in
+  let retv := fun (rt : type_of_result ms_tags (outputs op)) => ret V(PTR c) rt in
+  match op, ts, ret, retv with
+  | NOP, _, ret, retv => retv tt
+  | CONST, _, ret, retv => retv V(DATA)
+  | MOV, [V(ty); _], ret, retv => retv V(ty)
+  | BINOP bo, [t1; t2; _], ret, retv =>
+    match bo with
+    | ADD =>
+      match t1, t2 with
+      | V(DATA), V(DATA) => retv V(DATA)
+      | V(PTR b1), V(DATA) => retv V(PTR b1)
+      | V(DATA), V(PTR b2) => retv V(PTR b2)
+      | _, _ => None
+      end
+    | SUB =>
+      match t1, t2 with
+      | V(DATA), V(DATA) => retv V(DATA)
+      | V(PTR b1), V(DATA) => retv V(PTR b1)
+      | V(PTR b1), V(PTR b2) =>
+        if b1 == b2 then retv V(DATA)
+        else None
+      | _, _ => None
+      end
+    | EQ =>
+      match t1, t2 with
+      | V(DATA), V(DATA) => retv V(DATA)
+      | V(PTR b1), V(PTR b2) =>
+        if b1 == b2 then retv V(DATA)
+        else None
+      | _, _ => None
+      end
+    | _ =>
+      match t1, t2 with
+      | V(DATA), V(DATA) => retv V(DATA)
+      | _, _ => None
+      end
+    end
+  | LOAD, [V(PTR b1); M(b2,ty); _], ret, retv =>
+    if b1 == b2 then retv V(ty)
+    else None
+  | STORE, [V(PTR b1); V(ty); M(bd,_)], ret, retv =>
+    if b1 == bd then retv M(bd,ty)
+    else None
+  | JUMP, [V(PTR b')], ret, retv =>
+    ret V(PTR b') tt
+  | BNZ, [V(DATA)], ret, retv =>
+    retv tt
+  | JAL, [V(ty); _], ret, retv =>
+    ret V(ty) V(PTR c)
+  | _, _, _, _ => None
+  end.
+
+Definition rules (ivec : IVec ms_tags) : option (OVec ms_tags (op ivec)) :=
+  match ivec return option (OVec ms_tags (op ivec)) with
+  | mkIVec op tpc ti ts =>
+    match tpc, ti with
+    | V(DATA), _ =>
+      match op return option (OVec ms_tags op) with
+      | SERVICE => Some (@mkOVec ms_tags SERVICE V(DATA) tt)
+      | _ => None
+      end
+    | V(PTR b), M(b', DATA) =>
+      if b == b' then
+        rules_normal b ts
+      else None
+    | _, _ => None
+    end
+  end.
+
+End WithHListNotations.
+
+Variable initial_color : color.
+
+(* Hypothesis: alloc never returns initial_color. *)
+
+Variable initial_pc : word.
+Variable initial_mem  : word_map t atom.
+Variable initial_registers : reg_map t atom.
+Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial_color).
+
+Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_color)).
+
+Global Instance sym_memory_safety : params := {
+  ttypes := ms_tags;
+
+  transfer := rules;
 
   internal_state := (color * list block_info)%type
 }.
+
 
 
 Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=

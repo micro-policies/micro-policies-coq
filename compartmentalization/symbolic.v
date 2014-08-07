@@ -2,7 +2,7 @@ Require Import List. Import ListNotations.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
+Require Import lib.hlist lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import lib.list_utils lib.set_utils.
 Require Import compartmentalization.common.
@@ -147,8 +147,10 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Section WithVectors.
-Import Symbolic Coq.Vectors.Vector.VectorNotations.
+Definition stags : Symbolic.tag_kind -> eqType := fun _ => [eqType of stag].
+
+Section WithHLists.
+Import Symbolic HListNotations.
 
 Definition can_execute (Lpc LI : stag) : option (word t) :=
   do! PC   F  c   <-! Lpc;
@@ -156,46 +158,50 @@ Definition can_execute (Lpc LI : stag) : option (word t) :=
   do! guard (c' == c) || ((F == JUMPED) && set_elem c I);
   Some c'.
 
-Definition compartmentalization_rvec (F : where_from)
-                                     (c : word t) : RVec stag :=
-  mkRVec (PC F c) REG.
+Definition compartmentalization_rvec (op : opcode)
+                                     (F : where_from)
+                                     (c : word t)
+                                     (tr : type_of_result stags (outputs op)) : OVec stags op :=
+  mkOVec (PC F c) tr.
 
-Definition rvec_step (rv : word t -> option (RVec stag))
-                     (Lpc LI : stag)  : option (RVec stag) :=
+Definition rvec_step op
+                     (rv : word t -> option (OVec stags op))
+                     (Lpc LI : stag)  : option (OVec stags op) :=
   do! c <- can_execute Lpc LI;
   rv c.
 
-Definition rvec_simple (F : where_from) : stag -> stag -> option (RVec stag) :=
-  rvec_step (fun c => Some (compartmentalization_rvec F c)).
+Definition rvec_simple op (F : where_from) (tr : type_of_result stags (outputs op)) :
+                       stag -> stag -> option (OVec stags op) :=
+  rvec_step op (fun c => Some (compartmentalization_rvec op F c tr)).
 
-Definition rvec_next : stag -> stag -> option (RVec stag) :=
-  rvec_simple INTERNAL.
-Definition rvec_jump : stag -> stag -> option (RVec stag) :=
-  rvec_simple JUMPED.
+Definition rvec_next op (tr : type_of_result stags (outputs op)) : stag -> stag -> option (OVec stags op) :=
+  rvec_simple op INTERNAL tr.
+Definition rvec_jump op (tr : type_of_result stags (outputs op)) : stag -> stag -> option (OVec stags op) :=
+  rvec_simple op JUMPED tr.
 Definition rvec_store (c : word t) (I W : list (word t))
-                      : stag -> stag -> option (RVec stag) :=
-  rvec_step (fun c' =>
+                      : stag -> stag -> option (OVec stags STORE) :=
+  rvec_step STORE (fun c' =>
     do! guard (c == c') || set_elem c' W;
-    Some (mkRVec (PC INTERNAL c') (DATA c I W))).
+    Some (@mkOVec stags STORE (PC INTERNAL c') (DATA c I W))).
 
-(* The `REG's in the MVec's fields can also be _s; it's an invariant that
+(* The `REG's in the IVec's fields can also be _s; it's an invariant that
    registers are always tagged with `REG'. *)
-Definition compartmentalization_handler (mv : MVec stag) : option (RVec stag) :=
-  match mv with
-    | mkMVec NOP       Lpc LI []                     => rvec_next        Lpc LI
-    | mkMVec CONST     Lpc LI [REG]                  => rvec_next        Lpc LI
-    | mkMVec MOV       Lpc LI [REG; REG]             => rvec_next        Lpc LI
-    | mkMVec (BINOP _) Lpc LI [REG; REG; REG]        => rvec_next        Lpc LI
-    | mkMVec LOAD      Lpc LI [REG; DATA _ _ _; REG] => rvec_next        Lpc LI
-    | mkMVec STORE     Lpc LI [REG; REG; DATA c I W] => rvec_store c I W Lpc LI
-    | mkMVec JUMP      Lpc LI [REG]                  => rvec_jump        Lpc LI
-    | mkMVec BNZ       Lpc LI [REG]                  => rvec_next        Lpc LI
-    | mkMVec JAL       Lpc LI [REG; REG]             => rvec_jump        Lpc LI
-    | mkMVec SERVICE   Lpc LI  []                    => Some (mkRVec REG REG)
-    | mkMVec _         _   _  _                      => None
+Definition compartmentalization_handler (iv : IVec stags) : option (OVec stags (op iv)) :=
+  match iv with
+    | mkIVec NOP       Lpc LI []                     => rvec_next NOP       tt  Lpc LI
+    | mkIVec CONST     Lpc LI [REG]                  => rvec_next CONST     REG Lpc LI
+    | mkIVec MOV       Lpc LI [REG; REG]             => rvec_next MOV       REG Lpc LI
+    | mkIVec (BINOP b) Lpc LI [REG; REG; REG]        => rvec_next (BINOP b) REG Lpc LI
+    | mkIVec LOAD      Lpc LI [REG; DATA _ _ _; REG] => rvec_next LOAD      REG Lpc LI
+    | mkIVec STORE     Lpc LI [REG; REG; DATA c I W] => rvec_store c I W Lpc LI
+    | mkIVec JUMP      Lpc LI [REG]                  => rvec_jump JUMP      tt  Lpc LI
+    | mkIVec BNZ       Lpc LI [REG]                  => rvec_next BNZ       tt  Lpc LI
+    | mkIVec JAL       Lpc LI [REG; REG]             => rvec_jump JAL       REG Lpc LI
+    | mkIVec SERVICE   Lpc LI  []                    => Some (@mkOVec stags SERVICE REG tt)
+    | mkIVec _         _   _  _                      => None
   end.
 
-End WithVectors.
+End WithHLists.
 
 Record compartmentalization_internal :=
   Internal { next_id                  : word t
@@ -204,17 +210,15 @@ Record compartmentalization_internal :=
            ; add_to_store_targets_tag : stag }.
 
 Instance sym_compartmentalization : Symbolic.params := {
-  tag := stag_eqType;
+  ttypes := stags;
 
-  handler := compartmentalization_handler;
+  transfer := compartmentalization_handler;
 
   internal_state := compartmentalization_internal
 }.
 
-Local Notation memory    :=
-  (word_map t (atom (word t) (@Symbolic.tag sym_compartmentalization))).
-Local Notation registers :=
-  (reg_map  t (atom (word t) (@Symbolic.tag sym_compartmentalization))).
+Local Notation memory    := (Symbolic.memory t sym_compartmentalization).
+Local Notation registers := (Symbolic.registers t sym_compartmentalization).
 
 Hint Immediate word_map_axioms.
 Hint Immediate reg_map_axioms.

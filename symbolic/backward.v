@@ -26,7 +26,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
-        {e : @encodable Symbolic.tag mt}
+        {e : forall k, encodable mt (Symbolic.ttypes k)}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
@@ -78,7 +78,11 @@ Ltac analyze_cache :=
     | _ \/ _ => destruct CACHEHIT as [CACHEHIT | CACHEHIT]
     | False => destruct CACHEHIT
     end;
-    try subst mvec; simpl in *; try simpl_encode; subst
+    try subst mvec; simpl in *; subst;
+    try match goal with
+    | H : context[decode (encode _)] |- _ =>
+      rewrite decodeK in H; simpl in *; subst
+    end
   | MISS   : Concrete.miss_state _ _ = Some ?st',
     INUSER : in_user ?st' = true |- _ =>
     destruct (miss_state_not_user _ _ MISS INUSER)
@@ -106,7 +110,13 @@ Proof.
 
   analyze_cache; simpl in *;
 
-  try solve [rewrite /in_user /word_lift /= decodeK //= in INUSER'];
+  try solve [rewrite /in_user /word_lift /= (@encode_kernel_tag _ _ (e Symbolic.P)) decodeK //= in INUSER'];
+
+  repeat match goal with
+  | H : encode _ = encode _ |- _ =>
+    apply encode_inj in H;
+    move: H => [H]; subst
+  end;
 
   repeat match goal with
   | MEM : PartMaps.get ?cmem ?addr = Some _,
@@ -209,7 +219,7 @@ Lemma initial_handler_state cst kst :
   forall (ISUSER : in_user cst = true)
          (WFENTRYPOINTS : wf_entry_points table (Concrete.mem cst))
          (NCALL : ~~ cache_allows_syscall table cst)
-         (NUSER : word_lift (fun t => is_user t)
+         (NUSER : @word_lift _ _ (e Symbolic.P) (fun t => is_user t)
                             (common.tag (Concrete.pc kst)) = false)
          (CACHE : cache_correct (Concrete.cache cst))
          (STEP : Concrete.step _ masks cst kst),
@@ -284,13 +294,13 @@ Proof.
   destruct REF as [smem sregs int cmem cregs cache epc pc tpc
                    ? ? REFM REFR CACHECORRECT  MVEC WFENTRYPOINTS KINV].
   subst sst cst.
-  assert (NUSER : word_lift (fun t => is_user t) (common.tag (Concrete.pc kst)) = false).
-  { destruct (word_lift (fun t => is_user t) (common.tag (Concrete.pc kst))) eqn:EQ; trivial.
+  assert (NUSER : @word_lift _ _ (e Symbolic.P) (fun t => is_user t) (common.tag (Concrete.pc kst)) = false).
+  { destruct (@word_lift _ _ (e Symbolic.P) (fun t => is_user t) (common.tag (Concrete.pc kst))) eqn:EQ; trivial.
     rewrite /in_kernel in KER.
     apply is_user_pc_tag_is_kernel_tag in EQ; auto. congruence. }
   destruct (initial_handler_state ISUSER WFENTRYPOINTS NOTALLOWED NUSER CACHECORRECT STEP)
     as (cmem' & mvec & STORE & ?). subst. simpl in *.
-  case HANDLER: (handler [eta Symbolic.handler] mvec) => [rvec|].
+  case HANDLER: (handler _ (fun m => Symbolic.transfer m) mvec) => [rvec|].
   - destruct (handler_correct_allowed_case cmem mvec cregs pc@(encode (USER tpc)) int
                                            KINV HANDLER STORE CACHECORRECT)
       as (cst'' & KEXEC' & CACHE' & LOOKUP & MVEC' &
@@ -363,7 +373,7 @@ Proof.
   destruct (in_kernel cst') eqn:NKERNEL; trivial.
   unfold in_user in NUSER.
   unfold in_kernel, Concrete.is_kernel_tag in NKERNEL.
-  erewrite encode_kernel_tag in NKERNEL.
+  rewrite (@encode_kernel_tag _ _ (e Symbolic.P)) in NKERNEL.
   destruct REF as [? ? ? ? ? ? ? ? ? ? ? ? ? CACHE ? ? ?].
   subst sst cst.
   assert (PCS := valid_pcs STEP CACHE INUSER).

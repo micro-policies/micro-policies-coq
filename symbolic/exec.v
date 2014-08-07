@@ -1,4 +1,4 @@
-Require Import lib.utils lib.partial_maps lib.Coqlib.
+Require Import lib.utils lib.partial_maps lib.Coqlib lib.hlist.
 Require Import common.common symbolic.symbolic.
 Require Import Coq.Vectors.Vector.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
@@ -16,17 +16,17 @@ Context {t : machine_types}
 
 Variable table : list (Symbolic.syscall t).
 
-Import Vector.VectorNotations.
+Import HListNotations.
 
-Definition build_mvec st : option (Symbolic.MVec Symbolic.tag)  :=
+Definition build_ivec st : option (Symbolic.IVec Symbolic.ttypes)  :=
   let '(Symbolic.State mem reg pc@tpc int) := st in
   match get mem pc with
     | Some i =>
       match decode_instr (common.val i) with
         | Some op =>
-          let part := @Symbolic.mkMVec Symbolic.tag (opcode_of op) tpc (common.tag i) in
-          match op return (Symbolic.mvec_operands Symbolic.tag (Symbolic.nfields (opcode_of op)) ->
-                           Symbolic.MVec Symbolic.tag) -> option (Symbolic.MVec Symbolic.tag) with
+          let part := @Symbolic.mkIVec Symbolic.ttypes (opcode_of op) tpc (common.tag i) in
+          match op return (hlist Symbolic.ttypes (Symbolic.inputs (opcode_of op)) ->
+                           Symbolic.IVec Symbolic.ttypes) -> option (Symbolic.IVec Symbolic.ttypes) with
             | Nop => fun part => Some (part [])
             | Const n r => fun part =>
                 do! old <- get reg r;
@@ -71,7 +71,7 @@ Definition build_mvec st : option (Symbolic.MVec Symbolic.tag)  :=
     | None =>
       match Symbolic.get_syscall table pc with
         | Some sc =>
-          Some (@Symbolic.mkMVec Symbolic.tag SERVICE tpc (Symbolic.entry_tag sc) (Vector.nil _))
+          Some (Symbolic.mkIVec SERVICE tpc (Symbolic.entry_tag sc) [])
         | None => None
       end
   end.

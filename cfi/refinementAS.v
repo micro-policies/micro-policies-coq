@@ -52,7 +52,7 @@ Definition refine_registers (areg : Abs.registers t)
 
 Definition refine_pc
            (apc : word t)
-           (spc : atom (word t) (@Symbolic.tag sym_params)) :=
+           (spc : atom (word t) (Symbolic.ttypes Symbolic.P)) :=
   apc = common.val spc /\
   (common.tag spc = DATA \/
    exists id, common.tag spc = INSTR (Some id)).
@@ -493,10 +493,10 @@ Proof.
           destruct (DOMAIN W) as [ASDOM SADOM];
           apply SADOM in EGETCALL; destruct EGETCALL;
           assert (REF: refine_state (Abs.State imem dmem aregs pc true)
-                                    (Symbolic.State mem reg pc@tpc int))
+                                    (Symbolic.State mem reg pc@tpc extra))
             by (repeat (split; auto));
           destruct (syscalls_backwards_simulation (Abs.State imem dmem aregs pc true)
-                                                  (@Symbolic.State _ sym_params mem reg pc@tpc int)
+                                                  (@Symbolic.State _ sym_params mem reg pc@tpc extra)
                                                   W
                                                   refine_syscalls_correct H1
                                                   REF CALL) as
@@ -650,7 +650,7 @@ Proof.
             unfold Symbolic.next_state in H; simpl in H
           | [H: Symbolic.run_syscall _ _ = Some _ |- _] =>
             unfold Symbolic.run_syscall in H;
-            unfold Symbolic.handler in H; simpl in H
+            unfold Symbolic.transfer in H; simpl in H
         end); match_inv; subst; assert (false = true);
     try match goal with
           | [H: _ -> false = true |- false = true] => apply H

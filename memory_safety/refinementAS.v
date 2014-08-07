@@ -1136,7 +1136,7 @@ destruct tpc as [[|]| |] => //;
 case: rst => rmem rregs rpc rist;
 destruct a_pc as [|[pc_b pc_off]]; try (by inversion rpc);
 try subst mvec;
-try rewrite /Symbolic.next_state_pc /Symbolic.next_state_reg /Symbolic.next_state_reg_and_pc /Symbolic.next_state /= /Sym.mvec_match /= in NEXT;
+try rewrite /Symbolic.next_state_pc /Symbolic.next_state_reg /Symbolic.next_state_reg_and_pc /Symbolic.next_state /= /= in NEXT;
 match_inv;
 repeat subst_beq;
 have [miP get_amem] := rmem;
@@ -1147,7 +1147,7 @@ try match goal with
   CALL : Symbolic.run_syscall _ _ = Some _,
   PC : PartMaps.get _ ?pc = None |- _ =>
   (move: GETCALL CALL;
-  case: int rist => color info rist;
+  case: extra rist => color info rist;
   rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=;
   match goal with
   | rpc : refine_val _ _ ?pc (PTR ?s) |- _ =>
@@ -1398,7 +1398,3 @@ by case: ifP.
 Qed.
 
 End refinement.
-
-(*
-Print Assumptions backward_simulation.
-*)

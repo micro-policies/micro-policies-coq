@@ -128,11 +128,12 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   (* Check that [rop] contains a USER tag *)
   let do_op rop := extract_user_tag rop rb rop ++
                    if_ rb [] [Halt _] in
-  match Symbolic.nfields op with
-  | Some (0, _) => []
-  | Some (1, _) => do_op rt1
-  | Some (2, _) => do_op rt1 ++ do_op rt2
-  | Some (3, _) => do_op rt1 ++ do_op rt2 ++ do_op rt3
+  if privileged_op op then [Halt _] else
+  match length (Symbolic.inputs op) with
+  | 0 => []
+  | 1 => do_op rt1
+  | 2 => do_op rt1 ++ do_op rt2
+  | 3 => do_op rt1 ++ do_op rt2 ++ do_op rt3
   | _ => [Halt _]
   end.
 
@@ -191,8 +192,8 @@ Definition handler : code :=
 Section invariant.
 
 Context {s : machine_ops_spec ops}
-        {ap : Symbolic.params}
-        {e : @encodable Symbolic.tag mt}.
+        {sp : Symbolic.params}
+        {e : forall tk, encodable mt (Symbolic.ttypes tk)}.
 
 Record policy_invariant : Type := {
   policy_invariant_statement :> Concrete.memory mt -> Symbolic.internal_state -> Prop;
@@ -200,7 +201,7 @@ Record policy_invariant : Type := {
   policy_invariant_upd_mem :
     forall mem mem' addr w1 ut w2 int
            (PINV : policy_invariant_statement mem int)
-           (GET : PartMaps.get mem addr = Some w1@(encode (USER ut)))
+           (GET : PartMaps.get mem addr = Some w1@(@encode _ _ (e Symbolic.M) (USER ut)))
            (UPD : PartMaps.upd mem addr w2 = Some mem'),
       policy_invariant_statement mem' int;
 
@@ -233,9 +234,9 @@ Let invariant (mem : Concrete.memory mt)
   (forall mvec rvec,
      Concrete.ctpc mvec = Concrete.TKernel ->
      Concrete.cache_lookup cache masks mvec = Some rvec ->
-     Concrete.cache_lookup ground_rules masks mvec = Some rvec) /\
+     Concrete.cache_lookup (ground_rules mt) masks mvec = Some rvec) /\
   (forall mvec rvec,
-     Concrete.cache_lookup ground_rules masks mvec = Some rvec ->
+     Concrete.cache_lookup (ground_rules mt) masks mvec = Some rvec ->
      Concrete.cache_lookup cache masks mvec = Some rvec) /\
   (forall r, In r kernel_regs ->
    exists x, PartMaps.get regs r = Some x@Concrete.TKernel) /\
@@ -244,7 +245,7 @@ Let invariant (mem : Concrete.memory mt)
 Lemma invariant_upd_mem :
   forall regs mem1 mem2 cache addr w1 ut w2 int
          (KINV : invariant mem1 regs cache int)
-         (GET : PartMaps.get mem1 addr = Some w1@(encode (USER ut)))
+         (GET : PartMaps.get mem1 addr = Some w1@(@encode _ _ (e Symbolic.M) (USER ut)))
          (UPD : PartMaps.upd mem1 addr w2 = Some mem2),
     invariant mem2 regs cache int.
 Proof.
@@ -266,7 +267,7 @@ Proof.
       specialize (@PROG _ _ GET').
       rewrite PROG in GET.
       move: GET => [_ CONTRA].
-      rewrite encode_kernel_tag in CONTRA.
+      rewrite (@encode_kernel_tag _ _ (e Symbolic.M)) in CONTRA.
       apply encode_inj in CONTRA. discriminate.
     + rewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
@@ -276,8 +277,8 @@ Qed.
 Lemma invariant_upd_reg :
   forall mem regs regs' cache r w1 ut1 w2 ut2 int
          (KINV : invariant mem regs cache int)
-         (GET : PartMaps.get regs r = Some w1@(encode (USER ut1)))
-         (UPD : PartMaps.upd regs r w2@(encode (USER ut2)) = Some regs'),
+         (GET : PartMaps.get regs r = Some w1@(@encode _ _ (e Symbolic.R) (USER ut1)))
+         (UPD : PartMaps.upd regs r w2@(@encode _ _ (e Symbolic.R) (USER ut2)) = Some regs'),
     invariant mem regs' cache int.
 Proof.
   intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
@@ -286,11 +287,8 @@ Proof.
   case E: (r' == r); move/eqP: E => E.
   - subst r'.
     apply REGS in IN.
-    erewrite GET, encode_kernel_tag in IN. simpl in IN.
-    destruct IN as [x IN].
-    have E : encode (USER ut1) = encode KERNEL by congruence.
-    apply encode_inj in E.
-    discriminate.
+    erewrite GET, (@encode_kernel_tag _ _ (e Symbolic.R)) in IN. simpl in IN.
+    by move: IN => [x [_ /(@encode_inj _ _ _ _ _) E]].
   - rewrite (PartMaps.get_upd_neq E UPD); eauto.
 Qed.
 

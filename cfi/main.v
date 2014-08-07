@@ -1,6 +1,6 @@
 Require Import ssreflect ssrbool ssrfun eqtype.
 
-Require Import Coq.Lists.List. 
+Require Import Coq.Lists.List.
 Require Import lib.Coqlib lib.utils.
 Require Import lib.partial_maps lib.FiniteMaps lib.ordered.
 Require Import common.common.
@@ -53,22 +53,22 @@ Definition bound : word t := Word.repr ((Word.max_unsigned 27) + 1)%Z. (*29 bits
 Definition word_to_id (w : word t) : option id_size :=
   if (Word.ltu w bound) then Some (Word.castu w) else None.
 
-Definition id_to_word (x : id) : word t := 
+Definition id_to_word (x : id) : word t :=
   Word.castu x.
 
 Lemma id_to_word_bound x : Word.ltu (id_to_word x) bound.
 Proof.
-  destruct x as [x Hx]. 
+  destruct x as [x Hx].
   let u := eval compute in (Word.modulus 27) in
   change (Word.modulus 27) with u in Hx.
   unfold id_to_word, Word.castu, Word.ltu, bound.
-  simpl. rewrite Word.Z_mod_modulus_eq. rewrite Zmod_small. 
+  simpl. rewrite Word.Z_mod_modulus_eq. rewrite Zmod_small.
   - destruct (zlt x 268435456); by [trivial | omega].
   -  let u := eval compute in (Word.modulus 31) in
      change (Word.modulus 31) with u.
      by omega.
 Qed.
-  
+
 Lemma id_to_wordK x : word_to_id (id_to_word x) = Some x.
 Proof.
   remember (id_to_word x) as w eqn:Hw.
@@ -82,7 +82,7 @@ Proof.
   change (Word.modulus (word_size_minus_one t)) with u.
   rewrite Zmod_small.
   - by apply Word.repr_unsigned.
-  - unfold Word.unsigned. 
+  - unfold Word.unsigned.
     assert (H := Word.intrange 27 x).
     let u := eval compute in (Word.modulus 27) in
                               change (Word.modulus 27) with u in H.
@@ -105,15 +105,15 @@ Proof.
   simpl in Hl.
   case: (zlt (Word.unsigned w) 268435456) => Hcmp.
   + rewrite Zmod_small; [by apply Word.repr_unsigned | idtac].
-    split; auto. 
+    split; auto.
     destruct (Word.unsigned_range w) as [? ?].
     by assumption.
-  + exfalso. 
+  + exfalso.
     apply zlt_false with (A := bool) (a := true) (b := false) in Hcmp.
     rewrite Hl in Hcmp.
     by discriminate.
 Qed.
-    
+
 Instance ids : cfi_id := {|
  id := id;
  word_to_id := word_to_id;
@@ -175,7 +175,7 @@ Qed.
 
 Import DoNotation.
 
-Instance encodable_tag : @encodable cfi_tag_eqType t := {|
+Instance encodable_tag : @encodable t cfi_tag_eqType := {|
   encode t :=
     match t with
     | USER ut => Word.pack [29; 1] [encode_cfi_tag ut; Word.one]%wp
@@ -221,7 +221,11 @@ Section Refinement.
 
 Variable cfg : id -> id -> bool.
 
-Instance sp : Symbolic.params := Sym.sym_cfi cfg.
+(* XXX: Removing the explicit argument here causes Coq to throw a
+Not_found when closing the Refinement section below, probably a bug to
+be reported. *)
+
+Instance sp : Symbolic.params := @Sym.sym_cfi t ids cfg.
 
 Variable ki : refinement_common.kernel_invariant.
 Variable stable : list (Symbolic.syscall t).
@@ -294,8 +298,6 @@ Proof.
   exploit backwards_refinement_as; eauto.
   intros (ast' & EXECA & AS'). eauto 7.
 Qed.
-
-
 
 End Refinement.
 

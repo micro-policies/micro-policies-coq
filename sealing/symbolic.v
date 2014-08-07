@@ -2,7 +2,7 @@ Require Import List. Import ListNotations.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
+Require Import lib.hlist lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import sealing.classes.
 
@@ -39,29 +39,6 @@ Inductive stag :=
 | KEY    : key -> stag
 | SEALED : key -> stag.
 
-(* One should not depend on the precise value of this tag! *)
-Definition none := KEY max_key.
-
-Section WithVectors.
-Import Coq.Vectors.Vector.VectorNotations.
-
-Definition sealing_handler (mv : MVec stag) : option (RVec stag) :=
-  match mv with
-  | mkMVec NOP       _ DATA []              => Some (mkRVec DATA none)
-  | mkMVec CONST     _ DATA [_]             => Some (mkRVec DATA DATA)
-  | mkMVec MOV       _ DATA [tsrc; _]       => Some (mkRVec DATA tsrc)
-  | mkMVec (BINOP _) _ DATA [DATA; DATA; _] => Some (mkRVec DATA DATA)
-  | mkMVec LOAD      _ DATA [DATA; tmem; _] => Some (mkRVec DATA tmem)
-  | mkMVec STORE     _ DATA [DATA; tsrc; _] => Some (mkRVec DATA tsrc)
-  | mkMVec JUMP      _ DATA [DATA]          => Some (mkRVec DATA none)
-  | mkMVec BNZ       _ DATA [DATA]          => Some (mkRVec DATA none)
-  | mkMVec JAL       _ DATA [DATA; _]       => Some (mkRVec DATA DATA)
-  | mkMVec SERVICE   _ _    []              => Some (mkRVec DATA none)
-  | mkMVec _         _ _ _                  => None
-  end.
-
-End WithVectors.
-
 Definition stag_eq t1 t2 :=
   match t1, t2 with
     | DATA, DATA => true
@@ -78,10 +55,32 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Program Instance sym_sealing : params := {
-  tag := stag_eqType;
+Definition stags : tag_kind -> eqType := fun _ => [eqType of stag].
 
-  handler := sealing_handler;
+Section WithHLists.
+Import HListNotations.
+
+Definition sealing_handler (iv : IVec stags) : option (OVec stags (op iv)) :=
+  match iv with
+  | mkIVec NOP       _ DATA []              => Some (@mkOVec stags NOP DATA tt)
+  | mkIVec CONST     _ DATA [_]             => Some (@mkOVec stags CONST DATA DATA)
+  | mkIVec MOV       _ DATA [tsrc; _]       => Some (@mkOVec stags MOV DATA tsrc)
+  | mkIVec (BINOP o) _ DATA [DATA; DATA; _] => Some (@mkOVec stags (BINOP o) DATA DATA)
+  | mkIVec LOAD      _ DATA [DATA; tmem; _] => Some (@mkOVec stags LOAD DATA tmem)
+  | mkIVec STORE     _ DATA [DATA; tsrc; _] => Some (@mkOVec stags STORE DATA tsrc)
+  | mkIVec JUMP      _ DATA [DATA]          => Some (@mkOVec stags JUMP DATA tt)
+  | mkIVec BNZ       _ DATA [DATA]          => Some (@mkOVec stags BNZ DATA tt)
+  | mkIVec JAL       _ DATA [DATA; _]       => Some (@mkOVec stags JAL DATA DATA)
+  | mkIVec SERVICE   _ _    []              => Some (@mkOVec stags SERVICE DATA tt)
+  | mkIVec _         _ _ _                  => None
+  end.
+
+End WithHLists.
+
+Program Instance sym_sealing : params := {
+  ttypes := stags;
+
+  transfer := sealing_handler;
 
   internal_state := key  (* next key to generate *)
 }.
