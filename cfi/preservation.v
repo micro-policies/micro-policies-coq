@@ -146,7 +146,6 @@ Class machine_refinement_specs := {
 
   step_classic : forall (cst cst': @state cmachine),
     (step cst cst') \/ (~step cst cst');
-  (* in a hurry it can be instantiated with classic axiom from Classical *)
 
   initial_refine : forall (cst : @state cmachine),
     initial cst ->

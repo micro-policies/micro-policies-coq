@@ -142,6 +142,12 @@ Proof.
     + rewrite M1. simpl. trivial.
 Qed.
 
+Lemma stepP' : forall s1 s2, ssrbool.reflect (Concrete.step _ masks s1 s2) (step s1 == Some s2).
+Proof.
+  move => s1 s2.
+  apply (iffP eqP); by move => /stepP.
+Qed.
+
 Import PartMaps.
 
 Definition build_cmvec st : option (Concrete.MVec (word mt)) :=

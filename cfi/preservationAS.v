@@ -4,6 +4,7 @@ Require Import lib.partial_maps.
 Require Import lib.Coqlib.
 Require Import common.common.
 Require Import symbolic.symbolic.
+Require Import symbolic.exec.
 Require Import cfi.classes.
 Require Import cfi.abstract.
 Require Import cfi.symbolic.
@@ -325,11 +326,11 @@ Proof.
       inv CONTRA. by auto.
   - right. intros CONTRA.
     inv CONTRA. by auto.
-Qed. 
+Qed.
 
 
 Hypothesis st_eq_dec : forall (st : Symbolic.state t) st', {st = st'} + {st <> st'}.
-Hypothesis step_determ : forall st st' st'', 
+Hypothesis step_determ : forall st st' st'',
                          Symbolic.step stable st st' ->
                          Symbolic.step stable st st'' ->
                          st' = st''.
@@ -347,18 +348,16 @@ Proof.
     | [H: Symbolic.stepf _ _ = None |- _] =>
       right; intro CONTRA; apply Symbolic.stepP in CONTRA;
       by congruence
-  end. 
+  end.
 
 *)
 
 
 
-Require Import Classical.
-
 Program Instance cfi_refinementAS_specs :
   machine_refinement_specs cfi_refinementAS.
-Next Obligation. (*step or no step*)
-  by apply classic.
+Next Obligation.
+  by case: (stepP' stable cst cst') => [H | H]; auto.
 Qed.
 Next Obligation. (*initial state*)
   destruct H as [TPC [ITG [VTG ETG]]].

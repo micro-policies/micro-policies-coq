@@ -1522,7 +1522,6 @@ Proof.
       discriminate.
 Qed.
 
-Require Import Classical.
 Import ListNotations.
 
 Open Scope list_scope.
@@ -1531,7 +1530,7 @@ Close Scope seq_scope.
 Program Instance cfi_refinementAS_specs :
   machine_refinement_specs cfi_refinementSC.
 Next Obligation. (*step or no step*)
-  by apply classic.
+  by case: (stepP' masks mt cst cst') => [H | H]; auto.
 Qed.
 Next Obligation. (*initial states*)
   unfold Conc.cinitial in H.
