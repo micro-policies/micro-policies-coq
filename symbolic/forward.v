@@ -181,7 +181,11 @@ Ltac solve_concrete_step :=
                            rewrite STORE
                          | |- _ => idtac
                          end;
-                         simpl in *; match_inv; eauto])
+                         simpl in *;
+                         repeat match goal with
+                         | H : ?X = _ |- context[?X] =>
+                           rewrite H; simpl
+                         end; match_inv; eauto])
   end.
 
 Ltac destruct_mvec_operands :=
@@ -265,7 +269,7 @@ Ltac analyze_cache_miss :=
     destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE];
     pose proof (store_mvec_mvec_in_kernel _ _ STORE);
     pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE);
-    let HANDLER' := constr:(symbolic_handler_concrete_handler _ HANDLER) in
+    let HANDLER' := constr:(@symbolic_handler_concrete_handler mvec _ HANDLER erefl) in
     destruct (handler_correct_allowed_case _ cmvec _ pc@(Concrete.ctpc cmvec) _ KINV HANDLER' STORE CACHE)
       as ([? ? ? [? ?] ?] &
           KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
@@ -274,38 +278,22 @@ Ltac analyze_cache_miss :=
     unfold encode_ivec, encode_ovec, ovec_of_uovec in *; simpl in *
   end.
 
-Lemma forward_simulation sst sst' cst :
-  refine_state ki table sst cst ->
-  Symbolic.step table sst sst' ->
-  exists cst',
-    exec (Concrete.step _ masks) cst cst' /\
-    refine_state ki table sst' cst'.
-Proof.
-  intros REF STEP.
-  destruct REF as [smem sregs int cmem cregs cache epc pc tpc
-                   ? ? REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
-  subst sst cst.
-Admitted. (*
-  inv STEP;
-  try match goal with
-  | H : Symbolic.State _ _ _ _ = Symbolic.State _ _ _ _ |- _ =>
-    inv H
-  end;
-  match_data;
-  repeat autounfold in NEXT;
-  match_inv;
-
+Ltac analyze_step :=
   match goal with
-  | HANDLER : Symbolic.handler ?mvec = Some ?rvec |- _ =>
-    destruct rvec;
-    let cmvec := constr:(encode_mvec (mvec_of_umvec mvec)) in
+  | rvec : _,
+    CACHE : cache_correct ?cache,
+    HANDLER : Symbolic.transfer ?mvec = Some ?rvec |- _ =>
+    let trpc := fresh "trpc" in
+    let tr   := fresh "tr"   in
+    destruct rvec as [trpc tr]; simpl in tr;
+    let cmvec := constr:(encode_ivec e (ivec_of_uivec mvec)) in
     destruct (Concrete.cache_lookup cache masks cmvec) as [rvec' | ] eqn:LOOKUP;
 
     [
       (* Cache hit case *)
-      generalize (symbolic_handler_concrete_cache _ CACHE HANDLER LOOKUP);
+      generalize (@symbolic_handler_concrete_cache _ mvec _ _  CACHE HANDLER LOOKUP);
       intros; subst rvec';
-      unfold encode_mvec, encode_rvec, rvec_of_urvec in LOOKUP; simpl in *;
+      unfold encode_ivec, encode_ovec, ovec_of_uovec in LOOKUP; simpl in *;
       match_data;
       solve [eexists; split;
                  [apply exec_one; solve_concrete_step|solve_refine_state]]
@@ -328,6 +316,28 @@ Admitted. (*
   | _ : Symbolic.run_syscall _ _ = Some _ |- _ => idtac
   end.
 
+Lemma forward_simulation sst sst' cst :
+  refine_state ki table sst cst ->
+  Symbolic.step table sst sst' ->
+  exists cst',
+    exec (Concrete.step _ masks) cst cst' /\
+    refine_state ki table sst' cst'.
+Proof.
+  intros REF STEP.
+  destruct REF as [smem sregs int cmem cregs cache epc pc tpc
+                   ? ? REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
+  subst sst cst.
+  inv STEP;
+  try match goal with
+  | H : Symbolic.State _ _ _ _ = Symbolic.State _ _ _ _ |- _ =>
+    inv H
+  end;
+  match_data;
+  repeat autounfold in NEXT;
+  match_inv;
+
+  analyze_step.
+
   match goal with
     | |- context[exec _ ?cst _] =>
       case: (boolP (cache_allows_syscall table cst)) => [ALLOWED | NOTALLOWED]
@@ -343,12 +353,17 @@ Admitted. (*
       set (cmvec := x);
       destruct (Concrete.cache_lookup _ masks x) eqn:LOOKUP; first by []
     end.
+    move {NOTALLOWED}.
     match type of CALL' with
-    | context[Symbolic.handler ?mvec] =>
-      destruct (Symbolic.handler mvec) eqn:HANDLER; last by []
+    | context[Symbolic.transfer ?mvec] =>
+      destruct (Symbolic.transfer mvec) eqn:HANDLER; last by []
     end.
-    assert (HANDLER' : handler Symbolic.handler cmvec = Some (Symbolic.mkRVec KERNEL KERNEL)).
-    { by rewrite /handler /= 2!decodeK HANDLER. }
+    assert (HANDLER' : handler e Symbolic.transfer cmvec = Some (Concrete.mkRVec Concrete.TKernel Concrete.TKernel)).
+    { rewrite /handler /=.
+      match goal with
+      | H : Symbolic.transfer ?mvec = _ |- _ =>
+      change cmvec with (encode_ivec e (ivec_of_uivec mvec)) end.
+      by rewrite decode_ivecK /= HANDLER /= /ovec_of_uovec /encode_ovec. }
     destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE].
     pose proof (store_mvec_mvec_in_kernel _ _ STORE).
     pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE).
@@ -375,8 +390,6 @@ Admitted. (*
     eapply restricted_exec_trans. eapply exec_until_weaken. eassumption.
     eapply user_kernel_user_step_weaken. eassumption.
     solve_refine_state.
-
 Qed.
-*)
 
 End Refinement.
