@@ -198,6 +198,7 @@ Module PTree <: TREE.
   Implicit Arguments Leaf [A].
   Implicit Arguments Node [A].
   Scheme tree_ind := Induction for tree Sort Prop.
+  Scheme tree_rect := Induction for tree Sort Type.
 
   Definition t := tree.
 
@@ -1617,7 +1618,27 @@ End Tree_Properties.
 
 Module PTree_Properties := Tree_Properties(PTree).
 
-(** * Useful notations *)
+Section EqType.
 
-Notation "a ! b" := (PTree.get b a) (at level 1).
-Notation "a !! b" := (PMap.get b a) (at level 1).
+Require Import ssreflect ssrbool eqtype.
+
+Fixpoint tree_eqb (A : eqType) (t1 t2 : PTree.tree A) : bool :=
+  match t1, t2 with
+  | PTree.Leaf, PTree.Leaf => true
+  | PTree.Node t11 x1 t12, PTree.Node t21 x2 t22 => [&& tree_eqb A t11 t21, x1 == x2 & tree_eqb A t12 t22]
+  | _, _ => false
+  end.
+
+Lemma tree_eqbP A : Equality.axiom (tree_eqb A).
+Proof.
+  elim => [|t11 IH1 x1 t12 IH2] [|t21 x2 t22] /=; try by constructor.
+  apply: (iffP and3P).
+  - by move => [/IH1 -> /eqP -> /IH2 ->].
+  - move => [<- <- <-].
+    split; by [apply/IH1| |apply/IH2].
+Qed.
+
+Definition tree_eqMixin A := EqMixin (tree_eqbP A).
+Canonical tree_eqType A := Eval hnf in EqType _ (tree_eqMixin A).
+
+End EqType.

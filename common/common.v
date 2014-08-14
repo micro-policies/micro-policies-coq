@@ -5,6 +5,7 @@ Require Import lib.ordered.
 
 Require Import lib.utils.
 Require Import lib.Integers.
+Require Import lib.Maps.
 Require Import lib.FiniteMaps.
 Require Import lib.partial_maps.
 
@@ -735,10 +736,32 @@ Inductive word_map (mt : machine_types) T :=
 
 Let wm mt T (m : word_map mt T) := let (m) := m in m.
 
+Definition word_map_eqb mt (T : eqType) (m1 m2 : word_map mt T) := wm m1 == wm m2.
+
+Lemma word_map_eqbP mt (T : eqType) : Equality.axiom (@word_map_eqb mt T).
+Proof.
+  move => [m1] [m2] /=.
+  apply: (iffP eqP); simpl; try congruence.
+Qed.
+
+Definition word_map_eqMixin mt T := EqMixin (@word_map_eqbP mt T).
+Canonical word_map_eqType mt T := Eval hnf in EqType _ (@word_map_eqMixin mt T).
+
 Inductive reg_map (mt : machine_types) T :=
   RegMap of ZMap.t T.
 
 Let rm mt T (m : reg_map mt T) := let (m) := m in m.
+
+Definition reg_map_eqb mt (T : eqType) (m1 m2 : reg_map mt T) := rm m1 == rm m2.
+
+Lemma reg_map_eqbP mt (T : eqType) : Equality.axiom (@reg_map_eqb mt T).
+Proof.
+  move => [m1] [m2] /=.
+  apply: (iffP eqP); simpl; try congruence.
+Qed.
+
+Definition reg_map_eqMixin mt T := EqMixin (@reg_map_eqbP mt T).
+Canonical reg_map_eqType mt T := Eval hnf in EqType _ (@reg_map_eqMixin mt T).
 
 Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt) (word mt) := {
   get V m k := ZMap.get (Word.unsigned k) (wm m);
