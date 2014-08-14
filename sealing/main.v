@@ -13,6 +13,7 @@ Require Import concrete.int_32.
 Require Import concrete.exec.
 Require Import symbolic.int_32.
 Require Import symbolic.symbolic.
+Require Import symbolic.exec.
 Require Import symbolic.refinement_common.
 Require Import symbolic.backward.
 Require Import symbolic.rules.
@@ -754,7 +755,7 @@ Definition run_abs n p :=
 Definition run_sym n p :=
   let init := build_symbolic_sealing_machine p in
   let '(_,_,syscall_addrs) := concrete_sealing_monitor in
-  let tr := utils.runn (fun x => @Symbolic.stepf concrete_int_32_t concrete_int_32_ops
+  let tr := utils.runn (fun x => @stepf concrete_int_32_t concrete_int_32_ops
                                  (@Sym.sym_sealing sk_defs)
                                  Sym.sealing_syscalls
                                  x) n init in
