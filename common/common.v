@@ -591,6 +591,20 @@ End Coding.
 
 Record atom V T := Atom { val : V; tag : T }.
 
+Definition atom_eqb (V T : eqType) : rel (atom V T) :=
+  [rel a1 a2 | [&& val a1 == val a2 & tag a1 == tag a2] ].
+
+Lemma atom_eqbP V T : Equality.axiom (atom_eqb V T).
+Proof.
+  move => [v1 t1] [v2 t2] /=.
+  apply (iffP andP); simpl.
+  - by move => [/eqP -> /eqP ->].
+  - move => [-> ->]. by rewrite !eqxx.
+Qed.
+
+Definition atom_eqMixin V T := EqMixin (atom_eqbP V T).
+Canonical atom_eqType V T := Eval hnf in EqType _ (atom_eqMixin V T).
+
 Notation "x @ t" := (Atom x t) (at level 5, format "x '@' t").
 
 Section SyscallRegs.

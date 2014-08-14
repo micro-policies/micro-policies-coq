@@ -372,6 +372,67 @@ Notation registers t := (reg_map t (atom (word t) (word t))).
 
 End Concrete.
 
+Module Exports.
+
+Import Concrete.
+Require Import seq.
+
+Definition mvec_eqb (T : eqType) (m1 m2 : MVec T) : bool :=
+  [&& cop m1 == cop m2,
+      ctpc m1 == ctpc m2,
+      cti m1 == cti m2,
+      ct1 m1 == ct1 m2 &
+      ct2 m1 == ct2 m2] && (ct3 m1 == ct3 m2).
+
+Lemma mvec_eqbP T : Equality.axiom (@mvec_eqb T).
+Proof.
+  move => m1 m2.
+  case: m1 => *. case: m2 => *.
+  apply (iffP andP); simpl.
+  - by move => [/and5P [/eqP -> /eqP -> /eqP -> /eqP -> /eqP ->] /eqP ->].
+  - move => [-> -> -> -> -> ->]. by rewrite !eqxx.
+Qed.
+
+Definition mvec_eqMixin T := EqMixin (mvec_eqbP T).
+Canonical mvec_eqType T := Eval hnf in EqType _ (mvec_eqMixin T).
+
+Definition rvec_eqb (T : eqType) (r1 r2 : RVec T) : bool :=
+  [&& ctrpc r1 == ctrpc r2 & ctr r1 == ctr r2].
+
+Lemma rvec_eqbP T : Equality.axiom (@rvec_eqb T).
+Proof.
+  move => r1 r2.
+  case: r1 => *. case: r2 => *.
+  apply (iffP andP); simpl.
+  - by move => [/eqP -> /eqP ->].
+  - move => [-> ->]. by rewrite !eqxx.
+Qed.
+
+Definition rvec_eqMixin T := EqMixin (rvec_eqbP T).
+Canonical rvec_eqType T := Eval hnf in EqType _ (rvec_eqMixin T).
+
+Definition state_eqb mt : rel (state mt) :=
+  [rel s1 s2 | [&& mem s1 == mem s2,
+                   regs s1 == regs s2,
+                   cache s1 == cache s2,
+                   pc s1 == pc s2 &
+                   epc s1 == epc s2] ].
+
+Lemma state_eqbP mt : Equality.axiom (@state_eqb mt).
+Proof.
+  move => [? ? ? ? ?] [? ? ? ? ?].
+  apply (iffP and5P); simpl.
+  - by move => [/eqP -> /eqP -> /eqP -> /eqP -> /eqP ->].
+  - by move => [-> -> -> -> ->].
+Qed.
+
+Definition state_eqMixin mt := EqMixin (@state_eqbP mt).
+Canonical state_eqType mt := EqType _ (@state_eqMixin mt).
+
+End Exports.
+
+Export Exports.
+
 Arguments Concrete.state t.
 Arguments Concrete.mkState {_} _ _ _ _ _.
 Arguments Concrete.TNone {t}.

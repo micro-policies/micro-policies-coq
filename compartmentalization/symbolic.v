@@ -209,12 +209,29 @@ Record compartmentalization_internal :=
            ; add_to_jump_targets_tag  : stag
            ; add_to_store_targets_tag : stag }.
 
+Definition compartmentalization_internal_eqb : rel compartmentalization_internal :=
+  [rel i1 i2 | [&& next_id i1 == next_id i2,
+                   isolate_tag i1 == isolate_tag i2,
+                   add_to_jump_targets_tag i1 == add_to_jump_targets_tag i2 &
+                   add_to_store_targets_tag i1 == add_to_store_targets_tag i2 ] ].
+
+Lemma compartmentalization_internal_eqbP : Equality.axiom compartmentalization_internal_eqb.
+Proof.
+  move => [? ? ? ?] [? ? ? ?].
+  apply (iffP and4P); simpl.
+  - by move => [/eqP -> /eqP -> /eqP -> /eqP ->].
+  - by move => [-> -> -> ->].
+Qed.
+
+Definition compartmentalization_internal_eqMixin := EqMixin compartmentalization_internal_eqbP.
+Canonical compartmentalization_internal_eqType := Eval hnf in EqType _ compartmentalization_internal_eqMixin.
+
 Instance sym_compartmentalization : Symbolic.params := {
   ttypes := stags;
 
   transfer := compartmentalization_handler;
 
-  internal_state := compartmentalization_internal
+  internal_state := compartmentalization_internal_eqType
 }.
 
 Local Notation memory    := (Symbolic.memory t sym_compartmentalization).

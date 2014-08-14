@@ -38,7 +38,7 @@ Program Instance sym_cfi : Symbolic.params := {
 
   transfer := rules.cfi_handler cfg;
 
-  internal_state := unit
+  internal_state := [eqType of unit]
 }.
 
 Local Notation memory := (Symbolic.memory t sym_cfi).

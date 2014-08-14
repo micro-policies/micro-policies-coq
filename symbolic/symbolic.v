@@ -101,7 +101,7 @@ Class params := {
 
   transfer : forall (iv : IVec ttypes), option (OVec ttypes (op iv));
 
-  internal_state : Type
+  internal_state : eqType
 }.
 
 Context {sp : params}.
@@ -373,6 +373,31 @@ Notation memory t s := (word_map t (atom (word t) (@ttypes s M))).
 Notation registers t s := (reg_map t (atom (word t) (@ttypes s R))).
 
 End Symbolic.
+
+Module Exports.
+
+Import Symbolic.
+
+Definition state_eqb mt p : rel (@state mt p) :=
+  [rel s1 s2 | [&& mem s1 == mem s2,
+                   regs s1 == regs s2,
+                   pc s1 == pc s2 &
+                   internal s1 == internal s2 ] ].
+
+Lemma state_eqbP mt p : Equality.axiom (@state_eqb mt p).
+Proof.
+  move => [? ? ? ?] [? ? ? ?].
+  apply (iffP and4P); simpl.
+  - by move => [/eqP -> /eqP -> /eqP -> /eqP ->].
+  - by move => [-> -> -> ->].
+Qed.
+
+Definition state_eqMixin mt p := EqMixin (@state_eqbP mt p).
+Canonical state_eqType mt p := Eval hnf in EqType _ (@state_eqMixin mt p).
+
+End Exports.
+
+Export Exports.
 
 Arguments Symbolic.state t {_}.
 Arguments Symbolic.State {_ _} _ _ _ _.

@@ -209,10 +209,8 @@ Global Instance sym_memory_safety : params := {
 
   transfer := rules;
 
-  internal_state := (color * list block_info)%type
+  internal_state := [eqType of (color * list block_info)%type]
 }.
-
-
 
 Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=
   match n with
