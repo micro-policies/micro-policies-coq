@@ -47,7 +47,7 @@ Definition refine_imemory (aimem : Abs.imemory t)
 Definition refine_registers (areg : Abs.registers t)
                             (sreg : Sym.registers t ids cfg) :=
   forall n (x : word t),
-    (exists ut, get sreg n = Some x@ut) <->
+    get sreg n = Some x@DATA <->
     get areg n = Some x.
 
 Definition refine_pc
@@ -283,23 +283,37 @@ Hypothesis syscall_preserves_entry_tags :
     Symbolic.sem sc st = Some st' ->
     Sym.entry_points_tagged stable (Symbolic.mem st').
 
+Hypothesis syscall_preserves_register_tags :
+  forall sc st st',
+    Sym.registers_tagged (cfg := cfg) (Symbolic.regs st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.registers_tagged (cfg := cfg) (Symbolic.regs st').
+
+Hypothesis syscall_preserves_jump_tags :
+  forall sc st st',
+    Sym.jumps_tagged (cfg := cfg) (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.jumps_tagged (Symbolic.mem st').
+
+Hypothesis syscall_preserves_jal_tags :
+  forall sc st st',
+    Sym.jals_tagged (cfg := cfg) (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.jals_tagged (Symbolic.mem st').
+
 Import Vector.VectorNotations.
 
-(*OK this can certainly be shared, at least as soon as we share more on refinement definitions
- have a look at refine_update_pointwise*)
-Lemma refine_registers_upd sreg sreg' areg r v tg v' tg' :
+Lemma refine_registers_upd sreg sreg' areg r v v' :
   refine_registers areg sreg ->
-  get sreg r = Some v@tg ->
-  upd sreg r v'@tg' = Some sreg' ->
+  get sreg r = Some v@DATA ->
+  upd sreg r v'@DATA = Some sreg' ->
   exists areg',
     upd areg r v' = Some areg' /\
     refine_registers areg' sreg'.
 Proof.
   intros REFR GET UPD.
-  assert (EGET: exists ut, get sreg r = Some v@ut)
-    by (eexists; eassumption).
-  apply REFR in EGET.
-  assert (NEW := PartMaps.upd_defined v' EGET).
+  apply REFR in GET.
+  assert (NEW := PartMaps.upd_defined v' GET).
   destruct NEW as [areg' UPD'].
   eexists; split; eauto.
   unfold refine_registers. intros r' v''.
@@ -308,8 +322,8 @@ Proof.
     rewrite (PartMaps.get_upd_eq UPD').
     rewrite (PartMaps.get_upd_eq UPD).
     split.
-    - intro H. destruct H as [ut H]. inversion H; reflexivity.
-    - intro H. exists tg'; inversion H; reflexivity.
+    - intro H. inversion H; reflexivity.
+    - intro H. inversion H; reflexivity.
   * rewrite (PartMaps.get_upd_neq NEQ UPD).
     rewrite (PartMaps.get_upd_neq NEQ UPD').
     auto.
@@ -392,6 +406,7 @@ Hint Resolve Sym.itags_preserved_by_step : invariant_db.
 Hint Resolve Sym.entry_point_tags_preserved_by_step : invariant_db.
 Hint Resolve Sym.valid_jmp_tagged_preserved_by_step : invariant_db.
 
+
 Theorem backwards_simulation ast sst sst' :
   refine_state ast sst ->
   Symbolic.step stable sst sst' ->
@@ -405,7 +420,7 @@ Proof.
   { (*1st case*)
     inversion SSTEP; subst;
     destruct REF
-      as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG ETG]]]]]]]];
+      as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG [ETG [RTG [JUTG JATG]]]]]]]]]]];
     simpl in *;
     (*unfoldings and case analysis on tags*)
     repeat (
@@ -437,29 +452,32 @@ Proof.
             assert (exists id, get Mem Pc = Some I@(INSTR id))
               by (eexists;eauto)
         end;
-    (*make register gets in the form of existentials*)
-    try match goal with
-          | [H1: refine_registers _ ?Reg, H2: get ?Reg ?R = Some ?V@_,
-               H3: get ?Reg ?R' = Some ?V'@_,
-               H4: get ?Reg ?R'' = Some ?V''@_ |- _] =>
-            assert (exists ut, get Reg R = Some V@ut)
-              by (eexists;eauto);
-              assert (exists ut, get Reg R' = Some V'@ut)
-              by (eexists;eauto);
-              assert (exists ut, get Reg R' = Some V'@ut)
-                by (eexists;eauto)
-          | [H1: refine_registers _ ?Reg, H2: get ?Reg ?R = Some ?V@_,
-               H3: get ?Reg ?R' = Some ?V'@_|- _] =>
-            assert (exists ut, get Reg R = Some V@ut)
-              by (eexists;eauto);
-              assert (exists ut, get Reg R' = Some V'@ut)
-              by (eexists;eauto)
-          | [H1: refine_registers _ ?Reg,
-               H2: get ?Reg ?R = Some ?V@_ |- _] =>
-            assert (exists ut, get Reg R = Some V@ut)
-              by (eexists;eauto)
-        end;
-    (*do actual refinements*)
+    (* prove that all register reads have DATA tag*)
+    repeat match goal with
+        | [H1: refine_registers _ ?Reg, H: get ?Reg ?R = Some ?V@?TG |- _] =>
+          assert (TG = DATA)
+            by (destruct (RTG R);
+                match goal with
+                    |[A : get _ ?R = Some _, B: get _ ?R = Some _ |- _] =>
+                     rewrite A in B; inversion B; auto
+                end); subst;
+            assert (get Reg R = Some V@DATA /\ True)
+            by auto;
+            clear H
+           end;
+      repeat match goal with
+               | [H: get _ _ = _ /\ True |- _] =>
+                 destruct H as [? TMP];
+                   clear TMP
+             end;
+      (*Refine registers update - unsure about this part - it seems to still work*)
+     try match goal with
+           | [H: refine_registers _ _, H1: get _ ?R = Some _,
+                                           H2: upd _ ?R ?V'@_ = Some _ |- _] =>
+             try (unfold default_rtag in H2; simpl in H2);
+               destruct (refine_registers_upd R V' H H1 H2) as [aregs' [? ?]]
+           end;                                                    
+    (*do refinements*)
     repeat match goal with
              | [H1: refine_imemory _ ?Mem,
                     H2: exists _, get ?Mem _ = Some _@(INSTR _) |- _] =>
@@ -467,21 +485,10 @@ Proof.
              | [H1: refine_dmemory _ ?Mem, H2: get ?Mem _ = Some _@DATA |- _] =>
                apply H1 in H2
              | [H1: refine_registers _ ?Reg,
-                    H2: exists _, get ?Reg _ = Some _ |- _] =>
+                    H2: get ?Reg ?R = Some ?Old@_ |- _] =>
                apply H1 in H2
            end;
-    (*Refine registers update - unsure about this part - it seems to still work*)
-     try match goal with
-             | [H: refine_registers ?Aregs ?Regs,
-                 H1: get ?Aregs ?R = Some ?Old |- _] =>
-               unfold refine_registers in H; destruct (H R Old) as [RSA RAS];
-               destruct RAS as [x RAS'];
-               apply RAS' in H1; fold (refine_registers Aregs Regs) in H
-             | [H: refine_registers _ _, H1: get ?Reg ?R = Some _,
-                 H2: upd _ ?R ?V'@?T' = Some _ |- _] =>
-               destruct (refine_registers_upd R V' T' H H1 H2) as [aregs' [? ?]]
-
-           end; auto;
+    auto;
     pose proof (refine_syscalls_domains refine_syscalls_correct) as DOMAIN;
     (* put into context stuff required for syscalls *)
     match goal with
@@ -625,7 +632,13 @@ Proof.
                eapply Sym.valid_jmp_tagged_preserved_by_step; eauto; simpl; auto
              | [ |- Sym.entry_points_tagged _ _] =>
                eapply Sym.entry_point_tags_preserved_by_step; eauto; simpl; auto
-        end; simpl; trivial.
+             | [ |- Sym.registers_tagged _] =>
+               eapply Sym.register_tags_preserved_by_step; eauto; simpl; auto
+             | [ |- Sym.jumps_tagged _] =>
+               eapply Sym.jump_tags_preserved_by_step; eauto; simpl; auto
+             | [ |- Sym.jals_tagged _] =>
+               eapply Sym.jal_tags_preserved_by_step; eauto; simpl; auto
+        end; simpl; trivial. 
   }
   { inversion SSTEP; subst;
     destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT INV]]]]]];
@@ -670,27 +683,25 @@ Lemma reg_refinement_preserved_by_equiv :
   forall areg reg reg',
     refine_registers areg reg ->
     Sym.equiv reg reg' ->
-    exists areg',
-      refine_registers areg' reg'.
+    refine_registers (PartMaps.map untag_atom reg') reg'.
 Proof.
   intros areg reg reg' REF EQUIV.
   unfold Sym.equiv in EQUIV.
   unfold refine_registers in REF.
   assert (MAP := PartMaps.map_correctness untag_atom reg').
-  exists (PartMaps.map untag_atom reg'). subst.
   intros r v.
   split.
-  - intro GET. destruct GET as [ut GET].
+  - intro GET.
     assert (MAP' := MAP r).
     rewrite GET in MAP'.
-    simpl in MAP'. assumption.
+    simpl in MAP'. by assumption.
   - intro GET'.
     assert (MAP' := MAP r).
     rewrite GET' in MAP'.
     remember (get reg' r) as a.
     destruct a as [[v' tg]|].
-    + simpl in MAP'. inversion MAP'.
-      eexists; eauto.
+    + simpl in MAP'. inv MAP'.
+      admit.
     + simpl in MAP'. discriminate.
 Qed.
 
@@ -830,7 +841,7 @@ Proof.
   eapply same_domain_trans; eauto. apply same_domain_comm;
   assumption.
 Qed.
-
+(*
 Lemma refine_reg_domains areg reg :
   refine_registers areg reg ->
   same_domain areg reg.
@@ -840,11 +851,11 @@ Proof.
   destruct (get areg n) eqn:GET.
   + destruct (get reg n) eqn:GET'.
     * auto.
-    * apply REF in GET. destruct GET as [? GET].
+    * apply REF in GET.
       rewrite GET in GET'. congruence.
   + destruct (get reg n) eqn:GET'.
     * destruct a as [v ut].
-      assert (EGET' : exists ut, get reg n = Some v@ut) by (eexists; eauto).
+      destruct ut.
       apply REF in EGET'.
       rewrite GET in EGET'. congruence.
     * constructor.
@@ -977,7 +988,386 @@ Proof.
       -  eauto using Sym.invariants_preserved_by_step_a.
     }
   }
+Qed.*)
+
+Lemma refine_registers_upd_fwd reg reg' sreg r v' :
+  refine_registers reg sreg ->
+  upd reg r v' = Some reg' ->
+  exists sreg',
+    upd sreg r v'@DATA = Some sreg' /\
+    refine_registers reg' sreg'.
+Proof. 
+  intros REFR UPD.
+  destruct (PartMaps.upd_inv UPD) as [v GET].
+  apply REFR in GET.
+  assert (NEW := PartMaps.upd_defined (v'@DATA) GET).
+  destruct NEW as [sreg' UPD'].
+  eexists; split; eauto.
+  unfold refine_registers. intros r' v''.
+  have [EQ|/eqP NEQ] := altP (r' =P r); [simpl in EQ | simpl in NEQ]; subst.
+  *
+    rewrite (PartMaps.get_upd_eq UPD').
+    rewrite (PartMaps.get_upd_eq UPD).
+    split.
+    - intro H. inversion H; reflexivity.
+    - intro H. inversion H; reflexivity.
+  * rewrite (PartMaps.get_upd_neq NEQ UPD).
+    rewrite (PartMaps.get_upd_neq NEQ UPD').
+    auto.
 Qed.
+
+Lemma refine_memory_upd_fwd dmem dmem' smem addr v' :
+  refine_dmemory dmem smem ->
+  upd dmem addr v' = Some dmem' ->
+  exists smem',
+    upd smem addr v'@DATA = Some smem' /\
+    refine_dmemory dmem' smem'.
+Proof. 
+  intros REFM UPD.
+  destruct (PartMaps.upd_inv UPD) as [v GET].
+  apply REFM in GET.
+  assert (NEW := PartMaps.upd_defined (v'@DATA) GET).
+  destruct NEW as [sreg' UPD'].
+  eexists; split; eauto.
+  unfold refine_dmemory. intros addr' v''.
+  have [EQ|/eqP NEQ] := altP (addr' =P addr); [simpl in EQ | simpl in NEQ]; subst.
+  *
+    rewrite (PartMaps.get_upd_eq UPD').
+    rewrite (PartMaps.get_upd_eq UPD).
+    split.
+    - intro H. inversion H; reflexivity.
+    - intro H. inversion H; reflexivity.
+  * rewrite (PartMaps.get_upd_neq NEQ UPD).
+    rewrite (PartMaps.get_upd_neq NEQ UPD').
+    auto.
+Qed.
+
+Lemma refine_memory_none aimem admem smem pc :
+  refine_imemory aimem smem ->
+  refine_dmemory admem smem ->
+  get aimem pc = None ->
+  get admem pc = None ->
+  get smem pc = None.
+Proof.
+  intros REFI REFD GETI GETD.
+  case GET: (get smem pc) => [[v [x|]]|] //.
+  - assert (EGET: exists x, get smem pc = Some v@(INSTR x))
+                            by (eexists; eauto).
+    apply REFI in EGET.
+    by congruence.
+  - apply REFD in GET.
+    by congruence.
+Qed.
+
+Theorem forward_simulation ast ast' sst :
+  refine_state ast sst ->
+  Abs.step atable cfg ast ast' ->
+  exists sst',
+    Symbolic.step stable sst sst' /\
+    refine_state ast' sst'.
+Proof.
+  intros REF ASTEP;
+  assert (REF2 : refine_state ast sst) by assumption;
+  destruct ast as [imem dmem reg pc ok];
+  destruct sst as [smem sreg [spc tpc] int];
+  destruct REF 
+    as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG [ETG 
+                                                          [RTG [JUTG JATG]]]]]]]]]]];
+  destruct ok; [idtac | inversion ASTEP];
+  unfold refine_pc in REFPC;
+  inv ASTEP. Focus 9.
+  repeat match goal with
+      | [H: get imem _ = Some _ |- _ ] => 
+        apply REFI in H; destruct H as [? ?]
+      | [H: upd _ ?R ?V = _ |- _] =>
+        first [destruct (refine_registers_upd_fwd R V REFR H) as [? [? ?]]
+         | destruct (refine_memory_upd_fwd R V REFD H) as [? [? ?]]];
+          destruct (PartMaps.upd_inv H);
+          clear H
+      | [H: get reg _ = _ |- _] =>
+        apply REFR in H
+      | [H: get _ _ = _ \/ get _ _ = _ |- _] =>
+        destruct H
+      | [H: get dmem _ = Some _ |- _] =>
+        apply REFD in H 
+      | [H1: get dmem _ = None,
+             H2: get imem _ = None |- _] =>
+        assert (SMEM := refine_memory_none _ REFI REFD H2 H1)
+      | [H: Abs.get_syscall _ ?Pc = Some _ |- _] =>
+        pose proof (refine_syscalls_correct) as CALLS;
+          unfold refine_syscalls in CALLS;
+          specialize (CALLS Pc);
+          rewrite H in CALLS
+      | [H: match ?Expr with _ => _ end |- _] =>
+        destruct Expr eqn:?;
+                 try contradiction
+      | [H: refine_syscall _ _ |- _] =>
+        unfold refine_syscall in H
+      | [H1: Abs.sem _ ?Ast = _ |- exists _, Symbolic.step _ ?Sst _ /\ _] =>
+        specialize (CALLS Ast Sst REF2);
+          rewrite H1 in CALLS
+  end;
+  destruct REFPC as [PC [DATA | INSTR]];
+    simpl in PC; try simpl in DATA;
+  try match goal with
+        | [H: exists _, _ |- _] =>
+          destruct H as [? INSTR]; simpl in INSTR
+      end;
+  (*for jump and jal tagging*)
+   try match goal with
+        | [H: get _ pc = Some _, 
+              H1: decode_instr _ = Some (Jump _) |- _] =>
+          destruct (JUTG _ _ _ _ H H1) as [? [WID ?]]
+        | [H: get _ pc = Some _@_, 
+              H1: decode_instr _ = Some (Jal _) |- _] =>
+          destruct (JATG _ _ _ _ H H1) as [? [WID ?]]
+      end;
+   try subst;
+  try (subst spc tpc);
+  eexists;
+  (*solving the step first*)
+  try match goal with
+      | [ |- Symbolic.step ?A ?B ?C /\ _] =>
+        assert (Symbolic.step A B C)
+  end;
+  (*picking the correct step*)
+  try match goal with
+      | [H : decode_instr _ = Some (Nop _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_nop
+      | [H : decode_instr _ = Some (Const _ _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_const
+      | [H : decode_instr _ = Some (Mov _ _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_mov
+      | [H : decode_instr _ = Some (Binop _ _ _ _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_binop
+      | [H : decode_instr _ = Some (Load _ _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_load
+      | [H : decode_instr _ = Some (Store _ _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_store
+      | [H : decode_instr _ = Some (Jump _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_jump
+      | [H : decode_instr _ = Some (Bnz _ _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_bnz
+      | [H : decode_instr _ = Some (Jal _) |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_jal
+      | [H : Abs.sem _ _ = _ |- Symbolic.step _ _ _] =>
+        eapply Symbolic.step_syscall
+  end; eauto;
+  (*transfer function*)
+  repeat match goal with
+      | [|- Symbolic.next_state_pc _ _ _ = _] =>
+        unfold Symbolic.next_state_pc;
+          simpl
+      | [|- Symbolic.next_state _ _ _ = _] =>
+        unfold Symbolic.next_state;
+          simpl
+      | [|- Symbolic.next_state_reg _ _ _ _ = _] =>
+        unfold Symbolic.next_state_reg;
+          simpl
+      | [|- Symbolic.next_state_reg_and_pc _ _ _ _ _ = _] =>
+        unfold Symbolic.next_state_reg_and_pc;
+          simpl
+      | [|- bind _ _ = _] => unfold bind
+  end; auto;
+  repeat (match goal with
+      | [H: get smem _ = Some _, 
+            H': forall _ _, get smem ?PC = Some _ -> _ |- _] =>
+        apply H' in H; destruct H as [? ?]
+      | [H: true = true -> _  |- _] =>
+        specialize (H erefl _ erefl);
+        destruct H as [? [TI CFG]];
+        try (destruct x);
+        inv TI
+         end);
+  unfold default_rtag; simpl;
+  try match goal with
+      | [H: cfg _ _ = _ |- context[cfg _ _]] => rewrite H
+      end; auto;
+    try match goal with
+        | [H: upd _ _ _ = _|- context[upd _ _ _]] => 
+           simpl;
+           rewrite H
+        | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
+          rewrite H; simpl
+        | [H: ?Expr = _ |- context[match ?Expr with _ => _ end]] =>
+          rewrite H; simpl
+      end;
+  try match goal with
+        | [|- Some _ = Some _] => reflexivity
+      end;
+  (*splitting and solving the refine_state*)
+  split; try assumption;
+  (*refine_state*)
+  repeat match goal with
+    | [|- refine_state _ _] =>
+      unfold refine_state
+    | [|- _ /\ _] => split; auto
+    | [|- refine_imemory _ _] => eapply imem_upd_preservation; eauto
+    | [|- refine_pc _ _] => unfold refine_pc; auto
+    | [|- forall _, _] => simpl; intros
+    | [|- _ <-> _] => split
+    | [|- _ \/ exists _, _] =>
+      right; eexists; reflexivity
+    | [H1: get smem _ = Some _ |- _] =>
+      apply ITG in H1
+    | [ H2: forall _, _ -> exists _, _ |- _] =>
+      destruct (H2 _ erefl) as [? [? ?]]; clear H2;
+      subst
+    | [H: get smem _ = None, H1: Symbolic.get_syscall _ _ = _,
+       H2: Symbolic.entry_tag _ = _ |- _] =>
+      assert (TI' := ETG _ _ _ H H1 H2)
+    | [|- Abs.valid_jmp _ _ _ = true] => 
+      unfold Abs.valid_jmp, valid_jmp
+    | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
+      rewrite H
+         end;
+  try (discriminate || reflexivity || assumption);
+  (*re-establishing invariants*)
+  repeat  match goal with
+            | [|- Sym.invariants _ ?St'] =>
+              unfold Sym.invariants
+            | [|- _ /\ _] => split
+            | [|- Sym.instructions_tagged _] =>
+              eapply Sym.itags_preserved_by_step; eauto; simpl; auto
+            | [ |- Sym.valid_jmp_tagged _ _] =>
+              eapply Sym.valid_jmp_tagged_preserved_by_step; eauto; simpl; auto
+            | [ |- Sym.entry_points_tagged _ _] =>
+              eapply Sym.entry_point_tags_preserved_by_step; eauto; simpl; auto
+            | [ |- Sym.registers_tagged _] =>
+              eapply Sym.register_tags_preserved_by_step; eauto; simpl; auto
+            | [ |- Sym.jumps_tagged _] =>
+              eapply Sym.jump_tags_preserved_by_step; eauto; simpl; auto
+            | [ |- Sym.jals_tagged _] =>
+              eapply Sym.jal_tags_preserved_by_step; eauto; simpl; auto
+          end; simpl; trivial; 
+  (*if i stop the sequencing here it matches*)
+  (* for jumps and jals refinement *)
+  try match goal with
+        | [H: INSTR _ = INSTR _ |- _] =>
+          fail 4 "does not match"
+      end.
+  try match goal with
+        | [H: Abs.valid_jmp _ _ _ = _ |- exists _, _] =>
+          destruct (VTG _ _ H);
+            destruct (valid_jmp_true _ _ _ H) as [? [? [C ?]]];
+            clear C;
+            unfold Abs.valid_jmp, valid_jmp in H
+      end;
+    repeat match goal with
+             | [H: exists _, _ = _ |- _] => 
+               destruct H; simpl in H
+             | [H: exists _, _ |- _] => 
+               destruct H; simpl in H                         
+             | [H: _ \/ _ |- _] => destruct H
+             | [H: get smem ?W = _, H2: get smem ?W = _ |- _] =>
+               rewrite H in H2; inv H2
+             | [H: ?Expr = _ |- context[?Expr]] =>
+               rewrite H
+             | [H: ?Expr = _, H2: match ?Expr with _ => _ end = _ |- _] =>
+               rewrite H in H2
+             | [H: _ /\ _ |- _] => simpl in H; destruct H
+             | [H: Symbolic.get_syscall _ _ = _,
+                H2: Symbolic.get_syscall _ _ = _ |- _] =>
+               rewrite H in H2; inv H2
+           end;
+  try match goal with
+        | [|- exists _, _ /\ _] =>
+          eexists;
+            eauto
+      end; 
+  (*UGLY - need to fix ltac match*)
+  try (inv H3; eauto).
+
+      
+
+  Focus 5.
+  apply ITG in H2.
+Focus 1.
+  inv H4.
+  destruct (VTG  _ _ H3).
+  
+  
+    apply REFI in FETCH.
+    destruct FETCH.
+    unfold refine_pc in REFPC.
+    destruct REFPC as [PC [DATA | INSTR]];
+    simpl in PC; subst spc;
+    [simpl in DATA | destruct INSTR as [? INSTR]; simpl in INSTR]; subst tpc.
+    eexists. split.
+    
+    apply Symbolic.step_nop with (mem := smem) (reg := sreg) (pc := pc) (tpc := DATA)
+    (i := i) (ti := INSTR x) (extra := int); auto.
+    
+    unfold Symbolic.next_state_pc. unfold Symbolic.next_state. unfold bind.
+    simpl. reflexivity.
+    unfold refine_state.
+    split; auto.
+    split; auto.
+    split; auto.
+    split; auto.
+    unfold refine_pc. auto.
+
+    (*correctness*)
+    split.
+    intros. split.
+    intros.
+    inv H2.
+    (*more correctness*)
+    intros.
+    reflexivity.
+    (*calls*)
+    split.
+    intros.
+    split.
+    intros. inv H3.
+    intros.
+    reflexivity.
+    (*invariants*)
+    admit.
+
+    (*if tagged instr*)
+    eexists. split.
+    
+    apply Symbolic.step_nop with (mem := smem) (reg := sreg) (pc := pc) 
+                                               (tpc := INSTR (Some x0))
+    (i := i) (ti := rules.INSTR x) (extra := int); auto.
+    
+    unfold Symbolic.next_state_pc. unfold Symbolic.next_state. unfold bind.
+    apply CORRECTNESS in H.
+    destruct H.
+    specialize (H erefl x0 erefl).
+    destruct H as [dst [? CFG]].
+    inv H.
+    simpl.
+    rewrite CFG. reflexivity.
+    
+   
+    split; auto.
+    split; auto.
+    split; auto.
+    split; auto.
+    unfold refine_pc. auto.
+
+(*correctness*)
+    split.
+    intros. split.
+    intros.
+    inv H2.
+    (*more correctness*)
+    intros.
+    reflexivity.
+    (*calls*)
+    split.
+    intros.
+    split.
+    intros. inv H3.
+    intros.
+    reflexivity.
+    (*invariants*)
+    admit.
+
+
+    
 
 End Refinement.
 

@@ -172,20 +172,25 @@ Definition valid_jmp_tagged (mem : memory) :=
      exists sc, Symbolic.get_syscall table dst = Some sc /\
                 (Symbolic.entry_tag sc) = INSTR (word_to_id dst)).
 
+Definition registers_tagged (reg : registers) :=
+  forall r,
+    exists v,
+      get reg r = Some v@DATA.
 
-(* These may be needed for forwards simulation, I will leave them out until
-   I actually use them*)
-(* Definition jumps_tagged (mem : memory) :=  *)
-  (* forall addr i cfi_tg r, *)
-  (*   get mem addr = Some i@(INSTR cfi_tg) -> *)
-  (*   decode_instr i = Some (Jump _ r) -> *)
-  (*   cfi_tg = Some addr. *)
+(* These are needed for forward simulation*)
+Definition jumps_tagged (mem : memory) :=
+  forall addr i cfi_tg r,
+    get mem addr = Some i@(INSTR cfi_tg) ->
+    decode_instr i = Some (Jump r) ->
+    exists id, word_to_id addr = Some id /\
+               cfi_tg = Some id.
 
-(* Definition jals_tagged (mem : memory) :=  *)
-  (* forall addr i cfi_tg r, *)
-  (*   get mem addr = Some i@(INSTR cfi_tg) -> *)
-  (*   decode_instr i = Some (Jal _ r) -> *)
-  (*   cfi_tg = Some addr. *)
+Definition jals_tagged (mem : memory) :=
+  forall addr i cfi_tg r,
+    get mem addr = Some i@(INSTR cfi_tg) ->
+    decode_instr i = Some (Jal r) ->
+    exists id, word_to_id addr = Some id /\
+               cfi_tg = Some id.
 
 (*We will need stronger assumption on symbolic system calls for fwd simulation?*)
 Hypothesis syscall_preserves_instruction_tags :
@@ -205,6 +210,24 @@ Hypothesis syscall_preserves_entry_tags :
     entry_points_tagged (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
     entry_points_tagged (Symbolic.mem st').
+
+Hypothesis syscall_preserves_register_tags :
+  forall sc st st',
+    registers_tagged (Symbolic.regs st) ->
+    Symbolic.sem sc st = Some st' ->
+    registers_tagged (Symbolic.regs st').
+
+Hypothesis syscall_preserves_jump_tags :
+  forall sc st st',
+    jumps_tagged (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    jumps_tagged (Symbolic.mem st').
+
+Hypothesis syscall_preserves_jal_tags :
+  forall sc st st',
+    jals_tagged (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    jals_tagged (Symbolic.mem st').
 
 (*Invariant (step) preservation theorems*)
 
@@ -379,6 +402,135 @@ Proof.
      match_inv;  eapply syscall_preserves_entry_tags; eauto.
 Qed.
 
+Lemma register_tags_preserved_by_step st st' :
+  registers_tagged (Symbolic.regs st) ->
+  Symbolic.step table st st' ->
+  registers_tagged (Symbolic.regs st').
+Proof.
+  intros RTAGS STEP.
+  inv STEP;
+  repeat (
+      match goal with
+        | [H: Symbolic.next_state_pc _ _ _ = _ |- _] =>
+          unfold Symbolic.next_state_pc in H
+        | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] =>
+          unfold Symbolic.next_state_reg in H
+        | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
+          unfold Symbolic.next_state_reg_and_pc in H
+        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          unfold Symbolic.next_state in H; simpl in H
+        | [H: Symbolic.run_syscall _ _ = _ |- _] =>
+          unfold Symbolic.run_syscall in H; simpl in H
+      end); match_inv; simpl in *; try assumption;
+  try match goal with
+      | [H: upd _ _ _@(default_rtag _) = _ |- _] =>
+        unfold default_rtag in H; simpl in H
+  end;
+  unfold registers_tagged in *;
+  simpl in *;
+  intros r0;
+  try match goal with
+      | [H: upd _ ?R _ = _ |- _] =>
+        have [EQ|/eqP NEQ] := altP (R =P r0); [simpl in EQ | simpl in NEQ]; subst
+  end;  
+  try match goal with
+    | [H: _ <> _, H': upd _ _ _ = _ |- _] =>
+      apply PartMaps.get_upd_neq with (key' := r0) in H';
+        try apply reg_map_axioms;
+        try rewrite H'; eauto
+    | [H: upd _ _ _ = _ |- _] =>
+      apply PartMaps.get_upd_eq in H; try apply reg_map_axioms;
+      eauto
+  end; 
+   eapply syscall_preserves_register_tags in CALL; eauto.
+Qed.
+
+Lemma jump_tags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
+  jumps_tagged (Symbolic.mem st) ->
+  Symbolic.step table st st' ->
+  jumps_tagged (Symbolic.mem st').
+Proof.
+  intros INVARIANT STEP.
+  inversion STEP;
+  (*unfoldings and case analysis on tags*)
+    repeat (
+        match goal with
+          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] =>
+            unfold Symbolic.next_state_pc in H
+          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] =>
+            unfold Symbolic.next_state_reg in H
+          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
+            unfold Symbolic.next_state_reg_and_pc in H
+          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+            unfold Symbolic.next_state in H; simpl in H
+        end); match_inv; subst; try (simpl; assumption).
+  + simpl in E. simpl. unfold jumps_tagged.
+    intros addr i0 cfi_tg r GET INST'.
+    have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
+    - intros. subst.
+      apply PartMaps.get_upd_eq in E; try apply word_map_axioms.
+      rewrite GET in E. congruence.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; try apply word_map_axioms.
+      rewrite E in GET.
+      specialize (INVARIANT _ _ _ _ GET INST'); assumption.
+      assumption.
+  + simpl in E. simpl. unfold jumps_tagged.
+    intros addr i0 cfi_tg r GET INST'.
+    have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
+    - intros. subst.
+      apply PartMaps.get_upd_eq in E; try apply word_map_axioms.
+      rewrite GET in E. congruence.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; try apply word_map_axioms.
+      rewrite E in GET.
+      specialize (INVARIANT _ _ _ _ GET INST'); assumption.
+      assumption.
+   + unfold Symbolic.run_syscall in CALL. simpl in CALL.
+     match_inv; eapply syscall_preserves_jump_tags; eauto.
+Qed.
+
+Lemma jal_tags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
+  jals_tagged (Symbolic.mem st) ->
+  Symbolic.step table st st' ->
+  jals_tagged (Symbolic.mem st').
+Proof.
+  intros INVARIANT STEP.
+  inversion STEP;
+  (*unfoldings and case analysis on tags*)
+    repeat (
+        match goal with
+          | [H: Symbolic.next_state_pc _ _ _ = _ |- _] =>
+            unfold Symbolic.next_state_pc in H
+          | [H: Symbolic.next_state_reg _ _ _ _ = _ |- _] =>
+            unfold Symbolic.next_state_reg in H
+          | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
+            unfold Symbolic.next_state_reg_and_pc in H
+          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+            unfold Symbolic.next_state in H; simpl in H
+        end); match_inv; subst; try (simpl; assumption).
+  + simpl in E. simpl. unfold jals_tagged.
+    intros addr i0 cfi_tg r GET INST'.
+    have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
+    - intros. subst.
+      apply PartMaps.get_upd_eq in E; try apply word_map_axioms.
+      rewrite GET in E. congruence.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; try apply word_map_axioms.
+      rewrite E in GET.
+      specialize (INVARIANT _ _ _ _ GET INST'); assumption.
+      assumption.
+  + simpl in E. simpl.
+    intros addr i0 cfi_tg r GET INST'.
+    have [EQ|/eqP NEQ] := altP (addr =P w1); [simpl in EQ | simpl in NEQ]; subst.
+    - intros. subst.
+      apply PartMaps.get_upd_eq in E; try apply word_map_axioms.
+      rewrite GET in E. congruence.
+    - apply PartMaps.get_upd_neq with (key' := addr) in E; try apply word_map_axioms.
+      rewrite E in GET.
+      specialize (INVARIANT _ _ _ _ GET INST'); assumption.
+      assumption.
+   + unfold Symbolic.run_syscall in CALL. simpl in CALL.
+     match_inv; eapply syscall_preserves_jal_tags; eauto.
+Qed.
+
 Lemma itags_preserved_by_step_a (st : Symbolic.state t) (st' : Symbolic.state t) :
   instructions_tagged (Symbolic.mem st) ->
   step_a st st' ->
@@ -451,6 +603,30 @@ Proof.
   - apply (INV _ _ _ GET CALL ETAG).
 Qed.
 
+Lemma register_tags_preserved_by_step_a
+      (st : Symbolic.state t) (st' : Symbolic.state t) :
+  registers_tagged (Symbolic.regs st) ->
+  step_a st st' ->
+  registers_tagged (Symbolic.regs st').
+Proof.
+ Admitted.
+
+Lemma jal_tags_preserved_by_step_a 
+      (st : Symbolic.state t) (st' : Symbolic.state t) :
+  jals_tagged (Symbolic.mem st) ->
+  step_a st st' ->
+  jals_tagged (Symbolic.mem st').
+Proof.
+  Admitted.
+
+Lemma jump_tags_preserved_by_step_a 
+      (st : Symbolic.state t) (st' : Symbolic.state t) :
+  jumps_tagged (Symbolic.mem st) ->
+  step_a st st' ->
+  jumps_tagged (Symbolic.mem st').
+Proof.
+  Admitted.
+
 Lemma data_pc_no_violation : forall s,
   tag (Symbolic.pc s) = DATA ->
   no_violation s.
@@ -462,14 +638,23 @@ Qed.
 Hint Resolve itags_preserved_by_step : invariant_db.
 Hint Resolve itags_preserved_by_step_a : invariant_db.
 Hint Resolve entry_point_tags_preserved_by_step : invariant_db.
+Hint Resolve register_tags_preserved_by_step : invariant_db.
 Hint Resolve entry_point_tags_preserved_by_step_a : invariant_db.
 Hint Resolve valid_jmp_tagged_preserved_by_step : invariant_db.
 Hint Resolve valid_jmp_tagged_preserved_by_step_a : invariant_db.
+Hint Resolve register_tags_preserved_by_step_a : invariant_db.
+Hint Resolve jal_tags_preserved_by_step : invariant_db.
+Hint Resolve jump_tags_preserved_by_step : invariant_db.
+Hint Resolve jal_tags_preserved_by_step_a : invariant_db.
+Hint Resolve jump_tags_preserved_by_step_a : invariant_db.
 
 Definition invariants st :=
   instructions_tagged (Symbolic.mem st) /\
   valid_jmp_tagged (Symbolic.mem st) /\
-  entry_points_tagged (Symbolic.mem st).
+  entry_points_tagged (Symbolic.mem st) /\
+  registers_tagged (Symbolic.regs st) /\
+  jumps_tagged (Symbolic.mem st) /\
+  jals_tagged (Symbolic.mem st).
 
 Lemma invariants_preserved_by_step st st' :
   invariants st ->
@@ -477,8 +662,11 @@ Lemma invariants_preserved_by_step st st' :
   invariants st'.
 Proof.
   intros INV STEP.
-  destruct INV as [ITG [VTG ETG]].
-  split; eauto with invariant_db.
+  unfold invariants.
+  destruct INV as [ITG [VTG [ETG [RTG [JUTG JALTG]]]]];
+  repeat match goal with
+      [|- _ /\ _] => split; eauto 2 with invariant_db
+  end.
 Qed.
 
 Lemma invariants_preserved_by_step_a st st' :
@@ -487,8 +675,11 @@ Lemma invariants_preserved_by_step_a st st' :
   invariants st'.
 Proof.
   intros INV STEP.
-  destruct INV as [ITG [VTG ETG]].
-  split; eauto with invariant_db.
+  unfold invariants.
+  destruct INV as [ITG [VTG [ETG [RTG [JUTG JALTG]]]]];
+  repeat match goal with
+      [|- _ /\ _] => split; eauto 2 with invariant_db
+  end.
 Qed.
 
 Definition initial (s : Symbolic.state t) :=

@@ -16,7 +16,6 @@ Require Import cfi.concrete.
 Require Import cfi.symbolic.
 Require Import cfi.preservation.
 Require Import cfi.rules.
-Require Import cfi.refinementAS. (*for Map - should remove when we move it*)
 Require Import symbolic.backward.
 Require Import symbolic.refinement_common.
 
@@ -59,6 +58,25 @@ Hypothesis syscall_preserves_entry_tags :
     Sym.entry_points_tagged stable (Symbolic.mem st) ->
     Symbolic.sem sc st = Some st' ->
     Sym.entry_points_tagged stable (Symbolic.mem st').
+
+(*TODO: Remove this hypothesis, as soon as we get kinds for tags*)
+Hypothesis syscall_preserves_register_tags :
+  forall sc st st',
+    Sym.registers_tagged (cfg:=cfg) (Symbolic.regs st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.registers_tagged (Symbolic.regs st').
+
+Hypothesis syscall_preserves_jump_tags :
+  forall sc st st',
+    Sym.jumps_tagged (cfg:=cfg) (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.jumps_tagged (Symbolic.mem st').
+
+Hypothesis syscall_preserves_jal_tags :
+  forall sc st st',
+    Sym.jals_tagged (cfg:=cfg) (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.jals_tagged (Symbolic.mem st').
 
 Definition refine_state_no_inv (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
   @refine_state_weak mt ops sp (fun _ => e) ki stable sst cst.
@@ -430,7 +448,7 @@ Proof.
       destruct VIS as [VIS VIS'].
       assert (HIT: hit_step cst cst')
           by (constructor; auto).
-      destruct (cache_hit_simulation UREF HIT) as [sst' [SSTEP REF']].
+      destruct (cache_hit_simulation UREF HIT) as [ast' [SSTEP REF']].
       unfold refine_state, refine_state_weak.
       eexists; split. eauto.
       split;
@@ -464,9 +482,9 @@ Proof.
       destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
       unfold kernel_exec in KEXEC.
       apply restricted_exec_snd in KEXEC.
-      unfold in_user in VIS. admit. (*
-      apply in_user_in_kernel in VIS.
-      rewrite VIS in KEXEC. discriminate. *)
+      apply @in_user_in_kernel in VIS.
+      rewrite VIS in KEXEC.
+      discriminate.
     }
     { (*and taking an invisible step*)
       intro VIS.
@@ -652,9 +670,8 @@ Proof.
   - exfalso.
     destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
-    unfold in_user in USER.
-    admit. (*eapply @in_user_in_kernel in USER.
-    by congruence.*)
+    apply @in_user_in_kernel in USER.
+    by congruence.
 Qed.
 
 Lemma unique_cmvec sst cst umvec cmvec :
@@ -720,7 +737,7 @@ Proof.
       by rewrite CSI /rules.word_lift ?rules.decodeK /=. }
     move: (CACHE _ _ ISUSER LOOKUP) => [? [? [HANDLER1 [HANDLER2 [HANDLER3 HANDLER4]]]]].
     rewrite /khandler /rules.handler HANDLER1 /= rules.decode_ivecK
-            /= rules.ivec_of_uivec_privileged (negbTE HANDLER4) in KHANDLER.
+            /= rules.ivec_of_uivec_privileged (negbTE HANDLER4) in KHANDLER.    
     admit.
   - generalize (mvec_in_kernel_store_mvec cmvec MVEC).
     move => {MVEC} [cmem' MVEC].
@@ -1320,15 +1337,31 @@ Proof.
                                 valid_initial_user_instr_tags (v := v) (ti := ctg) CACHE USERI USERJ H3 GET').
             specialize (CONTRA CACHE GET').
             destruct (rules.decode ctg) as [[t | | ]|] eqn:DEC; try solve [inversion CONTRA].
-            apply rules.encodeK in DEC.
-            rewrite <- DEC in GET'.
-            simpl in GET'. apply REFM in GET'. subst.
-            rewrite GET' in GET. discriminate.
-          - admit. (*inversion H3;
-            inv ST; simpl in *; try congruence.*)
-          - admit.
-          - admit.
-          - admit.
+            + apply rules.encodeK in DEC.
+              rewrite <- DEC in GET'.
+              simpl in GET'. apply REFM in GET'. subst.
+              rewrite GET' in GET. discriminate.
+            + apply rules.encodeK in DEC.
+              rewrite <- DEC in CONTRA.
+              unfold rules.word_lift in CONTRA.
+              rewrite rules.decodeK in CONTRA.
+              simpl in CONTRA. by congruence.
+            + apply rules.encodeK in DEC.
+              rewrite <- DEC in CONTRA.
+              unfold rules.word_lift in CONTRA.
+              rewrite rules.decodeK in CONTRA.
+              simpl in CONTRA. by congruence.
+            + unfold rules.word_lift in CONTRA.
+              rewrite DEC in CONTRA.
+              by congruence.
+          - destruct (Symbolic.get_syscall stable pci) eqn:GETCALL.
+            remember (Symbolic.entry_tag s) as t eqn:ETAG. symmetry in ETAG.
+            + assert (ECALL: exists sc, Symbolic.get_syscall stable pci = Some sc /\
+                                        Symbolic.entry_tag sc = t)
+                by (eexists; eauto).
+              apply WF in ECALL.
+              rewrite GET' in ECALL. by discriminate.
+            + rewrite GETCALL in H2. discriminate.
         }
     + destruct KREFJ as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
