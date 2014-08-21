@@ -1061,6 +1061,7 @@ Proof.
     by congruence.
 Qed.
 
+(*
 Theorem forward_simulation ast ast' sst :
   refine_state ast sst ->
   Abs.step atable cfg ast ast' ->

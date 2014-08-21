@@ -268,6 +268,24 @@ Hypothesis syscall_preserves_entry_tags :
     Symbolic.sem sc st = Some st' ->
     Sym.entry_points_tagged stable (Symbolic.mem st').
 
+Hypothesis syscall_preserves_register_tags :
+  forall sc st st',
+    Sym.registers_tagged (cfg:=cfg) (Symbolic.regs st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.registers_tagged (Symbolic.regs st').
+
+Hypothesis syscall_preserves_jump_tags :
+  forall sc st st',
+    Sym.jumps_tagged (cfg:=cfg) (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.jumps_tagged (Symbolic.mem st').
+
+Hypothesis syscall_preserves_jal_tags :
+  forall sc st st',
+    Sym.jals_tagged (cfg:=cfg) (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.jals_tagged (Symbolic.mem st').
+
 Lemma backwards_refinement_as ast sst sst' :
   RefinementAS.refine_state stable ast sst ->
   exec (Symbolic.step stable) sst sst' ->
