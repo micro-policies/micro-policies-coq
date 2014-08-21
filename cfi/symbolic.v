@@ -603,6 +603,28 @@ Proof.
   - apply (INV _ _ _ GET CALL ETAG).
 Qed.
 
+
+Lemma register_tags_preserved_by_step_a'
+      (reg : registers) (reg' : registers) :
+  registers_tagged reg ->
+  equiv reg reg' ->
+  registers_tagged reg'.
+Proof.
+  intros RTG EQUIV.
+  intro r.
+  specialize (EQUIV r).
+  destruct (RTG r) as [? GET].
+  rewrite GET in EQUIV.
+  destruct (get reg' r) eqn:GET'.
+  - rewrite GET' in EQUIV. 
+    inversion EQUIV as [? ? ? H1 H2 H3 |? ? ? ? CONTRA]; subst. 
+    + destruct a as [val ?].
+      simpl in H1. subst.
+      eexists; eassumption.
+    + simpl in CONTRA. by inv CONTRA.
+  - rewrite GET' in EQUIV. by contradiction.
+Qed.
+  
 Lemma register_tags_preserved_by_step_a
       (st : Symbolic.state t) (st' : Symbolic.state t) :
   registers_tagged (Symbolic.regs st) ->

@@ -747,7 +747,7 @@ Definition is_data (a : atom (word t) cfi_tag) :=
     | DATA => true
     | INSTR _ => false
   end.
-
+(*
 Lemma refine_dmemory_domains dmem mem :
   refine_dmemory dmem mem ->
   same_domain dmem (filter is_data mem).
@@ -841,12 +841,13 @@ Proof.
   eapply same_domain_trans; eauto. apply same_domain_comm;
   assumption.
 Qed.
-(*
+
 Lemma refine_reg_domains areg reg :
   refine_registers areg reg ->
+  Sym.registers_tagged reg ->
   same_domain areg reg.
 Proof.
-  intros REF n.
+  intros REF RTG n.
   unfold refine_registers in REF.
   destruct (get areg n) eqn:GET.
   + destruct (get reg n) eqn:GET'.
@@ -855,15 +856,16 @@ Proof.
       rewrite GET in GET'. congruence.
   + destruct (get reg n) eqn:GET'.
     * destruct a as [v ut].
-      destruct ut.
-      apply REF in EGET'.
-      rewrite GET in EGET'. congruence.
+      destruct (RTG n) as [v' GET''].
+      apply REF in GET''.
+      congruence.
     * constructor.
 Qed.
 
 Lemma reg_domain_preserved_by_equiv :
   forall areg areg' reg reg',
     refine_registers areg reg ->
+    Sym.registers_tagged reg ->
     Sym.equiv reg reg' ->
     refine_registers areg' reg' ->
     same_domain areg areg'.
@@ -893,7 +895,7 @@ Proof.
       rewrite AGET' in GET'. congruence.
     - constructor.
   }
-Qed.
+Qed. *)
 
 Theorem backwards_simulation_attacker ast sst sst' :
   refine_state ast sst ->
@@ -901,8 +903,8 @@ Theorem backwards_simulation_attacker ast sst sst' :
   exists ast',
     Abs.step_a ast ast' /\
     refine_state ast' sst'.
-Proof.
-  intros REF SSTEP.
+Proof. Admitted.
+  (*intros REF SSTEP.
   destruct ast as [imem dmem aregs apc b].
   inversion SSTEP; subst;
   unfold refine_state in REF;
@@ -988,7 +990,7 @@ Proof.
       -  eauto using Sym.invariants_preserved_by_step_a.
     }
   }
-Qed.*)
+Qed. *)
 
 Lemma refine_registers_upd_fwd reg reg' sreg r v' :
   refine_registers reg sreg ->
@@ -1075,7 +1077,7 @@ Proof.
                                                           [RTG [JUTG JATG]]]]]]]]]]];
   destruct ok; [idtac | inversion ASTEP];
   unfold refine_pc in REFPC;
-  inv ASTEP. Focus 9.
+  inv ASTEP. Focus 9. 
   repeat match goal with
       | [H: get imem _ = Some _ |- _ ] => 
         apply REFI in H; destruct H as [? ?]
@@ -1113,12 +1115,12 @@ Proof.
         | [H: exists _, _ |- _] =>
           destruct H as [? INSTR]; simpl in INSTR
       end;
-  (*for jump and jal tagging*)
+  (* for jump and jal tagging *)
    try match goal with
-        | [H: get _ pc = Some _, 
+        | [H: get _ pc = Some _,
               H1: decode_instr _ = Some (Jump _) |- _] =>
           destruct (JUTG _ _ _ _ H H1) as [? [WID ?]]
-        | [H: get _ pc = Some _@_, 
+        | [H: get _ pc = Some _@_,
               H1: decode_instr _ = Some (Jal _) |- _] =>
           destruct (JATG _ _ _ _ H H1) as [? [WID ?]]
       end;
@@ -1221,6 +1223,10 @@ Proof.
     | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
       rewrite H
          end;
+  try match goal with
+        | [H: INSTR _ = INSTR _ |- _] =>
+          fail 4 "does not match"
+      end.
   try (discriminate || reflexivity || assumption);
   (*re-establishing invariants*)
   repeat  match goal with
@@ -1277,96 +1283,8 @@ Proof.
       end; 
   (*UGLY - need to fix ltac match*)
   try (inv H3; eauto).
-
-      
-
-  Focus 5.
-  apply ITG in H2.
-Focus 1.
-  inv H4.
-  destruct (VTG  _ _ H3).
-  
-  
-    apply REFI in FETCH.
-    destruct FETCH.
-    unfold refine_pc in REFPC.
-    destruct REFPC as [PC [DATA | INSTR]];
-    simpl in PC; subst spc;
-    [simpl in DATA | destruct INSTR as [? INSTR]; simpl in INSTR]; subst tpc.
-    eexists. split.
-    
-    apply Symbolic.step_nop with (mem := smem) (reg := sreg) (pc := pc) (tpc := DATA)
-    (i := i) (ti := INSTR x) (extra := int); auto.
-    
-    unfold Symbolic.next_state_pc. unfold Symbolic.next_state. unfold bind.
-    simpl. reflexivity.
-    unfold refine_state.
-    split; auto.
-    split; auto.
-    split; auto.
-    split; auto.
-    unfold refine_pc. auto.
-
-    (*correctness*)
-    split.
-    intros. split.
-    intros.
-    inv H2.
-    (*more correctness*)
-    intros.
-    reflexivity.
-    (*calls*)
-    split.
-    intros.
-    split.
-    intros. inv H3.
-    intros.
-    reflexivity.
-    (*invariants*)
-    admit.
-
-    (*if tagged instr*)
-    eexists. split.
-    
-    apply Symbolic.step_nop with (mem := smem) (reg := sreg) (pc := pc) 
-                                               (tpc := INSTR (Some x0))
-    (i := i) (ti := rules.INSTR x) (extra := int); auto.
-    
-    unfold Symbolic.next_state_pc. unfold Symbolic.next_state. unfold bind.
-    apply CORRECTNESS in H.
-    destruct H.
-    specialize (H erefl x0 erefl).
-    destruct H as [dst [? CFG]].
-    inv H.
-    simpl.
-    rewrite CFG. reflexivity.
-    
-   
-    split; auto.
-    split; auto.
-    split; auto.
-    split; auto.
-    unfold refine_pc. auto.
-
-(*correctness*)
-    split.
-    intros. split.
-    intros.
-    inv H2.
-    (*more correctness*)
-    intros.
-    reflexivity.
-    (*calls*)
-    split.
-    intros.
-    split.
-    intros. inv H3.
-    intros.
-    reflexivity.
-    (*invariants*)
-    admit.
-
-
+Qed.
+*)
     
 
 End Refinement.

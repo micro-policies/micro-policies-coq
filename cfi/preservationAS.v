@@ -66,6 +66,24 @@ Hypothesis syscall_preserves_entry_tags :
     Symbolic.sem sc st = Some st' ->
     Sym.entry_points_tagged stable (Symbolic.mem st').
 
+Hypothesis syscall_preserves_register_tags :
+  forall sc st st',
+    Sym.registers_tagged (cfg:=cfg)(Symbolic.regs st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.registers_tagged (Symbolic.regs st').
+
+Hypothesis syscall_preserves_jump_tags :
+  forall sc st st',
+    Sym.jumps_tagged (cfg:=cfg) (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.jumps_tagged (Symbolic.mem st').
+
+Hypothesis syscall_preserves_jal_tags :
+  forall sc st st',
+    Sym.jals_tagged (cfg:=cfg) (Symbolic.mem st) ->
+    Symbolic.sem sc st = Some st' ->
+    Sym.jals_tagged (Symbolic.mem st').
+
 
 Definition backwards_simulation :=
   RefinementAS.backwards_simulation ref_sc_correct syscall_sem
@@ -76,18 +94,19 @@ Definition backwards_simulation :=
 Lemma untag_implies_reg_refinement reg :
   RefinementAS.refine_registers (cfg := cfg) (PartMaps.map RefinementAS.untag_atom reg) reg.
 Proof.
-   intros r v.
+ (*  intros r v.
    split.
-   - intros (ut & GET).
+   - intros GET.
      rewrite PartMaps.map_correctness.
      rewrite GET. reflexivity.
    - intros GET.
      rewrite PartMaps.map_correctness in GET.
-     destruct (get reg r) eqn:GET'; rewrite GET'.
+     destruct (get reg r) eqn:GET'.
      + destruct a. simpl in GET. inv GET.
        eexists; reflexivity.
-     + simpl in GET. congruence.
-Qed.
+     + simpl in GET. congruence.*)
+Admitted. (*requires register tags*)
+
 
 Lemma untag_data_implies_dmem_refinement mem :
   RefinementAS.refine_dmemory
@@ -230,7 +249,7 @@ Proof.
            asj as [imem' dmem' aregs' apc' b'].
   destruct ssi as [mem reg [pc tpc] int].
   destruct ssj as [mem' reg' [pc' tpc'] int'].
-  destruct REF as [REFI [REFD [REFR [REFPC [? [? [ITG [VTG ETG]]]]]]]],
+  destruct REF as [REFI [REFD [REFR [REFPC [? [? [ITG [VTG [ETG ?]]]]]]]]],
            REF' as [REFI' [REFD' [REFR' [REFPC' CORRECT']]]].
   unfold RefinementAS.refine_pc in *.
   simpl in REFPC; simpl in REFPC'; destruct REFPC as [? TPC],
@@ -302,7 +321,9 @@ Program Instance cfi_refinementAS  :
 Next Obligation.
   split;
   [intros;
-    destruct (backwards_simulation _ REF STEP)
+    destruct (backwards_simulation syscall_preserves_register_tags 
+                                   syscall_preserves_jump_tags 
+                                   syscall_preserves_jal_tags _ REF STEP)
     as [? [? ?]];
    eexists; split; eauto | discriminate].
 Qed.
@@ -312,47 +333,6 @@ Next Obligation.
 Qed.
 
 Import ListNotations.
-(*
-Require Import lib.Integers.
-Import Word.
-Goal forall (pc pc' : atom (word t) (Symbolic.tag)),
-       {pc = pc'} + {pc <> pc'}.
-Proof.
-  intros [val tag] [val' tag'].
-  destruct (eq_dec val val'); subst.
-  - destruct (tag == tag') eqn:H; move/eqP:H=>H.
-    + subst. by left; reflexivity.
-    + right. intros CONTRA.
-      inv CONTRA. by auto.
-  - right. intros CONTRA.
-    inv CONTRA. by auto.
-Qed.
-
-
-Hypothesis st_eq_dec : forall (st : Symbolic.state t) st', {st = st'} + {st <> st'}.
-Hypothesis step_determ : forall st st' st'',
-                         Symbolic.step stable st st' ->
-                         Symbolic.step stable st st'' ->
-                         st' = st''.
-
-Lemma step_dec st st' :
-  Symbolic.step stable st st' \/ ~ Symbolic.step stable st st'.
-Proof.
-  destruct (Symbolic.stepf stable st) as [s|] eqn:STEPF;
-  repeat match goal with
-    | [H: Symbolic.stepf _ _ = Some ?S' |- _] =>
-      apply Symbolic.stepP in H;
-        destruct (st_eq_dec S' st'); subst
-    | [H: ?Expr |- ?Expr \/ _] => left; assumption
-    | [H: _ <> _ |- _ \/ ~ _] => right; intros ?; eauto using step_determ
-    | [H: Symbolic.stepf _ _ = None |- _] =>
-      right; intro CONTRA; apply Symbolic.stepP in CONTRA;
-      by congruence
-  end.
-
-*)
-
-
 
 Program Instance cfi_refinementAS_specs :
   machine_refinement_specs cfi_refinementAS.
@@ -360,7 +340,7 @@ Next Obligation.
   by case: (stepP' stable cst cst') => [H | H]; auto.
 Qed.
 Next Obligation. (*initial state*)
-  destruct H as [TPC [ITG [VTG ETG]]].
+  destruct H as [TPC [ITG [VTG [ETG ?]]]].
   destruct cst as [mem reg [pc tpc] int].
   exists (Abs.State (PartMaps.map RefinementAS.untag_atom (filter is_instr mem))
                     (PartMaps.map RefinementAS.untag_atom (filter RefinementAS.is_data mem))

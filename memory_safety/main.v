@@ -22,21 +22,203 @@ Section Refinement.
 Let t := concrete_int_32_t.
 Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
-(* TODO: Instantiate this with some word type. *)
-Context {col : Sym.color_class}
-        {color_map : Type -> Type}
-        {color_map_class : PartMaps.partial_map color_map Sym.color}
-        {color_map_spec : PartMaps.axioms color_map_class}.
+
+
+Definition color_size := 12%nat. (*2^13 colors*)
+Definition color := [eqType of (Word.int color_size)].
+Definition inc_color (c : color) := Word.add c (Word.repr 1).
+
+Instance col : Sym.color_class := {|
+  color := color;
+  max_color := Word.repr (Word.max_unsigned color_size);
+  inc_color c := Word.add c (Word.repr 1)
+|}.
+Proof. 
+  admit. 
+Defined.
+ 
+(* Encoding scheme
+
+  type_bits = color_bits + 1 = 14
+    TypeData      -> 0
+    TypePointer c -> c*2 + 1
+
+  stag_bits = type_bits + color_bits + 3 = 29
+    TagFree       -> 0
+    TagValue t    -> (enc t)*4+1 
+    TagMemory c t -> c*2^(type_bits+3) + (enc t)*8 + 2
+*)
+
+Import Word.Notations List.ListNotations Sym.
+
+Close Scope Z.
+Open Scope nat.
+
+Definition encode_type (ty : Sym.type) : Word.int 13 :=
+  match ty with
+      TypeData => Word.zero
+    | TypePointer c => Word.pack [12;0] [c;Word.one]%wp
+  end.
+
+Definition decode_type (cty : Word.int 13) : option Sym.type :=
+  let: [k; t]%wu := Word.unpack [12; 0] cty in
+  if t == Word.zero then
+    if k == Word.zero then Some TypeData
+    else None
+  else if t == Word.one then
+         Some (TypePointer k)
+  else None.
+
+Lemma encode_typeK ty : decode_type (encode_type ty) = Some ty.
+Proof.
+  case: ty;
+  rewrite /decode_type /encode_type;
+  [idtac | intros; rewrite Word.packK];
+  reflexivity.
+Qed.
+
+Lemma decode_typeK w ty : decode_type w = Some ty ->
+                          encode_type ty = w.
+Proof.
+  rewrite /decode_type /encode_type.
+  case E: (Word.unpack [12; 0] w) => [k [w' []]].
+  move: (Word.unpackK [12; 0] w). rewrite E.
+  have [?|?] := altP (w' =P Word.zero); try subst w'.
+  { have [?|?] := altP (k =P Word.zero); try subst k; last by [].
+    by move => H [<-]. }
+  have [?|?] := altP (w' =P Word.one); try subst w'; last by [].
+  by move => H [<-].
+Qed.
+
+Definition encode_mtag (tg : Sym.tag) : Word.int 29 :=
+  match tg with
+      TagFree => Word.zero
+    | TagValue ty => Word.pack [12;13;2] [Word.zero; encode_type ty; Word.one]%wp
+    | TagMemory c ty => Word.pack [12;13;2] [c; encode_type ty; Word.repr 2]%wp 
+  end.
+
+Import DoNotation.
+
+Definition decode_mtag' (ctg : Word.int 29) : option Sym.tag :=
+  let: [hb; m]%wu := Word.unpack [26;2] ctg in
+  if m == Word.zero then
+    if hb == Word.zero then Some TagFree
+    else None
+  else
+    let: [c; ty]%wu := Word.unpack [12;13] hb in
+    if m == Word.one then
+      if (c == Word.zero) then
+        do! cty <- decode_type ty;
+        Some (TagValue cty)
+      else None
+    else 
+      if m == Word.repr 2 then
+        do! cty <- decode_type ty;
+        Some (TagMemory c cty)
+      else None.
+
+Definition decode_mtag (ctg : Word.int 29) : option Sym.tag :=
+  let: [c;ty; m]%wu := Word.unpack [12;13;2] ctg in
+  if m == Word.zero then
+    if c == Word.zero then 
+      if ty == Word.zero then Some TagFree
+      else None
+    else None
+  else
+    if m == Word.one then
+      if (c == Word.zero) then
+        do! cty <- decode_type ty;
+        Some (TagValue cty)
+      else None
+    else 
+      if m == Word.repr 2 then
+        do! cty <- decode_type ty;
+        Some (TagMemory c cty)
+      else None.
+
+(*decode_mtag' would work too probably*)
+Lemma encode_mtagK tg : decode_mtag (encode_mtag tg) = Some tg.
+Proof.
+  destruct tg as  [ty | c ty |]; 
+  rewrite /decode_mtag /encode_mtag;
+
+  try (remember (encode_type ty); rewrite Word.packK;
+       simpl; subst; rewrite encode_typeK);
+  reflexivity.
+Qed.
+
+Lemma decode_mtagK w tg : decode_mtag w = Some tg ->
+                          encode_mtag tg = w.
+Proof.
+  rewrite /decode_mtag /encode_mtag.
+  case E: (Word.unpack [12;13;2] w) => [c [cty [m []]]].
+  move: (Word.unpackK [12;13;2] w). rewrite E.
+  have [?|?] := altP (m =P Word.zero); try subst m.
+  { have [?|?] := altP (c =P Word.zero); try subst c; last by [].
+    have [?|?] := altP (cty =P Word.zero); try subst cty; last by []. 
+    by move => H [<-].
+  }
+  have [?|?] := altP (m =P Word.one); try subst m.
+  { have [?|?] := altP (c =P Word.zero); try subst c; last by [].
+    case DEC: (decode_type cty) => [ty|] //=.
+    apply decode_typeK in DEC; subst.
+      by move => H [<-].
+  }
+  have [?|?] := altP (m =P Word.repr 2); try subst m; last by [].
+  case DEC: (decode_type cty) => [ty|] //=.
+  apply decode_typeK in DEC; subst;
+    by move => H [<-].
+Qed.
+  
+Instance enc: @encodable t Sym.tag_eqType := {|
+  encode t :=
+    match t with
+    | USER ut => Word.pack [29; 1] [encode_mtag ut; Word.one]%wp
+    | ENTRY ut => Word.pack [29; 1] [encode_mtag ut; Word.repr 2]%wp
+    | KERNEL => Word.pack [29; 1] [Word.zero; Word.zero]%wp
+    end;
+
+  decode w :=
+    let: [ut; w']%wu := Word.unpack [29; 1] w in
+    if w' == Word.zero then
+      if ut == Word.zero then Some KERNEL
+      else None
+    else if w' == Word.one then
+      do! ut <- decode_mtag ut;
+      Some (@USER Sym.tag_eqType ut)
+    else if w' == Word.repr 2 then
+      do! ut <- decode_mtag ut;
+      Some (@ENTRY Sym.tag_eqType ut)
+    else None;
+
+  encode_kernel_tag := ssrfun.erefl
+|}.
+Proof.
+  - case => [ut| |ut];
+    by rewrite Word.packK /= ?encode_mtagK.
+  - intros tg w.
+    case E: (Word.unpack [29; 1] w) => [ut [w' []]].
+    move: (Word.unpackK [29; 1] w). rewrite E.
+    have [?|?] := altP (w' =P Word.zero); try subst w'.
+    { have [?|?] := altP (ut =P Word.zero); try subst ut; last by [].
+      by move => H [<-]. }
+    have [?|?] := altP (w' =P Word.one); try subst w'.
+    { case DEC: (decode_mtag ut) => [ut'|] //=.
+      apply decode_mtagK in DEC. subst ut.
+      by move => H [<-]. }
+    have [?|?] := altP (w' =P Word.repr 2); try subst w'; last by [].
+    case DEC: (decode_mtag ut) => [ut'|] //=.
+    apply decode_mtagK in DEC. subst ut.
+    by move => H [<-].
+Qed.
+ 
 Instance sp : Symbolic.params := Sym.sym_memory_safety t.
 
-(* XXX: Right now, it is actually contradictory to assume that
-   symbolic tags for memory safety are encodable, because they are
-   defined to be the same type as regular words. Thus, there aren't
-   enough bits to define the encoding. We should fix this by choosing
-   a different type for blocks.*)
+Context {color_map : Type -> Type}
+        {color_map_class : PartMaps.partial_map color_map color}
+        {color_map_spec : PartMaps.axioms color_map_class}.
 
-Context {enc : @encodable t (@Sym.tag_eqType col)}
-        {monitor_invariant : @kernel_invariant _ _ (fun k => enc)}
+Context {monitor_invariant : @kernel_invariant _ _ (fun k => enc)}
         {syscall_addrs : @memory_syscall_addrs t}
         {ap : Abstract.abstract_params [eqType of word t]}
         {apspec : Abstract.params_spec ap}
