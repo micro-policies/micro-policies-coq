@@ -716,6 +716,7 @@ Instance int_partial_map n : PartMaps.partial_map ZMap.t (Word.int n) := {
   set V m k v := ZMap.set (Word.unsigned k) v m;
   map_filter V1 V2 f m := ZMap.map_filter f m;
   remove V m k := ZMap.remove (Word.unsigned k) m;
+  combine V1 V2 V3 f m1 m2 := ZMap.combine f m1 m2;
   empty V := @ZMap.empty V
 }.
 
@@ -737,6 +738,8 @@ Proof.
     intros V m k k' H. apply ZMap.gro.
     contradict H.
     by apply Word.unsigned_inj.
+  + (* get_combine *)
+    intros. by apply ZMap.gcombine.
   + (* empty_is_empty *)
     intros V k. by apply ZMap.gempty.
 Qed.
@@ -789,6 +792,7 @@ Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt
   set V m k v := WordMap mt (ZMap.set (Word.unsigned k) v (wm m));
   map_filter V1 V2 f m := WordMap mt (ZMap.map_filter f (wm m));
   remove V m k := WordMap mt (ZMap.remove (Word.unsigned k) (wm m));
+  combine V1 V2 V3 f m1 m2 := WordMap mt (ZMap.combine f (wm m1) (wm m2));
   empty V := WordMap mt (@ZMap.empty V)
 }.
 
@@ -810,6 +814,8 @@ Proof.
     intros V m k k' H. apply ZMap.gro.
     contradict H.
     by apply Word.unsigned_inj.
+  + (* get_combine *)
+    intros. by apply ZMap.gcombine.
   + (* empty_is_empty *)
     intros V k. by apply ZMap.gempty.
 Qed.
@@ -819,6 +825,7 @@ Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) 
   set V m k v := RegMap mt (ZMap.set (Word.unsigned k) v (rm m));
   map_filter V1 V2 f m := RegMap mt (ZMap.map_filter f (rm m));
   remove V m k := RegMap mt (ZMap.remove (Word.unsigned k) (rm m));
+  combine V1 V2 V3 f m1 m2 := RegMap mt (ZMap.combine f (rm m1) (rm m2));
   empty V := RegMap mt (@ZMap.empty V)
 }.
 
@@ -840,6 +847,8 @@ Proof.
     intros V m k k' H. apply ZMap.gro.
     contradict H.
     by apply Word.unsigned_inj.
+  + (* get_combine *)
+    intros. by apply ZMap.gcombine.
   + (* empty_is_empty *)
     intros V k. by apply ZMap.gempty.
 Qed.
