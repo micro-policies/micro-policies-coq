@@ -18,7 +18,9 @@ Class partial_map := {
   map_filter : forall V1 V2, (V1 -> option V2) -> M V1 -> M V2;
   remove : forall V, M V -> K -> M V;
   combine : forall V1 V2 V3, (option V1 -> option V2 -> option V3) -> M V1 -> M V2 -> M V3;
-  empty : forall V, M V
+  empty : forall V, M V;
+  (* The eqType is not strictly necessary, but it does make it more convenient to use those things *)
+  is_empty : forall V : eqType, M V -> bool
 }.
 
 Class axioms (pm : partial_map) := mkAxioms {
@@ -40,7 +42,9 @@ Class axioms (pm : partial_map) := mkAxioms {
                   f None None = None ->
                   forall m1 m2 k, get (combine f m1 m2) k = f (get m1 k) (get m2 k);
 
-  empty_is_empty: forall V k, get (empty V) k = None
+  get_empty : forall V k, get (empty V) k = None;
+
+  is_emptyP : forall (V : eqType) (m : M V), ssrbool.reflect (m = empty V) (is_empty m)
 
 }.
 

@@ -18,24 +18,6 @@ Require Import cfi.abstract.
 Require Import cfi.refinementAS.
 Require Import Integers.
 
-Module NatPMap := FiniteMap NatIndexed.
-
-Instance nat_partial_map : PartMaps.partial_map NatPMap.t nat := {
-  get V m n := NatPMap.get n m;
-  set V m n v := NatPMap.set n v m;
-  map_filter V1 V2 f m := NatPMap.map_filter f m;
-  empty V := NatPMap.empty _
-}.
-
-Instance nat_partial_map_axioms : PartMaps.axioms nat_partial_map.
-Proof.
-  constructor.
-  - (* get_set_eq *) intros V m n v. by apply NatPMap.gss.
-  - (* get_set_neq *) intros V m n1 n2 v. by apply NatPMap.gso.
-  - (* map_filter_correctness *) intros V1 V2 f m k. by apply NatPMap.gmap_filter.
-  - (* empty_is_empty *) intros V k. by apply NatPMap.gempty.
-Qed.
-
 Module CFIInstances.
 
 Section WithClasses.

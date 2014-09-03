@@ -717,7 +717,8 @@ Instance int_partial_map n : PartMaps.partial_map ZMap.t (Word.int n) := {
   map_filter V1 V2 f m := ZMap.map_filter f m;
   remove V m k := ZMap.remove (Word.unsigned k) m;
   combine V1 V2 V3 f m1 m2 := ZMap.combine f m1 m2;
-  empty V := @ZMap.empty V
+  empty V := @ZMap.empty V;
+  is_empty V m := m == @ZMap.empty V
 }.
 
 Instance int_partial_map_axioms n : PartMaps.axioms (int_partial_map n).
@@ -740,8 +741,10 @@ Proof.
     by apply Word.unsigned_inj.
   + (* get_combine *)
     intros. by apply ZMap.gcombine.
-  + (* empty_is_empty *)
+  + (* get_empty *)
     intros V k. by apply ZMap.gempty.
+  + (* is_emptyP *)
+    intros. exact: eqP.
 Qed.
 
 (* XXX: AAA: Weird. for some reason, declaring a global partial map
@@ -793,7 +796,8 @@ Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt
   map_filter V1 V2 f m := WordMap mt (ZMap.map_filter f (wm m));
   remove V m k := WordMap mt (ZMap.remove (Word.unsigned k) (wm m));
   combine V1 V2 V3 f m1 m2 := WordMap mt (ZMap.combine f (wm m1) (wm m2));
-  empty V := WordMap mt (@ZMap.empty V)
+  empty V := WordMap mt (@ZMap.empty V);
+  is_empty V m := wm m == ZMap.empty V
 }.
 
 Instance word_map_axioms (mt : machine_types) : PartMaps.axioms (word_map_class mt).
@@ -816,8 +820,10 @@ Proof.
     by apply Word.unsigned_inj.
   + (* get_combine *)
     intros. by apply ZMap.gcombine.
-  + (* empty_is_empty *)
+  + (* get_empty *)
     intros V k. by apply ZMap.gempty.
+  + (* is_emptyP *)
+    intros. exact: eqP.
 Qed.
 
 Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) (reg mt) := {
@@ -826,7 +832,8 @@ Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) 
   map_filter V1 V2 f m := RegMap mt (ZMap.map_filter f (rm m));
   remove V m k := RegMap mt (ZMap.remove (Word.unsigned k) (rm m));
   combine V1 V2 V3 f m1 m2 := RegMap mt (ZMap.combine f (rm m1) (rm m2));
-  empty V := RegMap mt (@ZMap.empty V)
+  empty V := RegMap mt (@ZMap.empty V);
+  is_empty V m := rm m == ZMap.empty V
 }.
 
 Instance reg_map_axioms (mt : machine_types) : PartMaps.axioms (reg_map_class mt).
@@ -849,9 +856,39 @@ Proof.
     by apply Word.unsigned_inj.
   + (* get_combine *)
     intros. by apply ZMap.gcombine.
-  + (* empty_is_empty *)
+  + (* get_empty *)
     intros V k. by apply ZMap.gempty.
+  + (* is_emptyP *)
+    intros. exact: eqP.
 Qed.
 
 Global Opaque word_map_class.
 Global Opaque reg_map_class.
+
+Module NatPMap := FiniteMap NatIndexed.
+
+Instance nat_partial_map : PartMaps.partial_map NatPMap.t nat := {
+  get V m n := NatPMap.get n m;
+  set V m n v := NatPMap.set n v m;
+  map_filter V1 V2 f m := NatPMap.map_filter f m;
+  remove V m k := NatPMap.remove k m;
+  combine V1 V2 V3 f m1 m2 := NatPMap.combine f m1 m2;
+  empty V := NatPMap.empty _;
+  is_empty V m := m == @NatPMap.empty V
+}.
+
+Instance nat_partial_map_axioms : PartMaps.axioms nat_partial_map.
+Proof.
+  constructor.
+  - (* get_set_eq *) intros V m n v. by apply NatPMap.gss.
+  - (* get_set_neq *) intros V m n1 n2 v. by apply NatPMap.gso.
+  - (* map_filter_correctness *) intros V1 V2 f m k. by apply NatPMap.gmap_filter.
+  - (* get_remove_eq *)
+    intros V m k. by apply NatPMap.grs.
+  - (* get_remove_neq *)
+    intros V m k k' H. by apply NatPMap.gro.
+  - (* get_combine *)
+    intros. by apply NatPMap.gcombine.
+  - (* get_empty *) intros V k. by apply NatPMap.gempty.
+  - (* is_emptyP *) intros. exact: eqP.
+Qed.
