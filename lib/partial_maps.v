@@ -16,6 +16,7 @@ Class partial_map := {
   get : forall V, M V -> K -> option V;
   set : forall V, M V -> K -> V -> M V;
   map_filter : forall V1 V2, (V1 -> option V2) -> M V1 -> M V2;
+  remove : forall V, M V -> K -> M V;
   empty : forall V, M V
 }.
 
@@ -29,6 +30,10 @@ Class axioms (pm : partial_map) := mkAxioms {
 
   map_filter_correctness : forall V1 V2 (f : V1 -> option V2) (m : M V1) (k : K),
                              get (map_filter f m) k = bind f (get m k);
+
+  get_remove_eq : forall V km (ak : K), get (remove km ak) ak = None :> option V;
+
+  get_remove_neq : forall V km ak ak', ak' <> ak -> get (remove km ak) ak' = get km ak' :> option V;
 
   empty_is_empty: forall V k, get (empty V) k = None
 

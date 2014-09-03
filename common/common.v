@@ -715,6 +715,7 @@ Instance int_partial_map n : PartMaps.partial_map ZMap.t (Word.int n) := {
   get V m k := ZMap.get (Word.unsigned k) m;
   set V m k v := ZMap.set (Word.unsigned k) v m;
   map_filter V1 V2 f m := ZMap.map_filter f m;
+  remove V m k := ZMap.remove (Word.unsigned k) m;
   empty V := @ZMap.empty V
 }.
 
@@ -730,6 +731,12 @@ Proof.
     congruence.
   + (* map_filter_correctness *)
     intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* get_remove_eq *)
+    intros V m k. by apply ZMap.grs.
+  + (* get_remove_neq *)
+    intros V m k k' H. apply ZMap.gro.
+    contradict H.
+    by apply Word.unsigned_inj.
   + (* empty_is_empty *)
     intros V k. by apply ZMap.gempty.
 Qed.
@@ -781,6 +788,7 @@ Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt
   get V m k := ZMap.get (Word.unsigned k) (wm m);
   set V m k v := WordMap mt (ZMap.set (Word.unsigned k) v (wm m));
   map_filter V1 V2 f m := WordMap mt (ZMap.map_filter f (wm m));
+  remove V m k := WordMap mt (ZMap.remove (Word.unsigned k) (wm m));
   empty V := WordMap mt (@ZMap.empty V)
 }.
 
@@ -796,6 +804,12 @@ Proof.
     congruence.
   + (* map_filter_correctness *)
     intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* get_remove_eq *)
+    intros V m k. by apply ZMap.grs.
+  + (* get_remove_neq *)
+    intros V m k k' H. apply ZMap.gro.
+    contradict H.
+    by apply Word.unsigned_inj.
   + (* empty_is_empty *)
     intros V k. by apply ZMap.gempty.
 Qed.
@@ -804,6 +818,7 @@ Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) 
   get V m k := ZMap.get (Word.unsigned k) (rm m);
   set V m k v := RegMap mt (ZMap.set (Word.unsigned k) v (rm m));
   map_filter V1 V2 f m := RegMap mt (ZMap.map_filter f (rm m));
+  remove V m k := RegMap mt (ZMap.remove (Word.unsigned k) (rm m));
   empty V := RegMap mt (@ZMap.empty V)
 }.
 
@@ -819,6 +834,12 @@ Proof.
     congruence.
   + (* map_filter_correctness *)
     intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* get_remove_eq *)
+    intros V m k. by apply ZMap.grs.
+  + (* get_remove_neq *)
+    intros V m k k' H. apply ZMap.gro.
+    contradict H.
+    by apply Word.unsigned_inj.
   + (* empty_is_empty *)
     intros V k. by apply ZMap.gempty.
 Qed.
