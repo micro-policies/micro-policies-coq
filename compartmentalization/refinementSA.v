@@ -1,11 +1,11 @@
 Require Import List. Import ListNotations.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
 Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import lib.haskell_notation.
-Require Import lib.list_utils lib.set_utils.
+Require Import lib.list_utils.
 Require Import compartmentalization.common compartmentalization.isolate_sets.
 Require Import compartmentalization.abstract compartmentalization.symbolic.
 
@@ -55,15 +55,6 @@ Hint Immediate word_map_axioms.
 Hint Immediate reg_map_axioms.
 
 (* Avoiding some type class resolution problems *)
-Hint Resolve (Abs.good_compartment__is_set_address_space (spec := spec)).
-Hint Resolve (Abs.good_compartment__is_set_jump_targets  (spec := spec)).
-Hint Resolve (Abs.good_compartment__is_set_store_targets (spec := spec)).
-Hint Resolve (Abs.good_compartment_decomposed__is_set_address_space
-                (spec := spec)).
-Hint Resolve (Abs.good_compartment_decomposed__is_set_jump_targets
-                (spec := spec)).
-Hint Resolve (Abs.good_compartment_decomposed__is_set_store_targets
-                (spec := spec)).
 
 Arguments Sym.sget {_ _} s p : simpl never.
 Arguments Sym.supd {_ _} s p v : simpl never.
@@ -100,16 +91,65 @@ Definition refine_registers : registers t -> Sym.registers t -> Prop :=
 Section With_EqType_refined_compartment.
 Import Sym.
 
+(*
+(* MOVE *)
+Definition the {T : eqType} (l : seq T) : option T :=
+  if l is x :: l' then
+    if constant l then Some x else None
+  else None.
+
+(* MOVE *)
+Lemma the_in (T : eqType) (l : list T) a :
+  the l = Some a -> a \in l.
+Proof.
+  rewrite /the.
+  case: l => [//=|a' l].
+  case: (constant (a' :: l)) => //=.
+  move=> [->].
+  by rewrite in_cons eqxx.
+Qed.
+
+Lemma theP (T : eqType) (xs : seq T) (x : T) :
+  reflect (the xs = Some x) (~~ nilp xs && all (pred1 x) xs).
+Proof.
+  apply/(iffP idP).
+  - by case: xs => [|x' xs] //= /andP [/eqP <- ->].
+  - case: xs => [|x' xs] //=.
+    have [E|NE] := boolP (all (pred1 x') xs) => [ [<-] | //= ].
+    by rewrite eqxx.
+Qed.
+*)
+
+Definition the {T : finType} (xs : {set T}) : option T :=
+  [pick a | xs == [set a]].
+
+Lemma the_in {T : finType} (xs : {set T}) (x : T) :
+  the xs = Some x -> x \in xs.
+Proof.
+  rewrite /the.
+  have [x' /eqP -> [->] | //=] := pickP.
+  by apply set11.
+Qed.
+
+Definition map_options {T S : finType} (f : T -> option S) (xs : {set T}) : option {set S} :=
+  if None \in f @: xs then None
+  else Some [set a | Some a \in f @: xs].
+
+
+
+
 Definition refined_compartment (c   : Abs.compartment t)
                                (sst : sstate) : option word :=
   let: <<A,J,S>> := c in
-  do! sxs <- map_options (Sym.sget sst) A;
-  do! sc  <- the =<< map_options (stag_compartment ∘ slabel) sxs;
+  [pick sc in [
+
+
+  do! sc  <- the =<< map_options (stag_compartment ∘ slabel <=< Sym.sget sst) A;
              (* modulo emptiness *)
-  do! guard? forallb (set_elem sc) <$>
-               map_options (stag_incoming ∘ slabel <=< Sym.sget sst) J;
-  do! guard? forallb (set_elem sc) <$>
-               map_options (stag_writers  ∘ slabel <=< Sym.sget sst) S;
+  do! guard? all (fun s : {set word} => sc \in s) <$>
+             map_options (stag_incoming ∘ slabel <=< Sym.sget sst) J;
+  do! guard? all (fun s : {set word} => sc \in s) <$>
+             map_options (stag_writers  ∘ slabel <=< Sym.sget sst) S;
   Some sc.
 End With_EqType_refined_compartment.
 
@@ -118,15 +158,14 @@ Definition refine_compartment_tag (C   : list (Abs.compartment t))
                                   (p   : word) : Prop :=
   match Sym.sget sst p with
     | Some (_ @ (Sym.DATA cid I W)) =>
-      is_set I /\ is_set W /\
       exists c,
         C ⊢ p ∈ c /\
         forall p',
           match Sym.sget sst p' with
             | Some (_ @ (Sym.DATA cid' I' W')) =>
               (cid = cid' <-> C ⊢ p' ∈ c) /\
-              (In cid I'   -> In p' (Abs.jump_targets  c)) /\
-              (In cid W'   -> In p' (Abs.store_targets c))
+              (cid \in I'   -> p' \in Abs.jump_targets  c) /\
+              (cid \in W'   -> p' \in Abs.store_targets c)
             | Some (_ @ _) =>
               False
             | None =>
@@ -140,7 +179,7 @@ Definition refine_compartment_tag (C   : list (Abs.compartment t))
 
 Definition refine_compartments (C : list (Abs.compartment t))
                                (sst : sstate) : Prop :=
-  forallb (is_some ∘ refined_compartment ^~ sst) C /\
+  all (is_some ∘ refined_compartment ^~ sst) C /\
   forall p, refine_compartment_tag C sst p.
 
 Definition refine_previous_b (sk : where_from) (prev : Abs.compartment t)
@@ -180,6 +219,31 @@ Record refine (ast : astate) (sst : sstate) : Prop := RefineState
 
 Generalizable All Variables.
 
+(* MOVE *)
+Lemma map_options_in (X Y : eqType) (f : X -> option Y) xs ys :
+  map_options f xs = Some ys ->
+  forall y, reflect (exists2 x, f x = Some y & x \in xs) (y \in ys).
+Proof.
+  elim: xs ys => [|x xs IH] //= ys.
+  - move=> [<-] y.
+    by apply/(iffP idP) => [|[? ? ?]] //=.
+  - case Ex: (f x) => [y|] //=.
+    case Em: (map_options _ _) => [ys' |] //=.
+    move/(IH _): Em => Em [<-] y'.
+    rewrite in_cons.
+    have [E|?] := (y' =P y) => /=.
+    + constructor.
+      eexists x => //; first by rewrite -E in Ex.
+      by rewrite in_cons eqxx.
+    + apply/(iffP (Em y')); move=> [x' H1 H2].
+      * exists x' => //.
+        by rewrite in_cons H2 orbT.
+      * exists x' => //.
+        rewrite in_cons in H2.
+        case/orP: H2 => [/eqP E | //].
+        congruence.
+Qed.
+
 Ltac explode_refined_compartment' RC :=
   let sxs      := fresh "sxs"      in
   let def_sxs  := fresh "def_sxs"  in
@@ -207,13 +271,12 @@ Ltac explode_refined_compartment' RC :=
       end
   in unfmap ALL_J mJ MAP_J; unfmap ALL_S mS MAP_S;
      move/map_options_in in MAP_J; move/map_options_in in MAP_S;
-     rewrite ->forallb_forall in *; simpl in *;
+     move/allP in ALL_J; move/allP in ALL_S; simpl in *;
   move/map_options_in in def_sxs;
   destruct (map_options _ sxs) as [cids|] eqn:MAP_sxs; simpl in *;
     [|discriminate];
-  move/map_options_in in MAP_sxs;
-  move: def_sc => /the_spec [NE_cids SAME_cid];
-  unfold SetoidClass.equiv,SetoidDec.eq_setoid in SAME_cid
+  move/map_options_in in MAP_sxs; idtac
+  (*move: def_sc => /theP/andP [NE_cids /allP SAME_cid]*)
   end.
 
 Ltac explode_refined_compartment RC A J S :=
@@ -225,24 +288,26 @@ Ltac explode_refined_compartment RC A J S :=
 (* Could be reused more than it is *)
 Lemma refined_sget_in_compartment : forall C c cid sst x I W p,
   Abs.good_compartments C ->
-  In c C ->
+  c \in C ->
   (forall p, refine_compartment_tag C sst p) ->
   refined_compartment c sst ?= cid ->
   Sym.sget sst p ?= x@(Sym.DATA cid I W) ->
   C ⊢ p ∈ c.
 Proof.
-  clear S I; intros until 0; intros GOODS IN_c_C RCTAGS REFINED SGET.
+  clear S I.
+  move=> C c cid sst x I W p GOODS IN_c_C RCTAGS REFINED SGET.
   move: (RCTAGS p) => RCTAGS'; rewrite /refine_compartment_tag SGET in RCTAGS';
-    move: RCTAGS' => [SET_I [SET_W [c' [IC' RTAG]]]].
+    move: RCTAGS' => [c' [IC' RTAG]].
   let S := fresh "S" in explode_refined_compartment REFINED A J S.
-  move: NE_cids => /nonempty_iff_in [temp IN_temp];
-    generalize IN_temp => IN_cid;
-    apply SAME_cid in IN_temp; subst; clear SAME_cid.
-  apply MAP_sxs in IN_cid.
-  destruct IN_cid as [[w Lw] [TAG IN_sxs]].
-  apply def_sxs in IN_sxs.
-  destruct IN_sxs as [p' [SGET' IN']].
-  assert (IC_p'_c : C ⊢ p' ∈ <<A,J,S>>) by by apply Abs.in_compartment_spec.
+  move/(the_in _)/MAP_sxs: def_sc => [[w Lw] TAG /def_sxs [p' SGET' IN']].
+  have IC_p'_c : C ⊢ p' ∈ <<A,J,S>>.  rewrite /Abs.in_compartment /=.
+  move: (mem_enum A).
+
+
+  Set Printing All.
+  rewrite mem_enum in IN'.
+
+IN'. by apply Abs.in_compartment_spec.
   specialize RTAG with p'; rewrite SGET' in RTAG.
   destruct Lw; try done; simpl in *.
   inversion TAG; subst.

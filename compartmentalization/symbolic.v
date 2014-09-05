@@ -1,10 +1,10 @@
 Require Import List. Import ListNotations.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
 Require Import lib.hlist lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
-Require Import lib.list_utils lib.set_utils.
+Require Import lib.list_utils.
 Require Import compartmentalization.common.
 Require Import compartmentalization.isolate_sets compartmentalization.ranges.
 
@@ -14,8 +14,38 @@ Module Sym.
 
 Inductive stag {t : machine_types} :=
 | PC     : forall (F : where_from) (c : word t), stag
-| DATA   : forall (c : word t) (I W : list (word t)), stag
+| DATA   : forall (c : word t) (I W : {set (word t)}), stag
 | REG    : stag.
+
+Module Exports.
+
+Section Equality.
+
+Context (t : machine_types).
+
+Definition stag_eq (t1 t2 : @stag t) : bool :=
+  match t1, t2 with
+    | PC F1 c1      , PC F2 c2      => (F1 == F2) && (c1 == c2)
+    | DATA c1 I1 W1 , DATA c2 I2 W2 => (c1 == c2) && (I1 == I2) && (W1 == W2)
+    | REG           , REG           => true
+    | _             , _             => false
+  end.
+
+Lemma stag_eqP : Equality.axiom stag_eq.
+Proof.
+  by move=> [F1 c1|c1 I1 W1|] [F2 c2|c2 I2 W2|] /=; apply: (iffP idP) => //;
+     do [ do ! move/andP=> []; do ! move=> /eqP->
+        | case; do ! move=> ->; do ! (apply/andP; split) ].
+Qed.
+
+Definition stag_eqMixin := EqMixin stag_eqP.
+Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
+
+End Equality.
+
+End Exports.
+
+Import Exports.
 
 Module EnhancedDo.
 Export DoNotation.
@@ -123,29 +153,11 @@ Definition stag_compartment (L : stag) : option (word t) :=
 Definition stag_source (L : stag) : option where_from :=
   match L with PC F _ => Some F | _ => None end.
 
-Definition stag_incoming (L : stag) : option (list (word t)) :=
+Definition stag_incoming (L : stag) : option {set (word t)} :=
   match L with DATA _ I _ => Some I | _ => None end.
 
-Definition stag_writers (L : stag) : option (list (word t)) :=
+Definition stag_writers (L : stag) : option {set (word t)} :=
   match L with DATA _ _ W => Some W | _ => None end.
-
-Definition stag_eq (t1 t2 : stag) : bool :=
-  match t1, t2 with
-    | PC F1 c1      , PC F2 c2      => (F1 == F2) && (c1 == c2)
-    | DATA c1 I1 W1 , DATA c2 I2 W2 => (c1 == c2) && (I1 == I2) && (W1 == W2)
-    | REG           , REG           => true
-    | _             , _             => false
-  end.
-
-Lemma stag_eqP : Equality.axiom stag_eq.
-Proof.
-  by move=> [F1 c1|c1 I1 W1|] [F2 c2|c2 I2 W2|] /=; apply: (iffP idP) => //;
-     do [ do ! move/andP=> []; do ! move=> /eqP->
-        | case; do ! move=> ->; do ! (apply/andP; split) ].
-Qed.
-
-Definition stag_eqMixin := EqMixin stag_eqP.
-Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
 Definition stags : Symbolic.tag_kind -> eqType := fun _ => [eqType of stag].
 
@@ -155,7 +167,7 @@ Import Symbolic HListNotations.
 Definition can_execute (Lpc LI : stag) : option (word t) :=
   do! PC   F  c   <-! Lpc;
   do! DATA c' I _ <-! LI;
-  do! guard (c' == c) || ((F == JUMPED) && set_elem c I);
+  do! guard (c' == c) || ((F == JUMPED) && (c \in I));
   Some c'.
 
 Definition compartmentalization_rvec (op : opcode)
@@ -178,10 +190,10 @@ Definition rvec_next op (tr : type_of_result stags (outputs op)) : stag -> stag 
   rvec_simple op INTERNAL tr.
 Definition rvec_jump op (tr : type_of_result stags (outputs op)) : stag -> stag -> option (OVec stags op) :=
   rvec_simple op JUMPED tr.
-Definition rvec_store (c : word t) (I W : list (word t))
+Definition rvec_store (c : word t) (I W : {set (word t)})
                       : stag -> stag -> option (OVec stags STORE) :=
   rvec_step STORE (fun c' =>
-    do! guard (c == c') || set_elem c' W;
+    do! guard (c == c') || (c' \in W);
     Some (@mkOVec stags STORE (PC INTERNAL c') (DATA c I W))).
 
 (* The `REG's in the IVec's fields can also be _s; it's an invariant that
@@ -292,8 +304,8 @@ Definition fresh (si : compartmentalization_internal)
   then None
   else Some (next, Internal (next+1)%w iT ajtT asmT).
 
-Fixpoint retag_set (ok : word t -> list (word t) -> list (word t) -> bool)
-                   (retag : word t -> list (word t) -> list (word t) -> stag)
+Fixpoint retag_set (ok : word t -> {set (word t)} -> {set (word t)} -> bool)
+                   (retag : word t -> {set (word t)} -> {set (word t)}-> stag)
                    (ps : list (word t))
                    (s : Symbolic.state t)
                    : option (Symbolic.state t) :=
@@ -320,27 +332,26 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
       do! pS @ _ <- get R syscall_arg3;
 
       do! A' <- isolate_create_set (@val _ _) M pA;
-      do! guard nonempty A';
+      do! guard A' != set0;
       do! sA <- retag_set (fun c'' _ _ => c == c'')
                           (fun _   I W => DATA c' I W)
-                          A' s';
+                          (enum A') s';
 
-      do! J' <- isolate_create_set (@val _ _) M pJ;
-      do! sJ <- retag_set (fun c'' I _ => (c == c'') || (c' == c'') ||
-                                          set_elem c I)
-                          (fun c'' I W => DATA c'' (insert_unique c' I) W)
-                          J' sA;
+      do! J' : {set word t} <- isolate_create_set (@val _ _) M pJ;
+      do! sJ <- retag_set (fun c'' I _ => (c == c'') || (c' == c'') || (c \in I))
+                          (fun c'' I W => DATA c'' ((c' : word t) |: I) W)
+                          (enum J') sA;
 
-      do! S' <- isolate_create_set (@val _ _) M pS;
+      do! S' : {set word t} <- isolate_create_set (@val _ _) M pS;
       do! sS <- retag_set (fun c'' _ W => (c == c'') || (c' == c'') ||
-                                          set_elem c W)
-                          (fun c'' I W => DATA c'' I (insert_unique c' W))
-                          S' sJ;
+                                          (c \in W))
+                          (fun c'' I W => DATA c'' I ((c' : word t) |: W))
+                          (enum S') sJ;
 
       do! pc' @ _                    <- get  R  ra;
       do! _   @ DATA c_next I_next _ <- sget sS pc';
       do! guard c == c_next;
-      do! guard set_elem c_sys I_next;
+      do! guard c_sys \in I_next;
 
       let: Symbolic.State M_next R_next _ si_next := sS in
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
@@ -358,13 +369,13 @@ Definition add_to_jump_targets (s : Symbolic.state t)
       do! p @ _             <- get R syscall_arg1;
       do! x @ DATA c' I' W' <- sget s p;
 
-      do! guard (c' == c) || set_elem c I';
-      do! s' <- supd s p (x @ (DATA c' (insert_unique c I') W'));
+      do! guard (c' == c) || (c \in I');
+      do! s' <- supd s p (x @ (DATA c' (c |: I') W'));
 
       do! pc' @ _                    <- get R ra;
       do! _   @ DATA c_next I_next _ <- sget s' pc';
       do! guard c == c_next;
-      do! guard set_elem c_sys I_next;
+      do! guard c_sys \in I_next;
 
       let: Symbolic.State M_next R_next _ si_next := s' in
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
@@ -382,13 +393,13 @@ Definition add_to_store_targets (s : Symbolic.state t)
       do! p @ _             <- get R syscall_arg1;
       do! x @ DATA c' I' W' <- sget s p;
 
-      do! guard (c' == c) || set_elem c W';
-      do! s' <- supd s p (x @ (DATA c' I' (insert_unique c W')));
+      do! guard (c' == c) || (c \in W');
+      do! s' <- supd s p (x @ (DATA c' I' (c |: W')));
 
       do! pc' @ _                    <- get R ra;
       do! _   @ DATA c_next I_next _ <- sget s' pc';
       do! guard c == c_next;
-      do! guard set_elem c_sys I_next;
+      do! guard c_sys \in I_next;
 
       let: Symbolic.State M_next R_next _ si_next := s' in
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
@@ -418,7 +429,7 @@ Definition good_internal (s : Symbolic.state t) : Prop :=
 Definition good_memory_tag (s : Symbolic.state t)
                            (p : word t) : bool :=
   match sget s p with
-    | Some (_ @ (DATA _ I W)) => is_set I && is_set W
+    | Some (_ @ (DATA _ _ _)) => true
     | Some (_ @ _)            => false
     | None                    => true
   end.
@@ -865,10 +876,8 @@ Qed.
 
 Lemma retag_set_preserves_good_memory_tag : forall ok retag ps s s',
   (forall c I W,
-     is_set I ->
-     is_set W ->
      match retag c I W with
-       | DATA _ I' W' => is_set I' && is_set W'
+       | DATA _ I' W' => true
        | _            => false
      end) ->
   retag_set ok retag ps s ?= s' ->
@@ -885,18 +894,12 @@ Proof.
       undo1 RETAG_SET OK;
       destruct (retag c I W) as [|c' I' W'|] eqn:def_c'_I'_W'; try discriminate;
       undo1 RETAG_SET s2.
-    intros MEM GOOD.
+    intros MEM.
     unfold good_memory_tag in *.
-    move: (MEM p); rewrite def_xcIW; move=> /andP [SET_I SET_W].
-    specialize (RETAG c I W SET_I SET_W);
-      rewrite def_c'_I'_W' /= in RETAG;
-      repeat rewrite <-Bool.andb_assoc in RETAG.
-      move: RETAG => /andP [SET_I' SET_W'].
     eapply IHps; try eassumption.
     intros p'; destruct (p == p') eqn:EQ_p_p'; move/eqP in EQ_p_p'.
     + subst p'.
-      eapply sget_supd_eq in def_s2; eauto 1; rewrite def_s2.
-      by apply/andP.
+      by eapply sget_supd_eq in def_s2; eauto 1; rewrite def_s2.
     + apply sget_supd_neq with (p' := p') in def_s2; auto.
       rewrite def_s2; specialize MEM with p'.
       by destruct (sget s p') as [[? [|c'' I'' W''|]]|].
@@ -1228,3 +1231,5 @@ Notation memory    t := (Symbolic.memory    t (@sym_compartmentalization t)).
 Notation registers t := (Symbolic.registers t (@sym_compartmentalization t)).
 
 End Sym.
+
+Export Sym.Exports.

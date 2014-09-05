@@ -1,6 +1,6 @@
 Require Import List Arith ZArith Bool.
 Require Import Coq.Classes.SetoidDec.
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
 Require Import lib.ordered.
 
 Require Import lib.utils.
@@ -892,3 +892,5 @@ Proof.
   - (* get_empty *) intros V k. by apply NatPMap.gempty.
   - (* is_emptyP *) intros. exact: eqP.
 Qed.
+
+Canonical word_finType t := Eval hnf in FinType (word t) (int_finMixin _).

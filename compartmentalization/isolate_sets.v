@@ -1,10 +1,9 @@
 Require Import List ZArith Arith Sorted Bool.
-Require Import Coq.Classes.SetoidDec.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
 Require Import lib.Integers lib.utils lib.partial_maps common.common.
-Require Import lib.set_utils compartmentalization.ranges.
+Require Import compartmentalization.ranges.
 
 Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.
@@ -23,23 +22,23 @@ Context  {t            : machine_types}
 
 Open Scope word_scope.
 
-Definition isolate_get_range (M : Map V) (p : word t) : option (list (word t)) :=
+Definition isolate_get_range (M : Map V) (p : word t) : option {set (word t)} :=
   do! low  <- get M p;
   do! high <- get M (p + 1);
-  Some (range (to_word low) (to_word high)).
+  Some [set i : word t in range (to_word low) (to_word high)].
 
 Fixpoint isolate_get_ranges (M : Map V)
                             (p : word t)
-                            (n : nat) : option (list (word t)) :=
+                            (n : nat) : option {set (word t)} :=
   match n with
-    | O    => Some [::]
+    | O    => Some set0
     | S n' => do! here <- isolate_get_range M p;
               do! rest <- isolate_get_ranges M (p + 2) n';
-              Some (set_union here rest)
+              Some (here :|: rest)
   end.
 
 Definition isolate_create_set (M : Map V)
-                              (base : word t) : option (list (word t)) :=
+                              (base : word t) : option {set (word t)} :=
   do! pairs <- get M base;
   isolate_get_ranges M (base + 1) (Z.to_nat (Word.signed (to_word pairs))).
 
@@ -63,22 +62,4 @@ Local Ltac isolate_fn_is_set :=
   inversion H; subst;
   eauto 4.
 
-Lemma isolate_get_range_is_set : forall M p X,
-  isolate_get_range M p ?= X -> is_set X = true.
-Proof. isolate_fn_is_set. Qed.
-Hint Resolve isolate_get_range_is_set.
-
-Lemma isolate_get_ranges_is_set : forall M p n X,
-  isolate_get_ranges M p n ?= X -> is_set X = true.
-Proof. isolate_fn_is_set. Qed.
-Hint Resolve isolate_get_ranges_is_set.
-
-Lemma isolate_create_set_is_set : forall M base X,
-  isolate_create_set M base ?= X -> is_set X = true.
-Proof. isolate_fn_is_set. Qed.
-
 End WithClasses.
-
-Hint Resolve isolate_get_range_is_set
-             isolate_get_ranges_is_set
-             isolate_create_set_is_set.
