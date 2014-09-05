@@ -141,7 +141,7 @@ Definition isolate_fn (MM : state) : option state :=
   do! guard S' \subset (A :|: S);
   let c_upd := <<A :\: A', J, S>> in
   let c'    := <<A',J',S'>> in
-  let C'    := c_upd :: c' :: delete c C in
+  let C'    := c_upd :: c' :: rem c C in
   do! pc'    <- get R ra;
   do! c_next <- in_compartment_opt C' pc';
   do! guard c_upd == c_next;
@@ -171,7 +171,7 @@ Definition add_to_compartment_component
   do! p <- get R syscall_arg1;
   do! guard p \in (address_space c :|: rd c);
   let c' := wr (p |: rd c) c in
-  let C' := c' :: delete c C in
+  let C' := c' :: rem c C in
   do! pc'    <- get R ra;
   do! c_next <- in_compartment_opt C' pc';
   do! guard c' == c_next;
@@ -484,30 +484,30 @@ Qed.
 (*Global*) Hint Resolve good_compartments__in2_disjoint.
 *)
 
-Theorem non_overlapping_delete : forall c C,
+Theorem non_overlapping_rem : forall c C,
   non_overlapping C ->
-  non_overlapping (delete c C) = true.
+  non_overlapping (rem c C).
 Proof.
   admit.
 (*
   intros c C GOOD NOL.
   rewrite ->non_overlapping_spec in * by auto.
   intros c1 c2 IN2; apply NOL.
-  eapply in2_delete; eassumption.
+  eapply in2_rem; eassumption.
 *)
 Qed.
-(*Global*) Hint Resolve non_overlapping_delete.
+(*Global*) Hint Resolve non_overlapping_rem.
 
-Corollary non_overlapping_delete' : forall c C,
+Corollary non_overlapping_rem' : forall c C,
   good_compartments C ->
-  non_overlapping (delete c C).
+  non_overlapping (rem c C).
 Proof. auto. Qed.
-(*Global*) Hint Resolve non_overlapping_delete'.
+(*Global*) Hint Resolve non_overlapping_rem'.
 
 Lemma non_overlapping_replace : forall c c' C,
   non_overlapping C ->
-  non_overlapping (c' :: delete c C) =
-  all (disjoint_comp c') (delete c C).
+  non_overlapping (c' :: rem c C) =
+  all (disjoint_comp c') (rem c C).
 Proof.
   admit.
 (*
@@ -516,14 +516,14 @@ Proof.
     repeat rewrite all_tail_pairs_tail;
     fold (non_overlapping (delete c C)).
   destruct (forallb _ (delete _ _)); [simpl | reflexivity].
-  apply non_overlapping_delete; assumption. *)
+  apply non_overlapping_rem; assumption. *)
 Qed.
 (*Global*) Hint Resolve non_overlapping_replace.
 
 Lemma non_overlapping_replace' : forall c c' C,
   good_compartments C ->
-  non_overlapping (c' :: delete c C) =
-  all (disjoint_comp c') (delete c C).
+  non_overlapping (c' :: rem c C) =
+  all (disjoint_comp c') (rem c C).
 Proof. auto. Qed.
 (*Global*) Hint Resolve non_overlapping_replace'.
 
@@ -1211,14 +1211,14 @@ Lemma good_compartments_preserved_for_add_to_compartment_component :
     address_space c = address_space c' ->
     jump_targets c' \subset address_space c :|: jump_targets c ->
     store_targets c' \subset address_space c :|: store_targets c ->
-    good_compartments (c' :: delete c C).
+    good_compartments (c' :: rem c C).
 Proof.
   intros c c' C GOOD IN ADDR SUBSET_J SUBSET_S.
   unfold good_compartments; repeat (andb_true_split; simpl); auto.
   - rewrite ->non_overlapping_replace', forallb_forall by assumption.
+    admit. (*
     intros c'' IN'; rewrite ->delete_in_iff in IN'; destruct IN' as [NEQ IN'].
     replace (address_space c') with (address_space c) by assumption.
-    admit. (*
     assert (NOL : non_overlapping C) by auto;
       rewrite ->non_overlapping_spec' in NOL by assumption.
     auto.*)
@@ -1771,8 +1771,8 @@ Hint Resolve good_compartments__contained_compartments.
 Hint Resolve good_no_duplicates.
 Hint Resolve non_overlapping_subset.
 Hint Resolve non_overlapping_tail.
-Hint Resolve non_overlapping_delete.
-Hint Resolve non_overlapping_delete'.
+Hint Resolve non_overlapping_rem.
+Hint Resolve non_overlapping_rem'.
 Hint Resolve non_overlapping_replace.
 Hint Resolve non_overlapping_replace'.
 Hint Resolve in_compartment_element.
