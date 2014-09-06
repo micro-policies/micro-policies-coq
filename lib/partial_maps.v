@@ -54,6 +54,9 @@ Context {pm : partial_map}
         {a : axioms pm}
         {V : Type}.
 
+Definition rep (m : M V) (k : K) (f : V -> V) : option (M V) :=
+  omap (set m k \o f) (get m k).
+
 Definition upd (m : M V) (k : K) (v : V) : option (M V) :=
   match get m k with
   | Some _ => Some (set m k v)
@@ -98,6 +101,26 @@ Qed.
 End with_classes.
 
 End maps.
+
+Section rep.
+
+Context (M : Type -> Type)
+        (K : eqType)
+        {pm : partial_map M K}
+        {a : axioms pm}
+        {V : Type}.
+
+Definition get_rep (m m' : M V) (k : K) f :
+  rep m k f = Some m' ->
+  forall k', get m' k' = if k' == k then omap f (get m k) else get m k'.
+Proof.
+  rewrite /rep.
+  case: (get m k) => [v [<-]|] //= k'.
+  have [{k'} ->|NE] := (k' =P k); first by rewrite get_set_eq.
+  by rewrite (get_set_neq _ _ NE).
+Qed.
+
+End rep.
 
 Section upd_list.
 
