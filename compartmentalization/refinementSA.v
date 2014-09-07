@@ -143,7 +143,6 @@ Definition refined_compartment (c   : Abs.compartment t)
                                (sst : sstate) : option word :=
   let: <<A,J,S>> := c in
   [pick sc |
-
     [set Some sc] == (stag_compartment <=< Sym.sget sst) @: A &
     [forall os in (stag_incoming <=< Sym.sget sst) @: J :|:
                   (stag_writers  <=< Sym.sget sst) @: S,
@@ -397,7 +396,7 @@ Lemma prove_refined_compartment : forall pc cid I W
                                          AC c sst,
   Sym.sget sst pc ?= Sym.DATA cid I W ->
   Abs.good_compartments AC ->
-  forallb (is_some ∘ refined_compartment^~ sst) AC ->
+  all (is_some ∘ refined_compartment^~ sst) AC ->
   (forall p, refine_compartment_tag AC sst p) ->
   AC ⊢ pc ∈ c ->
   (forall p' : word,
@@ -449,7 +448,7 @@ Lemma prove_refined_compartment' : forall pc cid cid' cid'' I W F
   (do! guard (cid'' == cid') || ((F == JUMPED) && (cid' \in I));
    Some cid'') ?= cid ->
   Abs.good_state (AState pc AR AM AC Ask Aprev) ->
-  forallb (is_some ∘ refined_compartment^~ sst) AC ->
+  all (is_some ∘ refined_compartment^~ sst) AC ->
   (forall p, refine_compartment_tag AC sst p) ->
   AC ⊢ pc ∈ c ->
   (forall p' : word,
@@ -835,6 +834,35 @@ Proof.
   by rewrite RC.
 Qed.
 
+Lemma refined_compartment_augment cid sst Aprev Jprev Sprev p:
+  refined_compartment <<Aprev,Jprev,Sprev>> sst ?= cid ->
+  is_some (refined_compartment <<Aprev,p |: Jprev,Sprev>> sst) =
+  oapp (fun s : {set word} => cid \in s) false
+       ((Sym.stag_incoming <=< Sym.sget sst) p).
+Proof.
+  rewrite /refined_compartment.
+  case: pickP cid => [cid /andP [/eqP Hcid1 /forallP Hcid2]|] // _ [<-].
+  rewrite -(@eq_pick _ (fun sc => (sc == cid) &&
+                                  oapp (fun s : {set word} => cid \in s) false
+                                  ((Sym.stag_incoming <=< Sym.sget sst) p))).
+  { case: pickP {Hcid1 Hcid2} => [cid' /andP [_ ->] //|/(_ cid)].
+    by rewrite eqxx /=. }
+  move => cid' /=.
+  rewrite -Hcid1.
+  apply/(sameP idP)/(iffP idP)=> /andP [/eqP Hcid'].
+  - move/set1_inj: Hcid' => [->].
+    rewrite eqxx /=.
+    move/forallP=> /(_ ((Sym.stag_incoming <=< Sym.sget sst) p))/implyP H.
+    rewrite imsetU1 in_setU in_setU1 eqxx /= in H.
+    by apply H.
+  - rewrite {cid'} Hcid' eqxx /=.
+    move=> Hp.
+    apply/forallP=> os.
+    rewrite imsetU1 in_setU in_setU1 -orbA.
+    by apply/implyP=> /or3P [/eqP -> //| Hos | Hos];
+    move: Hcid2 => /(_ os)/implyP Hcid2; apply/Hcid2; rewrite in_setU Hos ?orbT.
+Qed.
+
 Lemma refined_compartment_same : forall sst sst' c,
   equilabeled sst sst' ->
   refined_compartment c sst = refined_compartment c sst'.
@@ -1106,6 +1134,11 @@ Proof.
   - by repeat case: (p =P _) => _ //; move=> [<- _ _] [<- _ _ <- <- <- <-].
 Qed.
 
+Lemma supd_irrelevancies r' pc' m int r pc :
+  Sym.sget (Symbolic.State m r pc int) =
+  Sym.sget (Symbolic.State m r' pc' int) .
+Proof. reflexivity. Qed.
+
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -1319,8 +1352,22 @@ Proof.
   subst R_next.
   constructor => //=.
   - exact: (supd_refine_memory def_s' RMEMS).
-  - split.
-  - admit.
+  - {
+      rewrite /refine_compartments (lock refined_compartment) /=. split; first (apply/andP; split).
+      - rewrite -(lock refined_compartment) (@refined_compartment_augment cid')
+                ?(supd_irrelevancies SR not_pc) //.
+        { have /= -> := (Sym.sget_supd _ _ _ _ def_s').
+          by rewrite eqxx /= in_setU1 eqxx. }
+        move/eqP in RPREV.
+        eapply refined_compartment_all_untouched_preserved; last eassumption.
+        + admit.
+        + admit.
+        + admit.
+      - admit.
+      - admit. }
+
+  - rewrite /refine_previous_b /= /refined_compartment.
+    admit.
   - exact: (supd_refine_syscall_addrs_b def_s').
   - exact: (sget_supd_good_internal def_xcIW def_s').
 (* End new attempt *)
