@@ -5,7 +5,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import lib.haskell_notation.
-Require Import lib.list_utils.
+(*Require Import lib.list_utils.*)
 Require Import compartmentalization.common compartmentalization.isolate_sets.
 Require Import compartmentalization.abstract compartmentalization.symbolic.
 
@@ -59,7 +59,7 @@ Hint Immediate reg_map_axioms.
 (* Avoiding some type class resolution problems *)
 
 Arguments Sym.sget {_ _} s p : simpl never.
-Arguments Sym.supd {_ _} s p v : simpl never.
+Arguments Sym.supd {_ _} s p tg : simpl never.
 
 Canonical compartment_eqType :=
   Eval hnf in EqType (Abs.compartment t) (Abs.compartment_eqMixin t).
@@ -144,30 +144,30 @@ Definition refined_compartment (c   : Abs.compartment t)
   let: <<A,J,S>> := c in
   [pick sc |
 
-    [set Some sc] == (stag_compartment ∘ slabel <=< Sym.sget sst) @: A &
-    [forall os in (stag_incoming ∘ slabel <=< Sym.sget sst) @: J :|:
-                  (stag_writers  ∘ slabel <=< Sym.sget sst) @: S,
+    [set Some sc] == (stag_compartment <=< Sym.sget sst) @: A &
+    [forall os in (stag_incoming <=< Sym.sget sst) @: J :|:
+                  (stag_writers  <=< Sym.sget sst) @: S,
      oapp (fun s : {set word} => sc \in s) false os] ].
 
 Definition refine_compartment_tag (C   : list (Abs.compartment t))
                                   (sst : sstate)
                                   (p   : word) : Prop :=
   match Sym.sget sst p with
-    | Some (_ @ (Sym.DATA cid I W)) =>
+    | Some (Sym.DATA cid I W) =>
       exists c,
         C ⊢ p ∈ c /\
         forall p',
           match Sym.sget sst p' with
-            | Some (_ @ (Sym.DATA cid' I' W')) =>
+            | Some (Sym.DATA cid' I' W') =>
               (cid = cid' <-> C ⊢ p' ∈ c) /\
               (cid \in I'   -> p' \in Abs.jump_targets  c) /\
               (cid \in W'   -> p' \in Abs.store_targets c)
-            | Some (_ @ _) =>
+            | Some _ =>
               False
             | None =>
               True
           end
-    | Some (_ @ _) =>
+    | Some _ =>
       False
     | None =>
       True
@@ -189,15 +189,9 @@ Definition refine_previous_b (sk : where_from) (prev : Abs.compartment t)
   end.
 
 Definition refine_syscall_addrs_b (AM : memory t) (SM : Sym.memory t) : bool :=
-  ~~ is_some (get AM isolate_addr)                        &&
-  ~~ is_some (get AM add_to_jump_targets_addr)            &&
-  ~~ is_some (get AM add_to_store_targets_addr)           &&
-  ~~ is_some (get SM isolate_addr)                        &&
-  ~~ is_some (get SM add_to_jump_targets_addr)            &&
-  ~~ is_some (get SM add_to_store_targets_addr)           &&
-  (isolate_addr             != add_to_jump_targets_addr)  &&
-  (isolate_addr             != add_to_store_targets_addr) &&
-  (add_to_jump_targets_addr != add_to_store_targets_addr).
+  [&& [seq get AM x | x <- syscall_addrs] == [:: None; None; None] ,
+      [seq get SM x | x <- syscall_addrs] == [:: None; None; None] &
+      uniq syscall_addrs ].
 
 Record refine (ast : astate) (sst : sstate) : Prop := RefineState
   { pc_refined           : refine_pc_b            (Abs.pc           ast)
@@ -244,6 +238,7 @@ Proof.
 Qed.
 *)
 
+(*
 Ltac explode_refined_compartment' RC :=
   let sxs      := fresh "sxs"      in
   let def_sxs  := fresh "def_sxs"  in
@@ -284,18 +279,19 @@ Ltac explode_refined_compartment RC A J S :=
     | refined_compartment ?c _ ?= _ => destruct c as [A J S]
   end;
   explode_refined_compartment' RC.
+*)
 
 (* Could be reused more than it is *)
-Lemma refined_sget_in_compartment : forall C c cid sst x I W p,
+Lemma refined_sget_in_compartment : forall C c cid sst I W p,
   Abs.good_compartments C ->
   c \in C ->
   (forall p, refine_compartment_tag C sst p) ->
   refined_compartment c sst ?= cid ->
-  Sym.sget sst p ?= x@(Sym.DATA cid I W) ->
+  Sym.sget sst p ?= Sym.DATA cid I W ->
   C ⊢ p ∈ c.
 Proof.
   clear S I.
-  move=> C [A J S] cid sst x I W p GOODS IN_c_C RCTAGS /= REFINED SGET.
+  move=> C [A J S] cid sst I W p GOODS IN_c_C RCTAGS /= REFINED SGET.
   move: (RCTAGS p) => RCTAGS'; rewrite /refine_compartment_tag SGET in RCTAGS';
     move: RCTAGS' => [c' [IC' RTAG]].
   case: pickP REFINED => //= cid' /andP [? /forallP ?].
@@ -397,21 +393,21 @@ Ltac unoption :=
     | EQ  : None   = None   |- _ => clear EQ
   end.
 
-Lemma prove_refined_compartment : forall pc instr cid I W
+Lemma prove_refined_compartment : forall pc cid I W
                                          AC c sst,
-  Sym.sget sst pc ?= instr@(Sym.DATA cid I W) ->
+  Sym.sget sst pc ?= Sym.DATA cid I W ->
   Abs.good_compartments AC ->
   forallb (is_some ∘ refined_compartment^~ sst) AC ->
   (forall p, refine_compartment_tag AC sst p) ->
   AC ⊢ pc ∈ c ->
   (forall p' : word,
      match Sym.sget sst p' with
-       | Some _@(Sym.PC _ _) => False
-       | Some _@(Sym.DATA cid' I' W') =>
+       | Some (Sym.PC _ _) => False
+       | Some (Sym.DATA cid' I' W') =>
          (cid = cid' <-> AC ⊢ p' ∈ c) /\
          (cid \in I' -> p' \in Abs.jump_targets c) /\
          (cid \in W' -> p' \in Abs.store_targets c)
-       | Some _@Sym.REG => False
+       | Some Sym.REG => False
        | None => True
      end) ->
   refined_compartment c sst ?= cid.
@@ -447,9 +443,9 @@ Proof. admit. Qed. (*
 Qed.
 *)
 
-Lemma prove_refined_compartment' : forall pc instr cid cid' cid'' I W F
+Lemma prove_refined_compartment' : forall pc cid cid' cid'' I W F
                                           AR AM AC Ask Aprev c sst,
-  Sym.sget sst pc ?= instr@(Sym.DATA cid'' I W) ->
+  Sym.sget sst pc ?= Sym.DATA cid'' I W ->
   (do! guard (cid'' == cid') || ((F == JUMPED) && (cid' \in I));
    Some cid'') ?= cid ->
   Abs.good_state (AState pc AR AM AC Ask Aprev) ->
@@ -458,27 +454,27 @@ Lemma prove_refined_compartment' : forall pc instr cid cid' cid'' I W F
   AC ⊢ pc ∈ c ->
   (forall p' : word,
      match Sym.sget sst p' with
-       | Some _@(Sym.PC _ _) => False
-       | Some _@(Sym.DATA cid''' I' W') =>
+       | Some (Sym.PC _ _) => False
+       | Some (Sym.DATA cid''' I' W') =>
          (cid'' = cid''' <-> AC ⊢ p' ∈ c) /\
          (cid'' \in I' -> p' \in Abs.jump_targets c) /\
          (cid'' \in W' -> p' \in Abs.store_targets c)
-       | Some _@Sym.REG => False
+       | Some Sym.REG => False
        | None => True
      end) ->
   refined_compartment c sst == Some cid.
-Proof. admit. Qed. (*
+Proof.
   intros until 0; intros SGET GUARD.
   undo1 GUARD COND; inversion GUARD; subst.
   intros; apply/eqP; eapply prove_refined_compartment; eauto.
-Qed.*)
+Qed.
 
-Lemma prove_permitted_now_in : forall pc instr cid cid' cid'' I W F
+Lemma prove_permitted_now_in : forall pc cid cid' cid'' I W F
                                       AR AM AC Ask Aprev
                                       mem reg int
                                       c,
   let sst := (SState mem reg pc@(Sym.PC F cid') int) in
-  Sym.sget sst pc ?= instr@(Sym.DATA cid'' I W) ->
+  Sym.sget sst pc ?= Sym.DATA cid'' I W ->
   (Ask == F) && (refined_compartment Aprev sst == Some cid') ->
   (do! guard (cid'' == cid') || ((F == JUMPED) && (cid' \in I));
    Some cid'') ?= cid ->
@@ -488,12 +484,12 @@ Lemma prove_permitted_now_in : forall pc instr cid cid' cid'' I W F
   AC ⊢ pc ∈ c ->
   (forall p' : word,
      match Sym.sget sst p' with
-      | Some _@(Sym.PC _ _) => False
-      | Some _@(Sym.DATA cid''' I' W') =>
+      | Some (Sym.PC _ _) => False
+      | Some (Sym.DATA cid''' I' W') =>
           (cid'' = cid''' <-> AC ⊢ p' ∈ c) /\
           (cid'' \in I' -> p' \in Abs.jump_targets c) /\
           (cid'' \in W' -> p' \in Abs.store_targets c)
-      | Some _@Sym.REG => False
+      | Some Sym.REG => False
       | None => True
      end) ->
   Abs.permitted_now_in AC Ask Aprev pc ?= c.
@@ -596,6 +592,7 @@ Ltac solve_permitted_now_in :=
       rewrite /Sym.sget PC; reflexivity
   end.
 
+(*
 Definition equivalued (sst1 sst2 : sstate) : Prop :=
   forall p,
     match Sym.sget sst1 p , Sym.sget sst2 p with
@@ -603,28 +600,29 @@ Definition equivalued (sst1 sst2 : sstate) : Prop :=
       | None        , None        => True
       | _           , _           => False
     end.
+*)
 
 Definition equilabeled (sst1 sst2 : sstate) : Prop :=
   forall p,
     match Sym.sget sst1 p , Sym.sget sst2 p with
-      | Some (_@L1) , Some (_@L2) => L1 = L2
-      | None        , None        => True
-      | _           , _           => False
+      | Some L1 , Some L2 => L1 = L2
+      | None    , None        => True
+      | _       , _           => False
     end.
 
 Definition equicompartmental (sst1 sst2 : sstate) : Prop :=
   forall p,
     match Sym.sget sst1 p , Sym.sget sst2 p with
-      | Some (_@L1) , Some (_@L2) => Sym.stag_compartment L1 =
-                                     Sym.stag_compartment L2
-      | None        , None        => True
-      | _           , _           => False
+      | Some L1 , Some L2 => Sym.stag_compartment L1 =
+                             Sym.stag_compartment L2
+      | None    , None        => True
+      | _       , _           => False
     end.
 
 Definition tags_subsets (sst1 sst2 : sstate) : Prop :=
   forall p,
     match Sym.sget sst1 p , Sym.sget sst2 p with
-      | Some _@(Sym.DATA c1 I1 W1) , Some _@(Sym.DATA c2 I2 W2) =>
+      | Some (Sym.DATA c1 I1 W1) , Some (Sym.DATA c2 I2 W2) =>
         c1 = c2 /\ I1 \subset I2 /\ W1 \subset W2
       | None , None =>
         True
@@ -635,7 +633,7 @@ Definition tags_subsets (sst1 sst2 : sstate) : Prop :=
 Definition tags_subsets_in (ps : {set word}) (sst1 sst2 : sstate) : Prop :=
   forall p,
     match Sym.sget sst1 p , Sym.sget sst2 p with
-      | Some _@(Sym.DATA c1 I1 W1) , Some _@(Sym.DATA c2 I2 W2) =>
+      | Some (Sym.DATA c1 I1 W1) , Some (Sym.DATA c2 I2 W2) =>
         (p \in ps -> c1 = c2) /\ I1 \subset I2 /\ W1 \subset W2
       | None , None =>
         True
@@ -646,7 +644,7 @@ Definition tags_subsets_in (ps : {set word}) (sst1 sst2 : sstate) : Prop :=
 Definition tags_subsets_cid (cid : word) (sst1 sst2 : sstate) : Prop :=
   forall p,
     match Sym.sget sst1 p , Sym.sget sst2 p with
-      | Some _@(Sym.DATA c1 I1 W1) , Some _@(Sym.DATA c2 I2 W2) =>
+      | Some (Sym.DATA c1 I1 W1) , Some (Sym.DATA c2 I2 W2) =>
         (c1 = cid \/ c2 = cid -> c1 = c2) /\
         I1 \subset I2 /\ W1 \subset W2
       | None , None =>
@@ -661,8 +659,8 @@ Lemma tags_subsets_in_tail : forall p ps sst sst',
 Proof.
   rewrite /tags_subsets_in /=; move=> p ps sst sst' TSI a.
   specialize TSI with a.
-  destruct (Sym.sget sst  a) as [[x  []]|],
-           (Sym.sget sst' a) as [[x' []]|];
+  destruct (Sym.sget sst  a) as [[| |]|],
+           (Sym.sget sst' a) as [[| |]|];
     try done.
   move: TSI => [EQ [? ?]]; repeat split; auto => Hin.
   suff: a \in p |: ps by auto.
@@ -676,12 +674,12 @@ Lemma tags_subsets_trans : forall sst sst' sst'',
 Proof.
   move=> sst sst' sst'' TSI TSI' p.
   specialize (TSI p); specialize (TSI' p).
-  destruct (Sym.sget sst   p) as [[? []]|],
-           (Sym.sget sst'  p) as [[? []]|],
-           (Sym.sget sst'' p) as [[? []]|];
+  destruct (Sym.sget sst   p) as [[| |]|],
+           (Sym.sget sst'  p) as [[| |]|],
+           (Sym.sget sst'' p) as [[| |]|];
     try done.
   repeat invh and; subst; auto.
-  admit.
+  by eauto using subset_trans.
 Qed.
 
 Lemma tags_subsets_in_trans : forall ps sst sst' sst'',
@@ -691,14 +689,12 @@ Lemma tags_subsets_in_trans : forall ps sst sst' sst'',
 Proof.
   move=> ps sst sst' sst'' TSI TSI' p.
   specialize (TSI p); specialize (TSI' p).
-  destruct (Sym.sget sst   p) as [[? []]|],
-           (Sym.sget sst'  p) as [[? []]|],
-           (Sym.sget sst'' p) as [[? []]|];
-    try done. admit. (*
-  destruct (elem p ps); repeat invh and;
-  repeat match goal with IN : In p ps, H : In p ps -> _ |- _ =>
-    specialize (H IN)
-  end; subst; repeat split; auto; done.*)
+  destruct (Sym.sget sst   p) as [[| |]|],
+           (Sym.sget sst'  p) as [[| |]|],
+           (Sym.sget sst'' p) as [[| |]|];
+    try done.
+  move: TSI TSI' => [H1 [H2 H3]] [H1' [H2' H3']].
+  repeat split; solve [intuition congruence|eauto using subset_trans].
 Qed.
 
 Lemma tags_subsets_any_in : forall ps sst sst',
@@ -706,8 +702,8 @@ Lemma tags_subsets_any_in : forall ps sst sst',
   tags_subsets_in ps sst sst'.
 Proof.
   move=> ps sst sst' TSI p; specialize (TSI p).
-  destruct (Sym.sget sst  p) as [[? []]|],
-           (Sym.sget sst' p) as [[? []]|];
+  destruct (Sym.sget sst  p) as [[| |]|],
+           (Sym.sget sst' p) as [[| |]|];
     try done.
   repeat invh and; subst; auto.
 Qed.
@@ -904,8 +900,8 @@ Proof.
 
   rewrite /Sym.good_memory_tag in GMEM_p GMEM'_p.
   rewrite /refine_compartment_tag in RCT *.
-  destruct (Sym.sget sst  p) as [[x  [|cid  I  W|]]|],
-           (Sym.sget sst' p) as [[x' [|cid' I' W'|]]|];
+  destruct (Sym.sget sst  p) as [[|cid  I  W|]|],
+           (Sym.sget sst' p) as [[|cid' I' W'|]|];
     try done.
   admit. (*
   move: GMEM_p GMEM'_p => _ /andP [SET_I' SET_W'].
@@ -1018,7 +1014,7 @@ Proof.
       try (move/eqP in REFINE; subst w').
     + destruct (a == p) eqn:EQ; move/eqP in EQ; subst.
       * generalize def_sst' => SUPD.
-        eapply Sym.sget_supd_eq in def_sst'; [|eassumption].
+        eapply Sym.sget_supd_eq in def_sst'.
         destruct sst as [SM SR SPC [snext SiT SaJT SaST]];
           rewrite /Sym.sget /= GET' in def_xcIW.
         inversion def_xcIW; subst.
@@ -1055,6 +1051,61 @@ Proof.
     + by rewrite inE Hin' !orbT.
 Qed.
 
+Lemma supd_refine_memory AM sst sst' p c i w :
+  Sym.supd sst p (Sym.DATA c i w) ?= sst' ->
+  refine_memory AM (Symbolic.mem sst) ->
+  refine_memory AM (Symbolic.mem sst').
+Proof.
+  case: sst => m r pc [? ? ? ?]; case: sst' => m' r' pc' [? ? ? ?].
+  rewrite /Sym.supd /=.
+  move=> UPD REF p'.
+  case REP: (rep m p _) UPD => [m''|].
+  - generalize (get_rep REP p') => {REP} REP [<- _ _ _ _ _ _].
+    rewrite REP.
+    have [->|NE] := (p' =P p); last exact: REF.
+    move: {REF} (REF p).
+    case: (get AM p) => [v1|];
+    by case: (get m p) => [[v2 [|? ? ?|]]|].
+  - repeat case: (p =P _) => _ //=; move=> [<- _ _ _ _ _ _]; by apply REF.
+Qed.
+
+Lemma supd_refine_syscall_addrs_b AM sst sst' p l :
+  Sym.supd sst p l ?= sst' ->
+  refine_syscall_addrs_b AM (Symbolic.mem sst) ->
+  refine_syscall_addrs_b AM (Symbolic.mem sst').
+Proof.
+  move=> UPD /and3P [Ha /eqP [Hs1 Hs2 Hs3] Hu].
+  apply/and3P.
+  split=> // {Ha Hu}.
+  by rewrite /syscall_addrs !map_cons
+             (Sym.get_supd_none _ _ _ _ _ Hs1 UPD)
+             (Sym.get_supd_none _ _ _ _ _ Hs2 UPD)
+             (Sym.get_supd_none _ _ _ _ _ Hs3 UPD).
+Qed.
+
+Lemma sget_supd_good_internal sst sst' p c I1 W1 I2 W2 :
+  Sym.sget sst p ?= Sym.DATA c I1 W1 ->
+  Sym.supd sst p (Sym.DATA c I2 W2) ?= sst' ->
+  Sym.good_internal sst ->
+  Sym.good_internal sst'.
+Proof.
+  case: sst => m r pc [? [? ?|? ? ?|] [? ?|? ? ?|] [? ?|? ? ?|]];
+  rewrite /Sym.sget /Sym.supd /Sym.good_internal /rep //=.
+  case: sst' => m' r' pc' [? ? ? ?] /=.
+  case GET: (get m p) => [[? tg]|].
+  - move=> [Ht] /= [<- _ _ <- <- <- <-] [H1 [H2 H3]].
+    subst tg.
+    do 2?split; trivial.
+    move=> p' x c' I' W'.
+    have [->|NE] := (p' =P p).
+    + rewrite get_set_eq.
+      move=> [_ <- _ _].
+      by apply (H3 _ _ _ _ _ GET).
+    + rewrite (get_set_neq _ _ NE).
+      by apply H3.
+  - by repeat case: (p =P _) => _ //; move=> [<- _ _] [<- _ _ <- <- <- <-].
+Qed.
+
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -1078,7 +1129,7 @@ Proof.
   destruct Spc as [pc [F cid'| |]]; try done; move/eqP in RPC; subst.
 
   move/id in ADD;
-    undo2 ADD i LI;
+    undo1 ADD LI;
     undo1 ADD cid_sys;
     destruct LI as [|cid I W|]; try discriminate;
     undo1 ADD NEQ_cid_sys;
@@ -1096,7 +1147,7 @@ Proof.
   generalize RCOMP;
     rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
     move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-  move: (RCTAGS pc) => RCTAGS'; rewrite def_i_LI in RCTAGS';
+  move: (RCTAGS pc) => RCTAGS'; rewrite def_LI in RCTAGS';
     destruct RCTAGS' as [c_sys [IN_c RTAG]].
 
   have -> /=: Abs.permitted_now_in AC Ask Aprev pc ?= c_sys.
@@ -1109,7 +1160,7 @@ Proof.
                     == Some cid_sys.
     by eapply prove_refined_compartment' with (pc := pc); eassumption.
 
-  rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p' [x' [I' [W' def_cid']]]].
+  rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p' [I' [W' def_cid']]].
   move: RPREV => /andP [/eqP? RPREV]; subst.
   assert (SYS_SEP : Aprev != c_sys). {
     apply/eqP; intro; subst.
@@ -1223,12 +1274,13 @@ Proof.
     rewrite /equicompartmental in EQUICOMPARTMENTAL;
       specialize EQUICOMPARTMENTAL with pc'.
     rewrite SGET SGET' in EQUICOMPARTMENTAL.
-    destruct v as [[w Lw]|]; [|done].
+    destruct v as [Lw|]; [|done].
     destruct Lw; try done;
       inversion EQUICOMPARTMENTAL; subst; clear EQUICOMPARTMENTAL.
     by destruct RTAG' as [SAME _]; apply SAME.
   }
-  assert (IN_pc' : pc' \in Aprev) by admit. (* trivial *)
+  have IN_pc' : pc' \in Aprev by case/andP: IC_pc'.
+
   rewrite -(lock Abs.in_compartment_opt) /= IN_pc' /= eq_refl.
 
   have IN_Jsys : pc' \in Abs.jump_targets c_sys. {
@@ -1262,6 +1314,37 @@ Proof.
 
   rewrite IN_Jsys. eexists; split; [reflexivity|].
 
+(* New attempt *)
+  have /= E := Sym.supd_preserves_regs _ _ _ _ def_s'.
+  subst R_next.
+  constructor => //=.
+  - exact: (supd_refine_memory def_s' RMEMS).
+  - split.
+  - admit.
+  - exact: (supd_refine_syscall_addrs_b def_s').
+  - exact: (sget_supd_good_internal def_xcIW def_s').
+(* End new attempt *)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   assert (sget_next_spec : forall a,
             Sym.sget (SState M_next R_next not_pc si_next) a =
             Sym.sget (SState SM SR pc@(Sym.PC F cid')
@@ -1269,13 +1352,13 @@ Proof.
 
             \/
             (Sym.sget (SState M_next R_next not_pc si_next) a ?=
-               x@(Sym.DATA cid'' (cid' |: I'') W'') /\
+               (Sym.DATA cid'' (cid' |: I'') W'') /\
              p = a))
     by abstract
          (intros a; destruct (a == p) eqn:EQ; move/eqP in EQ; subst;
           [ eapply Sym.sget_supd_eq in def_s'
           | eapply Sym.sget_supd_neq in def_s']; eauto).
-
+(*
   assert (M_next_spec : forall a,
             get M_next a = get SM a \/
             (get M_next a ?= x@(Sym.DATA cid'' (cid' |: I'') W'')  /\
@@ -1300,7 +1383,7 @@ Proof.
            destruct (p == add_to_jump_targets_addr);  [finish|];
            destruct (p == add_to_store_targets_addr); [finish|];
            discriminate.
-  }
+  }*)
   undo1 def_cid_sys COND; inversion def_cid_sys; subst cid; clear def_cid_sys.
   rewrite /Sym.supd /= in def_s'.
   destruct (upd SM p _) as [SM'|] eqn:UPD.
@@ -1372,6 +1455,19 @@ Proof.
               try done; destruct COMPAT as [EQ _]; subst; simpl.
             rewrite IHA; try done. *)
           }
+
+          case: pickP => // cid''' /andP [/eqP H1 /forallP H2] [?]. subst cid'''.
+          rewrite -INIT -H1.
+          case: pickP => // /(_ cid') /= <-.
+          rewrite eqxx /=.
+          apply/forallP=> os.
+          apply/implyP=> Hos.
+          move/implyP: (H2 os) => -> //.
+          rewrite !in_setU imsetU1 in_setU in_set1 -orbA in Hos *.
+          case/or3P: Hos => [/eqP -> {os} | /imsetP [p'' Hp'' ->] | /imsetP Hos].
+          + rewrite {1 3}/Sym.sget /= (PartMaps.get_upd_eq UPD) /=.
+            admit.
+          + rewrite {1 3}/Sym.sget /=.
 
           intros REFINED; rewrite bind_assoc in REFINED.
           undo1 REFINED sc.

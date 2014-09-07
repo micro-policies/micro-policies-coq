@@ -419,11 +419,11 @@ Definition good_internal (s : Symbolic.state t) : Prop :=
   let: Internal next iT aJT aST := Symbolic.internal s in
   match iT , aJT , aST with
     | DATA iC _ _ , DATA aJC _ _ , DATA aST _ _ =>
-      iC <> aJC /\ iC <> aST /\ aJC <> aST /\
-      iC < next /\ aJC < next /\ aST < next /\
+      uniq [:: iC; aJC; aST] /\
+      all  (fun c => c <? next) [:: iC; aJC; aST] /\
       forall p x c I W,
         get (Symbolic.mem s) p ?= x@(DATA c I W) ->
-        c < next /\ c <> iC /\ c <> aJC /\ c <> aST
+        c <? next /\ c \notin [:: iC; aJC; aST]
     | _ , _ , _ =>
       False
   end.
@@ -590,9 +590,10 @@ Proof.
 Qed.
 
 Lemma succ_trans : forall x y,
-  y <> max_word t -> x < y -> x < (y + 1)%w.
+  y <> max_word t -> x <? y -> x <? (y + 1)%w.
 Proof.
-  intros x y NEQ LT.
+  move=> x y NEQ /ltb_lt LT.
+  apply/ltb_lt.
   generalize (lew_max y) => /le_iff_lt_or_eq [] // LT_max.
   apply lt_trans with (b := y); first by [].
   apply ltb_lt.
@@ -603,14 +604,14 @@ Hint Resolve succ_trans.
 Lemma sget_lt_next : forall s p c I W,
   good_internal s ->
   sget s p ?= DATA c I W ->
-  c < next_id (Symbolic.internal s).
+  c <? next_id (Symbolic.internal s).
 Proof.
   clear I; move=> [mem reg pc [next Li LaJ LaS]] /= p c I W GOOD SGET.
   rewrite /good_internal /= in GOOD;
     destruct Li  as [|ci  Ii  Wi|];  try done;
     destruct LaJ as [|caJ IaJ WaJ|]; try done;
     destruct LaS as [|caS IaS WaS|]; try done.
-  destruct GOOD as [NEQiaJ [NEQiaS [NEQaJaS [LTi [LTaJ [LTaS GOOD]]]]]].
+  case: GOOD => NEQ [/and4P [? ? ? ?] GOOD].
   rewrite /sget in SGET.
   destruct (get mem p) as [[? ?]|] eqn:GET; rewrite GET in SGET.
   - move: SGET => [SGET]. rewrite SGET in GET; eapply GOOD; eassumption.
@@ -634,11 +635,12 @@ Proof.
            aJT as [|caJ IaJ WaJ|],
            aST as [|caS IaS WaS|];
     auto.
-  intros [NEQ_i_aJ [NEQ_i_aS [NEQ_aJ_aS [LT_ci [LT_caJ [LT_caS GOOD]]]]]].
-    do 6 (split; eauto 2).
+  move=> [NEQ [/and4P [? ? ? _] GOOD]].
+    do 2 (split; eauto 2).
+    by apply/and4P; split; eauto 2.
   intros p x c I W GET; specialize (GOOD p x c I W GET).
-    move: GOOD => [LT [NEQ_i [NEQ_aJ NEQ_aS]]].
-  repeat split; eauto 2.
+  case: GOOD => *.
+  by split; eauto 2.
 Qed.
 
 Lemma retag_set_preserves_definedness : forall ok retag ps s s',
@@ -1209,8 +1211,9 @@ Proof.
     by by apply retag_set_preserves_next_id in RETAG_SET.
   subst iT' aJT' aST' next' next.
 
-  move: GOOD => [NEQiaJ [NEQiaS [NEQaJaS [LTi [LTaJ [LTaS IF_GET]]]]]].
-  repeat (split; [solve [eauto 2]|]).
+  move: GOOD => [NEQ [LT IF_GET]].
+  split; first solve [eauto 2].
+  split; first by case/and4P: LT => *; apply/and4P; split; eauto 2.
   intros p x c I W GET'.
 
   apply retag_set_or with (p := p) in RETAG_SET; auto.
@@ -1227,10 +1230,10 @@ Proof.
     inversion THEN; subst; inversion NOW; subst.
     repeat split.
     + generalize (lew_max cnew) => /le_iff_lt_or_eq [LTmax | ?]; [|by subst].
-      eapply ltb_lt,lebw_succ; eassumption.
-    + by move=> ?; subst; apply lt_irrefl in LTi.
-    + by move=> ?; subst; apply lt_irrefl in LTaJ.
-    + by move=> ?; subst; apply lt_irrefl in LTaS.
+      eapply lebw_succ; eassumption.
+    + apply/negP.
+      by case/or4P => // [/eqP ?|/eqP ?|/eqP ?]; subst cnew;
+      rewrite ltb_irrefl /= ?andbF in LT.
 Qed.
 
 End WithClasses.

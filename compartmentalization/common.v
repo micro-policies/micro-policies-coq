@@ -12,6 +12,9 @@ Class compartmentalization_syscall_addrs (t : machine_types) := {
   add_to_store_targets_addr : word t
 }.
 
+Definition syscall_addrs {t} {c : compartmentalization_syscall_addrs t} : seq (word t) :=
+  [:: isolate_addr; add_to_jump_targets_addr; add_to_store_targets_addr].
+
 Inductive where_from :=
 | INTERNAL : where_from
 | JUMPED   : where_from.
