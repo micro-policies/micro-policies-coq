@@ -57,3 +57,6 @@ Proof.
          move/inP in IN; apply mem_rem_weaken in IN; apply /inP.
     + by apply In2_there, IH.
 Qed.
+
+Definition rem_all {T : eqType} : T -> seq T -> seq T :=
+  filter \o predC1.
