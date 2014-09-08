@@ -5,7 +5,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import symbolic.symbolic symbolic.rules.
 Require Import lib.haskell_notation.
-(*Require Import lib.list_utils.*)
+Require Import lib.ssr_list_utils.
 Require Import compartmentalization.common compartmentalization.isolate_sets.
 Require Import compartmentalization.abstract compartmentalization.symbolic.
 
@@ -1102,8 +1102,9 @@ Qed.
 
 Lemma in_compartment_update A J Sa J' Sa' AC p c :
   AC ⊢ p ∈ c ->
-  exists c', <<A,J,Sa>> :: rem <<A,J',Sa'>> AC ⊢ p ∈ c'.
+  exists c', <<A,J,Sa>> :: rem_all <<A,J',Sa'>> AC ⊢ p ∈ c'.
 Proof.
+  rewrite /rem_all.
   elim: AC => [|c' AC IH]; first by rewrite /Abs.in_compartment andbF.
   rewrite /Abs.in_compartment in_cons => /andP [Has /orP [/eqP <-| Hin]].
   - rewrite /=.
@@ -1119,7 +1120,7 @@ Proof.
     rewrite !inE in Hin' *.
     case/orP: Hin' => [-> //| Hin' /=].
     have [E|NE] := altP (c' =P <<A,J',Sa'>>).
-    + by rewrite (mem_rem Hin') orbT.
+    + by rewrite /= Hin' orbT.
     + by rewrite inE Hin' !orbT.
 Qed.
 
@@ -1453,15 +1454,15 @@ Proof.
           by rewrite subsetUr.
       - apply/allP=> c' Hc'.
         rewrite -(lock _).
-        move/allP/(_ c' (mem_rem Hc')): RCOMPS.
+        rewrite /rem_all mem_filter in Hc'.
+        case/andP: Hc' => Hc' c'_in_ac.
+        move/allP/(_ c' c'_in_ac): RCOMPS.
         apply/refined_compartment_all_untouched_isSome_preserved => //.
         + by apply/(supd_good_memory_tag def_s').
         + apply/(@tags_subsets_irrelevancies SR not_pc).
           apply/(supd_tags_subsets def_xcIW def_s') => //.
           by rewrite subsetUr.
-      - apply/refine_compartment_tag_preserved.
-
- move=> p''.
+      - move=> p''.
         case: RCOMP => _ RCOMP.
         move: (RCOMP p'').
         rewrite /refine_compartment_tag
@@ -1470,16 +1471,14 @@ Proof.
         { rewrite def_xcIW.
           case=> c''.
           have [{c''} ->|NE] := altP (c'' =P <<Aprev,Jprev,Sprev>>).
-          - case=> H1 H2.
-
-
-/andP /= [H1 _] H3.
+          - case=> p_in_ac H.
+            case/andP: (p_in_ac) => H1 H2.
             exists <<Aprev,p |: Jprev,Sprev>>.
             rewrite /Abs.in_compartment in_cons eqxx H1 /=.
             split=> // p''.
-            move: H3 => /(_ p'').
+            move: H => /(_ p'').
             rewrite (Sym.sget_supd _ _ _ _ def_s').
-            have [{p''} ->|_] := (p'' =P p).
+            have /= [{p''} ->|_] := (p'' =P p).
             + move=> _.
               rewrite H1.
               split; first by split; trivial.
@@ -1487,9 +1486,100 @@ Proof.
               split; first by [].
               move: RCOMP => /(_ p).
               rewrite /refine_compartment_tag def_xcIW.
-          exists c''. split.
-          - clear - Hinc''.
-
+              case=> c [p_in_ac'].
+              rewrite -(Abs.in_unique_compartment _ _ _ _ _ p_in_ac p_in_ac'); last by case/and4P: AGOOD.
+              move=> /(_ p).
+              rewrite def_xcIW.
+              by move=> [_ [_ ?]].
+            + case: (Sym.sget _ _) => [[|c''' I''' W'''|]|] //.
+              rewrite /Abs.in_compartment H2 /=.
+              move=> [? [H ?]].
+              split=> //.
+              split=> // H'.
+              by rewrite in_setU1 H // orbT.
+          - case=> p_in_ac H.
+            case/andP: (p_in_ac) => H1 H2.
+            exists c''.
+            rewrite /Abs.in_compartment H1 /= in_cons.
+            rewrite /rem_all /= mem_filter /= NE /= H2 orbT.
+            split=> //.
+            move=> p''.
+            move: H => /(_ p'').
+            rewrite (Sym.sget_supd _ _ _ _ def_s').
+            have /= [{p''} ->|_] := (p'' =P p).
+            + move=> _.
+              rewrite H1.
+              split=> //.
+              move: RCOMP => /(_ p).
+              rewrite /refine_compartment_tag def_xcIW.
+              case=> c [p_in_ac'].
+              rewrite -(Abs.in_unique_compartment _ _ _ _ _ p_in_ac p_in_ac'); last by case/and4P: AGOOD.
+              move=> /(_ p).
+              rewrite def_xcIW.
+              move=> [_ [H1' H2']].
+              split=> //.
+              rewrite in_setU1.
+              case/orP=> [/eqP E|] //.
+              subst cid''.
+              have {OK} GC : Abs.good_compartments AC by case/and4P: AGOOD.
+              have {p_in_ac' H1' H2'} ? := Abs.in_unique_compartment _ _ _ _ GC p_in_ac p_in_ac'.
+              subst c''.
+              admit.
+            + case: (Sym.sget _ _) => [[|c''' I''' W'''|]|] //.
+              rewrite /Abs.in_compartment H2 /=.
+              move=> [? [H ?]].
+              split=> //. }
+        case: (Sym.sget _ _) => [[|c''' I''' W'''|]|] //.
+        case=> c''.
+        have [{c''} ->|NE'] := altP (c'' =P <<Aprev,Jprev,Sprev>>).
+        { case=> p_in_ac H.
+          case/andP: (p_in_ac) => H1 H2.
+          exists <<Aprev,p |: Jprev,Sprev>>.
+          rewrite /Abs.in_compartment in_cons eqxx H1 /=.
+          split=> // p'''.
+          move: H => /(_ p''') /=.
+          rewrite (Sym.sget_supd _ _ _ _ def_s').
+          have /= [{p'''} ->|_] := (p''' =P p).
+          + rewrite def_xcIW /Abs.in_compartment H2 /= !in_setU1 eqxx /=.
+            by intuition.
+          + case: (Sym.sget _ _) => [[|c'''' I'''' W''''|]|] //.
+            rewrite /Abs.in_compartment H2 /=.
+            move=> [? [H ?]].
+              split=> //.
+              split=> // H'.
+              by rewrite in_setU1 H // orbT.
+          - case=> p_in_ac H.
+            case/andP: (p_in_ac) => H1 H2.
+            exists c''.
+            rewrite /Abs.in_compartment H1 /= in_cons.
+            rewrite /rem_all /= mem_filter /= NE /= H2 orbT.
+            split=> //.
+            move=> p''.
+            move: H => /(_ p'').
+            rewrite (Sym.sget_supd _ _ _ _ def_s').
+            have /= [{p''} ->|_] := (p'' =P p).
+            + move=> _.
+              rewrite H1.
+              split=> //.
+              move: RCOMP => /(_ p).
+              rewrite /refine_compartment_tag def_xcIW.
+              case=> c [p_in_ac'].
+              rewrite -(Abs.in_unique_compartment _ _ _ _ _ p_in_ac p_in_ac'); last by case/and4P: AGOOD.
+              move=> /(_ p).
+              rewrite def_xcIW.
+              move=> [_ [H1' H2']].
+              split=> //.
+              rewrite in_setU1.
+              case/orP=> [/eqP E|] //.
+              subst cid''.
+              have {OK} GC : Abs.good_compartments AC by case/and4P: AGOOD.
+              have {p_in_ac' H1' H2'} ? := Abs.in_unique_compartment _ _ _ _ GC p_in_ac p_in_ac'.
+              subst c''.
+              admit.
+            + case: (Sym.sget _ _) => [[|c''' I''' W'''|]|] //.
+              rewrite /Abs.in_compartment H2 /=.
+              move=> [? [H ?]].
+              split=> //.
 
 
 
