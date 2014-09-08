@@ -93,52 +93,6 @@ Definition refine_registers : registers t -> Sym.registers t -> Prop :=
 Section With_EqType_refined_compartment.
 Import Sym.
 
-(*
-(* MOVE *)
-Definition the {T : eqType} (l : seq T) : option T :=
-  if l is x :: l' then
-    if constant l then Some x else None
-  else None.
-
-(* MOVE *)
-Lemma the_in (T : eqType) (l : list T) a :
-  the l = Some a -> a \in l.
-Proof.
-  rewrite /the.
-  case: l => [//=|a' l].
-  case: (constant (a' :: l)) => //=.
-  move=> [->].
-  by rewrite in_cons eqxx.
-Qed.
-
-Lemma theP (T : eqType) (xs : seq T) (x : T) :
-  reflect (the xs = Some x) (~~ nilp xs && all (pred1 x) xs).
-Proof.
-  apply/(iffP idP).
-  - by case: xs => [|x' xs] //= /andP [/eqP <- ->].
-  - case: xs => [|x' xs] //=.
-    have [E|NE] := boolP (all (pred1 x') xs) => [ [<-] | //= ].
-    by rewrite eqxx.
-Qed.
-*)
-
-(*
-Definition the {T : finType} (xs : {set T}) : option T :=
-  [pick a | xs == [set a]].
-
-Lemma the_in {T : finType} (xs : {set T}) (x : T) :
-  the xs = Some x -> x \in xs.
-Proof.
-  rewrite /the.
-  have [x' /eqP -> [->] | //=] := pickP.
-  by apply set11.
-Qed.
-
-Definition map_options {T S : finType} (f : T -> option S) (xs : {set T}) : option {set S} :=
-  if None \in f @: xs then None
-  else Some [set a | Some a \in f @: xs].
-*)
-
 Definition refined_compartment (c   : Abs.compartment t)
                                (sst : sstate) : option word :=
   let: <<A,J,S>> := c in
@@ -147,6 +101,23 @@ Definition refined_compartment (c   : Abs.compartment t)
     [forall os in (stag_incoming <=< Sym.sget sst) @: J :|:
                   (stag_writers  <=< Sym.sget sst) @: S,
      oapp (fun s : {set word} => sc \in s) false os] ].
+
+Definition well_defined_compartment (C   : seq (Abs.compartment t))
+                                    (sst : sstate)
+                                    (p   : word) : bool :=
+  Sym.sget sst p ==> Abs.in_compartment_opt C p.
+
+(* AAA: This used to be a logical equivalence, but the other direction
+   is already implied by refined_compartment above *)
+Definition consistent_cids (C     : seq (Abs.compartment t))
+                           (sst   : sstate)
+                           (p1 p2 : word) : bool :=
+  match Sym.sget sst p1, Sym.sget sst p2 with
+  | Some (Sym.DATA c1 _ _), Some (Sym.DATA c2 _ _) =>
+    (Abs.in_compartment_opt C p1 == Abs.in_compartment_opt C p2)
+    ==> (c1 == c2)
+  | _, _ => true
+  end.
 
 Definition refine_compartment_tag (C   : list (Abs.compartment t))
                                   (sst : sstate)
