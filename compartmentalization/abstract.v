@@ -403,7 +403,7 @@ Lemma good_compartments__contained_compartments : forall C,
 Proof. good_compartments_trivial. Qed.
 (*Global*) Hint Resolve good_compartments__contained_compartments.
 
-Lemma disjoint_comp_comm c1 c2 : 
+Lemma disjoint_comp_comm c1 c2 :
   disjoint_comp c1 c2 = disjoint_comp c2 c1.
 Proof. by rewrite /disjoint_comp /= disjoint_sym orb_comm. Qed.
 (*Global*) Hint Resolve disjoint_comp_comm.
@@ -432,7 +432,7 @@ Theorem non_overlapping_subset : forall C1 C2,
 Proof.
   rewrite /non_overlapping; move=> C1 C2 SUBSET ND NOL.
   apply all_pairs__all_tail_pairs; rewrite -all_pairs_in2_comm in NOL; last done.
-  rewrite /subpred /= in ND. 
+  rewrite /subpred /= in ND.
   apply all_pairs_subset with C2.
   - by move=> c /inP IN; apply/inP; apply ND.
   - by apply/uniqP.
@@ -1337,12 +1337,10 @@ Corollary good_syscalls_b : forall MM,
 Proof. admit. (* unfold table; simpl; intros; andb_true_split; auto. *) Qed.
 (*Global*) Hint Resolve good_syscalls_b.
 
-(*
 Corollary good_syscalls : forall MM sc,
   In sc table -> good_syscall sc MM.
-Proof. intros MM; apply forallb_forall; auto. Qed.
+Proof. intros MM; apply forallb_forall. apply good_syscalls_b. Qed.
 (*Global*) Hint Resolve good_syscalls.
-*)
 
 Lemma get_syscall_in : forall addr sc,
   get_syscall addr ?= sc -> In sc table.
