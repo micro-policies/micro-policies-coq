@@ -436,6 +436,18 @@ Definition good_memory_tag (s : Symbolic.state t)
     | None              => true
   end.
 
+CoInductive good_memory_tag_spec (s : Symbolic.state t)
+                                 (p : word t) : option stag -> Prop :=
+| GoodMemoryTagData c I W : good_memory_tag_spec s p (Some (DATA c I W))
+| GoodMemoryTagNone       : good_memory_tag_spec s p None.
+
+Lemma good_memory_tagP s p : good_memory_tag s p ->
+                             good_memory_tag_spec s p (sget s p).
+Proof.
+  rewrite /good_memory_tag.
+  by case: (sget s p) => [[|c I' W'|]|] // _; constructor.
+Qed.
+
 Definition good_register_tag (R : registers) (r : reg t) : bool :=
   match get R r with
     | Some (_ @ REG) => true

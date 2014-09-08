@@ -1206,10 +1206,8 @@ Proof.
   move=> GET UPD SGMEM HI HW p'.
   have [{p'} -> //|NE] := altP (p' =P p).
   { by rewrite GET (Sym.sget_supd _ _ _ _ UPD) eqxx. }
-  move: SGMEM => /(_ p').
-  rewrite /Sym.good_memory_tag.
-  by case GET': (Sym.sget sst p') => [[|c' I' W'|]|] // _;
-  rewrite (Sym.sget_supd _ _ _ _ UPD) (negbTE NE) GET'.
+  rewrite (Sym.sget_supd _ _ _ _ UPD) (negbTE NE).
+  by case/Sym.good_memory_tagP: (SGMEM p') => [c' I' W'|].
 Qed.
 
 Lemma tags_subsets_irrelevancies r' pc' m int r pc sst :
@@ -1547,7 +1545,7 @@ Proof.
             move=> [? [H ?]].
               split=> //.
               split=> // H'.
-              by rewrite in_setU1 H // orbT.
+              by rewrite in_setU1 H // orbT. }
           - case=> p_in_ac H.
             case/andP: (p_in_ac) => H1 H2.
             exists c''.
