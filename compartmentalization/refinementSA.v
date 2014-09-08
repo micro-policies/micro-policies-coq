@@ -716,6 +716,13 @@ Lemma refined_compartment_untouched_preserved : forall sst sst' c cid,
 Proof.
   clear S I; intros sst sst' [A J S] cid GOOD GOOD' TSI.
   rewrite /refined_compartment /=.
+  case: pickP => [sc|] //; case/andP=> H1 /forall_inP H2 [<-].
+  rewrite -(@eq_pick _ (fun sc' => (sc' == sc) &&
+                                   [forall os in (Sym.stag_incoming <=< Sym.sget sst') @: J :|:
+                                                 (Sym.stag_writers  <=< Sym.sget sst') @: S,
+                                     oapp (fun s : {set word} => sc' \in s) false os])).
+  admit.
+
   admit. (*
   assert (INIT :
     (do! sxs <- map_options (Sym.sget sst) A;
@@ -914,11 +921,20 @@ Lemma refined_compartment_irrelevancies : forall c SM SR SR' Spc Spc'
   refined_compartment c (SState SM SR' Spc' (SInternal Snext' SiT SaJT SaST)).
 Proof. reflexivity. Qed.
 
+Definition augmented_compartments (C C' : seq (Abs.compartment t)) :=
+  forall c p,
+    C ⊢ p ∈ c ->
+    exists c',
+      [&& C' ⊢ p ∈ c',
+          Abs.address_space c == Abs.address_space c',
+          Abs.jump_targets c \subset Abs.jump_targets c' &
+          Abs.store_targets c \subset Abs.store_targets c'].
+
 Lemma refine_compartment_tag_preserved : forall C C' sst sst',
   (forall p, Sym.good_memory_tag sst  p) ->
   (forall p, Sym.good_memory_tag sst' p) ->
   tags_subsets sst sst' ->
-  (forall c p, C ⊢ p ∈ c -> exists c', C' ⊢ p ∈ c') ->
+  augmented_compartments C C' ->
   (forall p, refine_compartment_tag C  sst  p) ->
   forall p, refine_compartment_tag C' sst' p.
 Proof.
@@ -931,7 +947,35 @@ Proof.
   destruct (Sym.sget sst  p) as [[|cid  I  W|]|],
            (Sym.sget sst' p) as [[|cid' I' W'|]|];
     try done.
-  admit. (*
+  move: TS_p {GMEM_p GMEM'_p} => [? [HI HW]].
+  subst cid'.
+  case: RCT => c [Hin Hc].
+  move: (ICS _ _ Hin) => [c' /and4P [p_in_c' /eqP Has /subsetP Hjt /subsetP Hst]].
+  exists c'.
+  split=> // p'.
+  move: {Hc GMEM TS} (GMEM p') (TS p') (Hc p').
+  rewrite /Sym.good_memory_tag.
+  admit.
+
+(*  case: (Sym.sget sst p') => [[|c1' I1' W1'|]|] // _.
+
+  - case: (Sym.sget sst' p') => [[|c2' I2' W2'|]|] // [{c2'} <- [/subsetP HI' /subsetP HW']] [H1 [H2 H3]].
+    repeat split.
+    + rewrite H1 => /andP [H1' H2'].
+      apply/andP.
+      rewrite -Has H1'.
+      split=> //.
+      by case/andP: p_in_c'.
+    + case/andP.
+      rewrite H1 -Has => H1' _.
+      apply/andP.
+      split=> //.
+      by case/andP: Hin.
+    + move=> cid_in.
+      apply/Hjt/H2.
+
+  admit.*)
+ (*
   move: GMEM_p GMEM'_p => _ /andP [SET_I' SET_W'].
   repeat split; auto.
   destruct RCT as [SET_I [SET_W [c [IC RTAG]]]].
@@ -1134,11 +1178,52 @@ Proof.
   - by repeat case: (p =P _) => _ //; move=> [<- _ _] [<- _ _ <- <- <- <-].
 Qed.
 
-Lemma supd_irrelevancies r' pc' m int r pc :
-  Sym.sget (Symbolic.State m r pc int) =
-  Sym.sget (Symbolic.State m r' pc' int) .
+Lemma sget_irrelevancies r' pc' m int r pc :
+  Sym.sget (SState m r pc int) =
+  Sym.sget (SState m r' pc' int) .
 Proof. reflexivity. Qed.
 
+Lemma supd_good_memory_tag sst sst' p c I' W' :
+  Sym.supd sst p (Sym.DATA c I' W') ?= sst' ->
+  (forall p', Sym.good_memory_tag sst  p') ->
+  (forall p', Sym.good_memory_tag sst' p').
+Proof.
+  move=> UPD GOOD p'.
+  rewrite /Sym.good_memory_tag (Sym.sget_supd _ _ _ _ UPD).
+  have [_ //|_] := (p' =P p).
+  by apply/GOOD.
+Qed.
+
+Lemma supd_tags_subsets sst sst' p c I1 W1 I2 W2 :
+  Sym.sget sst p ?= Sym.DATA c I1 W1 ->
+  Sym.supd sst p (Sym.DATA c I2 W2) ?= sst' ->
+  (forall p', Sym.good_memory_tag sst p') ->
+  I1 \subset I2 -> W1 \subset W2 ->
+  tags_subsets sst sst'.
+Proof.
+  clear I S.
+  move=> GET UPD SGMEM HI HW p'.
+  have [{p'} -> //|NE] := altP (p' =P p).
+  { by rewrite GET (Sym.sget_supd _ _ _ _ UPD) eqxx. }
+  move: SGMEM => /(_ p').
+  rewrite /Sym.good_memory_tag.
+  by case GET': (Sym.sget sst p') => [[|c' I' W'|]|] // _;
+  rewrite (Sym.sget_supd _ _ _ _ UPD) (negbTE NE) GET'.
+Qed.
+
+Lemma tags_subsets_irrelevancies r' pc' m int r pc sst :
+  tags_subsets sst (SState m r' pc' int) ->
+  tags_subsets sst (SState m r pc int).
+Proof.
+  move=> H p.
+  move: H => /(_ p).
+  by rewrite (sget_irrelevancies r' pc').
+Qed.
+(*
+Lemma in_compartment_rem C A J1 S1 J2 S2 p c :
+  C ⊢ p ∈ c ->
+  exists c', <<A,J2,S2>> :: rem <<A,J1,S1>> C ⊢ p ∈
+*)
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -1352,17 +1437,65 @@ Proof.
   subst R_next.
   constructor => //=.
   - exact: (supd_refine_memory def_s' RMEMS).
-  - {
-      rewrite /refine_compartments (lock refined_compartment) /=. split; first (apply/andP; split).
-      - rewrite -(lock refined_compartment) (@refined_compartment_augment cid')
-                ?(supd_irrelevancies SR not_pc) //.
+  - { rewrite /refine_compartments (lock refined_compartment) /=. split; first (apply/andP; split).
+      - rewrite -(lock _) (@refined_compartment_augment cid')
+                ?(sget_irrelevancies SR not_pc) //.
         { have /= -> := (Sym.sget_supd _ _ _ _ def_s').
           by rewrite eqxx /= in_setU1 eqxx. }
         move/eqP in RPREV.
         eapply refined_compartment_all_untouched_preserved; last eassumption.
-        + admit.
-        + admit.
-        + admit.
+        + eassumption.
+        + move=> p''.
+          rewrite /Sym.good_memory_tag (sget_irrelevancies SR not_pc).
+          by apply/(supd_good_memory_tag def_s').
+        + apply/(@tags_subsets_irrelevancies SR not_pc).
+          apply/(supd_tags_subsets def_xcIW def_s') => //.
+          by rewrite subsetUr.
+      - apply/allP=> c' Hc'.
+        rewrite -(lock _).
+        move/allP/(_ c' (mem_rem Hc')): RCOMPS.
+        apply/refined_compartment_all_untouched_isSome_preserved => //.
+        + by apply/(supd_good_memory_tag def_s').
+        + apply/(@tags_subsets_irrelevancies SR not_pc).
+          apply/(supd_tags_subsets def_xcIW def_s') => //.
+          by rewrite subsetUr.
+      - apply/refine_compartment_tag_preserved.
+
+ move=> p''.
+        case: RCOMP => _ RCOMP.
+        move: (RCOMP p'').
+        rewrite /refine_compartment_tag
+                (sget_irrelevancies SR not_pc M_next) (Sym.sget_supd _ _ _ _ def_s').
+        have [{p''} ->|NE] := (p'' =P p).
+        { rewrite def_xcIW.
+          case=> c''.
+          have [{c''} ->|NE] := altP (c'' =P <<Aprev,Jprev,Sprev>>).
+          - case=> H1 H2.
+
+
+/andP /= [H1 _] H3.
+            exists <<Aprev,p |: Jprev,Sprev>>.
+            rewrite /Abs.in_compartment in_cons eqxx H1 /=.
+            split=> // p''.
+            move: H3 => /(_ p'').
+            rewrite (Sym.sget_supd _ _ _ _ def_s').
+            have [{p''} ->|_] := (p'' =P p).
+            + move=> _.
+              rewrite H1.
+              split; first by split; trivial.
+              rewrite (in_setU1 p) eqxx /=.
+              split; first by [].
+              move: RCOMP => /(_ p).
+              rewrite /refine_compartment_tag def_xcIW.
+          exists c''. split.
+          - clear - Hinc''.
+
+
+
+
+by rewrite GET.
+
+
       - admit.
       - admit. }
 
