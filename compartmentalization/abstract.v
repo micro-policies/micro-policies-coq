@@ -3,7 +3,7 @@ Require Import List Arith Sorted Bool.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
 Require Import lib.Integers lib.utils lib.partial_maps lib.ordered common.common.
-Require Import lib.list_utils.
+Require Import lib.list_utils lib.ssr_list_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
 
 Set Bullet Behavior "Strict Subproofs".
@@ -403,19 +403,22 @@ Lemma good_compartments__contained_compartments : forall C,
 Proof. good_compartments_trivial. Qed.
 (*Global*) Hint Resolve good_compartments__contained_compartments.
 
+Lemma disjoint_comp_comm c1 c2 : 
+  disjoint_comp c1 c2 = disjoint_comp c2 c1.
+Proof. by rewrite /disjoint_comp /= disjoint_sym orb_comm. Qed.
+(*Global*) Hint Resolve disjoint_comp_comm.
+
 Theorem good_no_duplicates : forall C,
   good_compartments C -> uniq C.
 Proof.
-  move=> C /andP [Hover Hcontained].
-  admit.
-(*
-  intros C GOOD;
-    unfold good_compartments, non_overlapping in GOOD;
-    repeat rewrite ->andb_true_iff in GOOD;
-    rewrite <-all_pairs_in2_comm in GOOD;
-    destruct GOOD as [[GOOD NOL] CC]; eauto 2.
-  eapply all_pairs_distinct_nodup; [|eassumption]; cbv beta; auto.
-*)
+  clear S.
+  move=> C /andP [NOL CC].
+  rewrite /non_overlapping -all_pairs_in2_comm in NOL; last done.
+  apply all_pairs_distinct_nodup in NOL.
+  + by apply/uniqP.
+  + by move=> [A J S];
+       rewrite /disjoint_comp /=
+               -setI_eq0 orb_diag setIid andb_comm andb_negb_r.
 Qed.
 (*Global*) Hint Resolve good_no_duplicates.
 
@@ -427,74 +430,51 @@ Theorem non_overlapping_subset : forall C1 C2,
   non_overlapping C2 ->
   non_overlapping C1.
 Proof.
-  admit.
-(*
-  unfold non_overlapping; intros C1 C2 SUBSET NO_DUP GOOD NOL.
-  apply all_pairs__all_tail_pairs.
-  rewrite <-all_pairs_in2_comm in NOL; eauto 2.
-*)
+  rewrite /non_overlapping; move=> C1 C2 SUBSET ND NOL.
+  apply all_pairs__all_tail_pairs; rewrite -all_pairs_in2_comm in NOL; last done.
+  rewrite /subpred /= in ND. 
+  apply all_pairs_subset with C2.
+  - by move=> c /inP IN; apply/inP; apply ND.
+  - by apply/uniqP.
+  - by [].
 Qed.
 (*Global*) Hint Resolve non_overlapping_subset.
 
 Theorem non_overlapping_tail : forall c C,
   non_overlapping (c :: C) -> non_overlapping C.
 Proof.
-  admit.
-(*
-  unfold non_overlapping; intros c C NOL;
-  rewrite ->all_tail_pairs_tail, ->andb_true_iff in NOL; tauto.
-*)
+  move=> c C.
+  by rewrite /non_overlapping all_tail_pairs_tail; move=> /andP[].
 Qed.
 (*Global*) Hint Resolve non_overlapping_tail.
 
-(*
 Theorem non_overlapping_spec : forall C,
-  non_overlapping C =
-
-   (forall c1 c2,
-      In2 c1 c2 C ->
-      disjoint (address_space c1) (address_space c2) = true)).
+  non_overlapping C <->
+  (forall c1 c2,
+     In2 c1 c2 C ->
+     disjoint_comp c1 c2).
 Proof.
-  intros C GOOD; unfold non_overlapping.
-  rewrite <-all_pairs_in2_comm, all_pairs_spec; [reflexivity|eauto 2].
+  move=> C; rewrite /non_overlapping.
+  by rewrite -all_pairs_in2_comm // /is_true all_pairs_spec.
 Qed.
-*)
 
-(*
-Corollary non_overlapping_spec' : forall C,
-  good_compartments C = true ->
-  (non_overlapping C = true <->
-   (forall c1 c2,
-      In2 c1 c2 C ->
-      disjoint (address_space c1) (address_space c2) = true)).
-Proof. intros C GOOD; apply non_overlapping_spec; auto. Qed.
-*)
-
-(*
-Corollary good_compartments__in2_disjoint  : forall C c1 c2,
-  good_compartments C = true ->
+Corollary good_compartments__in2_disjoint : forall C c1 c2,
+  good_compartments C ->
   In2 c1 c2 C ->
-  disjoint (address_space c1) (address_space c2) = true.
+  disjoint_comp c1 c2.
 Proof.
-  intros C c1 c2 GOOD;
-    assert (non_overlapping C = true) by auto;
-    apply non_overlapping_spec' in GOOD;
-    apply GOOD; assumption.
+  move=> C c1 c2 /andP [NOL _].
+  by move/non_overlapping_spec in NOL; apply NOL.
 Qed.
 (*Global*) Hint Resolve good_compartments__in2_disjoint.
-*)
 
 Theorem non_overlapping_rem : forall c C,
   non_overlapping C ->
   non_overlapping (rem c C).
 Proof.
-  admit.
-(*
-  intros c C GOOD NOL.
-  rewrite ->non_overlapping_spec in * by auto.
-  intros c1 c2 IN2; apply NOL.
-  eapply in2_rem; eassumption.
-*)
+  move=> c C; rewrite !non_overlapping_spec.
+  move=> NOL c1 c2 IN2; apply NOL.
+  by apply in2_rem in IN2.
 Qed.
 (*Global*) Hint Resolve non_overlapping_rem.
 
@@ -509,14 +489,12 @@ Lemma non_overlapping_replace : forall c c' C,
   non_overlapping (c' :: rem c C) =
   all (disjoint_comp c') (rem c C).
 Proof.
-  admit.
-(*
-  intros;
-    unfold non_overlapping;
-    repeat rewrite all_tail_pairs_tail;
-    fold (non_overlapping (delete c C)).
-  destruct (forallb _ (delete _ _)); [simpl | reflexivity].
-  apply non_overlapping_rem; assumption. *)
+  move=> c c' C NOL;
+    rewrite /non_overlapping all_tail_pairs_tail;
+    fold (non_overlapping (rem c C));
+    replace @forallb with @all by reflexivity.
+  case (all _ (rem _ _)) => //=.
+  by apply non_overlapping_rem.
 Qed.
 (*Global*) Hint Resolve non_overlapping_replace.
 
@@ -1766,48 +1744,51 @@ End Notations.
 Module Hints.
 (* Can be updated automatically by an Emacs script; see `global-hint.el' *)
 (* Start globalized hint section *)
-Hint Resolve good_compartments__non_overlapping.
-Hint Resolve good_compartments__contained_compartments.
-Hint Resolve good_no_duplicates.
-Hint Resolve non_overlapping_subset.
-Hint Resolve non_overlapping_tail.
-Hint Resolve non_overlapping_rem.
-Hint Resolve non_overlapping_rem'.
-Hint Resolve non_overlapping_replace.
-Hint Resolve non_overlapping_replace'.
-Hint Resolve in_compartment_element.
-Hint Resolve in_compartment__in_address_space.
-Hint Resolve in_same_compartment.
-Hint Resolve unique_here_not_there.
-Hint Resolve unique_must_be_here.
-Hint Resolve in_same_compartment__overlapping.
-Hint Resolve in_compartment_opt_correct.
-Hint Resolve in_compartment_opt_missing_correct.
-Hint Resolve in_compartment_opt_present.
-Hint Resolve in_compartment_opt_is_some.
-Hint Resolve in_compartment_opt_sound.
-Hint Resolve in_compartment_opt_sound'.
-Hint Resolve in_compartment_opt_sound_is_some.
-Hint Resolve in_compartment_opt_sound_is_some'.
-Hint Resolve good_in2_no_common_addresses.
-Hint Resolve in_unique_compartment.
-Hint Resolve good_state__previous_is_compartment.
-Hint Resolve good_state_decomposed__previous_is_compartment.
-Hint Resolve good_state__good_compartments.
-Hint Resolve good_state_decomposed__good_compartments.
-Hint Resolve good_state__syscalls_separated.
-Hint Resolve good_state_decomposed__syscalls_separated.
-Hint Resolve good_state__syscalls_present.
-Hint Resolve good_state_decomposed__syscalls_present.
-Hint Resolve isolate_good.
-Hint Resolve add_to_jump_targets_good.
-Hint Resolve add_to_store_targets_good.
-Hint Resolve good_syscalls_b.
-Hint Resolve get_syscall_in.
-Hint Resolve get_syscall_good.
-Hint Resolve previous_compartment.
-Hint Resolve good_compartments_preserved.
-Hint Resolve good_state_preserved.
+  Hint Resolve good_compartments__non_overlapping.
+  Hint Resolve good_compartments__contained_compartments.
+  Hint Resolve disjoint_comp_comm.
+  Hint Resolve good_no_duplicates.
+  Hint Resolve non_overlapping_subset.
+  Hint Resolve non_overlapping_tail.
+  Hint Resolve good_compartments__in2_disjoint.
+  Hint Resolve non_overlapping_rem.
+  Hint Resolve non_overlapping_rem'.
+  Hint Resolve non_overlapping_replace.
+  Hint Resolve non_overlapping_replace'.
+  Hint Resolve in_compartment_element.
+  Hint Resolve in_compartment__in_address_space.
+  Hint Resolve in_same_compartment.
+  Hint Resolve unique_here_not_there.
+  Hint Resolve unique_must_be_here.
+  Hint Resolve in_same_compartment__overlapping.
+  Hint Resolve in_compartment_opt_correct.
+  Hint Resolve in_compartment_opt_missing_correct.
+  Hint Resolve in_compartment_opt_present.
+  Hint Resolve in_compartment_opt_is_some.
+  Hint Resolve in_compartment_opt_sound.
+  Hint Resolve in_compartment_opt_sound'.
+  Hint Resolve in_compartment_opt_sound_is_some.
+  Hint Resolve in_compartment_opt_sound_is_some'.
+  Hint Resolve good_in2_no_common_addresses.
+  Hint Resolve in_unique_compartment.
+  Hint Resolve good_state__previous_is_compartment.
+  Hint Resolve good_state_decomposed__previous_is_compartment.
+  Hint Resolve good_state__good_compartments.
+  Hint Resolve good_state_decomposed__good_compartments.
+  Hint Resolve good_state__syscalls_separated.
+  Hint Resolve good_state_decomposed__syscalls_separated.
+  Hint Resolve good_state__syscalls_present.
+  Hint Resolve good_state_decomposed__syscalls_present.
+  Hint Resolve isolate_good.
+  Hint Resolve add_to_jump_targets_good.
+  Hint Resolve add_to_store_targets_good.
+  Hint Resolve good_syscalls_b.
+  Hint Resolve good_syscalls.
+  Hint Resolve get_syscall_in.
+  Hint Resolve get_syscall_good.
+  Hint Resolve previous_compartment.
+  Hint Resolve good_compartments_preserved.
+  Hint Resolve good_state_preserved.
 (* End globalized hint section *)
 End Hints.
 

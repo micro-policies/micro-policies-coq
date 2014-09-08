@@ -32,3 +32,28 @@ Proof.
     apply/andP; split; last assumption.
     by move/inP in NIN.
 Qed.
+
+Lemma mem_rem_weaken (T : eqType) (x y : T) (xs : seq T) :
+  x \in rem y xs -> x \in xs.
+Proof.
+  elim: xs => [// | /= x' xs' IH]; rewrite inE.
+  case (x' == y).
+  - by move=> REM; rewrite REM orbT.
+  - rewrite inE; move=> /orP [EQ | IN].
+    + by rewrite EQ.
+    + by apply IH in IN; rewrite IN orbT.
+Qed.
+       
+Theorem in2_rem (T : eqType) (a b y : T) (xs : seq T) :
+  In2 a b (rem y xs) -> In2 a b xs.
+Proof.
+  elim: xs=> [// | /= x xs' IH].
+  case E: (x == y) => IN2; move/eqP: E; [move=> ?; subst | move=> NEQ].
+  - by apply In2_there.
+  - inversion IN2 as [rem_xs' IN | rem_xs' IN | x' rem_xs' IN2']; subst.
+    + by apply In2_here_1;
+         move/inP in IN; apply mem_rem_weaken in IN; apply /inP.
+    + by apply In2_here_2;
+         move/inP in IN; apply mem_rem_weaken in IN; apply /inP.
+    + by apply In2_there, IH.
+Qed.
