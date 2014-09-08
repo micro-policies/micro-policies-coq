@@ -90,71 +90,57 @@ Definition refine_memory : memory t -> Sym.memory t -> Prop :=
 Definition refine_registers : registers t -> Sym.registers t -> Prop :=
   pointwise refine_reg_b.
 
-Section With_EqType_refined_compartment.
+Section WithSym.
 Import Sym.
 
-Definition refined_compartment (c   : Abs.compartment t)
-                               (sst : sstate) : option word :=
-  let: <<A,J,S>> := c in
-  [pick sc |
-    [set Some sc] == (stag_compartment <=< Sym.sget sst) @: A &
-    [forall os in (stag_incoming <=< Sym.sget sst) @: J :|:
-                  (stag_writers  <=< Sym.sget sst) @: S,
-     oapp (fun s : {set word} => sc \in s) false os] ].
+Definition get_compartment_id (sst : sstate)
+                              (c   : Abs.compartment t) : option word :=
+  [pick cid |
+    (stag_compartment <=< Sym.sget sst) @: Abs.address_space c ==
+    [set Some cid]].
 
-Definition well_defined_compartment (C   : seq (Abs.compartment t))
-                                    (sst : sstate)
-                                    (p   : word) : bool :=
-  Sym.sget sst p ==> Abs.in_compartment_opt C p.
+Definition well_defined_compartments (sst : sstate)
+                                     (C   : seq (Abs.compartment t)) : Prop :=
+  forall p, sget sst p -> Abs.in_compartment_opt C p.
 
-(* AAA: This used to be a logical equivalence, but the other direction
-   is already implied by refined_compartment above *)
-Definition consistent_cids (C     : seq (Abs.compartment t))
-                           (sst   : sstate)
-                           (p1 p2 : word) : bool :=
-  match Sym.sget sst p1, Sym.sget sst p2 with
-  | Some (Sym.DATA c1 _ _), Some (Sym.DATA c2 _ _) =>
-    (Abs.in_compartment_opt C p1 == Abs.in_compartment_opt C p2)
-    ==> (c1 == c2)
-  | _, _ => true
-  end.
+Definition well_defined_ids (sst : sstate)
+                            (C   : seq (Abs.compartment t)) : Prop :=
+  forall c, c \in C -> get_compartment_id sst c.
 
-Definition refine_compartment_tag (C   : list (Abs.compartment t))
-                                  (sst : sstate)
-                                  (p   : word) : Prop :=
-  match Sym.sget sst p with
-    | Some (Sym.DATA cid I W) =>
-      exists c,
-        C ⊢ p ∈ c /\
-        forall p',
-          match Sym.sget sst p' with
-            | Some (Sym.DATA cid' I' W') =>
-              (cid = cid' <-> C ⊢ p' ∈ c) /\
-              (cid \in I'   -> p' \in Abs.jump_targets  c) /\
-              (cid \in W'   -> p' \in Abs.store_targets c)
-            | Some _ =>
-              False
-            | None =>
-              True
-          end
-    | Some _ =>
-      False
-    | None =>
-      True
-  end.
+(* AAA: Does this imply disjointness? *)
+Definition unique_ids (sst : sstate)
+                      (C   : seq (Abs.compartment t)) : Prop :=
+  forall c1 c2,
+    c1 \in C ->
+    c2 \in C ->
+    get_compartment_id sst c1 = get_compartment_id sst c2 ->
+    c1 = c2.
 
-End With_EqType_refined_compartment.
+Definition well_formed_jump_targets (sst : sstate)
+                                    (C   : seq (Abs.compartment t)) : Prop :=
+  forall c cid,
+    c \in C ->
+    get_compartment_id sst c = Some cid ->
+    Abs.jump_targets c =
+    [set p | oapp (fun s : {set word} => cid \in s) false
+                  (stag_incoming =<< Sym.sget sst p) ].
 
-Definition refine_compartments (C : list (Abs.compartment t))
-                               (sst : sstate) : Prop :=
-  all (is_some ∘ refined_compartment ^~ sst) C /\
-  forall p, refine_compartment_tag C sst p.
+Definition well_formed_store_targets (sst : sstate)
+                                     (C   : seq (Abs.compartment t)) : Prop :=
+  forall c cid,
+    c \in C ->
+    get_compartment_id sst c = Some cid ->
+    Abs.store_targets c =
+    [set p | oapp (fun s : {set word} => cid \in s) false
+                  (stag_writers =<< Sym.sget sst p) ].
+
+End WithSym.
 
 Definition refine_previous_b (sk : where_from) (prev : Abs.compartment t)
                              (sst : sstate) : bool :=
   match Symbolic.pc sst with
     | _ @ (Sym.PC F cid) => (sk == F) &&
-                            (refined_compartment prev sst == Some cid)
+                            (get_compartment_id sst prev == Some cid)
     | _ @ _ => false
   end.
 
@@ -164,20 +150,28 @@ Definition refine_syscall_addrs_b (AM : memory t) (SM : Sym.memory t) : bool :=
       uniq syscall_addrs ].
 
 Record refine (ast : astate) (sst : sstate) : Prop := RefineState
-  { pc_refined           : refine_pc_b            (Abs.pc           ast)
-                                                  (Symbolic.pc      sst)
-  ; regs_refined         : refine_registers       (Abs.regs         ast)
-                                                  (Symbolic.regs    sst)
-  ; mems_refined         : refine_memory          (Abs.mem          ast)
-                                                  (Symbolic.mem     sst)
-  ; compartments_refined : refine_compartments    (Abs.compartments ast)
-                                                  sst
-  ; previous_refined     : refine_previous_b      (Abs.step_kind    ast)
-                                                  (Abs.previous     ast)
-                                                  sst
-  ; syscalls_refined     : refine_syscall_addrs_b (Abs.mem          ast)
-                                                  (Symbolic.mem     sst)
-  ; internal_refined     : Sym.good_internal      sst }.
+  { pc_refined           : refine_pc_b               (Abs.pc           ast)
+                                                     (Symbolic.pc      sst)
+  ; regs_refined         : refine_registers          (Abs.regs         ast)
+                                                     (Symbolic.regs    sst)
+  ; mems_refined         : refine_memory             (Abs.mem          ast)
+                                                     (Symbolic.mem     sst)
+  ; compartments_wd      : well_defined_compartments sst
+                                                     (Abs.compartments ast)
+  ; ids_well_defined     : well_defined_ids          sst
+                                                     (Abs.compartments ast)
+  ; ids_unique           : unique_ids                sst
+                                                     (Abs.compartments ast)
+  ; jump_targets_wf      : well_formed_jump_targets  sst
+                                                     (Abs.compartments ast)
+  ; store_targets_wf     : well_formed_store_targets sst
+                                                     (Abs.compartments ast)
+  ; previous_refined     : refine_previous_b         (Abs.step_kind    ast)
+                                                     (Abs.previous     ast)
+                                                     sst
+  ; syscalls_refined     : refine_syscall_addrs_b    (Abs.mem          ast)
+                                                     (Symbolic.mem     sst)
+  ; internal_refined     : Sym.good_internal         sst }.
 
 Generalizable All Variables.
 
@@ -251,6 +245,7 @@ Ltac explode_refined_compartment RC A J S :=
   explode_refined_compartment' RC.
 *)
 
+(*
 (* Could be reused more than it is *)
 Lemma refined_sget_in_compartment : forall C c cid sst I W p,
   Abs.good_compartments C ->
@@ -281,6 +276,7 @@ IN'. by apply Abs.in_compartment_spec.
   replace c' with <<A,J,S>> in * by eauto 3.
   assumption.*)
 Qed.
+*)
 
 Theorem refine_good : forall `(REFINE : refine ast sst),
   Abs.good_state ast ->
@@ -363,6 +359,7 @@ Ltac unoption :=
     | EQ  : None   = None   |- _ => clear EQ
   end.
 
+(*
 Lemma prove_refined_compartment : forall pc cid I W
                                          AC c sst,
   Sym.sget sst pc ?= Sym.DATA cid I W ->
@@ -438,7 +435,9 @@ Proof.
   undo1 GUARD COND; inversion GUARD; subst.
   intros; apply/eqP; eapply prove_refined_compartment; eauto.
 Qed.
+*)
 
+(*
 Lemma prove_permitted_now_in : forall pc cid cid' cid'' I W F
                                       AR AM AC Ask Aprev
                                       mem reg int
@@ -527,6 +526,7 @@ Proof. admit. Qed. (*
     by assert (c' = <<Aprev,Jprev,Sprev>>) by eauto 3; subst.
 Qed.
 *)
+*)
 
 Lemma refined_reg_value : forall AR SR,
   refine_registers AR SR ->
@@ -552,6 +552,7 @@ Proof.
   by move/eqP in REFINE; subst.
 Qed.
 
+(*
 Ltac solve_permitted_now_in :=
   match goal with
     | RPREV : context[refine_previous_b],
@@ -561,6 +562,7 @@ Ltac solve_permitted_now_in :=
       eapply prove_permitted_now_in; try eassumption;
       rewrite /Sym.sget PC; reflexivity
   end.
+*)
 
 (*
 Definition equivalued (sst1 sst2 : sstate) : Prop :=
@@ -678,6 +680,7 @@ Proof.
   repeat invh and; subst; auto.
 Qed.
 
+(*
 Lemma refined_compartment_untouched_preserved : forall sst sst' c cid,
   (forall p, Sym.good_memory_tag sst  p) ->
   (forall p, Sym.good_memory_tag sst' p) ->
@@ -786,7 +789,9 @@ Proof.
   destruct (forallb _ <$> MAP_J') as [[]|]; try done.
   destruct (forallb _ <$> MAP_S') as [[]|]; done. *)
 Qed.
+*)
 
+(*
 Lemma refined_compartment_all_untouched_preserved : forall sst sst' c cid,
   (forall p, Sym.good_memory_tag sst  p) ->
   (forall p, Sym.good_memory_tag sst' p) ->
@@ -798,7 +803,9 @@ Proof.
     apply refined_compartment_untouched_preserved;
     try apply tags_subsets_any_in; assumption.
 Qed.
+*)
 
+(*
 Lemma refined_compartment_all_untouched_isSome_preserved : forall sst sst' c,
   (forall p, Sym.good_memory_tag sst  p) ->
   (forall p, Sym.good_memory_tag sst' p) ->
@@ -811,15 +818,17 @@ Proof.
   eapply refined_compartment_all_untouched_preserved in RC; try eassumption.
   by rewrite RC.
 Qed.
+*)
 
+(*
 Lemma refined_compartment_augment cid sst Aprev Jprev Sprev p:
-  refined_compartment <<Aprev,Jprev,Sprev>> sst ?= cid ->
-  is_some (refined_compartment <<Aprev,p |: Jprev,Sprev>> sst) =
+  get_compartment_id sst <<Aprev,Jprev,Sprev>> ?= cid ->
+  is_some (get_compartment_id sst <<Aprev,p |: Jprev,Sprev>>) =
   oapp (fun s : {set word} => cid \in s) false
        ((Sym.stag_incoming <=< Sym.sget sst) p).
 Proof.
-  rewrite /refined_compartment.
-  case: pickP cid => [cid /andP [/eqP Hcid1 /forallP Hcid2]|] // _ [<-].
+  rewrite /get_compartment_id.
+  case: pickP cid => [cid /eqP Hcid1|] //. _ [<-].
   rewrite -(@eq_pick _ (fun sc => (sc == cid) &&
                                   oapp (fun s : {set word} => cid \in s) false
                                   ((Sym.stag_incoming <=< Sym.sget sst) p))).
@@ -840,7 +849,9 @@ Proof.
     by apply/implyP=> /or3P [/eqP -> //| Hos | Hos];
     move: Hcid2 => /(_ os)/implyP Hcid2; apply/Hcid2; rewrite in_setU Hos ?orbT.
 Qed.
+*)
 
+(*
 Lemma refined_compartment_same : forall sst sst' c,
   equilabeled sst sst' ->
   refined_compartment c sst = refined_compartment c sst'.
@@ -885,132 +896,14 @@ Proof.
   }
   rewrite bind_assoc INIT -bind_assoc EQ_MAP_J EQ_MAP_S; reflexivity.*)
 Qed.
+*)
 
+(*
 Lemma refined_compartment_irrelevancies : forall c SM SR SR' Spc Spc'
                                                  Snext Snext' SiT SaJT SaST,
   refined_compartment c (SState SM SR  Spc  (SInternal Snext  SiT SaJT SaST)) =
   refined_compartment c (SState SM SR' Spc' (SInternal Snext' SiT SaJT SaST)).
 Proof. reflexivity. Qed.
-
-Definition augmented_compartments (C C' : seq (Abs.compartment t)) :=
-  forall c p,
-    C ⊢ p ∈ c ->
-    exists c',
-      [&& C' ⊢ p ∈ c',
-          Abs.address_space c == Abs.address_space c',
-          Abs.jump_targets c \subset Abs.jump_targets c' &
-          Abs.store_targets c \subset Abs.store_targets c'].
-
-Lemma refine_compartment_tag_preserved : forall C C' sst sst',
-  (forall p, Sym.good_memory_tag sst  p) ->
-  (forall p, Sym.good_memory_tag sst' p) ->
-  tags_subsets sst sst' ->
-  augmented_compartments C C' ->
-  (forall p, refine_compartment_tag C  sst  p) ->
-  forall p, refine_compartment_tag C' sst' p.
-Proof.
-  clear S I; move=> C C' sst sst' GMEM GMEM' TS ICS RCT p;
-    specialize RCT with p;
-    move: (TS p) (GMEM p) (GMEM' p) => TS_p GMEM_p GMEM'_p.
-
-  rewrite /Sym.good_memory_tag in GMEM_p GMEM'_p.
-  rewrite /refine_compartment_tag in RCT *.
-  destruct (Sym.sget sst  p) as [[|cid  I  W|]|],
-           (Sym.sget sst' p) as [[|cid' I' W'|]|];
-    try done.
-  move: TS_p {GMEM_p GMEM'_p} => [? [HI HW]].
-  subst cid'.
-  case: RCT => c [Hin Hc].
-  move: (ICS _ _ Hin) => [c' /and4P [p_in_c' /eqP Has /subsetP Hjt /subsetP Hst]].
-  exists c'.
-  split=> // p'.
-  move: {Hc GMEM TS} (GMEM p') (TS p') (Hc p').
-  rewrite /Sym.good_memory_tag.
-  admit.
-
-(*  case: (Sym.sget sst p') => [[|c1' I1' W1'|]|] // _.
-
-  - case: (Sym.sget sst' p') => [[|c2' I2' W2'|]|] // [{c2'} <- [/subsetP HI' /subsetP HW']] [H1 [H2 H3]].
-    repeat split.
-    + rewrite H1 => /andP [H1' H2'].
-      apply/andP.
-      rewrite -Has H1'.
-      split=> //.
-      by case/andP: p_in_c'.
-    + case/andP.
-      rewrite H1 -Has => H1' _.
-      apply/andP.
-      split=> //.
-      by case/andP: Hin.
-    + move=> cid_in.
-      apply/Hjt/H2.
-
-  admit.*)
- (*
-  move: GMEM_p GMEM'_p => _ /andP [SET_I' SET_W'].
-  repeat split; auto.
-  destruct RCT as [SET_I [SET_W [c [IC RTAG]]]].
-  assert (IC' : exists c', C' ⊢ p ∈ c') by by apply ICS in IC.
-  move: IC' => [c' IC']; exists c'; split; auto.
-  move=> q; move: (TS q) (RTAG q) => TS_q RTAG_q.
-  destruct (Sym.sget sst  q) as [[y  [|did  K  V|]]|],
-           (Sym.sget sst' q) as [[y' [|did' K' V'|]]|];
-    try done. *)
-Abort.
-
-(*
-Lemma forallb_map_options_insert_unique : forall {A B} `{ord : Ordered A}
-                                                 p (f : A -> option B) xs a,
-  (p <$> f a) ?= true ->
-  (forallb p <$> map_options f xs) =
-  (forallb p <$> map_options f (insert_unique a xs)).
-Proof.
-  intros until 0; intros OK.
-  destruct (forallb p <$> map_options f xs) as [[]|] eqn:ALL.
-  - destruct (map_options f xs) as [ys|] eqn:MO; [move: ALL => [ALL] | done].
-    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
-    + f_equal; symmetry; apply forallb_forall.
-      intros y IN.
-      move/map_options_in in MO'; apply MO' in IN.
-      move: IN => [x [fx /insert_unique_spec [? | IN]]]; subst.
-      * by rewrite fx in OK; move: OK => [OK].
-      * move/map_options_in in MO.
-        assert (EX : exists x, f x ?= y /\ In x xs) by by exists x.
-        apply MO in EX.
-        by move/forallb_forall in ALL; apply ALL in EX.
-    + apply map_options_none in MO'.
-      move: MO' => [x [/insert_unique_spec [? | IN] NONE]];
-        [subst; rewrite NONE in OK; done|].
-      assert (MO_SOME : is_some (map_options f xs)) by by rewrite MO.
-      move/map_options_somes in MO_SOME; apply MO_SOME in IN.
-      by rewrite NONE in IN.
-  - destruct (map_options f xs) as [ys|] eqn:MO; [move: ALL => [ALL'] | done].
-    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
-    + f_equal; symmetry.
-      apply Bool.negb_true_iff; apply/negP.
-      apply Bool.negb_true_iff in ALL'; move/negP in ALL'.
-      move=> /forallb_forall ALL; apply ALL'; clear ALL'; apply/forallb_forall.
-      intros y IN; apply ALL.
-      move/map_options_in in MO; move/map_options_in in MO'.
-      apply MO in IN; apply MO'.
-      move: IN => [x [fx IN]]; exists x; split; auto.
-    + apply map_options_none in MO'.
-      move: MO' => [x [/insert_unique_spec [? | IN] NONE]];
-        [subst; rewrite NONE in OK; done|].
-      assert (MO_SOME : is_some (map_options f xs)) by by rewrite MO.
-      move/map_options_somes in MO_SOME; apply MO_SOME in IN.
-      by rewrite NONE in IN.
-  - destruct (map_options f xs) as [ys|] eqn:MO; [done | clear ALL OK].
-    destruct (map_options f (insert_unique a xs)) as [ys'|] eqn:MO'; simpl.
-    + move/map_options_none in MO.
-      move: MO => [x [IN fx]].
-      assert (MO'_SOME : is_some (map_options f (insert_unique a xs))) by
-        by rewrite MO'.
-      assert (IN' : In x (insert_unique a xs)) by auto.
-      move/map_options_somes in MO'_SOME; apply MO'_SOME in IN'.
-      by rewrite fx in IN'.
-    + reflexivity.
-Qed.
 *)
 
 Theorem isolate_create_set_refined : forall AM SM,
@@ -1189,11 +1082,7 @@ Proof.
   move: H => /(_ p).
   by rewrite (sget_irrelevancies r' pc').
 Qed.
-(*
-Lemma in_compartment_rem C A J1 S1 J2 S2 p c :
-  C ⊢ p ∈ c ->
-  exists c', <<A,J2,S2>> :: rem <<A,J1,S1>> C ⊢ p ∈
-*)
+
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -1204,7 +1093,7 @@ Theorem add_to_jump_targets_refined : forall ast sst sst',
 Proof.
   clear S I; move=> ast sst sst' AGOOD REFINE ADD.
   assert (SGOOD : Sym.good_state sst) by (eapply refine_good; eassumption).
-  destruct REFINE as [RPC RREGS RMEMS RCOMP RPREV     RSC RINT],
+  destruct REFINE as [RPC RREGS RMEMS IDSWD IDSU JTWF STWF RPREV RSC RINT],
            ast    as [Apc AR    AM    AC    Ask Aprev],
            sst    as [SM SR Spc [Snext SiT SaJT SaST]].
   generalize SGOOD; move=> [[SGMEM [SGREG SGPC]] SGINT].
