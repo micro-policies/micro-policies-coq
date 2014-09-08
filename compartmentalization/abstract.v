@@ -1,9 +1,9 @@
 Require Import List Arith Sorted Bool.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop fintype finset.
 
 Require Import lib.Integers lib.utils lib.partial_maps lib.ordered common.common.
-Require Import lib.list_utils lib.ssr_list_utils.
+Require Import lib.list_utils lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
 
 Set Bullet Behavior "Strict Subproofs".
@@ -384,6 +384,37 @@ Proof.
   - auto.
 Qed.
 
+(*** Proofs for `disjoint_comp' ***)
+
+Lemma disjoint_comp_irrefl c :
+  ~~ disjoint_comp c c.
+Proof.
+  by rewrite /disjoint_comp /= orb_diag -setI_eq0 setIid andb_comm andb_negb_r.
+Qed.
+(*Global*) Hint Resolve disjoint_comp_irrefl.
+
+Lemma disjoint_comp_sym c1 c2 :
+  disjoint_comp c1 c2 = disjoint_comp c2 c1.
+Proof. by rewrite /disjoint_comp /= disjoint_sym orb_comm. Qed.
+(*Global*) Hint Resolve disjoint_comp_sym.
+
+Lemma common_not_disjoint_comp a c1 c2 :
+  a \in address_space c1 -> a \in address_space c2 ->
+  ~~ disjoint_comp c1 c2.
+Proof.
+  move=> IN_A1 IN_A2.
+  by rewrite /disjoint_comp /= negb_and (common_not_disjoint a) // orbT.
+Qed.
+(*Global*) Hint Resolve common_not_disjoint_comp.
+Arguments common_not_disjoint_comp a [c1 c2] _ _.
+
+Lemma common_not_disjoint_comp_decomposed a A1 J1 S1 A2 J2 S2 :
+  a \in A1 -> a \in A2 ->
+  ~~ disjoint_comp <<A1,J1,S1>> <<A2,J2,S2>>.
+Proof. by move=> *; rewrite (common_not_disjoint_comp a). Qed.
+(*Global*) Hint Resolve common_not_disjoint_comp_decomposed.
+Arguments common_not_disjoint_comp_decomposed a [A1 J1 S1 A2 J2 S2] _ _.
+
 (*** Proofs for `good_compartments' ***)
 
 Local Ltac good_compartments_trivial :=
@@ -403,11 +434,6 @@ Lemma good_compartments__contained_compartments : forall C,
 Proof. good_compartments_trivial. Qed.
 (*Global*) Hint Resolve good_compartments__contained_compartments.
 
-Lemma disjoint_comp_comm c1 c2 :
-  disjoint_comp c1 c2 = disjoint_comp c2 c1.
-Proof. by rewrite /disjoint_comp /= disjoint_sym orb_comm. Qed.
-(*Global*) Hint Resolve disjoint_comp_comm.
-
 Theorem good_no_duplicates : forall C,
   good_compartments C -> uniq C.
 Proof.
@@ -416,9 +442,7 @@ Proof.
   rewrite /non_overlapping -all_pairs_in2_comm in NOL; last done.
   apply all_pairs_distinct_nodup in NOL.
   + by apply/uniqP.
-  + by move=> [A J S];
-       rewrite /disjoint_comp /=
-               -setI_eq0 orb_diag setIid andb_comm andb_negb_r.
+  + by move=> ?; apply negbTE, disjoint_comp_irrefl.
 Qed.
 (*Global*) Hint Resolve good_no_duplicates.
 
@@ -614,11 +638,7 @@ Theorem in_same_compartment__overlapping C p c1 c2 :
 Proof.
   move=> /in_compartment__in_address_space IC1
          /in_compartment__in_address_space IC2.
-  rewrite /disjoint_comp /=; apply/negP; move=> /andP [/orP NE DJ].
-  rewrite -setI_eq0 in DJ.
-  have NIN : p \in (address_space c1 :&: address_space c2) = false
-    by move: DJ => /eqP->; apply in_set0.
-  by rewrite in_setI IC1 IC2 in NIN.
+  by rewrite (common_not_disjoint_comp p).
 Qed.
 (*Global*) Hint Resolve in_same_compartment__overlapping.
 
@@ -680,13 +700,10 @@ Proof.
   rewrite inE in IN_C.
   case/orP: IN_C=> [/eqP<- | IN_C]; first by rewrite IN_A.
   case IN_A': (p \in address_space c'); last rename IN_A' into NIN_A'.
-  - have IN2 : In2 c' c (c' :: C) by apply In2_here_1; apply/inP.
+  - have NDJ : (~~ disjoint_comp c' c) by apply (common_not_disjoint_comp p).
+    have IN2 : In2 c' c (c' :: C) by apply In2_here_1; apply/inP.
     apply non_overlapping_spec in IN2; last assumption.
-    rewrite /disjoint_comp /= in IN2; move: IN2 => /andP [_ DJ].
-    rewrite -setI_eq0 in DJ.
-    have IN_A'_A : p \in address_space c' :&: address_space c
-      by rewrite in_setI IN_A IN_A'.
-    by move/eqP in DJ; rewrite DJ in_set0 in IN_A'_A.
+    by contradict IN2; apply/negP.
   - apply IH.
     + by apply non_overlapping_tail in NOL.
     + by apply/andP.
@@ -714,87 +731,61 @@ Proof. eauto. Qed.
 
 (*** Proofs for `contained_compartments' ***)
 
-Theorem contained_compartments_spec : forall C,
+Theorem contained_compartments_spec C :
   contained_compartments C = true <->
   (forall c a, c \in C -> (a \in jump_targets c \/ a \in store_targets c) ->
                exists c', c' \in C /\ a \in address_space c').
 Proof.
-  admit.
-(*
-  clear S; intros; unfold contained_compartments; rewrite subset_spec; split.
-  - intros SUBSET c a IN_c IN_a.
-    specialize SUBSET with a;
-      rewrite ->in_app_iff in SUBSET; repeat rewrite ->concat_in in SUBSET.
-    destruct SUBSET as [A [IN_A IN_a_A]].
-    + destruct IN_a;
-        [left; exists (jump_targets c) | right; exists (store_targets c)];
-        (split; [apply in_map_iff; eauto | assumption]).
-    + apply in_map_iff in IN_A; destruct IN_A as [c' [EQ IN_c']].
-      exists c'; subst; tauto.
-  - intros SPEC a IN_app.
-    apply in_app_iff in IN_app.
-    rewrite concat_in; repeat rewrite ->concat_in in IN_app.
-    destruct IN_app as [[J [IN_J IN_a]] | [S [IN_S IN_a]]].
-    + apply in_map_iff in IN_J; destruct IN_J as [c [EQ_J IN_c]].
-      destruct SPEC with c a as [c' [IN_c' IN_a_c']];
-        try solve [rewrite <- EQ_J in *; auto].
-      exists (address_space c'); split; auto.
-      apply in_map_iff; eauto.
-    + apply in_map_iff in IN_S; destruct IN_S as [c [EQ_S IN_c]].
-      destruct SPEC with c a as [c' [IN_c' IN_a_c']];
-        try solve [rewrite <- EQ_S in *; auto].
-      exists (address_space c'); split; auto.
-      apply in_map_iff; eauto.
-*)
-Qed.
+  clear S; rewrite /contained_compartments; split.
+  - rewrite subUset; move=> /andP [IN_a_J IN_a_S] c a IN_c IN_a.
+    by case: IN_a => IN_a; [move: IN_a_J => IN | move: IN_a_S => IN];
+       move/subsetP/(_ a) in IN;
+       rewrite (bigcup_seq_in c) // in IN;
+       move/(_ erefl)/bigcup_seqP in IN.
+  - move=> SPEC; apply/subsetP; move=> a IN_a; rewrite inE in IN_a.
+    apply/bigcup_seqP.
+    by case/orP: IN_a => IN_a; move: IN_a => /bigcup_seqP [c [IN_c IN_a]];
+       apply (SPEC c) => //;
+       [left | right].
+Qed.    
 
 (*** Proofs for/requiring `good_compartments' ***)
 
-Theorem good_in2_no_common_addresses : forall C c1 c2,
+Theorem good_in2_no_common_addresses C c1 c2 :
   good_compartments C ->
   In2 c1 c2 C ->
   forall a, ~ (a \in address_space c1 /\ a \in address_space c2).
 Proof.
-  admit.
-(*  intros until 0; intros GOOD IN2 a [IN_A1 IN_A2].
-  assert (Ins : In c1 C /\ In c2 C) by auto; destruct Ins as [IN_c1 IN_c2].
-  apply good_compartments__in2_disjoint in IN2; auto.
-  apply not_false_iff_true in IN2; apply IN2.
-  unfold disjoint; destruct (set_intersection _ _) eqn:SI;
-    [|reflexivity].
-  rewrite -> nil_iff_not_in in SI; specialize SI with a.
-  rewrite -> set_intersection_spec in SI by eauto 3; tauto.*)
+  move=> GOOD IN2 a [IN_A1 IN_A2].
+  have [/inP IN_c1 /inP IN_c2] : In c1 C /\ In c2 C by auto.
+  apply good_compartments__in2_disjoint in IN2 => //.
+  by contradict IN2; apply/negP; apply (common_not_disjoint_comp a).
 Qed.
 (*Global*) Hint Resolve good_in2_no_common_addresses.
 
-Theorem in_unique_compartment : forall C p c1 c2,
+Theorem in_unique_compartment C p c1 c2 :
   good_compartments C ->
   C ⊢ p ∈ c1 ->
   C ⊢ p ∈ c2 ->
   c1 = c2.
 Proof.
-  admit.
-(*
-  intros until 0; intros GOOD IC1 IC2.
-  assert (OVERLAPPING : disjoint (address_space c1) (address_space c2) =
-                        false) by
-    (eapply in_same_compartment__overlapping; eauto 3).
-  assert (NOL : non_overlapping C = true) by auto.
-  rewrite ->non_overlapping_spec in NOL; auto.
-  have [|/eqP neq_c1c2] := altP (c1 =P c2); auto.
-  lapply (NOL c1 c2); [congruence | eauto].*)
+  move=> /andP [/non_overlapping_spec NOL CC] IC1 IC2.
+  have OL : ~~ disjoint_comp c1 c2
+    by eapply in_same_compartment__overlapping; eassumption.
+  have [|/eqP neq_c1c2] := altP (c1 =P c2); first by [].
+  lapply (NOL c1 c2); first by move/negP in OL.
+  by apply in_neq_in2 => //;
+     apply/inP; eapply in_compartment_element; eassumption.
 Qed.
 (*Global*) Hint Resolve in_unique_compartment.
 
 (*** Proofs about `good_state' ***)
 
 (* For `auto' *)
-Lemma good_state__previous_is_compartment : forall MM,
+Lemma good_state__previous_is_compartment MM :
   good_state MM ->
   previous MM \in compartments MM.
-Proof.
-  admit. (*unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.*)
-Qed.
+Proof. by move=> /and4P [] *. Qed.
 (*Global*) Hint Resolve good_state__previous_is_compartment.
 
 (* For `auto' *)
@@ -808,11 +799,9 @@ Qed.
 (*Global*) Hint Resolve good_state_decomposed__previous_is_compartment.
 
 (* For `auto' *)
-Lemma good_state__good_compartments : forall MM,
+Lemma good_state__good_compartments MM :
   good_state MM -> good_compartments (compartments MM).
-Proof.
-  admit. (*unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.*)
-Qed.
+Proof. by move=> /and4P [] *. Qed.
 (*Global*) Hint Resolve good_state__good_compartments.
 
 (* For `auto' *)
@@ -825,31 +814,24 @@ Qed.
 (*Global*) Hint Resolve good_state_decomposed__good_compartments.
 
 (* For `auto' *)
-Lemma good_state__syscalls_separated : forall MM,
+Lemma good_state__syscalls_separated MM :
   good_state MM -> syscalls_separated (mem MM) (compartments MM).
-Proof.
-  admit. (*
-  unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.*)
-Qed.
+Proof. by move=> /and4P [] *. Qed.
 (*Global*) Hint Resolve good_state__syscalls_separated.
 
 (* For `auto' *)
 Lemma good_state_decomposed__syscalls_separated : forall pc R M C sk prev,
   good_state (State pc R M C sk prev) -> syscalls_separated M C.
 Proof.
-  admit. (*
   intros pc R M C sk prev;
-    apply (good_state__syscalls_separated (State pc R M C sk prev)).*)
+    apply (good_state__syscalls_separated (State pc R M C sk prev)).
 Qed.
 (*Global*) Hint Resolve good_state_decomposed__syscalls_separated.
 
 (* For `auto' *)
-Lemma good_state__syscalls_present : forall MM,
+Lemma good_state__syscalls_present MM :
   good_state MM -> syscalls_present (compartments MM).
-Proof.
-  admit. (*
-  unfold good_state; intros; repeat rewrite ->andb_true_iff in *; tauto.*)
-Qed.
+Proof. by move=> /and4P [] *. Qed.
 (*Global*) Hint Resolve good_state__syscalls_present.
 
 (* For `auto' *)
@@ -1745,7 +1727,7 @@ Module Hints.
 (* Start globalized hint section *)
   Hint Resolve good_compartments__non_overlapping.
   Hint Resolve good_compartments__contained_compartments.
-  Hint Resolve disjoint_comp_comm.
+  Hint Resolve disjoint_comp_sym.
   Hint Resolve good_no_duplicates.
   Hint Resolve non_overlapping_subset.
   Hint Resolve non_overlapping_tail.
