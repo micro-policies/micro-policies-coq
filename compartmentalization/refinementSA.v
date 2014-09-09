@@ -1184,15 +1184,15 @@ Lemma well_formed_targets_augment (targets : Abs.compartment t -> {set word})
   Sym.sget sst p = Some (Sym.DATA pcid I1 W1) ->
   Sym.supd sst p (Sym.DATA pcid I2 W2) = Some sst' ->
   get_compartment_id sst c = Some cid ->
-  Abs.address_space c = Abs.address_space c' ->
   c \in C ->
+  Abs.address_space c = Abs.address_space c' ->
   targets c' = p |: targets c ->
   sources (Sym.DATA pcid I2 W2) = Some (cid |: Ss) ->
   sources (Sym.DATA pcid I1 W1) = Some Ss ->
   well_formed_targets targets sources sst' (c' :: rem_all c C).
 Proof.
   clear S I.
-  move=> WF UNIQUE GET UPD ID AS c_in_C TARGETS SOURCES2 SOURCES1  c'' cid''.
+  move=> WF UNIQUE GET UPD ID c_in_C AS TARGETS SOURCES2 SOURCES1  c'' cid''.
   rewrite in_cons mem_filter
           -(get_compartment_id_supd_same GET UPD)
           => /orP [/eqP ->|/= /andP [Hneq c''_in_C]] ID'.
@@ -1221,6 +1221,11 @@ Proof.
     rewrite E -?ID{cid'' E} in ID' *.
     by rewrite (UNIQUE _ _ c''_in_C c_in_C ID') eqxx in Hneq.
 Qed.
+
+Lemma well_formed_targets_irrelevancies r' pc' m int r pc targets sources :
+  well_formed_targets targets sources (SState m r pc int) =
+  well_formed_targets targets sources (SState m r' pc' int).
+Proof. by []. Qed.
 
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
@@ -1373,42 +1378,10 @@ Proof.
       suff {not_prev1} contra: c1 = <<Aprev,Jprev,Sprev>> by rewrite /= contra eqxx in not_prev1.
       exact: IDSU _ _ Hc1 AIN E.
     + exact: IDSU c1 c2 Hc1 Hc2.
-  - move=> c''' cid'''.
-    rewrite  (get_compartment_id_irrelevancies SR not_pc)
-            -(get_compartment_id_supd_same def_xcIW def_s')
-             in_cons mem_filter => /orP [/eqP -> | /andP [not_prev Hc''']] Hcid'''.
-    + move: (JTWF _ _ AIN Hcid''') => /= ->.
-      apply/eqP.
-      rewrite eqEsubset.
-      apply/andP.
-      split; apply/subsetP => p'';
-      rewrite in_setU1 !in_set
-              (sget_irrelevancies SR not_pc M_next)
-              (Sym.sget_supd _ _ _ _ def_s');
-      have [{p''} ->|NE] //= := (p'' =P p) => _.
-      suff ->: cid''' = cid' by rewrite in_setU1 eqxx.
-      rewrite /get_compartment_id /= in RPREV Hcid'''.
-      rewrite RPREV in Hcid'''.
-      congruence.
-    + rewrite (JTWF _ _ Hc''' Hcid''').
-      apply/eqP.
-      rewrite eqEsubset.
-      apply/andP.
-      split; apply/subsetP => p'';
-      rewrite !in_set
-              (sget_irrelevancies SR not_pc M_next)
-              (Sym.sget_supd _ _ _ _ def_s');
-      have [{p''} ->|NE] //= := (p'' =P p).
-      * rewrite def_xcIW /= in_setU1 => ->.
-        by rewrite orbT.
-      * rewrite def_xcIW /= in_setU1 => /orP [/eqP E| Hin] //.
-        subst cid'''.
-        case/orP: OK => // /eqP E.
-        subst cid''.
-        suff ? : c''' = <<Aprev,Jprev,Sprev>>
-          by subst c'''; rewrite /= eqxx in not_prev.
-        rewrite -RPREV in Hcid'''.
-        exact: IDSU _ _ Hc''' AIN Hcid'''.
+  - rewrite  /well_formed_jump_targets
+             (well_formed_targets_irrelevancies SR not_pc).
+    apply/(well_formed_targets_augment JTWF IDSU def_xcIW def_s' RPREV AIN);
+    try reflexivity.
   - move=> c''' cid'''.
     rewrite  (get_compartment_id_irrelevancies SR not_pc)
             -(get_compartment_id_supd_same def_xcIW def_s')
