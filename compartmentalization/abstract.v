@@ -858,13 +858,13 @@ Proof.
     inversion PNI; subst c'.
     apply in_compartment_opt_correct in ICO; auto.
     split; [assumption|].
-    admit. (*move: COND => /orP [/eqP EQ | /andP [/eqP EQ /set_elem_true IN]]; auto.*)
+    by move: COND => /orP [/eqP EQ | /andP [/eqP EQ IN]]; auto.
   - intros [IC COND].
     apply in_compartment_opt_sound in IC; auto.
     rewrite IC; simpl.
-    admit. (*move: COND => [/eqP -> | [/eqP -> /set_elem_true ELEM]]; simpl.
+    move: COND => [/eqP -> | [/eqP -> ELEM]]; simpl.
     + reflexivity.
-    + rewrite ELEM /=; auto; rewrite orb_true_r; reflexivity.*)
+    + rewrite ELEM /=; auto; rewrite orb_true_r; reflexivity.
 Qed.
 
 Corollary permitted_now_in__in_compartment_opt : forall C sk prev pc c,
@@ -891,14 +891,13 @@ Proof.
     rewrite (lock in_compartment_opt);
     simpl in *.
   (* Now, compute in `isolate_fn'. *)
-  admit. (*
   let (* Can't get the binder name, so we provide it *)
       DO var := match goal with
-                  | |- match (do! _ <- ?GET;   _) with _ => _ end =>
+                  | |- match (do! _ <- ?GET;   _) with _ => _ end = true =>
                     let def_var := fresh "def_" var in
                     destruct GET as [var|] eqn:def_var
                   | |- match (match ?COND with true => _ | false => None end)
-                       with _ => _ end =>
+                       with _ => _ end = true =>
                     destruct COND eqn:var
                 end; simpl; [|reflexivity]
   in DO c_sys;
@@ -908,7 +907,7 @@ Proof.
      DO J'; DO SUBSET_J';
      DO S'; DO SUBSET_S';
      DO pc'; DO c_next; DO SAME; DO RETURN_OK;
-     set (c_upd := <<set_difference A A',J,S>>) in *;
+     set (c_upd := <<A :\: A',J,S>>) in *;
      set (c'    := <<A',J',S'>>) in *;
      repeat rewrite <-def_AJS in *.
   assert (c_sys0 = c_sys) by
@@ -920,58 +919,56 @@ Proof.
       (rewrite /good_state /good_compartments /= in GOOD *;
        repeat rewrite ->andb_true_iff in GOOD; andb_true_split; try tauto).
     move TEMP before GOOD; unfold good_compartments in TEMP;
-    repeat rewrite ->andb_true_iff in TEMP; destruct TEMP as [[GOODS NOL] CC].
+    repeat rewrite ->andb_true_iff in TEMP; destruct TEMP as [NOL CC].
   assert (IN : In c C) by
     (rewrite /good_state /= in GOOD; repeat rewrite ->andb_true_iff in GOOD;
-     destruct (elem c C); [assumption | repeat invh and; discriminate]).
-  assert (NONEMPTY_A_A' : nonempty (set_difference A A') = true). {
+     destruct (elem c C);
+     [assumption | repeat invh and; try discriminate; by apply/inP]).
+  assert (NONEMPTY_A_A' : (A :\: A') != set0). {
     move/eqP in SAME; subst c_next.
     rewrite <-(lock in_compartment_opt) in *; simpl in *.
-    destruct (set_difference A A'); [simpl in *|reflexivity].
-    subst c' c_upd; destruct (set_elem pc' A').
-    - inversion def_c_next; subst; discriminate.
-    - apply in_compartment_opt_correct,in_compartment_spec in def_c_next;
-        [simpl in * | auto using delete_preserves_forallb].
-      tauto.
+    have [EQ|] := altP (A :\: A' =P set0); last by [].
+    subst c' c_upd; rewrite EQ in_set0 in def_c_next.
+    have [IN_pc' | NIN_pc'] := boolP (pc' \in A').
+    - rewrite IN_pc' in def_c_next; inversion def_c_next; subst.
+      by move/eqP in NONEMPTY_A'.
+    - rewrite (negbTE NIN_pc') in def_c_next.
+      apply in_compartment_opt_correct in def_c_next.
+      move: def_c_next => /andP /= [] _.
+      by rewrite in_set0.
   }
-  let is_good := (subst c c' c_upd; unfold good_compartment; simpl;
-                  andb_true_split; eauto 2)
-  in assert good_compartment c     by (rewrite ->forallb_forall in GOODS; auto);
-     assert good_compartment c'    by is_good;
-     assert good_compartment c_upd by is_good.
   assert (C'_DISJOINT :
-            forallb (fun c'' => good_compartment c'' &&
-                                disjoint (address_space c) (address_space c''))
-                    (delete c C) =
-            true). {
-    rewrite ->non_overlapping_spec in NOL by assumption.
-    apply forallb_forall; intros ct IN_ct; andb_true_split.
-    - apply delete_in_iff in IN_ct; destruct IN_ct; eapply forallb_forall;
-      eassumption.
-    - apply NOL. apply delete_in_iff in IN_ct; apply in_neq_in2; intuition.
+            forallb (fun c'' => disjoint_comp c c'') (delete c C) = true). {
+    move/non_overlapping_spec in NOL.
+    apply forallb_forall; intros ct IN_ct.
+    apply NOL. apply delete_in_iff in IN_ct; apply in_neq_in2; intuition.
   }
-  assert (NONEMPTY_A : nonempty A) by
-    (destruct A,A'; simpl in NONEMPTY_A_A'; solve [auto | discriminate]).
+  assert (NONEMPTY_A : A != set0) by
+    by apply/negP => /eqP EQ; rewrite EQ set0D in NONEMPTY_A_A';
+       move/eqP in NONEMPTY_A_A'.
   assert (NOT_SYSCALL_c : ~~ syscall_address_space M c). {
     apply/negP; intro SAS'; subst c.
-    rewrite /syscall_address_space (lock elem) /= in SAS'.
-    destruct A as [|sc [|]]; auto.
+    move: SAS'; rewrite /syscall_address_space /=
+      => /existsP [sc /andP [NGET /andP [IN_sc /eqP EQ_sc]]];
+      rewrite !inE in IN_sc.
+    rewrite EQ_sc in c_upd SAME def_c_next; subst A.
     apply permitted_now_in_spec in def_c_sys; eauto 3.
     move/id in def_c_sys; move/id in NONEMPTY_A_A'; move/id in SUBSET_A'.
-    assert (NIN_pc : ~ In sc A'). {
-      apply nonempty_iff_in in NONEMPTY_A_A'.
-      destruct NONEMPTY_A_A' as [a IN_diff].
-      apply set_difference_spec in IN_diff; auto; simpl in IN_diff.
-      move: IN_diff => [[-> | []] NIN] //.
+    assert (NIN_pc : sc \notin A'). {
+      move: NONEMPTY_A_A' => /set0Pn [a IN_diff].
+      rewrite in_setD in IN_diff.
+      move: IN_diff => /andP [NIN IN_a] //.
+      by rewrite in_set1 in IN_a; move: IN_a => /eqP<-.
     }
-    rewrite ->subset_spec in SUBSET_A'; auto; simpl in SUBSET_A'.
-    destruct A' as [|a' A']; [discriminate|].
-    move: (SUBSET_A' a' (or_introl Logic.eq_refl)) => [EQ | []].
-    apply NIN_pc; rewrite EQ; auto.
+    move/subsetP in SUBSET_A'.
+    move: NONEMPTY_A' => /set0Pn [a' IN_a'].
+    move: (SUBSET_A' a' IN_a'); rewrite in_set1 => /eqP ?; subst a'.
+    by move/negP in NIN_pc.
   }
   assert (USER_c : user_address_space M c). {
-    assert (SS : syscalls_separated M C = true) by eauto; simpl in *.
-    rewrite ->forallb_forall in SS.
+    assert (SS : syscalls_separated M C = true) by
+      (eapply good_state_decomposed__syscalls_separated; eassumption).
+    rewrite /syscalls_separated in SS; rewrite ->forallb_forall in SS.
     specialize (SS c IN).
     move: SS => /orP [UAS | SAS'] //.
     by rewrite SAS' in NOT_SYSCALL_c.
@@ -985,25 +982,21 @@ Proof.
     try (eapply forallb_impl; [|apply C'_DISJOINT]; cbv beta;
          simpl; intros c''; rewrite andb_true_iff; intros []; intros GOOD'';
          apply disjoint_subset; auto; simpl).
-  - (* locked elem c_sys [:: c_upd, c' & delete c C] *)
+  - (* c_sys \in [:: c_upd, c' & delete c C] *)
     assert (In c_sys (c_upd :: c' :: delete c C)). {
       do 2 right. apply delete_in_iff; split; auto.
-      apply permitted_now_in_spec in def_c_sys; eauto 3.
+      assert (GC : good_compartments C) by
+        (eapply good_state_decomposed__good_compartments; eassumption).
+      by move: def_c_sys => /permitted_now_in_spec => /(_ GC) [] /andP [] /inP.
     }
-    rewrite <-(lock elem);
-      destruct (elem c_sys (c_upd :: c' :: delete c C)) eqn:ELEM;
-      rewrite ELEM; auto.
+    by apply/inP; rewrite rem_all_is_delete.
   - (* non_overlapping c_upd c' *)
-    unfold disjoint; subst c c_upd c'; simpl in *.
-    rewrite ->set_intersection_difference_distrib,
-            ->set_intersection_self_id,
-            ->set_difference_intersection_distrib,
-            ->set_difference_self_annihilating,
-            ->set_intersection_nil_r
-      by auto.
-    destruct (set_difference A A'); [discriminate | reflexivity].
-  - subst c; intros e; rewrite set_difference_spec; tauto.
+    rewrite /disjoint_comp; subst c c_upd c'; simpl in *.
+    rewrite -setI_eq0 setIDAC setDIl setDv setI0 eq_refl andbT.
+    by rewrite NONEMPTY_A_A'.
+  (*- subst c; intro s e; rewrite set_difference_spec; tauto.
   - subst c; eapply subset_spec; eassumption.
+  - admit. (* One of these three *)
   - unfold contained_compartments; subst c_upd c'; simpl.
     assert (A_separated : forall a, In a A <->
                                     In a (set_difference A A') \/ In a A'). {
@@ -1162,7 +1155,8 @@ Proof.
       assert (IC' : delete c C ⊢ sc ∈ c_sc) by by apply in_compartment_spec.
       apply in_compartment_opt_sound in IC'; auto.
       rewrite IC'; auto. *)
-Qed.
+(*Qed.*)
+Admitted.
 (*Global*) Hint Resolve isolate_good.
 
 Lemma good_compartments_preserved_for_add_to_compartment_component :
