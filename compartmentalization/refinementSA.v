@@ -1055,7 +1055,12 @@ Qed.
 
 Lemma sget_irrelevancies r' pc' m int r pc :
   Sym.sget (SState m r pc int) =
-  Sym.sget (SState m r' pc' int) .
+  Sym.sget (SState m r' pc' int).
+Proof. reflexivity. Qed.
+
+Lemma sget_next_irrelevant next' next m r pc iT aJT aST :
+  Sym.sget (SState m r pc (SInternal next  iT aJT aST)) =
+  Sym.sget (SState m r pc (SInternal next' iT aJT aST)).
 Proof. reflexivity. Qed.
 
 Lemma supd_good_memory_tag sst sst' p c I' W' :
@@ -1878,7 +1883,6 @@ Proof.
                 | _ , _ =>
                   False
               end). {
-    admit. (*
     intros a.
     replace (Sym.sget (SState SM SR pc@(Sym.PC F cid)
                               (SInternal Snext SiT SaJT SaST))
@@ -1890,16 +1894,17 @@ Proof.
     replace (Sym.sget (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS) a)
        with (Sym.sget (SState MS RS pcS siS) a)
          by reflexivity.
-    generalize def_sA => def_sA';
-      apply @Sym.retag_set_or_ok with (p := a) in def_sA'; try assumption.
-    generalize def_sJ => def_sJ';
-      apply @Sym.retag_set_or with (p := a) in def_sJ'; try assumption.
-    generalize def_sS => def_sS';
-      apply @Sym.retag_set_or with (p := a) in def_sS'; try assumption.
+    let cleanup X := try first [assumption | exact (enum_uniq (mem X))]
+    in generalize def_sA => def_sA';
+        apply @Sym.retag_set_or_ok with (p := a) in def_sA'; cleanup A';
+       generalize def_sJ => def_sJ';
+        apply @Sym.retag_set_or with (p := a) in def_sJ'; cleanup J';
+      generalize def_sS => def_sS';
+        apply @Sym.retag_set_or with (p := a) in def_sS'; cleanup S'.
     idtac;
-      destruct def_sA' as [OLD_A | [xA [cA [IA [WA [THEN_A [OK_A NOW_A]]]]]]];
-      destruct def_sJ' as [OLD_J | [xJ [cJ [IJ [WJ [THEN_J NOW_J]]]]]];
-      destruct def_sS' as [OLD_S | [xS [cS [IS [WS [THEN_S NOW_S]]]]]];
+      case: def_sA' => [OLD_A | [cA [IA [WA [THEN_A [OK_A NOW_A]]]]]];
+      case: def_sJ' => [OLD_J | [cJ [IJ [WJ [THEN_J NOW_J]]]]];
+      case: def_sS' => [OLD_S | [cS [IS [WS [THEN_S NOW_S]]]]];
       try move/eqP in OK_A; subst;
       first [move/id in OLD_A | move/id in THEN_A; move/id in NOW_A];
       first [move/id in OLD_J | move/id in THEN_J; move/id in NOW_J];
@@ -1907,27 +1912,25 @@ Proof.
     - rewrite OLD_A OLD_J OLD_S.
       rewrite /Sym.good_memory_tag in SGOOD_sS.
       specialize SGOOD_sS with a.
-      set G := Sym.sget _ a in SGOOD_sS *; destruct G as [[? []]|]; auto.
-    - rewrite OLD_A OLD_J THEN_S NOW_S.
-      by split; [|left].
-    - rewrite OLD_A THEN_J -OLD_S NOW_J.
-      by split; [|left].
+      move: SGOOD_sS.
+      by case: (Sym.sget _ a) => [[]|]; auto.
+    - by rewrite OLD_A OLD_J THEN_S NOW_S; left.
+    - by rewrite OLD_A THEN_J -OLD_S NOW_J; left.
     - rewrite OLD_A THEN_J NOW_S.
       rewrite THEN_S in NOW_J.
-      by inversion NOW_J; subst; split; [|left].
+      by inversion NOW_J; subst; left.
     - rewrite THEN_A -OLD_S -OLD_J NOW_A.
-      by split; [|right].
+      by right.
     - rewrite THEN_A NOW_S.
       rewrite NOW_A THEN_S in OLD_J.
-      by inversion OLD_J; subst; split; [|right].
+      by inversion OLD_J; subst; right.
     - rewrite THEN_A -OLD_S NOW_J.
       rewrite NOW_A in THEN_J.
-      by inversion THEN_J; subst; split; [|right].
+      by inversion THEN_J; subst; right.
     - rewrite THEN_A NOW_S.
       rewrite NOW_A in THEN_J.
       rewrite THEN_S in NOW_J.
-      by inversion THEN_J; inversion NOW_J; subst; split; [|right].
-*)
+      by inversion THEN_J; inversion NOW_J; subst; right.
   }
 
   have IN_pc' : pc' \in Aprev.
@@ -1991,62 +1994,44 @@ Proof.
     case SGET': (Sym.sget _ _) => [[|cpc' Ipc' Wpc'|]|] //= Hcpc'.
     have {Hcpc'} Hcpc': cpc' = cid by clear -Hcpc'; abstract tauto.
     rewrite Hcpc' {Hcpc' cpc'} in SGET'.
-    admit.
+    let cleanup X := try first [assumption | exact (enum_uniq (mem X))]
+    in generalize def_sA => def_sA';
+         apply @Sym.retag_set_or with (p := pc') in def_sA'; cleanup A';
+       generalize def_sJ => def_sJ';
+         apply @Sym.retag_set_or with (p := pc') in def_sJ'; cleanup J';
+       generalize def_sS => def_sS';
+         apply @Sym.retag_set_or with (p := pc') in def_sS'; cleanup S'.
+    idtac;
+      destruct def_sA' as [OLD_A | [cA [IA [WA [THEN_A NOW_A]]]]];
+      destruct def_sJ' as [OLD_J | [cJ [IJ [WJ [THEN_J NOW_J]]]]];
+      destruct def_sS' as [OLD_S | [cS [IS [WS [THEN_S NOW_S]]]]];
+      try move/eqP in OK_A; subst;
+      first [move/id in OLD_A | move/id in THEN_A; move/id in NOW_A];
+      first [move/id in OLD_J | move/id in THEN_J; move/id in NOW_J];
+      first [move/id in OLD_S | move/id in THEN_S; move/id in NOW_S];
+      move/id in def_xcIW;
+      try abstract congruence.
+    - rewrite (sget_next_irrelevant (Snext+1)%w)
+              OLD_A OLD_J OLD_S def_xcIW
+        in SGET'.
+      by case: SGET' => <- _.
+    - rewrite (sget_next_irrelevant (Snext+1)%w) OLD_A OLD_J THEN_S in SGET'.
+      rewrite NOW_S in def_xcIW.
+      case: SGET'; case: def_xcIW => *; subst.
+      by subst. (* Yeah, `subst` needs to happen again.  It's weird. *)
+    - rewrite (sget_next_irrelevant (Snext+1)%w) OLD_A THEN_J in SGET'.
+      rewrite -OLD_S NOW_J in def_xcIW.
+      case: SGET'; case: def_xcIW => *; subst.
+      rewrite inE in_set1 in NEXT.
+      by case/orP: NEXT => [/eqP?|].
+    - rewrite (sget_next_irrelevant (Snext+1)%w) OLD_A THEN_J in SGET'.
+      rewrite NOW_S in def_xcIW.
+      rewrite NOW_J in THEN_S.
+      case: SGET'; case: def_xcIW; case: THEN_S => *; subst.
+      subst. (* Again, for some reason `subst` needs to happen an extra time. *)
+      rewrite inE in_set1 in NEXT.
+      by case/orP: NEXT => [/eqP?|].
   }
-(*
-    rewrite /Sym.sget in def_xcIW.
-    rewrite {
-    apply set_elem_true in NEXT.
-    - move/id in RTAG_sys; specialize RTAG_sys with pc'.
-      replace (Sym.sget _ pc')
-         with (Sym.sget (SState SM SR pc@(Sym.PC F cid)
-                                (SInternal (Snext+1)%w SiT SaJT SaST))
-                        pc')
-           in RTAG_sys
-           by reflexivity.
-      generalize def_sA => def_sA';
-        apply @Sym.retag_set_or with (p := pc') in def_sA'; try assumption.
-      generalize def_sJ => def_sJ';
-        apply @Sym.retag_set_or with (p := pc') in def_sJ'; try assumption.
-      generalize def_sS => def_sS';
-        apply @Sym.retag_set_or with (p := pc') in def_sS'; try assumption.
-      idtac;
-        destruct def_sA' as [OLD_A | [xA [cA [IA [WA [THEN_A NOW_A]]]]]];
-        destruct def_sJ' as [OLD_J | [xJ [cJ [IJ [WJ [THEN_J NOW_J]]]]]];
-        destruct def_sS' as [OLD_S | [xS [cS [IS [WS [THEN_S NOW_S]]]]]];
-        try move/eqP in OK_A; subst;
-        first [move/id in OLD_A | move/id in THEN_A; move/id in NOW_A];
-        first [move/id in OLD_J | move/id in THEN_J; move/id in NOW_J];
-        first [move/id in OLD_S | move/id in THEN_S; move/id in NOW_S];
-        move/id in def_xcIW;
-        try abstract congruence.
-      + rewrite OLD_A OLD_J OLD_S def_xcIW in RTAG_sys.
-        repeat invh and; auto.
-      + rewrite OLD_A OLD_J THEN_S in RTAG_sys.
-        rewrite NOW_S in def_xcIW.
-        inversion def_xcIW; subst.
-        repeat invh and; auto.
-      + rewrite OLD_A THEN_J in RTAG_sys.
-        rewrite -OLD_S NOW_J in def_xcIW.
-        inversion def_xcIW; subst; clear def_xcIW.
-        apply insert_unique_spec in NEXT.
-        destruct NEXT as [? | NEXT]; subst.
-        * congruence.
-        * repeat invh and; auto.
-      + rewrite OLD_A THEN_J in RTAG_sys.
-        rewrite NOW_S in def_xcIW.
-        inversion def_xcIW; subst; clear def_xcIW.
-        rewrite NOW_J in THEN_S.
-        inversion THEN_S; subst; clear THEN_S.
-        apply insert_unique_spec in NEXT.
-        destruct NEXT as [? | NEXT]; subst.
-        * congruence.
-        * repeat invh and; auto.
-    - rewrite /Sym.good_memory_tag in SGOOD_sS; specialize SGOOD_sS with pc'.
-      rewrite def_xcIW in SGOOD_sS.
-      move: SGOOD_sS => /andP [] //.
-  }
-*)
 
   rewrite IN_Jsys.
 
