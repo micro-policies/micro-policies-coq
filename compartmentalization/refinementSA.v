@@ -2043,18 +2043,52 @@ Proof.
 
   constructor=> //=.
   - rewrite /=.
-
-(* END REFINEMENT *)
-
-  assert (RMEMS' : refine_memory AM MS). {
-    move/id in def_sA; move/id in def_sJ; move/id in def_sS;
+    suff -> : RS = SR by [].
+    have //= <- := (Sym.retag_set_preserves_regs _ _ _ _ _ def_sS).
+    by rewrite -(Sym.retag_set_preserves_regs _ _ _ _ _ def_sJ)
+               -(Sym.retag_set_preserves_regs _ _ _ _ _ def_sA).
+  - move/id in def_sA; move/id in def_sJ; move/id in def_sS;
       eapply retag_set_preserves_memory_refinement in def_sA; [|eassumption];
       eapply retag_set_preserves_memory_refinement in def_sJ; [|eassumption];
       eapply retag_set_preserves_memory_refinement in def_sS; [|eassumption];
       simpl in *.
     assumption.
-  }
+  - move=> p' Hp'.
+    move: (COMPSWD p').
+    rewrite (Sym.retag_set_preserves_definedness _ _ _ _ _ def_sA p')
+            (Sym.retag_set_preserves_definedness _ _ _ _ _ def_sJ)
+            (Sym.retag_set_preserves_definedness _ _ _ _ _ def_sS) => /(_ Hp') {Hp'}.
+    case Hp': (Abs.in_compartment_opt AC p') => [cp'|] // _.
+    case/Abs.in_compartment_opt_correct/andP: Hp'.
+    have [{cp'} ->|NE] := altP (cp' =P <<Aprev,Jprev,Sprev>>) => cp'_in_AC p'_in_cp'.
+    { rewrite /= in_setD p'_in_cp' andbT.
+      by case: (p' \in A'). }
+    apply (Abs.in_compartment_opt_is_some _ _ cp').
+    by rewrite /Abs.in_compartment !in_cons in_rem_all NE cp'_in_AC !orbT /=.
+  - admit.
+  - move=> c1 c2. admit.
+    (*rewrite !in_cons !in_rem_all /=
+            => /or3P [/eqP -> {c1}|/eqP -> {c1}|/andP [not_pred1 c1_in_AC]]
+               /or3P [/eqP -> {c2}|/eqP -> {c2}|/andP [not_pred2 c2_in_AC]] //=.*)
+  - move=> c' cid'. admit.
+    (*rewrite !in_cons => /or3P [/eqP {c'} ->|/eqP {c'} ->|] /=.*)
+  - move=> c' cid'. admit.
+  - rewrite /refine_previous_b /=. admit.
+  - rewrite /refine_syscall_addrs_b.
+    case/and3P: RSC => ? /eqP [/eqP H1 /eqP H2 /eqP H3] ?.
+    apply/and3P.
+    split=> //.
+    have H o : (o == None) = ~~ o by case: o.
+    rewrite eqE /=.
+    rewrite !H in H1 H2 H3 *.
+    by rewrite -!(Sym.retag_set_preserves_get_definedness _ _ _ _ _ def_sS)
+               -!(Sym.retag_set_preserves_get_definedness _ _ _ _ _ def_sJ)
+               -!(Sym.retag_set_preserves_get_definedness _ _ _ _ _ def_sA) H1 H2 H3 /=.
+  - admit.
 
+(* END REFINEMENT *)
+
+(*
   generalize RSC => /andP [/andP [/andP [/andP [/andP [/andP [/andP [/andP [
                     ANGET_i ANGET_aJ] ANGET_aS]
                     SNGET_i] SNGET_aJ] SNGET_aS]
@@ -2468,6 +2502,7 @@ Proof.
              rewrite GET' in RMEMS' *
       end.
   - apply SGINT_sS.
+*)
 Qed.
 
 Theorem backward_simulation : forall ast sst sst',

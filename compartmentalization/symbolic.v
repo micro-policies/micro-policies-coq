@@ -680,7 +680,7 @@ Qed.
 
 Lemma retag_set_preserves_definedness : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
-  forall p, is_some (sget s p) <-> is_some (sget s' p).
+  forall p, isSome (sget s p) = isSome (sget s' p).
 Proof.
   clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
     intros s s' RETAG p'.
@@ -690,20 +690,20 @@ Proof.
        destruct (retag c I W) as [|c' I' W'|]; try discriminate;
        undo1 RETAG s''.
     apply IHps with (p := p') in RETAG.
-    assert (EQUIV : is_some (sget s'' p') <-> is_some (sget s p')). {
+    assert (EQUIV : isSome (sget s'' p') = isSome (sget s p')). {
       destruct (p == p') eqn:EQ; move/eqP in EQ; [subst p'|].
       - eapply sget_supd_eq in def_s''; eauto.
         by rewrite def_s'' def_xcIW.
       - apply sget_supd_neq with (p' := p') in def_s''; auto.
         by rewrite def_s''.
     }
-    tauto.
+    congruence.
 Qed.
 
 Lemma retag_set_preserves_get_definedness : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
-  forall p, is_some (get (Symbolic.mem s) p) <->
-            is_some (get (Symbolic.mem s') p).
+  forall p, isSome (get (Symbolic.mem s) p) =
+            isSome (get (Symbolic.mem s') p).
 Proof.
   clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
     intros s s'' RETAG p'.
@@ -713,8 +713,8 @@ Proof.
        destruct (retag c I W) as [|c' I' W'|]; try discriminate;
        undo1 RETAG s'.
     apply IHps with (p := p') in RETAG.
-    assert (EQUIV : is_some (get (Symbolic.mem s)  p') <->
-                    is_some (get (Symbolic.mem s') p')). {
+    assert (EQUIV : isSome (get (Symbolic.mem s)  p') =
+                    isSome (get (Symbolic.mem s') p')). {
       destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
                s' as [mem' reg' pc' [next' iT' aJT' aST']];
         simpl in *.
@@ -729,7 +729,21 @@ Proof.
       - eapply get_supd_neq in def_s'; eauto; simpl in *.
         by rewrite def_s'.
     }
-    tauto.
+    by rewrite -RETAG.
+Qed.
+
+Lemma retag_set_preserves_registers ok retag ps s s' :
+  retag_set ok retag ps s ?= s' ->
+  Symbolic.regs s' = Symbolic.regs s.
+Proof.
+  clear I.
+  elim: ps s => [|p ps IH] s //=; first by congruence.
+  case: (sget s p) => [[|? ? ?|]|] //=.
+  case: (ok _ _ _) => //.
+  case: (retag _ _ _) => [|? ? ?|] //=.
+  case SUPD: (supd _ _ _) => [s''|] //=.
+  rewrite (supd_preserves_regs _ _ _ _ SUPD).
+  exact: IH.
 Qed.
 
 Lemma retag_set_forall : forall ok retag ps s s',
@@ -858,7 +872,7 @@ Proof.
 Qed.
 
 (*Lemma sget_eq__get_eq : forall s s' p,
-  (is_some (get (Symbolic.mem s) p) <-> is_some (get (Symbolic.mem s') p)) ->
+  (isSome (get (Symbolic.mem s) p) <-> isSome (get (Symbolic.mem s') p)) ->
   sget s p = sget s' p ->
   get (Symbolic.mem s) p = get (Symbolic.mem s') p.
 Proof.
@@ -1009,12 +1023,12 @@ Lemma good_internal_equiv : forall s s',
        | _                 , _                  => False
      end) ->
   next_id (Symbolic.internal s) = next_id (Symbolic.internal s') ->
-  ~~ is_some (get (Symbolic.mem s) isolate_addr) ->
-  ~~ is_some (get (Symbolic.mem s) add_to_jump_targets_addr) ->
-  ~~ is_some (get (Symbolic.mem s) add_to_store_targets_addr) ->
-  ~~ is_some (get (Symbolic.mem s') isolate_addr) ->
-  ~~ is_some (get (Symbolic.mem s') add_to_jump_targets_addr) ->
-  ~~ is_some (get (Symbolic.mem s') add_to_store_targets_addr) ->
+  ~~ isSome (get (Symbolic.mem s) isolate_addr) ->
+  ~~ isSome (get (Symbolic.mem s) add_to_jump_targets_addr) ->
+  ~~ isSome (get (Symbolic.mem s) add_to_store_targets_addr) ->
+  ~~ isSome (get (Symbolic.mem s') isolate_addr) ->
+  ~~ isSome (get (Symbolic.mem s') add_to_jump_targets_addr) ->
+  ~~ isSome (get (Symbolic.mem s') add_to_store_targets_addr) ->
   isolate_addr != add_to_jump_targets_addr ->
   isolate_addr != add_to_store_targets_addr ->
   add_to_jump_targets_addr != add_to_store_targets_addr ->
@@ -1112,9 +1126,9 @@ Qed.
 Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
   cnew <> max_word t ->
   next_id (Symbolic.internal s) = (cnew+1)%w ->
-  ~~ is_some (get (Symbolic.mem s) isolate_addr) ->
-  ~~ is_some (get (Symbolic.mem s) add_to_jump_targets_addr) ->
-  ~~ is_some (get (Symbolic.mem s) add_to_store_targets_addr) ->
+  ~~ isSome (get (Symbolic.mem s) isolate_addr) ->
+  ~~ isSome (get (Symbolic.mem s) add_to_jump_targets_addr) ->
+  ~~ isSome (get (Symbolic.mem s) add_to_store_targets_addr) ->
   isolate_addr != add_to_jump_targets_addr ->
   isolate_addr != add_to_store_targets_addr ->
   add_to_jump_targets_addr != add_to_store_targets_addr ->
@@ -1141,8 +1155,8 @@ Proof.
                   NODUP GMEM
                   RETAG_SET.
 
-  assert (GETS : forall p, is_some (get (Symbolic.mem s) p) <->
-                           is_some (get (Symbolic.mem s') p))
+  assert (GETS : forall p, isSome (get (Symbolic.mem s) p) =
+                           isSome (get (Symbolic.mem s') p)).
     by (eapply retag_set_preserves_get_definedness; eassumption).
 
   assert (INONE : get (Symbolic.mem s) isolate_addr = None)
@@ -1152,22 +1166,22 @@ Proof.
   assert (ASNONE : get (Symbolic.mem s) add_to_store_targets_addr = None)
     by by destruct (get (Symbolic.mem s) add_to_store_targets_addr) eqn:H.
 
-  assert (NOT_SOME_i' : ~~ is_some (get (Symbolic.mem s') isolate_addr)). {
-    apply/negP; move=> SOME; apply GETS in SOME.
+  assert (NOT_SOME_i' : ~~ isSome (get (Symbolic.mem s') isolate_addr)). {
+    apply/negP; move=> SOME; rewrite -GETS in SOME.
     simpl in SOME; move/negP in NOT_SOME_i.
     contradiction.
   }
 
-  assert (NOT_SOME_aJ' : ~~ is_some (get (Symbolic.mem s')
+  assert (NOT_SOME_aJ' : ~~ isSome (get (Symbolic.mem s')
                                          add_to_jump_targets_addr)). {
-    apply/negP; move=> SOME; apply GETS in SOME.
+    apply/negP; move=> SOME; rewrite -GETS in SOME.
     simpl in SOME; move/negP in NOT_SOME_aJ.
     contradiction.
   }
 
-  assert (NOT_SOME_aS' : ~~ is_some (get (Symbolic.mem s')
+  assert (NOT_SOME_aS' : ~~ isSome (get (Symbolic.mem s')
                                          add_to_store_targets_addr)). {
-    apply/negP; move=> SOME; apply GETS in SOME.
+    apply/negP; move=> SOME; rewrite -GETS in SOME.
     simpl in SOME; move/negP in NOT_SOME_aS.
     contradiction.
   }
@@ -1253,8 +1267,7 @@ Proof.
 
   apply retag_set_or with (p := p) in RETAG_SET; auto.
   destruct (get mem p) as [[y Ly]|] eqn:GET;
-    [|by specialize GETS with p; rewrite GET GET' /= in GETS;
-         destruct GETS as [_ NO]; specialize (NO erefl)].
+    [|by specialize GETS with p; rewrite GET GET' /= in GETS].
   move: RETAG_SET => [OLD | [c' [I' [W' [THEN NOW]]]]].
   - rewrite /sget GET' GET in OLD.
     inversion OLD; subst.
