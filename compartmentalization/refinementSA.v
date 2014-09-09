@@ -1112,32 +1112,69 @@ Lemma get_compartment_id_irrelevancies r' pc' m int r pc :
   get_compartment_id (SState m r' pc' int).
 Proof. by []. Qed.
 
+Lemma get_compartment_id_in_compartment_eq (C : seq (Abs.compartment t)) sst c p :
+  (forall p, Sym.good_memory_tag sst p) ->
+  well_defined_compartments sst C ->
+  well_defined_ids sst C ->
+  unique_ids sst C ->
+  c \in C ->
+  (get_compartment_id sst c == (Sym.stag_compartment =<< Sym.sget sst p)) =
+  (p \in Abs.address_space c).
+Proof.
+  move=> /(_ p) GOODp /(_ p) WDC WDID UNIQUE IN.
+  move: (WDID c IN).
+  case ID: (get_compartment_id sst c) => [cid|] // _.
+  rewrite /Sym.good_memory_tag in GOODp.
+  apply/(sameP idP)/(iffP idP).
+
+  - move: ID.
+    rewrite /get_compartment_id.
+    case: pickP => // cid' /eqP Hcid' [E]. subst cid'.
+    move/(mem_imset (Sym.stag_compartment <=< Sym.sget sst)) => /=.
+    rewrite Hcid' in_set1.
+    case GET: (Sym.sget sst p) GOODp {WDC} => [[|? Ia Sa|]|] //= _.
+    by rewrite eq_sym.
+
+  - case GET: (Sym.sget sst p) GOODp WDC => [[|? Ia Sa|]|] //= _ /(_ erefl).
+    case E: (Abs.in_compartment_opt C p) => [c'|] // _ /eqP [E'].
+    rewrite -E' in GET => {E'}.
+    case/Abs.in_compartment_opt_correct/andP: E => IN' INp.
+    suff {UNIQUE} ID' : get_compartment_id sst c' = Some cid.
+    { rewrite -ID' in ID.
+      by rewrite (UNIQUE _ _ IN IN' ID). }
+    move: (WDID c' IN').
+    rewrite /get_compartment_id.
+    case: pickP => // cid' /eqP Hcid' _.
+    move/(mem_imset (Sym.stag_compartment <=< Sym.sget sst)): INp.
+    rewrite Hcid' in_set1 /= GET /=.
+    by move/eqP=> ->.
+Qed.
+
 Lemma get_compartment_id_in_compartment (C : seq (Abs.compartment t)) sst c p :
   (forall p, Sym.good_memory_tag sst p) ->
   well_defined_compartments sst C ->
   well_defined_ids sst C ->
   unique_ids sst C ->
   c \in C ->
-  get_compartment_id sst c = (Sym.stag_compartment =<< Sym.sget sst p) ->
-  p \in Abs.address_space c.
+  (get_compartment_id sst c = (Sym.stag_compartment =<< Sym.sget sst p)) ->
+  (p \in Abs.address_space c).
 Proof.
-  move=> /(_ p) GOODp /(_ p) WDC WDID UNIQUE IN.
-  move: (WDID c IN).
-  case ID: (get_compartment_id sst c) => [cid|] // _.
-  rewrite /Sym.good_memory_tag in GOODp.
-  case GET: (Sym.sget sst p) GOODp WDC => [[|? Ia Sa|]|] //= _ /(_ erefl).
-  case E: (Abs.in_compartment_opt C p) => [c'|] // _ [E'].
-  rewrite -E' in GET => {E'}.
-  case/Abs.in_compartment_opt_correct/andP: E => IN' INp.
-  suff {UNIQUE} ID' : get_compartment_id sst c' = Some cid.
-  { rewrite -ID' in ID.
-    by rewrite (UNIQUE _ _ IN IN' ID). }
-  move: (WDID c' IN').
-  rewrite /get_compartment_id.
-  case: pickP => // cid' /eqP Hcid' _.
-  move/(mem_imset (Sym.stag_compartment <=< Sym.sget sst)): INp.
-  rewrite Hcid' in_set1 /= GET /=.
-  by move/eqP=> ->.
+  move=> GOOD WDC WDID UNIQUE IN H.
+  by rewrite -(get_compartment_id_in_compartment_eq _ GOOD WDC WDID UNIQUE IN) H.
+Qed.
+
+Lemma in_compartment_get_compartment_id (C : seq (Abs.compartment t)) sst c p :
+  (forall p, Sym.good_memory_tag sst p) ->
+  well_defined_compartments sst C ->
+  well_defined_ids sst C ->
+  unique_ids sst C ->
+  c \in C ->
+  (p \in Abs.address_space c) ->
+  get_compartment_id sst c = (Sym.stag_compartment =<< Sym.sget sst p).
+Proof.
+  move=> GOOD WDC WDID UNIQUE IN H.
+  apply/eqP.
+  by rewrite (get_compartment_id_in_compartment_eq _ GOOD WDC WDID UNIQUE IN) H.
 Qed.
 
 Theorem add_to_jump_targets_refined : forall ast sst sst',
@@ -1183,22 +1220,29 @@ Proof.
   case IN_c: (Abs.in_compartment_opt AC pc) => [c_sys|] _ //.
   move/Abs.in_compartment_opt_correct in IN_c.
 
-  have -> /=: Abs.permitted_now_in AC Ask Aprev pc ?= c_sys.
-    admit. (*eapply prove_permitted_now_in; eassumption.*)
+  undo1 def_cid_sys COND; unoption.
+
+  move: RPREV => /andP [/eqP ? /eqP RPREV]; subst.
+  have -> /=: Abs.permitted_now_in AC F Aprev pc ?= c_sys.
+  { rewrite /Abs.permitted_now_in
+            (Abs.in_compartment_opt_sound _ _ _ ANOL IN_c) /=.
+    rewrite eq_sym (negbTE NEQ_cid_sys) /= in COND.
+    case/andP: COND => /eqP -> Hin.
+    by rewrite eqxx /= (JTWF _ _ AIN RPREV) in_set def_LI /= Hin orbT. }
 
   have R_c_sys: get_compartment_id
                       (SState SM SR pc@(Sym.PC F cid')
                               (SInternal Snext SiT SaJT SaST))
                       c_sys
                     = Some cid_sys.
-    admit.
+  { case/andP: IN_c => IN1 IN2.
+    by rewrite (in_compartment_get_compartment_id SGMEM COMPSWD IDSWD IDSU IN1 IN2) def_LI. }
 
   rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p' [I' [W' def_cid']]].
-  move: RPREV => /andP [/eqP? RPREV]; subst.
+
   assert (SYS_SEP : Aprev != c_sys). {
     apply/eqP; intro; subst.
-    move/eqP in RPREV;
-      replace cid_sys with cid' in * by congruence.
+    replace cid_sys with cid' in * by congruence.
     rewrite eq_refl in NEQ_cid_sys; discriminate.
   }
   rewrite SYS_SEP; simpl.
@@ -1210,39 +1254,13 @@ Proof.
     move/eqP in RREGS'; subst; simpl.
 
   destruct Aprev as [Aprev Jprev Sprev]; simpl.
-  (*have IC_p' : AC ⊢ p' ∈ <<Aprev,Jprev,Sprev>>. {*)
-    (* This lemma's proof cribbed from a lemma in `prove_permitted_now_in'. *)
-    (*
-    move/eqP: RPREV.
-    rewrite /refined_compartment.
-    case: pickP => // sc /andP [/eqP ? /forallP ?] [E]. subst sc.
-    ; explode_refined_compartment' RPREV.
-    move/id in def_sxs; move/id in MAP_sxs;
-      move/id in SAME_cid; move/id in NE_cids.
-    destruct cids as [|temp_cid cids];
-      [discriminate | clear NE_cids; simpl in *].
-    move: (SAME_cid temp_cid (or_introl Logic.eq_refl)) => ?; subst.
-    move: (MAP_sxs cid') => [MAP_sxs' _];
-      specialize (MAP_sxs' (or_introl Logic.eq_refl)).
-    move: MAP_sxs' => [[v Lv] [TAG IN_sxs]]; simpl in *.
-    apply def_sxs in IN_sxs.
-    destruct IN_sxs as [p'' [GET_p'' IN_p'']].
-    move: (RCTAGS p'') => RTAG''; rewrite GET_p'' in RTAG''.
-    destruct Lv as [|cid''' I''' W'''|]; try done.
-    simpl in TAG; inversion TAG; subst.
-    move: RTAG'' => [_ [_ [c''' [IC''' RTAG''']]]].
-    specialize RTAG''' with p'; rewrite def_cid' in RTAG''';
-      move: RTAG''' => [[SAME _] _].
-    specialize (SAME Logic.eq_refl).
-    assert (IC_p''_prev : AC ⊢ p'' ∈ <<Aprev,Jprev,Sprev>>) by
-      by apply Abs.in_compartment_spec.
-    replace c''' with <<Aprev,Jprev,Sprev>> in * by eauto 3.
-    assumption. *)
 
-  have IC_p': p' \in Aprev by admit.
+  have IC_p': p' \in Aprev.
+  { apply/(get_compartment_id_in_compartment SGMEM COMPSWD IDSWD IDSU AIN).
+    by rewrite def_cid'. }
 
   have ->: p \in Aprev :|: Jprev. {
-    rewrite in_setU. apply/orP. move/eqP in RPREV.
+    rewrite in_setU. apply/orP.
     case/orP: OK => [/eqP E|OK].
     - subst cid''. left.
       apply/(get_compartment_id_in_compartment SGMEM COMPSWD IDSWD IDSU AIN).
@@ -1259,21 +1277,17 @@ Proof.
     move/eqP in RREGS'; subst; simpl.
 
   have IN_pc' : pc' \in Aprev.
-  { undo1 def_cid_sys COND; unoption.
-    apply/(get_compartment_id_in_compartment SGMEM COMPSWD IDSWD IDSU AIN).
+  { apply/(get_compartment_id_in_compartment SGMEM COMPSWD IDSWD IDSU AIN).
     have [E|NE] := (pc' =P p).
     - subst pc'.
       rewrite (Sym.sget_supd_eq _ _ _ _ def_s') in def_xcIW0.
       rewrite def_xcIW /=.
-      move/eqP: RPREV => ->.
       congruence.
-    - rewrite -(Sym.sget_supd_neq _ _ _ _ _ NE def_s') def_xcIW0 /=.
-      by apply/eqP. }
+    - by rewrite -(Sym.sget_supd_neq _ _ _ _ _ NE def_s') def_xcIW0 /=. }
 
   rewrite -(lock _) /= IN_pc' /= eq_refl.
 
   have IN_Jsys : pc' \in Abs.jump_targets c_sys. {
-    undo1 def_cid_sys COND; unoption.
     rewrite eq_sym (negbTE NEQ_cid_sys) /= in COND.
     case/andP: IN_c => IC_c _.
     rewrite (JTWF _ _ IC_c R_c_sys) in_set.
@@ -1328,7 +1342,6 @@ Proof.
               (Sym.sget_supd _ _ _ _ def_s');
       have [{p''} ->|NE] //= := (p'' =P p) => _.
       suff ->: cid''' = cid' by rewrite in_setU1 eqxx.
-      move: RPREV => /eqP RPREV.
       rewrite /get_compartment_id /= in RPREV Hcid'''.
       rewrite RPREV in Hcid'''.
       congruence.
@@ -1349,7 +1362,6 @@ Proof.
         subst cid''.
         suff ? : c''' = <<Aprev,Jprev,Sprev>>
           by subst c'''; rewrite /= eqxx in not_prev.
-        move: RPREV => /eqP RPREV.
         rewrite -RPREV in Hcid'''.
         exact: IDSU _ _ Hc''' AIN Hcid'''.
   - move=> c''' cid'''.
