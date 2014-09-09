@@ -48,3 +48,10 @@ Proof.
   rewrite eq_sym eq_op_is_equiv_dec.
   by case: (SetoidDec.equiv_dec _ _) => /=; rewrite IH.
 Qed.
+
+(* This corollary's proof is so trivial, you'd think we could always use
+   `rewrite mem_filter /=` instead.  That's true, but I'd rather have an actual
+   lemma so that we're not dependent on implementation details. *)
+Corollary in_rem_all (T : eqType) (a b : T) (xs : seq T) :
+  a \in rem_all b xs = (a != b) && (a \in xs).
+Proof. by rewrite mem_filter. Qed.

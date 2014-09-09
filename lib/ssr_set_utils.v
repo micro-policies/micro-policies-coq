@@ -36,3 +36,14 @@ Proof.
     + by left.
     + by right; apply IH.
 Qed.
+
+Theorem subsetDU (T : finType) (A B : {set T}) :
+  B \subset A -> A = A :\: B :|: B.
+Proof. by move=> /setIidPr SUBSET; rewrite -{1}(setID A B) SUBSET setUC. Qed.
+
+Theorem forall_subset (T : finType) (A B : {set T}) (P : T -> bool) :
+  A \subset B -> [forall x in B, P x] -> [forall x in A, P x].
+Proof.
+  by move=> SUB ALL; apply/forall_inP => x IN;
+     apply (elimT forall_inP ALL); apply (elimT subsetP SUB).
+Qed.

@@ -977,186 +977,109 @@ Proof.
     intro; subst c_sys.
     by rewrite SAS in NOT_SYSCALL_c.
   }
-  unfold non_overlapping; repeat rewrite all_tail_pairs_tail; simpl in *.
+  rewrite /non_overlapping !all_tail_pairs_tail /=.
   andb_true_split; auto;
     try (eapply forallb_impl; [|apply C'_DISJOINT]; cbv beta;
          simpl; intros c''; rewrite andb_true_iff; intros []; intros GOOD'';
          apply disjoint_subset; auto; simpl).
   - (* c_sys \in [:: c_upd, c' & delete c C] *)
-    assert (In c_sys (c_upd :: c' :: delete c C)). {
-      do 2 right. apply delete_in_iff; split; auto.
-      assert (GC : good_compartments C) by
-        (eapply good_state_decomposed__good_compartments; eassumption).
-      by move: def_c_sys => /permitted_now_in_spec => /(_ GC) [] /andP [] /inP.
-    }
-    by apply/inP; rewrite rem_all_is_delete.
+    apply/inP; rewrite rem_all_is_delete.
+    do 2 right; apply delete_in_iff; split; auto.
+    assert (GC : good_compartments C) by
+      (eapply good_state_decomposed__good_compartments; eassumption).
+    by move: def_c_sys => /permitted_now_in_spec => /(_ GC) [] /andP [] /inP.
   - (* non_overlapping c_upd c' *)
     rewrite /disjoint_comp; subst c c_upd c'; simpl in *.
     rewrite -setI_eq0 setIDAC setDIl setDv setI0 eq_refl andbT.
     by rewrite NONEMPTY_A_A'.
-  (*- subst c; intro s e; rewrite set_difference_spec; tauto.
-  - subst c; eapply subset_spec; eassumption.
-  - admit. (* One of these three *)
+  - eapply forallb_impl; last (rewrite rem_all_is_delete; exact C'_DISJOINT).
+    subst c c_upd => d.
+    rewrite /disjoint_comp /= NONEMPTY_A NONEMPTY_A_A' /= -!setI_eq0 setIDAC
+            => /eqP->.
+    by rewrite set0D eq_refl.
+  - eapply forallb_impl; last (rewrite rem_all_is_delete; exact C'_DISJOINT).
+    subst c c' => d.
+    rewrite /disjoint_comp /= NONEMPTY_A NONEMPTY_A' /= -!setI_eq0
+           => /eqP DJ.
+    apply setSI with (C := address_space d) in SUBSET_A'.
+    rewrite DJ subset0 in SUBSET_A'.
+    move: SUBSET_A' => /eqP->.
+    by rewrite eq_refl.
+  - by rewrite rem_all_is_delete; apply delete_preserves_all_tail_pairs.
   - unfold contained_compartments; subst c_upd c'; simpl.
-    assert (A_separated : forall a, In a A <->
-                                    In a (set_difference A A') \/ In a A'). {
-      intros; specialize (elem a A'); intros;
-        rewrite ->set_difference_spec by (subst c; eauto 2);
-        rewrite ->subset_spec in SUBSET_A'.
-      split; [|destruct 1]; solve [auto | tauto].
+    assert (As_same :
+              (A :\: A' :|: A' :|: \bigcup_(d <- rem_all c C) address_space d) =
+              \bigcup_(d <- C) address_space d). {
+      rewrite -subsetDU // (big_rem c (r := C)) def_AJS /=.
+      - do 2 f_equal.
+        by rewrite rem_filter //; eauto 3.
+      - by apply/inP; subst c.
     }
-    assert (As_same : forall a,
-              In a (set_difference A A' ++ A' ++
-                    concat (List.map address_space (delete c C))) <->
-              In a (concat (List.map address_space C))). {
-      intros.
-      repeat rewrite in_app_iff.
-      rewrite <- or_assoc, <- A_separated.
-      repeat rewrite concat_in; split.
-      - destruct 1 as [IN_a_A | [A'' [IN_A'' IN_a_A'']]].
-        + exists A; split; auto. apply in_map_iff; exists c; subst c; auto.
-        + exists A''. split; auto.
-          apply in_map_iff in IN_A''; destruct IN_A'' as [c'' [EQ_A'' IN_c'']].
-          apply in_map_iff; exists c''; apply delete_in_iff in IN_c''; tauto.
-      - destruct 1 as [A'' [IN_A'' IN_a_A'']].
-        destruct (elem a A) as [IN_a_A | NOT_IN_a_A];
-          [tauto|right].
-        exists A''; split; auto.
-        apply in_map_iff in IN_A''; destruct IN_A'' as [c'' [EQ_A'' IN_c'']].
-        apply in_map_iff; exists c''; split; auto.
-        apply delete_in_iff; split; auto.
-        subst c; destruct c'' as [A''' J'' S'']; simpl in *; subst A''';
-          intros EQ; inversion EQ; subst; congruence.
-    }
-    rewrite subset_spec; intros a.
-    rewrite As_same.
-    repeat rewrite <- app_assoc; repeat rewrite in_app_iff.
-    rewrite ->subset_spec in SUBSET_A',SUBSET_J',SUBSET_S';
-      specialize SUBSET_A' with a;
-      specialize SUBSET_J' with a;
-      specialize SUBSET_S' with a;
-      rewrite ->set_union_spec in SUBSET_J', SUBSET_S'.
-    intros [IN_a_J | [IN_a_J' | [IN_a_JTs |
-           [IN_a_S | [IN_a_S' |  IN_a_SMs]]]]].
-    (* There are essentially three proofs here: (1) In a J/S; (2) In a J'/S'
-       (which calls out to (1)); and (3) In a (concat (map
-       jump_targets/store_targets (delete c C)).  I could not figure out how to
-       Ltac them together nicely, however, so here you have it. *)
-    + (* Proof (1) *)
-      move CC after IN_a_J.
-      rewrite ->contained_compartments_spec in CC;
-        specialize (CC c a IN);
-        subst c; simpl in *;
-        specialize (CC (or_introl IN_a_J));
-        destruct CC as [c'' [IN_c'' IN_a_c'']].
-      apply concat_in; exists (address_space c'').
-      split; auto. apply in_map_iff; eauto.
-    + (* Proof (2) *)
-      destruct (SUBSET_J' IN_a_J') as [IN_A | IN_J].
-      * apply concat_in; exists A; split; auto.
-        apply in_map_iff; exists c; subst c; simpl; tauto.
-      * (* Proof (1) *)
-        rewrite ->contained_compartments_spec in CC;
-          specialize (CC c a IN);
-          subst c; simpl in *;
-          specialize (CC (or_introl IN_J));
-          destruct CC as [c'' [IN_c'' IN_a_c'']].
-        apply concat_in; exists (address_space c'').
-        split; auto. apply in_map_iff; eauto.
-    + (* Proof (3) *)
-      apply concat_in in IN_a_JTs; destruct IN_a_JTs as [J'' [IN_J'' IN_a_J'']].
-      apply in_map_iff in IN_J''; destruct IN_J'' as [c'' [EQ_J'' IN_c'']].
-      apply delete_in_iff in IN_c''; destruct IN_c'' as [NEQ_c'' IN_c''].
-      move CC after IN_a_J''.
-      rewrite ->contained_compartments_spec in CC.
-        specialize (CC c'' a IN_c'');
-        rewrite EQ_J'' in CC;
-        specialize (CC (or_introl IN_a_J''));
-        destruct CC as [c''' [IN_c''' IN_a_c''']].
-      apply concat_in; exists (address_space c'''); split; auto.
-      apply in_map_iff; eauto.
-    + (* Proof (1) *)
-      rewrite ->contained_compartments_spec in CC;
-        specialize (CC c a IN);
-        subst c; simpl in *;
-        specialize (CC (or_intror IN_a_S));
-        destruct CC as [c'' [IN_c'' IN_a_c'']].
-      apply concat_in; exists (address_space c'').
-      split; auto. apply in_map_iff; eauto.
-    + (* Proof (2) *)
-      destruct (SUBSET_S' IN_a_S') as [IN_A | IN_S].
-      * apply concat_in; exists A; split; auto.
-        apply in_map_iff; exists c; subst c; simpl; tauto.
-      * (* Proof (1) *)
-        rewrite ->contained_compartments_spec in CC;
-          specialize (CC c a IN);
-          subst c; simpl in *;
-          specialize (CC (or_intror IN_S));
-          destruct CC as [c'' [IN_c'' IN_a_c'']].
-        apply concat_in; exists (address_space c'').
-        split; auto. apply in_map_iff; eauto.
-    + (* Proof (3) *)
-      apply concat_in in IN_a_SMs; destruct IN_a_SMs as [S'' [IN_S'' IN_a_S'']].
-      apply in_map_iff in IN_S''; destruct IN_S'' as [c'' [EQ_S'' IN_c'']].
-      apply delete_in_iff in IN_c''; destruct IN_c'' as [NEQ_c'' IN_c''].
-      move CC after IN_a_S''.
-      rewrite ->contained_compartments_spec in CC.
-        specialize (CC c'' a IN_c'');
-        rewrite EQ_S'' in CC;
-        specialize (CC (or_intror IN_a_S''));
-        destruct CC as [c''' [IN_c''' IN_a_c''']].
-      apply concat_in; exists (address_space c'''); split; auto.
-      apply in_map_iff; eauto.
+    apply/subsetP => a /=.
+    rewrite !big_cons /= !setUA As_same !inE.
+    let fix_sub SS := move/subsetP/(_ a) in SS; rewrite ?inE in SS
+    in fix_sub SUBSET_A'; fix_sub SUBSET_J'; fix_sub SUBSET_S'.
+    move/inP in IN; move/contained_compartments_spec in CC;
+      move: (CC) => /(_ c a IN) CC_c; subst c; simpl in *.
+    (* a \in J/S *)
+    let solve_in_orig  := apply/CC_c; by [left | right] in
+    (* a \in J'/S' *)
+    let solve_in_prime := idtac; match goal with
+                            | SS  : is_true (a \in pred_of_set ?JS) -> _
+                            , IN' : is_true (a \in pred_of_set ?JS) |- _ =>
+                                move: (SS IN') => /orP [] *;
+                                [exists <<A,J,S>> | solve_in_orig]
+                          end in
+    (* a \in \bigcup_(d <- rem_all c C) jump_targets/store_targets d *)
+    let solve_in_rest  := idtac; match goal with
+                           | INs : is_true
+                                     (a \in pred_of_set
+                                            (\bigcup_(_ <- _) _ _)) |- _ =>
+                               move: INs
+                                     => /bigcup_seqP [c'' [IN_c'' IN_a'']];
+                               rewrite in_rem_all in IN_c'';
+                               move: IN_c'' => /andP [/eqP NEQ_c'' IN_c''];
+                               apply/(CC c'' a IN_c''); by [left | right]
+                         end
+    in by rewrite -!orbA; move=> /or4P [         IN_a_J | IN_a_J' | IN_a_JTs
+                                       | /or3P [ IN_a_S | IN_a_S' | IN_a_STs ]];
+          apply/bigcup_seqP;
+          by [solve_in_orig | solve_in_prime | solve_in_rest].
   - (* user_address_space M c_upd || syscall_address_space M c_upd *)
     subst c c_upd; simpl in *.
     apply/orP; left.
-    eapply forallb_subset; [|apply USER_c].
-    intros a IN_diff.
-    apply set_difference_spec in IN_diff; tauto.
+    by eapply forall_subset; [rewrite subsetDl | exact USER_c].
   - (* user_address_space M c' || syscall_address_space M c' *)
     subst c c_upd; simpl in *.
     apply/orP; left.
-    eapply forallb_subset; [|apply USER_c].
-    intros a IN_A'.
-    eapply subset_spec in SUBSET_A'; eassumption.
+    by eapply forall_subset; [|exact USER_c].
   - (* syscalls_separated (delete c C) *)
-    assert (SS : syscalls_separated M C = true) by eauto; simpl in *.
-    eauto using delete_preserves_forallb.
+    
+    assert (SS : syscalls_separated M C = true) by
+      (eapply good_state_decomposed__syscalls_separated; eassumption).
+    replace @all with @forallb by reflexivity; rewrite rem_all_is_delete.
+    auto using delete_preserves_forallb.
   - (* syscalls_present *)
-    assert (SP : syscalls_present C) by eauto.
+    assert (SP : syscalls_present C) by
+      (eapply good_state_decomposed__syscalls_present; eassumption).
     rewrite /syscalls_present /table /is_true in SP *.
     rewrite ->forallb_forall in SP; rewrite ->forallb_forall.
     intros sc IN_sc; specialize (SP sc IN_sc); cbv [compose] in *.
     destruct sc as [sc sc_fn]; cbv [address] in *; clear IN_sc sc_fn.
     destruct (in_compartment_opt C sc) as [c_sc|] eqn:ICO;
       [clear SP | discriminate].
-    generalize ICO => ICO'.
-    apply in_compartment_opt_correct, in_compartment_spec in ICO'; auto;
-      destruct ICO' as [IN_c_sc IN_sc].
-    destruct (c_sc == c) eqn:EQ; move/eqP in EQ.
-    + subst; simpl in *.
-      assert (IN_sc' : In sc (set_difference A A') \/ In sc A'). {
-        apply set_union_spec.
-        rewrite set_union_difference_distrib; auto.
-        rewrite set_difference_self_annihilating set_difference_nil_r.
-        rewrite set_union_comm; auto.
-        rewrite set_union_subset_id; auto.
-        apply subset_spec; auto.
-      }
-      destruct IN_sc' as [IN_diff | IN_A'].
-      * apply set_elem_true in IN_diff; auto.
-        rewrite IN_diff; auto.
-      * apply set_elem_true in IN_A'; auto.
-        rewrite IN_A'; destruct (set_elem sc (set_difference A A')); auto.
+    move: (ICO) => /in_compartment_opt_correct /andP [IN_c_sc IN_sc].
+    destruct (c_sc == c) eqn:EQ.
+    + move/eqP in EQ; subst; simpl in *.
+      have [->|->] // : sc \in A :\: A' \/ sc \in A'
+        by apply/setUP; rewrite -subsetDU.
+      by case: (sc \in A :\: A').
     + simpl.
-      destruct (set_elem sc (set_difference A A')); auto.
-      destruct (set_elem sc A'); auto.
-      assert (IN_c_sc' : In c_sc (delete c C)) by by apply delete_in_iff.
-      assert (IC' : delete c C ⊢ sc ∈ c_sc) by by apply in_compartment_spec.
-      apply in_compartment_opt_sound in IC'; auto.
-      rewrite IC'; auto. *)
-(*Qed.*)
-Admitted.
+      case: (sc \in A :\: A') => //; case: (sc \in A') => //.
+      have /in_compartment_opt_sound -> // : rem_all c C ⊢ sc ∈ c_sc by
+        apply/andP; rewrite in_rem_all EQ /=.
+      by apply non_overlapping_rem.
+Qed.
 (*Global*) Hint Resolve isolate_good.
 
 Lemma good_compartments_preserved_for_add_to_compartment_component :
