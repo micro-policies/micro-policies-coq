@@ -1240,6 +1240,48 @@ Proof.
     by rewrite (UNIQUE _ _ c''_in_C c_in_C ID') eqxx in Hneq.
 Qed.
 
+Lemma well_formed_targets_same (targets : Abs.compartment t -> {set word})
+                               (sources : stag -> option {set word})
+                               sst sst' p pcid I1 I2 W1 W2 Ss C c cid c' :
+  well_formed_targets targets sources sst C ->
+  unique_ids sst C ->
+  Sym.sget sst p = Some (Sym.DATA pcid I1 W1) ->
+  Sym.supd sst p (Sym.DATA pcid I2 W2) = Some sst' ->
+  get_compartment_id sst c = Some cid ->
+  c \in C ->
+  Abs.address_space c = Abs.address_space c' ->
+  targets c' = targets c ->
+  sources (Sym.DATA pcid I2 W2) = Some Ss ->
+  sources (Sym.DATA pcid I1 W1) = Some Ss ->
+  well_formed_targets targets sources sst' (c' :: rem_all c C).
+Proof.
+  clear S I.
+  move=> WF UNIQUE GET UPD ID c_in_C AS TARGETS SOURCES2 SOURCES1  c'' cid''.
+  rewrite in_cons mem_filter
+          -(get_compartment_id_supd_same GET UPD)
+          => /orP [/eqP ->|/= /andP [Hneq c''_in_C]] ID'.
+  - have {cid'' ID'} ->: cid'' = cid.
+    { rewrite /get_compartment_id ?AS in ID ID'.
+      congruence. }
+    rewrite TARGETS (WF _ _ c_in_C ID).
+    apply/eqP. rewrite eqEsubset. apply/andP. split.
+    + apply/subsetP => p'.
+      rewrite !in_set (Sym.sget_supd _ _ _ _ UPD).
+      have [{p'} -> /=|//] := (p' =P p).
+      by rewrite SOURCES2 GET /= SOURCES1 /=.
+    + apply/subsetP => p'.
+      rewrite !in_set (Sym.sget_supd _ _ _ _ UPD).
+      have [{p'} ->/=|//] := (p' =P p).
+      by rewrite SOURCES2 /= GET /= SOURCES1 /=.
+  - rewrite (WF _ _ c''_in_C ID').
+    apply/eqP. rewrite eqEsubset. apply/andP.
+    by split; apply/subsetP => p';
+    rewrite !in_set
+            (Sym.sget_supd _ _ _ _ UPD);
+    have [{p'} ->/=|//] := (p' =P p);
+    rewrite SOURCES2 GET /= SOURCES1 /=.
+Qed.
+
 Lemma unique_ids_irrelevancies r' pc' m int r pc :
   unique_ids (SState m r pc int) =
   unique_ids (SState m r' pc' int).
@@ -1391,34 +1433,14 @@ Proof.
     + exact: (IDSWD _ Hc'').
   - rewrite (unique_ids_irrelevancies SR not_pc).
     apply/(unique_ids_replace IDSU def_xcIW def_s' AIN).
-  - rewrite  /well_formed_jump_targets
-             (well_formed_targets_irrelevancies SR not_pc).
+  - rewrite /well_formed_jump_targets
+            (well_formed_targets_irrelevancies SR not_pc).
     apply/(well_formed_targets_augment JTWF IDSU def_xcIW def_s' RPREV AIN);
     try reflexivity.
-  - move=> c''' cid'''.
-    rewrite  (get_compartment_id_irrelevancies SR not_pc)
-            -(get_compartment_id_supd_same def_xcIW def_s')
-             in_cons mem_filter => /orP [/eqP -> | /andP [not_prev Hc''']] Hcid'''.
-    + move: (STWF _ _ AIN Hcid''') => /= ->.
-      apply/eqP.
-      rewrite eqEsubset.
-      apply/andP.
-      split; apply/subsetP => p'';
-      rewrite !in_set
-              (sget_irrelevancies SR not_pc M_next)
-              (Sym.sget_supd _ _ _ _ def_s');
-      have [{p''} ->|NE] //= := (p'' =P p);
-      by rewrite def_xcIW /=.
-    + rewrite (STWF _ _ Hc''' Hcid''').
-      apply/eqP.
-      rewrite eqEsubset.
-      apply/andP.
-      split; apply/subsetP => p'';
-      rewrite !in_set
-              (sget_irrelevancies SR not_pc M_next)
-              (Sym.sget_supd _ _ _ _ def_s');
-      have [{p''} ->|NE] //= := (p'' =P p);
-      by rewrite def_xcIW /=.
+  - rewrite /well_formed_store_targets
+            (well_formed_targets_irrelevancies SR not_pc).
+    apply/(well_formed_targets_same STWF IDSU def_xcIW def_s' RPREV AIN);
+    try reflexivity.
   - by rewrite /refine_previous_b /=
                (get_compartment_id_irrelevancies SR not_pc)
               -(get_compartment_id_supd_same def_xcIW def_s')
