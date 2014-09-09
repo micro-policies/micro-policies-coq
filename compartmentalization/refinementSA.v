@@ -116,23 +116,22 @@ Definition unique_ids (sst : sstate)
     get_compartment_id sst c1 = get_compartment_id sst c2 ->
     c1 = c2.
 
-Definition well_formed_jump_targets (sst : sstate)
-                                    (C   : seq (Abs.compartment t)) : Prop :=
+Definition well_formed_targets (targets : Abs.compartment t -> {set word})
+                               (sources : stag -> option {set word})
+                               (sst     : sstate)
+                               (C       : seq (Abs.compartment t)) : Prop :=
   forall c cid,
     c \in C ->
     get_compartment_id sst c = Some cid ->
-    Abs.jump_targets c =
+    targets c =
     [set p | oapp (fun s : {set word} => cid \in s) false
-                  (stag_incoming =<< Sym.sget sst p) ].
+                  (sources =<< Sym.sget sst p) ].
 
-Definition well_formed_store_targets (sst : sstate)
-                                     (C   : seq (Abs.compartment t)) : Prop :=
-  forall c cid,
-    c \in C ->
-    get_compartment_id sst c = Some cid ->
-    Abs.store_targets c =
-    [set p | oapp (fun s : {set word} => cid \in s) false
-                  (stag_writers =<< Sym.sget sst p) ].
+Definition well_formed_jump_targets : sstate -> seq (Abs.compartment t) -> Prop :=
+  well_formed_targets (fun c => Abs.jump_targets c) stag_incoming.
+
+Definition well_formed_store_targets : sstate -> seq (Abs.compartment t) -> Prop :=
+  well_formed_targets (fun c => Abs.store_targets c) stag_writers.
 
 End WithSym.
 
@@ -1175,6 +1174,52 @@ Proof.
   move=> GOOD WDC WDID UNIQUE IN H.
   apply/eqP.
   by rewrite (get_compartment_id_in_compartment_eq _ GOOD WDC WDID UNIQUE IN) H.
+Qed.
+
+Lemma well_formed_targets_augment (targets : Abs.compartment t -> {set word})
+                                  (sources : stag -> option {set word})
+                                  sst sst' p pcid I1 I2 W1 W2 Ss C c cid c' :
+  well_formed_targets targets sources sst C ->
+  unique_ids sst C ->
+  Sym.sget sst p = Some (Sym.DATA pcid I1 W1) ->
+  Sym.supd sst p (Sym.DATA pcid I2 W2) = Some sst' ->
+  get_compartment_id sst c = Some cid ->
+  Abs.address_space c = Abs.address_space c' ->
+  c \in C ->
+  targets c' = p |: targets c ->
+  sources (Sym.DATA pcid I2 W2) = Some (cid |: Ss) ->
+  sources (Sym.DATA pcid I1 W1) = Some Ss ->
+  well_formed_targets targets sources sst' (c' :: rem_all c C).
+Proof.
+  clear S I.
+  move=> WF UNIQUE GET UPD ID AS c_in_C TARGETS SOURCES2 SOURCES1  c'' cid''.
+  rewrite in_cons mem_filter
+          -(get_compartment_id_supd_same GET UPD)
+          => /orP [/eqP ->|/= /andP [Hneq c''_in_C]] ID'.
+  - have {cid'' ID'} ->: cid'' = cid.
+    { rewrite /get_compartment_id ?AS in ID ID'.
+      congruence. }
+    rewrite TARGETS (WF _ _ c_in_C ID).
+    apply/eqP. rewrite eqEsubset. apply/andP. split.
+    + rewrite subUset sub1set in_set (Sym.sget_supd _ _ _ _ UPD)
+              eqxx /= SOURCES2 /= in_setU1 eqxx /=.
+      apply/subsetP => p'.
+      rewrite !in_set (Sym.sget_supd _ _ _ _ UPD).
+      have [{p'} -> /=|//] := (p' =P p).
+      by rewrite SOURCES2 /= in_setU1 eqxx.
+    + apply/subsetP => p'.
+      rewrite !in_set (Sym.sget_supd _ _ _ _ UPD).
+      by have [{p'} ->|] := (p' =P p).
+  - rewrite (WF _ _ c''_in_C ID').
+    apply/eqP. rewrite eqEsubset. apply/andP.
+    split; apply/subsetP => p';
+    rewrite !in_set
+            (Sym.sget_supd _ _ _ _ UPD);
+    have [{p'} ->|] //= := (p' =P p);
+    rewrite SOURCES2 GET /= SOURCES1 /= in_setU1; first by rewrite orbC => ->.
+    case/orP => [/eqP E|//].
+    rewrite E -?ID{cid'' E} in ID' *.
+    by rewrite (UNIQUE _ _ c''_in_C c_in_C ID') eqxx in Hneq.
 Qed.
 
 Theorem add_to_jump_targets_refined : forall ast sst sst',
