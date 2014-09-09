@@ -1176,6 +1176,24 @@ Proof.
   by rewrite (get_compartment_id_in_compartment_eq _ GOOD WDC WDID UNIQUE IN) H.
 Qed.
 
+Lemma unique_ids_replace sst sst' p pcid I1 I2 W1 W2 C A J1 J2 S1 S2 :
+  unique_ids sst C ->
+  Sym.sget sst p = Some (Sym.DATA pcid I1 W1) ->
+  Sym.supd sst p (Sym.DATA pcid I2 W2) = Some sst' ->
+  <<A,J1,S1>> \in C ->
+  unique_ids sst' (<<A,J2,S2>> :: rem_all <<A,J1,S1>> C).
+Proof.
+  move=> UNIQUE GET UPD IN c1 c2.
+  rewrite !in_cons !mem_filter.
+  case/orP=> [/eqP -> {c1}|/andP [not_prev1 IN1]];
+  case/orP=> [/eqP -> {c2}|/andP [not_prev2 IN2]] //.
+  - rewrite -!(get_compartment_id_supd_same GET UPD) => /(UNIQUE _ _ IN IN2) E.
+    by rewrite -E /= eqxx in not_prev2.
+  - rewrite -!(get_compartment_id_supd_same GET UPD) => /(UNIQUE _ _ IN1 IN) E.
+    by rewrite -E /= eqxx in not_prev1.
+  - by rewrite -!(get_compartment_id_supd_same GET UPD) => /(UNIQUE _ _ IN1 IN2) E.
+Qed.
+
 Lemma well_formed_targets_augment (targets : Abs.compartment t -> {set word})
                                   (sources : stag -> option {set word})
                                   sst sst' p pcid I1 I2 W1 W2 Ss C c cid c' :
@@ -1221,6 +1239,11 @@ Proof.
     rewrite E -?ID{cid'' E} in ID' *.
     by rewrite (UNIQUE _ _ c''_in_C c_in_C ID') eqxx in Hneq.
 Qed.
+
+Lemma unique_ids_irrelevancies r' pc' m int r pc :
+  unique_ids (SState m r pc int) =
+  unique_ids (SState m r' pc' int).
+Proof. by []. Qed.
 
 Lemma well_formed_targets_irrelevancies r' pc' m int r pc targets sources :
   well_formed_targets targets sources (SState m r pc int) =
@@ -1366,18 +1389,8 @@ Proof.
              in_cons mem_filter => /orP [/eqP {c''} -> | /andP [_ Hc'']].
     + exact: (IDSWD _ AIN).
     + exact: (IDSWD _ Hc'').
-  - move=> c1 c2.
-    rewrite  !(get_compartment_id_irrelevancies SR not_pc)
-            -!(get_compartment_id_supd_same def_xcIW def_s')
-            !in_cons !mem_filter => /orP [/eqP {c1} -> | /andP [not_prev1 Hc1]]
-                                    /orP [/eqP {c2} -> | /andP [not_prev2 Hc2]] //.
-    + move=> E.
-      suff {not_prev2} contra: <<Aprev,Jprev,Sprev>> = c2 by rewrite /= -contra eqxx in not_prev2.
-      exact: IDSU _ _ AIN Hc2 E.
-    + move=> E.
-      suff {not_prev1} contra: c1 = <<Aprev,Jprev,Sprev>> by rewrite /= contra eqxx in not_prev1.
-      exact: IDSU _ _ Hc1 AIN E.
-    + exact: IDSU c1 c2 Hc1 Hc2.
+  - rewrite (unique_ids_irrelevancies SR not_pc).
+    apply/(unique_ids_replace IDSU def_xcIW def_s' AIN).
   - rewrite  /well_formed_jump_targets
              (well_formed_targets_irrelevancies SR not_pc).
     apply/(well_formed_targets_augment JTWF IDSU def_xcIW def_s' RPREV AIN);
