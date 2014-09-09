@@ -1360,27 +1360,23 @@ Lemma syscalls_separated_preserved : forall `(STEP : step MM MM'),
   good_state MM ->
   syscalls_separated (mem MM') (compartments MM').
 Proof.
-  admit. (*
-  intros MM MM' STEP GOOD; destruct STEP;
+  clear S; intros MM MM' STEP GOOD; destruct STEP;
     try solve [subst; cbv [mem compartments]; eauto 2].
   - (* Store *)
     subst; assert (SS : syscalls_separated M C) by eauto; simpl in *.
-    rewrite ->forallb_forall in *.
-    intros c' IN; specialize (SS c' IN).
-    apply/orP; move/orP in SS.
-    clear S; destruct c' as [A J S]; simpl in *.
-    destruct SS as [UAS | SAS]; [left | right].
-    + eapply forallb_impl; [|apply UAS].
+    apply/allP => c' IN; move/allP/(_ c' IN)/orP in SS; apply/orP.
+    destruct c' as [A J S]; simpl in *.
+    case: SS => [UAS | SAS]; [left | right].
+    + eapply forall_impl; [| exact UAS].
       move=> /= a GET.
       destruct (get M a) eqn:GET';
         [clear GET; rename GET' into GET | discriminate].
       destruct (defined_preserved GET UPDR) as [v GET'].
       by rewrite GET'.
     + unfold syscall_address_space in *; cbv [address_space] in *.
-      destruct A as [|sc [|]]; auto.
-      move/andP in SAS; apply/andP.
-      split; [move: SAS => [/negP NGET _]; apply/negP | tauto].
-      generalize UPDR => SET; unfold upd in SET.
+      move: SAS => /existsP [sc /and3P [NGET TABLED /eqP ->]].
+      apply/existsP; exists sc; rewrite TABLED eq_refl !andbT.
+      move: (UPDR); rewrite /upd => SET.
       destruct (get M p) as [old|] eqn:GET; [|discriminate].
       assert (NEQ : sc <> p) by by intro; subst; rewrite GET in NGET.
       assert (EQ : get M' sc = get M sc) by
@@ -1389,7 +1385,7 @@ Proof.
   - (* Syscall *)
     assert (GOOD' : good_state MM') by
       (apply syscall_step_preserves_good with MM sc; subst; assumption);
-      auto. *)
+      auto.
 Qed.
 
 Lemma syscalls_present_preserved : forall `(STEP : step MM MM'),
@@ -1458,8 +1454,6 @@ Theorem permitted_pcs : forall MM MM' MM''
   exists c, compartments MM ⊢ pc MM ∈ c /\
             (pc MM' \in address_space c \/ pc MM' \in jump_targets c).
 Proof.
-  admit.
-(*
   clear S; intros MM MM' MM'' STEP STEP' GOOD; generalize STEP => STEPPED;
     destruct STEP;
     subst; simpl in *;
@@ -1468,16 +1462,13 @@ Proof.
         apply step__permitted_now_in in STEP'; eauto 3;
         destruct STEP' as [c' PNI];
         destruct STEP as [IC STEP]; exists c; split; [exact IC|];
-        assert (good_compartment c) by eauto;
         apply permitted_now_in_spec in PNI; simpl in *; eauto 3;
 
         destruct PNI as [IC' [-> | [EQ IN_J]]];
           [|solve [discriminate | right; auto]];
-        left; apply in_compartment_spec in IC'; tauto ].
+        left; move/andP in IC'; tauto ].
   (* Syscalls *)
-  generalize GOOD =>
-    /andP /= [/andP [/andP [ELEM /andP [/andP [GOODS NOL] CC]] SS] SP].
-  unfold is_true in GOODS; rewrite ->forallb_forall in GOODS.
+  move: (GOOD) => /and4P /= [ELEM /andP [NOL CC] SS SP].
   unfold get_syscall in GETSC; unfold table in GETSC; simpl in GETSC.
   repeat match type of GETSC with
     | context[if ?EQ then _ else _] => destruct EQ
@@ -1502,17 +1493,14 @@ Proof.
        DO J'; DO SUBSET_J';
        DO S'; DO SUBSET_S';
        DO pc'; DO c_next; DO SAME; DO RETURN_OK;
-       set (c_upd := <<set_difference A A',J,S>>) in *;
+       set (c_upd := <<A :\: A',J,S>>) in *;
        set (c'    := <<A',J',S'>>) in *;
        repeat rewrite <-def_AJS in *;
        inversion CALL; subst; clear CALL; simpl.
     apply permitted_now_in__in_compartment_opt in def_c_sys; eauto 3.
     exists c_sys; split.
     + apply in_compartment_opt_correct; eauto.
-    + right; apply set_elem_true in RETURN_OK; [assumption|].
-      apply in_compartment_opt_correct, in_compartment_spec in def_c_sys;
-        [|eauto 3].
-      destruct def_c_sys as [IN IN']; specialize (GOODS c_sys IN); auto.
+    + by right.
   - (* add_to_jump_targets *)
     unfold semantics,add_to_jump_targets,add_to_compartment_component in CALL;
       rewrite (lock in_compartment_opt) in CALL;
@@ -1535,10 +1523,7 @@ Proof.
     apply permitted_now_in__in_compartment_opt in def_c_sys; eauto 3.
     exists c_sys; split.
     + apply in_compartment_opt_correct; eauto.
-    + right; apply set_elem_true in RETURN_OK; [assumption|].
-      apply in_compartment_opt_correct, in_compartment_spec in def_c_sys;
-        [|eauto 3].
-      destruct def_c_sys as [IN IN']; specialize (GOODS c_sys IN); auto.
+    + by right.
   - (* add_to_store_targets *)
     unfold semantics,add_to_store_targets,add_to_compartment_component in CALL;
       rewrite (lock in_compartment_opt) in CALL;
@@ -1561,10 +1546,7 @@ Proof.
     apply permitted_now_in__in_compartment_opt in def_c_sys; eauto 3.
     exists c_sys; split.
     + apply in_compartment_opt_correct; eauto.
-    + right; apply set_elem_true in RETURN_OK; [assumption|].
-      apply in_compartment_opt_correct, in_compartment_spec in def_c_sys;
-        [|eauto 3].
-      destruct def_c_sys as [IN IN']; specialize (GOODS c_sys IN); auto.*)
+    + by right.
 Qed.
 
 Theorem permitted_modifications : forall `(STEP : step MM MM') c,

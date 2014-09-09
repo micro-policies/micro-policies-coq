@@ -47,3 +47,10 @@ Proof.
   by move=> SUB ALL; apply/forall_inP => x IN;
      apply (elimT forall_inP ALL); apply (elimT subsetP SUB).
 Qed.
+
+Theorem forall_impl (T : finType) (A : {set T}) (P Q : T -> bool) :
+  (forall x, P x -> Q x) -> [forall x in A, P x] -> [forall x in A, Q x].
+Proof.
+  by move=> IMPL ALL; apply/forall_inP => x IN;
+     apply IMPL; apply (elimT forall_inP ALL).
+Qed.
