@@ -969,8 +969,8 @@ Lemma in_compartment_update A J Sa J' Sa' AC p c :
   exists c', <<A,J,Sa>> :: rem_all <<A,J',Sa'>> AC ⊢ p ∈ c'.
 Proof.
   rewrite /rem_all.
-  elim: AC => [|c' AC IH]; first by rewrite /Abs.in_compartment andbF.
-  rewrite /Abs.in_compartment in_cons => /andP [Has /orP [/eqP <-| Hin]].
+  elim: AC => [|c' AC IH]; first by rewrite /Abs.in_compartment.
+  rewrite /Abs.in_compartment in_cons => /andP [/orP [/eqP <-| Hin] Has].
   - rewrite /=.
     have [E|NE] := altP (c =P <<A,J',Sa'>>).
     + exists <<A,J,Sa>> => /=.
@@ -978,7 +978,7 @@ Proof.
       by rewrite Has /= in_cons eqxx.
     + exists c.
       by rewrite Has /= !inE eqxx orbT.
-  - have /IH {IH} [c'' /andP [? Hin']] : AC ⊢ p ∈ c by rewrite /Abs.in_compartment Has Hin.
+  - have /IH {IH} [c'' /andP [Hin' ?]] : AC ⊢ p ∈ c by rewrite /Abs.in_compartment Has Hin.
     exists c''.
     apply/andP; split => //.
     rewrite !inE in Hin' *.
@@ -986,6 +986,17 @@ Proof.
     have [E|NE] := altP (c' =P <<A,J',Sa'>>).
     + by rewrite /= Hin' orbT.
     + by rewrite inE Hin' !orbT.
+Qed.
+
+Lemma in_compartment_update' A J Sa J' Sa' AC p :
+  Abs.in_compartment_opt AC p ->
+  Abs.in_compartment_opt (<<A,J,Sa>> :: rem_all <<A,J',Sa'>> AC) p.
+Proof.
+  case E: (Abs.in_compartment_opt _ _) => [c|] // _.
+  move/Abs.in_compartment_opt_correct in E.
+  suff [? -> //] : exists c', Abs.in_compartment_opt (<<A,J,Sa>> :: rem_all <<A,J',Sa'>> AC) p ?= c'.
+  have [c' Hc'] := @in_compartment_update A J Sa J' Sa' AC p c E.
+  by apply/Abs.in_compartment_opt_present.
 Qed.
 
 Lemma supd_refine_memory AM sst sst' p c i w :
@@ -1083,6 +1094,24 @@ Proof.
   by rewrite (sget_irrelevancies r' pc').
 Qed.
 
+Lemma get_compartment_id_supd_same sst sst' p cid I1 W1 I2 W2 :
+  Sym.sget sst p = Some (Sym.DATA cid I1 W1) ->
+  Sym.supd sst p (Sym.DATA cid I2 W2) = Some sst' ->
+  get_compartment_id sst =1 get_compartment_id sst'.
+Proof.
+  move=> GET UPD c.
+  apply/eq_pick => c'.
+  apply/f_equal2 => // {c'}.
+  apply/eq_imset => p' /=.
+  rewrite (Sym.sget_supd _ _ _ _ UPD).
+  have [{p'} -> /=|//] := (p' =P p); by rewrite GET.
+Qed.
+
+Lemma get_compartment_id_irrelevancies r' pc' m int r pc :
+  get_compartment_id (SState m r pc int) =1
+  get_compartment_id (SState m r' pc' int).
+Proof. by []. Qed.
+
 Theorem add_to_jump_targets_refined : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -1093,7 +1122,7 @@ Theorem add_to_jump_targets_refined : forall ast sst sst',
 Proof.
   clear S I; move=> ast sst sst' AGOOD REFINE ADD.
   assert (SGOOD : Sym.good_state sst) by (eapply refine_good; eassumption).
-  destruct REFINE as [RPC RREGS RMEMS IDSWD IDSU JTWF STWF RPREV RSC RINT],
+  destruct REFINE as [RPC RREGS RMEMS COMPSWD IDSWD IDSU JTWF STWF RPREV RSC RINT],
            ast    as [Apc AR    AM    AC    Ask Aprev],
            sst    as [SM SR Spc [Snext SiT SaJT SaST]].
   generalize SGOOD; move=> [[SGMEM [SGREG SGPC]] SGINT].
@@ -1121,27 +1150,26 @@ Proof.
     destruct s' as [M_next R_next not_pc si_next];
     unoption.
 
-  generalize RCOMP;
-    rewrite /refine_compartments /refine_compartment_tag /= in RCOMP;
-    move: RCOMP => [RCOMPS RCTAGS] RCOMP.
-  move: (RCTAGS pc) => RCTAGS'; rewrite def_LI in RCTAGS';
-    destruct RCTAGS' as [c_sys [IN_c RTAG]].
+  move: (COMPSWD pc).
+  rewrite def_LI => /(_ erefl).
+  case IN_c: (Abs.in_compartment_opt AC pc) => [c_sys|] _ //.
+  move/Abs.in_compartment_opt_correct in IN_c.
 
   have -> /=: Abs.permitted_now_in AC Ask Aprev pc ?= c_sys.
-    eapply prove_permitted_now_in; eassumption.
+    admit. (*eapply prove_permitted_now_in; eassumption.*)
 
-  have R_c_sys: refined_compartment
-                      c_sys
+  have R_c_sys: get_compartment_id
                       (SState SM SR pc@(Sym.PC F cid')
                               (SInternal Snext SiT SaJT SaST))
-                    == Some cid_sys.
-    by eapply prove_refined_compartment' with (pc := pc); eassumption.
+                      c_sys
+                    = Some cid_sys.
+    admit.
 
   rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p' [I' [W' def_cid']]].
   move: RPREV => /andP [/eqP? RPREV]; subst.
   assert (SYS_SEP : Aprev != c_sys). {
     apply/eqP; intro; subst.
-    move/eqP in R_c_sys; move/eqP in RPREV;
+    move/eqP in RPREV;
       replace cid_sys with cid' in * by congruence.
     rewrite eq_refl in NEQ_cid_sys; discriminate.
   }
@@ -1156,11 +1184,12 @@ Proof.
   destruct Aprev as [Aprev Jprev Sprev]; simpl.
   have IC_p' : AC ⊢ p' ∈ <<Aprev,Jprev,Sprev>>. {
     (* This lemma's proof cribbed from a lemma in `prove_permitted_now_in'. *)
+    admit.
+    (*
     move/eqP: RPREV.
     rewrite /refined_compartment.
     case: pickP => // sc /andP [/eqP ? /forallP ?] [E]. subst sc.
-    admit.
-    (*; explode_refined_compartment' RPREV.
+    ; explode_refined_compartment' RPREV.
     move/id in def_sxs; move/id in MAP_sxs;
       move/id in SAME_cid; move/id in NE_cids.
     destruct cids as [|temp_cid cids];
@@ -1241,7 +1270,9 @@ Proof.
         by destruct (Sym.sget sst' a) as [[]|]
       end.
   }
-  assert (IC_pc' : AC ⊢ pc' ∈ <<Aprev,Jprev,Sprev>>). {
+  have IC_pc' : AC ⊢ pc' ∈ <<Aprev,Jprev,Sprev>>.
+    admit.
+  (*
     specialize RCTAGS with p'; rewrite def_cid' in RCTAGS.
     move: RCTAGS => [c_temp [IC_temp RTAG']].
     replace c_temp with <<Aprev,Jprev,Sprev>> in * by eauto 3; simpl in *.
@@ -1254,8 +1285,8 @@ Proof.
     destruct v as [Lw|]; [|done].
     destruct Lw; try done;
       inversion EQUICOMPARTMENTAL; subst; clear EQUICOMPARTMENTAL.
-    by destruct RTAG' as [SAME _]; apply SAME.
-  }
+    by destruct RTAG' as [SAME _]; apply SAME. *)
+
   have IN_pc' : pc' \in Aprev by case/andP: IC_pc'.
 
   rewrite -(lock Abs.in_compartment_opt) /= IN_pc' /= eq_refl.
@@ -1290,544 +1321,97 @@ Proof.
   }
 
   rewrite IN_Jsys. eexists; split; [reflexivity|].
-
-(* New attempt *)
   have /= E := Sym.supd_preserves_regs _ _ _ _ def_s'.
   subst R_next.
+
   constructor => //=.
   - exact: (supd_refine_memory def_s' RMEMS).
-  - { rewrite /refine_compartments (lock refined_compartment) /=. split; first (apply/andP; split).
-      - rewrite -(lock _) (@refined_compartment_augment cid')
-                ?(sget_irrelevancies SR not_pc) //.
-        { have /= -> := (Sym.sget_supd _ _ _ _ def_s').
-          by rewrite eqxx /= in_setU1 eqxx. }
-        move/eqP in RPREV.
-        eapply refined_compartment_all_untouched_preserved; last eassumption.
-        + eassumption.
-        + move=> p''.
-          rewrite /Sym.good_memory_tag (sget_irrelevancies SR not_pc).
-          by apply/(supd_good_memory_tag def_s').
-        + apply/(@tags_subsets_irrelevancies SR not_pc).
-          apply/(supd_tags_subsets def_xcIW def_s') => //.
-          by rewrite subsetUr.
-      - apply/allP=> c' Hc'.
-        rewrite -(lock _).
-        rewrite /rem_all mem_filter in Hc'.
-        case/andP: Hc' => Hc' c'_in_ac.
-        move/allP/(_ c' c'_in_ac): RCOMPS.
-        apply/refined_compartment_all_untouched_isSome_preserved => //.
-        + by apply/(supd_good_memory_tag def_s').
-        + apply/(@tags_subsets_irrelevancies SR not_pc).
-          apply/(supd_tags_subsets def_xcIW def_s') => //.
-          by rewrite subsetUr.
-      - move=> p''.
-        case: RCOMP => _ RCOMP.
-        move: (RCOMP p'').
-        rewrite /refine_compartment_tag
-                (sget_irrelevancies SR not_pc M_next) (Sym.sget_supd _ _ _ _ def_s').
-        have [{p''} ->|NE] := (p'' =P p).
-        { rewrite def_xcIW.
-          case=> c''.
-          have [{c''} ->|NE] := altP (c'' =P <<Aprev,Jprev,Sprev>>).
-          - case=> p_in_ac H.
-            case/andP: (p_in_ac) => H1 H2.
-            exists <<Aprev,p |: Jprev,Sprev>>.
-            rewrite /Abs.in_compartment in_cons eqxx H1 /=.
-            split=> // p''.
-            move: H => /(_ p'').
-            rewrite (Sym.sget_supd _ _ _ _ def_s').
-            have /= [{p''} ->|_] := (p'' =P p).
-            + move=> _.
-              rewrite H1.
-              split; first by split; trivial.
-              rewrite (in_setU1 p) eqxx /=.
-              split; first by [].
-              move: RCOMP => /(_ p).
-              rewrite /refine_compartment_tag def_xcIW.
-              case=> c [p_in_ac'].
-              rewrite -(Abs.in_unique_compartment _ _ _ _ _ p_in_ac p_in_ac'); last by case/and4P: AGOOD.
-              move=> /(_ p).
-              rewrite def_xcIW.
-              by move=> [_ [_ ?]].
-            + case: (Sym.sget _ _) => [[|c''' I''' W'''|]|] //.
-              rewrite /Abs.in_compartment H2 /=.
-              move=> [? [H ?]].
-              split=> //.
-              split=> // H'.
-              by rewrite in_setU1 H // orbT.
-          - case=> p_in_ac H.
-            case/andP: (p_in_ac) => H1 H2.
-            exists c''.
-            rewrite /Abs.in_compartment H1 /= in_cons.
-            rewrite /rem_all /= mem_filter /= NE /= H2 orbT.
-            split=> //.
-            move=> p''.
-            move: H => /(_ p'').
-            rewrite (Sym.sget_supd _ _ _ _ def_s').
-            have /= [{p''} ->|_] := (p'' =P p).
-            + move=> _.
-              rewrite H1.
-              split=> //.
-              move: RCOMP => /(_ p).
-              rewrite /refine_compartment_tag def_xcIW.
-              case=> c [p_in_ac'].
-              rewrite -(Abs.in_unique_compartment _ _ _ _ _ p_in_ac p_in_ac'); last by case/and4P: AGOOD.
-              move=> /(_ p).
-              rewrite def_xcIW.
-              move=> [_ [H1' H2']].
-              split=> //.
-              rewrite in_setU1.
-              case/orP=> [/eqP E|] //.
-              subst cid''.
-              have {OK} GC : Abs.good_compartments AC by case/and4P: AGOOD.
-              have {p_in_ac' H1' H2'} ? := Abs.in_unique_compartment _ _ _ _ GC p_in_ac p_in_ac'.
-              subst c''.
-              admit.
-            + case: (Sym.sget _ _) => [[|c''' I''' W'''|]|] //.
-              rewrite /Abs.in_compartment H2 /=.
-              move=> [? [H ?]].
-              split=> //. }
-        case: (Sym.sget _ _) => [[|c''' I''' W'''|]|] //.
-        case=> c''.
-        have [{c''} ->|NE'] := altP (c'' =P <<Aprev,Jprev,Sprev>>).
-        { case=> p_in_ac H.
-          case/andP: (p_in_ac) => H1 H2.
-          exists <<Aprev,p |: Jprev,Sprev>>.
-          rewrite /Abs.in_compartment in_cons eqxx H1 /=.
-          split=> // p'''.
-          move: H => /(_ p''') /=.
-          rewrite (Sym.sget_supd _ _ _ _ def_s').
-          have /= [{p'''} ->|_] := (p''' =P p).
-          + rewrite def_xcIW /Abs.in_compartment H2 /= !in_setU1 eqxx /=.
-            by intuition.
-          + case: (Sym.sget _ _) => [[|c'''' I'''' W''''|]|] //.
-            rewrite /Abs.in_compartment H2 /=.
-            move=> [? [H ?]].
-              split=> //.
-              split=> // H'.
-              by rewrite in_setU1 H // orbT. }
-          - case=> p_in_ac H.
-            case/andP: (p_in_ac) => H1 H2.
-            exists c''.
-            rewrite /Abs.in_compartment H1 /= in_cons.
-            rewrite /rem_all /= mem_filter /= NE /= H2 orbT.
-            split=> //.
-            move=> p''.
-            move: H => /(_ p'').
-            rewrite (Sym.sget_supd _ _ _ _ def_s').
-            have /= [{p''} ->|_] := (p'' =P p).
-            + move=> _.
-              rewrite H1.
-              split=> //.
-              move: RCOMP => /(_ p).
-              rewrite /refine_compartment_tag def_xcIW.
-              case=> c [p_in_ac'].
-              rewrite -(Abs.in_unique_compartment _ _ _ _ _ p_in_ac p_in_ac'); last by case/and4P: AGOOD.
-              move=> /(_ p).
-              rewrite def_xcIW.
-              move=> [_ [H1' H2']].
-              split=> //.
-              rewrite in_setU1.
-              case/orP=> [/eqP E|] //.
-              subst cid''.
-              have {OK} GC : Abs.good_compartments AC by case/and4P: AGOOD.
-              have {p_in_ac' H1' H2'} ? := Abs.in_unique_compartment _ _ _ _ GC p_in_ac p_in_ac'.
-              subst c''.
-              admit.
-            + case: (Sym.sget _ _) => [[|c''' I''' W'''|]|] //.
-              rewrite /Abs.in_compartment H2 /=.
-              move=> [? [H ?]].
-              split=> //.
-
-
-
-by rewrite GET.
-
-
-      - admit.
-      - admit. }
-
-  - rewrite /refine_previous_b /= /refined_compartment.
-    admit.
+  - move=> p''.
+    rewrite (sget_irrelevancies SR not_pc).
+    move=> /(Sym.sget_supd_inv _ _ _ _ _ def_s')/COMPSWD.
+    by apply/in_compartment_update'.
+  - move=> c''.
+    rewrite  (get_compartment_id_irrelevancies SR not_pc)
+            -(get_compartment_id_supd_same def_xcIW def_s')
+             in_cons mem_filter => /orP [/eqP {c''} -> | /andP [_ Hc'']].
+    + exact: (IDSWD _ AIN).
+    + exact: (IDSWD _ Hc'').
+  - move=> c1 c2.
+    rewrite  !(get_compartment_id_irrelevancies SR not_pc)
+            -!(get_compartment_id_supd_same def_xcIW def_s')
+            !in_cons !mem_filter => /orP [/eqP {c1} -> | /andP [_ Hc1]]
+                                    /orP [/eqP {c2} -> | /andP [_ Hc2]] //.
+    + admit. (* Boring, needs Abs.non_overlapping *)
+    + admit.
+    + exact: IDSU c1 c2 Hc1 Hc2.
+  - move=> c''' cid'''.
+    rewrite  (get_compartment_id_irrelevancies SR not_pc)
+            -(get_compartment_id_supd_same def_xcIW def_s')
+             in_cons mem_filter => /orP [/eqP -> | /andP [not_prev Hc''']] Hcid'''.
+    + move: (JTWF _ _ AIN Hcid''') => /= ->.
+      apply/eqP.
+      rewrite eqEsubset.
+      apply/andP.
+      split; apply/subsetP => p'';
+      rewrite in_setU1 !in_set
+              (sget_irrelevancies SR not_pc M_next)
+              (Sym.sget_supd _ _ _ _ def_s');
+      have [{p''} ->|NE] //= := (p'' =P p) => _.
+      suff ->: cid''' = cid' by rewrite in_setU1 eqxx.
+      move: RPREV IC_p' => /eqP RPREV /andP [Hin _].
+      rewrite /get_compartment_id /= in RPREV Hcid'''.
+      rewrite RPREV in Hcid'''.
+      congruence.
+    + rewrite (JTWF _ _ Hc''' Hcid''').
+      apply/eqP.
+      rewrite eqEsubset.
+      apply/andP.
+      split; apply/subsetP => p'';
+      rewrite !in_set
+              (sget_irrelevancies SR not_pc M_next)
+              (Sym.sget_supd _ _ _ _ def_s');
+      have [{p''} ->|NE] //= := (p'' =P p).
+      * rewrite def_xcIW /= in_setU1 => ->.
+        by rewrite orbT.
+      * rewrite def_xcIW /= in_setU1 => /orP [/eqP E| Hin] //.
+        subst cid'''.
+        case/orP: OK => // /eqP E.
+        subst cid''.
+        suff ? : c''' = <<Aprev,Jprev,Sprev>>
+          by subst c'''; rewrite /= eqxx in not_prev.
+        move: RPREV IC_p' => /eqP RPREV /andP [Hin _].
+        rewrite -RPREV in Hcid'''.
+        exact: IDSU _ _ Hc''' Hin Hcid'''.
+  - move=> c''' cid'''.
+    rewrite  (get_compartment_id_irrelevancies SR not_pc)
+            -(get_compartment_id_supd_same def_xcIW def_s')
+             in_cons mem_filter => /orP [/eqP -> | /andP [not_prev Hc''']] Hcid'''.
+    + move: (STWF _ _ AIN Hcid''') => /= ->.
+      apply/eqP.
+      rewrite eqEsubset.
+      apply/andP.
+      split; apply/subsetP => p'';
+      rewrite !in_set
+              (sget_irrelevancies SR not_pc M_next)
+              (Sym.sget_supd _ _ _ _ def_s');
+      have [{p''} ->|NE] //= := (p'' =P p);
+      by rewrite def_xcIW /=.
+    + rewrite (STWF _ _ Hc''' Hcid''').
+      apply/eqP.
+      rewrite eqEsubset.
+      apply/andP.
+      split; apply/subsetP => p'';
+      rewrite !in_set
+              (sget_irrelevancies SR not_pc M_next)
+              (Sym.sget_supd _ _ _ _ def_s');
+      have [{p''} ->|NE] //= := (p'' =P p);
+      by rewrite def_xcIW /=.
+  - by rewrite /refine_previous_b /=
+               (get_compartment_id_irrelevancies SR not_pc)
+              -(get_compartment_id_supd_same def_xcIW def_s')
+               R_c_sys.
   - exact: (supd_refine_syscall_addrs_b def_s').
   - exact: (sget_supd_good_internal def_xcIW def_s').
-(* End new attempt *)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  assert (sget_next_spec : forall a,
-            Sym.sget (SState M_next R_next not_pc si_next) a =
-            Sym.sget (SState SM SR pc@(Sym.PC F cid')
-                             (SInternal Snext SiT SaJT SaST)) a
-
-            \/
-            (Sym.sget (SState M_next R_next not_pc si_next) a ?=
-               (Sym.DATA cid'' (cid' |: I'') W'') /\
-             p = a))
-    by abstract
-         (intros a; destruct (a == p) eqn:EQ; move/eqP in EQ; subst;
-          [ eapply Sym.sget_supd_eq in def_s'
-          | eapply Sym.sget_supd_neq in def_s']; eauto).
-(*
-  assert (M_next_spec : forall a,
-            get M_next a = get SM a \/
-            (get M_next a ?= x@(Sym.DATA cid'' (cid' |: I'') W'')  /\
-             p = a)).
-  {
-    intros a; destruct (a == p) eqn:EQ; move/eqP in EQ; subst.
-    - rewrite /Sym.supd /upd in def_s'.
-      set G := get SM p in def_s' *; destruct G eqn:GET; subst G.
-      + inversion def_s'; subst; clear def_s'.
-        by right; rewrite get_set_eq.
-      + let finish := by inversion def_s'; subst; left
-        in destruct (p == isolate_addr);              [finish|];
-           destruct (p == add_to_jump_targets_addr);  [finish|];
-           destruct (p == add_to_store_targets_addr); [finish|];
-           discriminate.
-    - left; rewrite /Sym.supd in def_s'.
-      set U := upd SM p _ in def_s'; destruct U eqn:UPD; subst U.
-      + eapply get_upd_neq in UPD; eauto.
-        by inversion def_s'; subst.
-      + let finish := by inversion def_s'; subst
-        in destruct (p == isolate_addr);              [finish|];
-           destruct (p == add_to_jump_targets_addr);  [finish|];
-           destruct (p == add_to_store_targets_addr); [finish|];
-           discriminate.
-  }*)
-  undo1 def_cid_sys COND; inversion def_cid_sys; subst cid; clear def_cid_sys.
-  rewrite /Sym.supd /= in def_s'.
-  destruct (upd SM p _) as [SM'|] eqn:UPD.
-  - inversion def_s'; subst; clear def_s'.
-    constructor; simpl; auto.
-    + rewrite /refine_memory /pointwise /refine_mem_loc_b in RMEMS *;
-        intros a; specialize RMEMS with a.
-      destruct (a == p) eqn:EQ; move/eqP in EQ; subst.
-      * generalize UPD => UPD'; apply get_upd_eq in UPD'; auto; rewrite UPD'.
-        rewrite /upd in UPD.
-        rewrite /Sym.sget in def_xcIW.
-        set G := get SM p in def_xcIW UPD RMEMS; destruct G eqn:GET;
-          [subst G | discriminate].
-        by inversion def_xcIW; subst; clear def_xcIW.
-      * apply get_upd_neq with (key' := a) in UPD; auto.
-        by rewrite UPD.
-    + rewrite /refine_compartments; split.
-      * rewrite (lock refined_compartment); simpl.
-        { apply/andP; split.
-        - rewrite -(lock refined_compartment); move: RPREV => /eqP; simpl.
-          set sst := SState SM R_next pc@(Sym.PC F cid')
-                            (SInternal Snext SiT SaJT SaST).
-          set sst' := SState M_next R_next pc'@(Sym.PC JUMPED cid_sys)
-                             (SInternal Snext SiT SaJT SaST).
-          assert (GOOD : forall p, Sym.good_memory_tag sst  p) by auto.
-          assert (GOOD' : forall p, Sym.good_memory_tag sst' p).
-          { move => p''.
-            have [->|/eqP NEQ] := altP (p'' =P p).
-            - rewrite /Sym.good_memory_tag /Sym.sget /sst'.
-              generalize (PartMaps.get_upd_eq UPD) => EQ.
-              by rewrite EQ.
-            - rewrite /Sym.good_memory_tag /Sym.sget /sst'.
-              generalize (PartMaps.get_upd_neq NEQ UPD) => EQ.
-              rewrite EQ.
-              move: GOOD => /(_ p'') GOOD.
-              rewrite /Sym.good_memory_tag /Sym.sget /sst in GOOD.
-              exact: GOOD. }
-          assert (COMPAT : tags_subsets sst sst').
-          { move => p''.
-            have [->|/eqP NEQ] := altP (p'' =P p).
-            - rewrite def_xcIW.
-              generalize (PartMaps.get_upd_eq UPD) => EQ.
-              rewrite /Sym.sget /sst' EQ.
-              split; first by [].
-              split; last by [].
-              exact: subsetUr.
-            - generalize (PartMaps.get_upd_neq NEQ UPD) => EQ.
-              rewrite /Sym.sget /sst /sst' EQ.
-              move: GOOD => /(_ p'') GOOD.
-              rewrite /Sym.good_memory_tag /sst /Sym.sget in GOOD.
-              case GET: (get SM p'') GOOD => [[v [? ?|c1 I1 W1|]]|] GOOD //.
-              move: GOOD.
-              case: (p'' == isolate_addr); first by case SiT.
-              case: (p'' == add_to_jump_targets_addr); first by case SaJT.
-              case: (p'' == add_to_store_targets_addr); by [case SaST | ]. }
-          rewrite /tags_subsets in COMPAT.
-          rename Aprev into A; rename Jprev into J; rename Sprev into S.
-          have INIT : (Sym.stag_compartment ∘ slabel <=< Sym.sget sst)  @: A =
-                      (Sym.stag_compartment ∘ slabel <=< Sym.sget sst') @: A.
-          {
-            clear AIN AGOOD SYS_SEP IC_p' IC_pc' IN_pc'.
-            admit. (*
-            rewrite 2!bind_assoc -(lock the) 2!map_options_bind;
-              f_equal.
-            induction A as [|a A]; simpl in *; [reflexivity|].
-            specialize COMPAT with a.
-            destruct (Sym.sget sst  a) as [[z  [|cz  Iz  Wz|]]|],
-                     (Sym.sget sst' a) as [[z' [|cz' Iz' Wz'|]]|];
-              try done; destruct COMPAT as [EQ _]; subst; simpl.
-            rewrite IHA; try done. *)
-          }
-
-          case: pickP => // cid''' /andP [/eqP H1 /forallP H2] [?]. subst cid'''.
-          rewrite -INIT -H1.
-          case: pickP => // /(_ cid') /= <-.
-          rewrite eqxx /=.
-          apply/forallP=> os.
-          apply/implyP=> Hos.
-          move/implyP: (H2 os) => -> //.
-          rewrite !in_setU imsetU1 in_setU in_set1 -orbA in Hos *.
-          case/or3P: Hos => [/eqP -> {os} | /imsetP [p'' Hp'' ->] | /imsetP Hos].
-          + rewrite {1 3}/Sym.sget /= (PartMaps.get_upd_eq UPD) /=.
-            admit.
-          + rewrite {1 3}/Sym.sget /=.
-
-          intros REFINED; rewrite bind_assoc in REFINED.
-          undo1 REFINED sc.
-          rewrite bind_assoc -INIT def_sc; simpl.
-          rewrite -forallb_map_options_insert_unique.
-          { move: REFINED.
-
-            set MAP_J := map_options _ J; set MAP_J' := map_options _ J.
-            assert (EQ_ALL_J :
-                      (forallb (set_elem sc) <$> MAP_J)  ?= true ->
-                      (forallb (set_elem sc) <$> MAP_J') ?= true). {
-              clear AELEM AIN AGOOD SYS_SEP IC_p' IN_p PNI IC_pc' IC_pc'
-                    IN_p.
-              subst MAP_J MAP_J'; simpl.
-              induction J as [|a J]; [reflexivity|simpl].
-              specialize COMPAT with a;
-                specialize GOOD with a; specialize GOOD' with a.
-              rewrite /Sym.good_memory_tag in GOOD GOOD'.
-              destruct (Sym.sget sst  a) as [[z  [|cz  Iz  Wz|]]|],
-                       (Sym.sget sst' a) as [[z' [|cz' Iz' Wz'|]]|];
-                try done; simpl.
-              move: GOOD GOOD' => /andP [SET_Iz SET_Wz] /andP [SET_Iz' SET_Wz'].
-              destruct COMPAT as [EQ [SUB_Iz SUB_Wz]]; subst.
-              let unMO ys MO := match goal with
-                                  |- context[map_options ?f J] =>
-                                  destruct (map_options f J) as [ys|] eqn:MO
-                                end
-              in unMO ys MO; unMO ys' MO'; try done; simpl in *.
-              - specialize SUB_Iz with sc.
-                move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
-                + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
-                + destruct (forallb _ ys); try done.
-                  destruct (forallb _ ys'); try done.
-                  lapply IHJ; [inversion 1 | auto].
-              - destruct (forallb _ ys).
-                + lapply IHJ; [inversion 1 | auto].
-                + rewrite Bool.andb_false_r; inversion 1.
-            }
-
-            set MAP_S := map_options _ S; set MAP_S' := map_options _ S.
-            assert (EQ_ALL_S :
-                      (forallb (set_elem sc) <$> MAP_S)  ?= true ->
-                      (forallb (set_elem sc) <$> MAP_S') ?= true). {
-              clear AELEM AIN AGOOD PNI SYS_SEP IC_p' IC_pc'.
-              subst MAP_S MAP_S'; simpl.
-              induction S as [|a S' IHS];
-                [reflexivity | simpl; clear S; rename S' into S].
-              specialize COMPAT with a;
-                specialize GOOD with a; specialize GOOD' with a.
-              rewrite /Sym.good_memory_tag in GOOD GOOD'.
-              destruct (Sym.sget sst  a) as [[z  [|cz  Iz  Wz|]]|],
-                       (Sym.sget sst' a) as [[z' [|cz' Iz' Wz'|]]|];
-                try done; simpl.
-              move: GOOD GOOD' => /andP [SET_Iz SET_Wz] /andP [SET_Iz' SET_Wz'].
-              destruct COMPAT as [EQ [SUB_Iz SUB_Wz]]; subst.
-              let unMO ys MO := match goal with
-                                  |- context[map_options ?f S] =>
-                                  destruct (map_options f S) as [ys|] eqn:MO
-                                end
-              in unMO ys MO; unMO ys' MO'; try done; simpl in *.
-              - specialize SUB_Wz with sc.
-                move=> [/andP [ELEM ALL]]; f_equal; apply/andP; split; auto.
-                + apply/set_elem_true; [|apply set_elem_true in ELEM]; auto.
-                + destruct (forallb _ ys); try done.
-                  destruct (forallb _ ys'); try done.
-                  lapply IHS; [inversion 1 | auto].
-              - destruct (forallb _ ys).
-                + lapply IHS; [inversion 1 | auto].
-                + rewrite Bool.andb_false_r; inversion 1.
-            }
-
-            intros REFINED.
-            destruct (forallb _ <$> MAP_J) as [[]|] eqn:ALL_J; simpl in REFINED;
-              try done.
-            destruct (forallb _ <$> MAP_S) as [[]|] eqn:ALL_S; simpl in REFINED;
-              try done.
-            lapply EQ_ALL_J; [clear EQ_ALL_J; intro ALL_J' | done].
-            lapply EQ_ALL_S; [clear EQ_ALL_S; intro ALL_S' | done].
-            by rewrite ALL_J' ALL_S'.
-          }
-
-          specialize COMPAT with p;
-            specialize GOOD with p; specialize GOOD' with p.
-          rewrite /Sym.good_memory_tag /Sym.sget /sst /sst' in GOOD GOOD'.
-          rewrite /Sym.sget /sst'.
-          generalize (PartMaps.get_upd_eq UPD) => EQ.
-          rewrite EQ /= in GOOD' *.
-          move: GOOD' => /andP [SET_I'' SET_W''].
-          f_equal; apply set_elem_true; auto.
-          have -> : sc = cid'.
-          { undo1 REFINED X1.
-            undo1 REFINED X2. by unoption. }
-          by apply insert_unique_adds.
-        - rewrite -(lock refined_compartment); apply delete_preserves_forallb.
-          eapply forallb_impl; [|apply RCOMPS].
-          simpl; intros d RCSOME.
-          eapply refined_compartment_all_untouched_isSome_preserved in RCSOME;
-            try apply RCSOME; eauto 3.
-          + intros a; specialize SGMEM with a;
-              rewrite /Sym.good_memory_tag in SGMEM *.
-            move: (sget_next_spec a) => [OLD | [NEW ?]]; subst.
-            * rewrite {1}/Sym.sget /= in OLD.
-              rewrite /Sym.sget OLD.
-              assumption.
-            * rewrite {1}/Sym.sget /= in NEW.
-              rewrite /Sym.sget NEW.
-              rewrite def_xcIW in SGMEM.
-              move: SGMEM => /andP [] *; apply /andP; auto.
-          + rewrite /tags_subsets /=; intros a.
-            move: (sget_next_spec a) => [OLD | [NEW ?]]; subst.
-            * specialize SGMEM with a; rewrite /Sym.good_memory_tag in SGMEM.
-              rewrite -OLD; rewrite -OLD in SGMEM.
-              replace (Sym.sget (SState M_next R_next pc@(Sym.PC F cid')
-                                        (SInternal Snext SiT SaJT SaST))
-                                a)
-                 with (Sym.sget (SState M_next R_next pc@(Sym.PC JUMPED cid_sys)
-                                        (SInternal Snext SiT SaJT SaST))
-                                a)
-                   by trivial.
-              clear OLD; destruct (Sym.sget _ a) as [[? []]|]; done.
-            * rewrite {1}/Sym.sget /= in NEW.
-              rewrite def_xcIW /Sym.sget NEW.
-              repeat split; auto. }
-      * intros a. rewrite /refine_compartment_tag /=.
-        { move: (sget_next_spec a) => [OLD | [NEW ?]]; subst.
-          - rewrite {1}/Sym.sget /= in OLD.
-            rewrite {1}/Sym.sget /= OLD.
-            move: (RCTAGS a) => RCTAGS'.
-            set G := (Sym.sget _ a) in RCTAGS' *.
-            destruct G as [[w [|cw Iw Ww|]]|] eqn:SGET; subst; try done.
-            move: RCTAGS' => [SET_Iw [SET_Ww [c [IC RTAG']]]].
-            do 2 (split; auto).
-            destruct (<<Aprev,Jprev,Sprev>> == c) eqn:EQ; move/eqP in EQ; subst.
-            + exists <<Aprev,insert_unique p Jprev,Sprev>>; split.
-              * apply/Abs.in_compartment_spec;
-                  move: IC => /Abs.in_compartment_spec [IN_c_AC IN_a_c];
-                  split; auto.
-              * intros a'.
-                { move: (sget_next_spec a') => [OLD' | [NEW' ?]]; subst.
-                  - rewrite {1}/Sym.sget /= in OLD'.
-                    rewrite {1}/Sym.sget /= OLD'.
-                    move/id in RTAG'; specialize RTAG' with a'.
-                    set G := (Sym.sget _ a') in RTAG' *.
-                    destruct G as [[w' [|cw' Iw' Ww'|]]|] eqn:SGET'; subst;
-                      try done.
-                    simpl in *.
-                    destruct RTAG' as [SAME [IN_Iw' IN_Ww']].
-                    split; [|split; auto].
-                    rewrite SAME 2!Abs.in_compartment_spec /= delete_in_iff.
-                    tauto.
-                  - rewrite {1}/Sym.sget /= in NEW'.
-                    rewrite {1}/Sym.sget /= NEW'.
-                    move/id in RTAG'; specialize RTAG' with a'.
-                    rewrite def_xcIW /= in RTAG'.
-                    destruct RTAG' as [SAME [IN_I'' IN_W'']].
-                    split; [|split; auto].
-                    rewrite SAME 2!Abs.in_compartment_spec /= delete_in_iff.
-                    tauto. }
-            + exists c; split.
-              * apply/Abs.in_compartment_spec; simpl.
-                move: IC => /Abs.in_compartment_spec [IN_c_AC IN_a_c].
-                rewrite delete_in_iff; auto.
-              * intros a'.
-                { move: (sget_next_spec a') => [OLD' | [NEW' ?]]; subst.
-                  - rewrite {1}/Sym.sget /= in OLD'.
-                    rewrite {1}/Sym.sget /= OLD'.
-                    move/id in RTAG'; specialize RTAG' with a'.
-                    set G := (Sym.sget _ a') in RTAG' *.
-                    destruct G as [[w' [|cw' Iw' Ww'|]]|] eqn:SGET'; subst;
-                      try done.
-                    simpl in *.
-                    destruct RTAG' as [SAME [IN_Iw' IN_Ww']].
-                    split; [|split; auto].
-                    move/Abs.in_compartment_spec in IC.
-                    rewrite SAME 2!Abs.in_compartment_spec /= delete_in_iff.
-                    abstract intuition.
-                  - rewrite {1}/Sym.sget /= in NEW'.
-                    rewrite {1}/Sym.sget /= NEW'.
-                    move/id in RTAG'; specialize RTAG' with a'.
-                    rewrite def_xcIW /= in RTAG'.
-                    destruct RTAG' as [SAME [IN_I'' IN_W'']].
-                    split; [|split; auto].
-                    + move/Abs.in_compartment_spec in IC.
-                      rewrite SAME 2!Abs.in_compartment_spec /= delete_in_iff.
-                      abstract intuition.
-                    + rewrite insert_unique_spec.
-                      intros [? | ?]; subst; auto.
-                      assert (AC ⊢ a ∈ <<Aprev,Jprev,Sprev>>) by
-                        (move/eqP in RPREV; eapply refined_sget_in_compartment;
-                         eauto 3).
-                      replace c with <<Aprev,Jprev,Sprev>> in * by eauto 3.
-                      congruence.
-                }
-          - rewrite /Sym.sget.
-            rewrite /Sym.sget in NEW.
-            rewrite NEW.
-            move: (RCTAGS a) => RCTAGSa.
-            rewrite def_xcIW in RCTAGSa.
-            move: RCTAGSa => [SET_I'' [SET_W'' [c [Hc1 Hc2]]]].
-            split3.
-            + by apply insert_unique_preserves_set_true.
-            + by [].
-            + generalize (in_compartment_update Aprev (insert_unique a Jprev) Sprev Jprev Sprev Hc1).
-              move => [c' Hc'].
-              eexists. split; first by apply Hc'.
-              move => p''.
-              admit.
-        }
-    + rewrite /refine_previous_b /=.
-      (*eapply prove_refined_compartment; eauto 3.*)
-      admit.
-    + admit.
-    + admit.
-  - destruct (p == isolate_addr);
-      [|destruct (p == add_to_jump_targets_addr);
-         [|destruct (p == add_to_store_targets_addr);
-           [|discriminate]]];
-      inversion def_s'; subst; clear def_s'; simpl in *.
-    + constructor; simpl; auto.
-      * admit.
-      * rewrite /refine_previous_b /=.
-        admit.
-        (*rewrite /Sym.good_internal /= in RINT *.
-        destruct SiT; try done.
-        destruct SaJT; try done.
-        destruct SaST; try done.
-        destruct RINT as [? [? [? RINT]]].
-
-        do 3 (split; auto).*)
-      * admit.
-    + admit.
-    + admit.
 Qed.
 
 (***** END MOVEMENT *****)

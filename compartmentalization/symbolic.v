@@ -513,6 +513,29 @@ Proof.
   by rewrite NE.
 Qed.
 
+Theorem sget_supd_inv s s' p p' L :
+  supd s p L ?= s' ->
+  sget s' p' ->
+  sget s  p'.
+Proof.
+  case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'].
+  rewrite /supd /= /rep /sget.
+  case GET: (get m p) => [[v tg]|] /=.
+  - move=> [<- _ _ _ <- <- <-].
+    have [{p'} ->|NE] := (p' =P p); first by rewrite GET.
+    by rewrite (get_set_neq _ _ NE).
+  - do !case: (p =P _) => ? //; subst.
+    + move=> [<- _ _ _ <- <- <-].
+      case: (get m p') => //.
+      by do !case: (p' =P _).
+    + move=> [<- _ _ _ <- <- <-].
+      case: (get m p') => //.
+      by do !case: (p' =P _).
+    + move=> [<- _ _ _ <- <- <-].
+      case: (get m p') => //.
+      by do !case: (p' =P _).
+Qed.
+
 Theorem get_supd_eq s s' p x L L' :
   get (Symbolic.mem s) p ?= x@L ->
   supd s p L' ?= s' ->
