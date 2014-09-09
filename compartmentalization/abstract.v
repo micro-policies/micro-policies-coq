@@ -1091,40 +1091,40 @@ Lemma good_compartments_preserved_for_add_to_compartment_component :
     store_targets c' \subset address_space c :|: store_targets c ->
     good_compartments (c' :: rem_all c C).
 Proof.
-  intros c c' C GOOD IN ADDR SUBSET_J SUBSET_S.
+  move=> c c' C GOOD /inP IN ADDR SUBSET_J SUBSET_S.
   unfold good_compartments; repeat (andb_true_split; simpl); auto.
   - rewrite ->non_overlapping_replace', forallb_forall by assumption.
-    admit. (*
-    intros c'' IN'; rewrite ->delete_in_iff in IN'; destruct IN' as [NEQ IN'].
-    replace (address_space c') with (address_space c) by assumption.
-    assert (NOL : non_overlapping C) by auto;
-      rewrite ->non_overlapping_spec' in NOL by assumption.
-    auto.*)
-  - apply contained_compartments_spec; simpl.
-    intros d a IN_d IN_a.
-    assert (CC : contained_compartments C) by auto.
-    admit. (*
-    rewrite ->contained_compartments_spec in CC.
-    rewrite ->subset_spec in SUBSET_J,SUBSET_S;
-      specialize (SUBSET_J a); specialize (SUBSET_S a);
-      rewrite ->set_union_spec in SUBSET_J,SUBSET_S.
+    move=> c'' /inP; rewrite in_rem_all => /andP [/eqP NEQ IN'].
+    rewrite /disjoint_comp /= -!ADDR.
+    have /non_overlapping_spec NOL : non_overlapping C by auto.
+    by apply/NOL/in_neq_in2; (apply nesym || apply/inP).
+  - apply/contained_compartments_spec => /= d a IN_d IN_a.
+    have /contained_compartments_spec CC : contained_compartments C by auto.
+    let sub SS := move/subsetP/(_ a) in SS; rewrite inE in SS
+    in sub SUBSET_J; sub SUBSET_S.
     have [EQ | /eqP NEQ] := altP (c' =P d); ssubst.
     + specialize (CC c a IN); simpl in CC.
-      destruct IN_a as [IN_a | IN_a];
+      case: IN_a => IN_a;
         [apply SUBSET_J in IN_a | apply SUBSET_S in IN_a];
-        ( destruct IN_a as [IN_a | IN_a]
-        ; [ rewrite ->ADDR in IN_a; solve [eauto]
-          | destruct CC as [d' [IN_d' IN'_a]];
-            [ solve [auto]
-            | solve [ have [? | /eqP ?] := altP (d' =P c);
-                      [ ssubst; rewrite ->ADDR in *; eauto
-                      | exists d'; rewrite ->delete_in_iff; auto ]]]]).
-    + destruct IN_d as [<- | IN_d]; [congruence|].
-      specialize CC with d a. destruct CC as [d' [IN_d' IN'_a]].
-      * apply delete_in_iff in IN_d; tauto.
-      * exact IN_a.
-      * have [? | /eqP ?] := altP (d' =P c); [ssubst; rewrite ->ADDR in *; eauto|].
-        exists d'; rewrite ->delete_in_iff; auto.*)
+        case/orP: IN_a => IN_a.
+      (* The first two... *)
+      * by rewrite ADDR in IN_a; exists d.
+      * case: CC => [ | d' [IN_d' IN'_a]]; first by left.
+        { have [EQ | NEQ] := altP (d' =P c).
+          - by subst; exists d; rewrite -ADDR.
+          - by exists d'; rewrite inE in_rem_all NEQ /= IN_d' orbT. }
+      (* ...are the same as the second two (except for a left/right swap). *)
+      * by rewrite ADDR in IN_a; exists d.
+      * case: CC => [ | d' [IN_d' IN'_a]]; first by right.
+        { have [EQ | NEQ] := altP (d' =P c).
+          - by subst; exists d; rewrite -ADDR.
+          - by exists d'; rewrite inE in_rem_all NEQ /= IN_d' orbT. }
+    + move: IN_d; rewrite inE => /orP [/eqP ? | IN_d]; [congruence|].
+      move: CC => /(_ d a) [| // | d' [IN_d' IN'_a]].
+      * by rewrite in_rem_all in IN_d; move: IN_d => /andP [].
+      * { have [? | NEQ'] := altP (d' =P c).
+          - by subst; exists c'; rewrite inE -ADDR eq_refl /=.
+          - by exists d'; rewrite inE in_rem_all NEQ' IN_d' orbT. }
 Qed.
 
 Lemma add_to_compartment_component_good : forall addr rd wr MM,
@@ -1135,63 +1135,55 @@ Lemma add_to_compartment_component_good : forall addr rd wr MM,
                store_targets (wr X c) = X /\ rd c = store_targets c) ->
   good_syscall (Syscall addr (add_to_compartment_component rd wr)) MM.
 Proof.
-  admit. (*
-  clear S.
-  unfold good_syscall; simpl;
-    intros _ rd wr MM ADDR rd_set wr_good eqJ eqS.
+  clear S; rewrite /good_syscall /= => _ rd wr MM ADDR eqJ eqS.
   destruct (good_state MM) eqn:GOOD; [simpl|reflexivity].
   destruct (in_compartment_opt _ _) as [c_sys0|] eqn:ICO_pc;
     [simpl|reflexivity].
   destruct (syscall_address_space _ _) eqn:SAS; [simpl|reflexivity].
   destruct MM as [pc R M C sk c];
     unfold good_state, add_to_compartment_component;
-    rewrite (lock in_compartment_opt) (lock elem);
+    rewrite (lock in_compartment_opt);
     simpl in *.
-  generalize GOOD; rewrite /good_state /= =>
-    /andP [/andP [/andP [PREV GOODS] SS] SP].
+  generalize GOOD; rewrite /good_state /= => /and4P [PREV GOODS SS SP].
   destruct (permitted_now_in _ _ _ _) as [c_sys|] eqn:PNI; [simpl|reflexivity].
   destruct (c != c_sys)               eqn:NEQ;             [simpl|reflexivity].
   destruct (get R syscall_arg1)       as [p|];             [simpl|reflexivity].
-  destruct (set_elem p        _)      eqn:ELEM;            [simpl|reflexivity].
+  destruct (p \in _)                  eqn:ELEM;            [simpl|reflexivity].
   destruct (get R ra)                 as [pc'|];           [simpl|reflexivity].
   rewrite <-(lock in_compartment_opt);
     destruct (in_compartment_opt _ pc') as [c_next|] eqn:ICO_pc';
     simpl; [|reflexivity].
   destruct (_ == c_next) eqn:EQ; move/eqP in EQ; simpl;
     [subst c_next | reflexivity].
-  destruct (set_elem pc' _) eqn:ELEM_pc'; simpl; [|reflexivity].
-  assert (IN : In c C) by
-    (repeat rewrite ->andb_true_iff in GOOD; destruct (elem c C);
-     [assumption | repeat invh and; discriminate]).
-  assert (GOOD_c : good_compartment c) by eauto.
+  destruct (pc' \in _) eqn:ELEM_pc'; simpl; [|reflexivity].
   assert (c_sys0 = c_sys) by
     (apply permitted_now_in__in_compartment_opt in PNI; congruence);
     subst c_sys0.
-  apply in_compartment_opt_correct, in_compartment_spec in ICO_pc; auto.
-  rewrite <-(lock elem).
+  apply in_compartment_opt_correct in ICO_pc; auto.
   andb_true_split.
-  - move/eqP in NEQ.
-    assert (In c_sys (delete c C)) by (apply delete_in_iff; split; auto; tauto).
-    match goal with |- context[elem c_sys ?C'] =>
-      destruct (elem c_sys C') eqn:ELEM'; try rewrite ELEM'; auto
-    end.
+  - rewrite inE.
+    have -> : c_sys \in rem_all c C. {
+      rewrite in_rem_all eq_sym; apply/andP; split; first by [].
+      eapply in_compartment_element; eassumption.
+    }
+    by rewrite orbT.
   - destruct c as [A J S]; simpl in *.
-    rewrite ->set_elem_true, ->set_union_spec in ELEM by
-      (apply set_union_preserves_set; eauto 2).
-    apply good_compartments_preserved_for_add_to_compartment_component; auto;
-      rewrite subset_spec; intros a; rewrite set_union_spec; simpl;
-      match goal with
-        | |- context[wr ?X ?c] =>
-          destruct (eqJ X c) as [eqWr | [eqWr eqRd]]; rewrite eqWr; auto
-        | |- context[wr ?X ?c] =>
-          destruct (eqS X c) as [eqWr | [eqWr eqRd]]; rewrite eqWr; auto
-      end;
-      rewrite ->insert_unique_spec, eqRd in *; simpl in *;
-      intros [-> | IN_a]; auto.
+    rewrite inE in ELEM.
+    by apply good_compartments_preserved_for_add_to_compartment_component;
+       try (by try apply/inP);
+       apply/subsetP => a; rewrite inE /=;
+       [move: (eqJ) => eqX | move: (eqS) => eqX];
+       case: (eqX (p |: rd <<A,J,S>>) <<A,J,S>>) => /= [-> | [-> eqRd]];
+       first [ move=> ->; rewrite orbT
+             | move: ELEM;
+               rewrite inE in_set1 eqRd => ELEM /orP [/eqP -> // | ->];
+               rewrite orbT ].
   - rewrite (user_address_space_same M _ c); auto.
     rewrite (syscall_address_space_same M _ c); auto.
-    unfold is_true in SS; rewrite ->forallb_forall in SS; auto.
-  - auto using delete_preserves_forallb.
+    unfold is_true in SS; rewrite ->forallb_forall in SS.
+    by apply/SS/inP.
+  - rewrite rem_all_is_delete; replace @all with @forallb by reflexivity;
+      auto using delete_preserves_forallb.
   - move/id in SP.
     rewrite /syscalls_present /table /is_true in SP *.
     rewrite ->forallb_forall in SP; rewrite ->forallb_forall.
@@ -1200,18 +1192,14 @@ Proof.
     simpl; rewrite <-ADDR.
     destruct (in_compartment_opt C sc) as [c_sc|] eqn:ICO;
       [clear SP | discriminate].
-    generalize ICO => ICO'.
-    apply in_compartment_opt_correct, in_compartment_spec in ICO'; auto;
-      destruct ICO' as [IN_c_sc IN_sc].
-    destruct (c_sc == c) eqn:EQ; move/eqP in EQ.
-    + subst; simpl in *.
-      destruct (set_elem sc (address_space c)) eqn:ELEM'; auto.
-      apply set_elem_false in ELEM'; auto.
-    + destruct (set_elem sc (address_space c)); auto.
-      assert (IN_c_sc' : In c_sc (delete c C)) by by apply delete_in_iff.
-      assert (IC' : delete c C ⊢ sc ∈ c_sc) by by apply in_compartment_spec.
+    move: (ICO) => /in_compartment_opt_correct/andP [IN_c_sc IN_sc].
+    have [<- | NEQ_sc] := altP (c_sc =P c).
+    + by rewrite IN_sc.
+    + case: (sc \in address_space c) => //.
+      have IC' : rem_all c C ⊢ sc ∈ c_sc
+        by apply/andP; rewrite in_rem_all; split; first apply/andP.
       apply in_compartment_opt_sound in IC'; auto.
-      rewrite IC'; auto. *)
+      by rewrite IC'.
 Qed.
 
 Theorem add_to_jump_targets_good : forall MM,
@@ -1234,7 +1222,7 @@ Qed.
 
 Corollary good_syscalls_b : forall MM,
   all (fun sc => good_syscall sc MM) table.
-Proof. admit. (* unfold table; simpl; intros; andb_true_split; auto. *) Qed.
+Proof. rewrite /table /= => MM; apply/and4P; split; auto. Qed.
 (*Global*) Hint Resolve good_syscalls_b.
 
 Corollary good_syscalls : forall MM sc,
@@ -1251,10 +1239,7 @@ Qed.
 
 Lemma get_syscall_good : forall addr sc,
   get_syscall addr ?= sc -> forall MM, good_syscall sc MM.
-Proof.
-  admit. (*
-  intros addr sc GS; apply get_syscall_in in GS; auto.*)
-Qed.
+Proof. move=> addr sc GS; apply get_syscall_in in GS; auto. Qed.
 (*Global*) Hint Resolve get_syscall_good.
 
 (*** Proofs about the machine. ***)
@@ -1301,15 +1286,12 @@ Proof.
     [clear ICO; rename ICO' into ICO | discriminate].
   destruct (syscall_address_space M c) eqn:SAS; [assumption | clear GOODSC].
   apply in_compartment_opt_correct in ICO; eauto 3;
-    destruct ICO as [IN IN'].
+    move: ICO => /andP [/inP IN IN'].
   assert (SS : syscalls_separated M C) by eauto; simpl in *.
-  admit. (*
-  rewrite ->forallb_forall in SS.
-  specialize (SS c IN).
+  move: SS => /forallb_forall/(_ c IN) /= SS.
   rewrite SAS orb_false_r /user_address_space /= in SS.
-  rewrite ->forallb_forall in SS.
-  specialize (SS (address sc) IN').
-  by rewrite INST in SS. *)
+  move/forallP/(_ (address sc))/implyP/(_ IN') in SS.
+  by rewrite INST in SS.
 Qed.
 
 Lemma syscall_step_preserves_good : forall MM MM' sc,
@@ -1338,26 +1320,25 @@ Proof.
   (* Have to repeat this thanks, I think, to evar unification timing *)
   - rewrite <-EQ; auto.
   - rewrite <-EQ; auto.
-  - rewrite <-EQ; auto. admit.
+  - rewrite <-EQ; apply SP; auto.
 Qed.
 
 Lemma previous_compartment : forall `(STEP : step MM MM'),
   good_state MM -> (* This hypothesis only needed for syscalls *)
   previous MM' \in compartments MM'.
-Proof. admit. (*
+Proof.
   intros MM MM' STEP GOOD; destruct STEP; try solve [
     subst; simpl in *;
     match goal with
-      | STEP : permitted_now_in ?C ?sk ?prev ?pc ?= ?c |- context[elem ?c ?C] =>
-        apply permitted_now_in_spec in STEP; try (eauto 3);
-        destruct STEP as [IC _]; apply in_compartment_spec in IC;
-        destruct IC; destruct (elem c C); [auto | contradiction]
+      | STEP : permitted_now_in ?C ?sk ?prev ?pc ?= ?c |- context[?c \in ?C] =>
+        apply permitted_now_in_spec in STEP; last (by eauto 2);
+        by case: STEP => [/andP []] *
     end
   ].
   (* Syscalls *)
   assert (GOOD' : good_state MM') by
    (apply syscall_step_preserves_good with MM sc; subst; assumption);
-   auto.*)
+   auto.
 Qed.
 (*Global*) Hint Resolve previous_compartment.
 
@@ -1467,8 +1448,8 @@ Proof.
   repeat (lapply PNI; clear PNI; [intros PNI | auto]).
   destruct PNI as [IC _].
   apply in_compartment_opt_sound in IC; auto.
-  by rewrite IC.
-  admit.
+  - by rewrite IC.
+  - by apply good_compartments__non_overlapping, good_state__good_compartments.
 Qed.
 
 Theorem permitted_pcs : forall MM MM' MM''
@@ -1601,8 +1582,7 @@ Proof.
     + apply permitted_now_in__in_compartment_opt,
             in_compartment_opt_correct
         in STEP; eauto 3.
-      admit.
-      (*apply in_app_iff; replace c0 with c in * by eauto 3; assumption.*)
+      by rewrite inE in VALID; replace c0 with c in * by eauto 3; apply/orP.
     + rewrite (PartMaps.get_upd_neq NE UPDR) in DIFF. by intuition.
   - (* Syscall *)
     unfold get_syscall,table in *; simpl in *.
