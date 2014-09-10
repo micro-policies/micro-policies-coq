@@ -1653,16 +1653,44 @@ Qed.
 
 Lemma retag_set_get_compartment_id_new_id ok retag sst sst' c cid :
   Sym.retag_set ok retag (enum (Abs.address_space c)) sst = Some sst' ->
+  Abs.address_space c != set0 ->
   (forall c I1 W1, Sym.stag_compartment (retag c I1 W1) = Some cid) ->
   get_compartment_id sst' c = Some cid.
 Proof.
-  case: c => [Aprev Jprev Sprev] /= Hretag_set Hretag.
-  suff H: forall (ps : seq word) (Aprev : {set word}) sst,
+  case: c => [Aprev Jprev Sprev] /= Hretag_set not0 Hretag.
+  have AprevP : Aprev = [set p in enum Aprev].
+  { apply/setP => p.
+    by rewrite in_set (mem_enum (mem Aprev)). }
+  rewrite AprevP {AprevP} in not0 *.
+  move: {Aprev} (enum Aprev) Hretag_set not0 => [|p ps] Hretag_set not0.
+  { by rewrite eqxx in not0. }
+
+  move=> {not0}.
+
+  have {sst Hretag_set} [sst Hretag_set Hstart]:
+    exists2 sst, Sym.retag_set ok retag ps sst = Some sst' &
+                 get_compartment_id sst <<[set p],Jprev,Sprev>> = Some cid.
+  { move: Hretag_set => /=.
+    case GET1: (Sym.sget sst p) => [[|cid1 I1 W1|]|] //=.
+    case: (ok cid1 I1 W1) => //.
+    move: (Hretag cid1 I1 W1).
+    case: (retag _ _ _) => [|cid1' I1' W1'|] //= [E].
+    subst cid1'.
+    case UPD1: (Sym.supd sst p (Sym.DATA cid I1' W1')) => [sst''|] //=.
+    eexists; eauto.
+    rewrite /get_compartment_id /= imset_set1
+            (Sym.sget_supd _ _ _ _ UPD1) eqxx /=.
+    case: pickP => [x /eqP/set1_inj Hx|/(_ cid) contra]; first by apply esym.
+    by rewrite eqxx in contra. }
+
+  suff  {Hstart Hretag_set} H: forall (ps ps' : seq word) sst,
             @Sym.retag_set _ cmp_syscalls ok retag ps sst = Some sst' ->
-            get_compartment_id sst <<Aprev,Jprev,Sprev>> = Some cid ->
-            get_compartment_id sst' <<Aprev :|: [set p : word in ps],Jprev,Sprev>> = Some cid.
-  { admit. }
-  elim {sst Aprev Hretag_set} => [|p ps IH] Aprev sst /=.
+            get_compartment_id sst <<[set p : word in ps'],Jprev,Sprev>> = Some cid ->
+            get_compartment_id sst' <<[set p : word in ps'] :|: [set p : word in ps],Jprev,Sprev>> = Some cid.
+  { move: (H ps [:: p] _ Hretag_set).
+    rewrite !set_cons setU0. by apply. }
+
+  elim=> {p ps sst} [|p ps IH] ps' sst /=.
   { have -> : [set p : word in [::]] = set0 by [].
     rewrite setU0.
     congruence. }
@@ -1672,15 +1700,15 @@ Proof.
   case: (retag _ _ _) => [|cid'' I'' W''|] //= [E].
   subst cid''.
   case UPD: (Sym.supd _ _ _) => [sst''|] //= Hretag_set Hcid.
-  rewrite set_cons setUA.
+  rewrite set_cons setUA (setUC _ [set p]) -set_cons.
   apply (IH _ sst'') => //.
   move: Hcid.
   rewrite /get_compartment_id.
   case: pickP => /= [cid'' /eqP E|] //= [?].
   subst cid''.
-  rewrite setUC imsetU1 (Sym.sget_supd _ _ _ _ UPD) eqxx /=.
-  suff -> : [set (do!X <- @Sym.sget _ cmp_syscalls sst'' x; Sym.stag_compartment X) | x in Aprev] =
-            [set (do!X <- @Sym.sget _ cmp_syscalls sst x; Sym.stag_compartment X) | x in Aprev].
+  rewrite set_cons imsetU1 (Sym.sget_supd _ _ _ _ UPD) eqxx /=.
+  suff -> : [set (do!X <- @Sym.sget _ cmp_syscalls sst'' x; Sym.stag_compartment X) | x in [set x : word in ps']] =
+            [set (do!X <- @Sym.sget _ cmp_syscalls sst x; Sym.stag_compartment X) | x in [set x : word in ps']].
   { rewrite E setUid.
     case: pickP => [cid''' /eqP/set1_inj H//|/(_ cid) contra].
     by rewrite eqxx in contra. }
@@ -2383,7 +2411,15 @@ Proof.
       apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
       apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
       by apply (@retag_set_get_compartment_id_new_id _ _ _ _ <<A',J',S'>> Snext def_sA).
-    + admit.
+    + move: (IDSWD c' c'_in_AC).
+      case Hcid''': (get_compartment_id _ _) => [cid'''|] // _.
+      suff ->: get_compartment_id (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+               c' = Some cid'''; first by [].
+      apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
+      apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
+      apply (retag_set_get_compartment_id_disjoint def_sA).
+      { admit. }
+      by rewrite (get_compartment_id_irrelevancies' SR pc@(Sym.PC F cid) Snext).
   - move=> c1 c2. admit.
     (*rewrite !in_cons !in_rem_all /=
             => /or3P [/eqP -> {c1}|/eqP -> {c1}|/andP [not_pred1 c1_in_AC]]
