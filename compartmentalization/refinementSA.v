@@ -915,60 +915,19 @@ Proof.
 Qed.
 *)
 
-(*
-Lemma refined_compartment_same : forall sst sst' c,
+Lemma get_compartment_id_same : forall sst sst' c,
   equilabeled sst sst' ->
-  refined_compartment c sst = refined_compartment c sst'.
+  get_compartment_id sst c = get_compartment_id sst' c.
 Proof.
   clear S I; intros sst sst' [A J S] SAME.
-  rewrite /equilabeled in SAME.
-  rewrite /refined_compartment /=.
-  admit. (*
-  assert (INIT :
-    (do! sxs <- map_options (Sym.sget sst) A;
-     the =<< map_options (Sym.stag_compartment ∘ slabel) sxs)
-    =
-    (do! sxs' <- map_options (Sym.sget sst') A;
-     the =<< map_options (Sym.stag_compartment ∘ slabel) sxs')).
-  {
-    rewrite (lock the) 2!bind_assoc -(lock the) 2!map_options_bind; f_equal.
-    induction A as [|a A]; simpl in *; [reflexivity|].
-    specialize SAME with a.
-    destruct (Sym.sget sst a) as [[x L]|], (Sym.sget sst' a) as [[x' L']|];
-      try done; simpl in SAME; inversion SAME; subst L'; simpl.
-    rewrite IHA; reflexivity.
-  }
-  set MAP_J := (map_options _ J); set MAP_J' := (map_options _ J).
-  assert (EQ_MAP_J : MAP_J = MAP_J'). {
-    subst MAP_J MAP_J'.
-    induction J as [|a J]; [reflexivity|simpl].
-    specialize SAME with a.
-    destruct (Sym.sget sst a) as [[x L]|], (Sym.sget sst' a) as [[x' L']|];
-      try done.
-    simpl in SAME; inversion SAME; subst; simpl.
-    by rewrite IHJ.
-  }
-  set MAP_S := (map_options _ S); set MAP_S' := (map_options _ S).
-  assert (EQ_MAP_S : MAP_S = MAP_S'). {
-    subst MAP_S MAP_S'.
-    induction S as [|a S']; [reflexivity|simpl].
-    specialize SAME with a.
-    destruct (Sym.sget sst a) as [[x L]|], (Sym.sget sst' a) as [[x' L']|];
-      try done.
-    simpl in SAME; inversion SAME; subst; simpl.
-    by rewrite IHS'.
-  }
-  rewrite bind_assoc INIT -bind_assoc EQ_MAP_J EQ_MAP_S; reflexivity.*)
+  rewrite /get_compartment_id.
+  apply eq_pick => p.
+  apply f_equal2 => //.
+  apply eq_imset => {p} p /=.
+  move: (SAME p).
+  case: (Sym.sget sst p) => [l|]; case: (Sym.sget sst' p) => [l'|] //.
+  congruence.
 Qed.
-*)
-
-(*
-Lemma refined_compartment_irrelevancies : forall c SM SR SR' Spc Spc'
-                                                 Snext Snext' SiT SaJT SaST,
-  refined_compartment c (SState SM SR  Spc  (SInternal Snext  SiT SaJT SaST)) =
-  refined_compartment c (SState SM SR' Spc' (SInternal Snext' SiT SaJT SaST)).
-Proof. reflexivity. Qed.
-*)
 
 Theorem isolate_create_set_refined : forall AM SM,
   refine_memory AM SM ->
@@ -2925,24 +2884,24 @@ Proof.
                            else if p' == add_to_store_targets_addr then _
                            else None)
                    as [[z' []]|]; subst. } *)
-      * admit.
-      (** rewrite /refine_previous_b; simpl.
-        erewrite <-refined_compartment_same; [|eassumption].
+      * rewrite /refine_previous_b; simpl.
+        erewrite <-get_compartment_id_same; [|eassumption].
         (* eassumption picked the wrong thing first *)
-        eapply prove_refined_compartment'; try apply def_cid; try eassumption;
-          rewrite /Sym.sget /= PC; reflexivity.*)
-      * admit.
-      (** rewrite /refine_syscall_addrs_b /= in RSC *.
-        repeat move: RSC => /andP [RSC ?].
-        destruct (w1 == isolate_addr) eqn:EQ_i; move/eqP in EQ_i;
-          [subst; rewrite ->GETM1 in *; done|].
-        destruct (w1 == add_to_jump_targets_addr) eqn:EQ_aJ; move/eqP in EQ_aJ;
-          [subst; rewrite ->GETM1 in *; done|].
-        destruct (w1 == add_to_store_targets_addr) eqn:EQ_aS; move/eqP in EQ_aS;
-          [subst; rewrite ->GETM1 in *; done|].
-        repeat rewrite get_set_neq; auto.
-        do 3 (erewrite (get_upd_neq (key := w1) (m' := mem')); eauto 2).
-        andb_true_split; auto.*)
+        eapply prove_get_compartment_id; try apply def_cid; try eassumption;
+          rewrite /Sym.sget /= PC; reflexivity.
+      * have not_syscall : w1 \notin syscall_addrs.
+        { apply/negP => contra.
+          case/and3P: RSC => /eqP [].
+          case/or4P: contra => [/eqP Hw1 | /eqP Hw1 | /eqP Hw1 | contra ] //;
+          subst w1; by rewrite GETM1. }
+        rewrite !in_cons !negb_or !(eq_sym w1) in not_syscall.
+        case/and4P: not_syscall => /eqP N1 /eqP N2 /eqP N3 _.
+        move: RSC.
+        rewrite /refine_syscall_addrs_b !map_cons /=.
+        do 3!rewrite (PartMaps.get_set_neq) //.
+        by rewrite (PartMaps.get_upd_neq N1 def_mem')
+                   (PartMaps.get_upd_neq N2 def_mem')
+                   (PartMaps.get_upd_neq N3 def_mem').
       * rewrite /Sym.good_internal /= in RINT *.
         destruct extra as [next iT aJT aST].
         destruct iT,aJT,aST; auto.
