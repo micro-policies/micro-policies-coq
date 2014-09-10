@@ -2418,7 +2418,21 @@ Proof.
       apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
       apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
       apply (retag_set_get_compartment_id_disjoint def_sA).
-      { admit. }
+      { rewrite /Abs.non_overlapping -list_utils.all_pairs_in2_comm in ANOL.
+        { move/list_utils.all_pairs_spec/(_ c' <<Aprev,Jprev,Sprev>>) in ANOL.
+          have {ANOL} /ANOL IN2: list_utils.In2 c' <<Aprev,Jprev,Sprev>> AC.
+          { apply list_utils.in_neq_in2.
+            - by apply/eqP.
+            - by apply/inP.
+            - by apply/inP. }
+          rewrite /Abs.disjoint_comp /= in IN2.
+          case/andP: IN2 => _ DISJ.
+          rewrite !disjoints_subset in DISJ *.
+          rewrite -setCS in SUBSET_A'.
+          by eapply subset_trans; eauto. }
+        clear.
+        move=> x y _.
+        by rewrite /Abs.disjoint_comp /= orbC -setI_eq0 setIC setI_eq0. }
       by rewrite (get_compartment_id_irrelevancies' SR pc@(Sym.PC F cid) Snext).
   - move=> c1 c2. admit.
     (*rewrite !in_cons !in_rem_all /=
