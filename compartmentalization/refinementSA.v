@@ -1883,6 +1883,39 @@ Proof.
   eexists; eauto.
 Qed.
 
+Lemma bounded_tags sst p c c' II WW :
+  Sym.good_internal sst ->
+  Sym.sget sst p = Some (Sym.DATA c II WW) ->
+  c' \in II :|: WW ->
+  c' <? (Sym.next_id (Symbolic.internal sst)).
+Proof.
+  destruct sst.
+  destruct internal.
+  rewrite /Sym.good_internal.
+  destruct isolate_tag, add_to_jump_targets_tag, add_to_store_targets_tag => //=.
+  case=> _ [_ [/forall_inP G1 G2]].
+  rewrite /Sym.sget.
+  case E: (get mem p) => [[v tg]|].
+  { move => [?]. subst tg.
+    move: (G2 p _ _ _ _ E) => [_ G3].
+    eauto. }
+  have [EE|NEE] := (p =P isolate_addr).
+  { rewrite /=.
+    move => [? ? ?] H. subst.
+    apply G1.
+    by rewrite 4!in_setU H. }
+  have [EE|_] := (p =P add_to_jump_targets_addr).
+  { rewrite /=.
+    move => [? ? ?] H. subst.
+    apply G1.
+    by rewrite -(setUA _ _ WW) 3!in_setU H !orbT. }
+  have [_|//=] := (p =P add_to_store_targets_addr).
+  { rewrite /=.
+    move => [? ? ?] H. subst.
+    apply G1.
+    by rewrite -(setUA _ _ WW) 3!in_setU H !orbT. }
+Qed.
+
 Theorem isolate_refined : forall ast sst sst',
   Abs.pc ast = isolate_addr ->
   Abs.good_state ast ->
@@ -2680,19 +2713,40 @@ Proof.
               case Gp': (Sym.sget _ _) => [[|cp' Ip' Wp'|]|] // _.
               * move: (Gp').
                 rewrite /Sym.sget => -> /=.
-                admit.
+                have [IN|//] := boolP (Snext \in Ip').
+                have contra: Snext <? Snext.
+                { apply (bounded_tags RINT Gp').
+                  by rewrite in_setU IN. }
+                by rewrite ltb_irrefl in contra.
               * move: Gp'. by rewrite /Sym.sget => -> /=.
             + case: Ha => ca [Ia [Wa [a1 [/eqP a2 a3]]]].
               subst ca.
               rewrite a3 /=.
-              move: (Sym.sget_lt_next _ _ _ _ _ RINT a1) => /=.
-              admit.
-          - case: Hs => ? [? [? [H'' [H' H]]]].
+              have [IN|//] := boolP (Snext \in Ia).
+              have contra: Snext <? Snext.
+              { apply (bounded_tags RINT a1).
+                by rewrite in_setU IN. }
+              by rewrite ltb_irrefl in contra.
+          - case: Hs => a [aa [aaa [H'' [H' H]]]].
             rewrite (sget_irrelevancies RS pcS) H {H} /=.
             rewrite -(mem_enum (mem J')) in NINp'.
             have H := Sym.retag_set_not_in _ _ _ _ _ def_sJ _ NINp'.
             rewrite -H in H''.
-            admit. }
+            have [IN|//] := boolP (Snext \in aa).
+            have [Ha|Ha|Ha] := Sym.retag_set_or_ok _ _ _ _ _ (enum_uniq (mem A')) _ def_sA p'.
+            + by apply SGMEM.
+            + rewrite -Ha in H''.
+              have contra: Snext <? Snext.
+              { apply (bounded_tags RINT H'').
+                by rewrite in_setU IN. }
+              by rewrite ltb_irrefl in contra.
+            + case: Ha => x [xx [xxx [xxxx [xxxxx xxxxxx]]]].
+              rewrite xxxxxx in H''.
+              move: H'' => [? ? ?]. subst.
+              have contra: a <? a.
+              { apply (bounded_tags RINT xxxx).
+                by rewrite in_setU IN. }
+              by rewrite ltb_irrefl in contra. }
     + move/(_ c' c'_in_AC') in RC_rest.
       rewrite -RC_rest => GCI_cid'.
       move: (c'_in_AC'); rewrite in_rem_all => /andP [c'_neq_prev c'_in_AC].
