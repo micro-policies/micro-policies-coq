@@ -1121,6 +1121,10 @@ Lemma get_compartment_id_irrelevancies r' pc' m int r pc :
   get_compartment_id (SState m r' pc' int).
 Proof. by []. Qed.
 
+Lemma get_compartment_id_irrelevancies' r' pc' next' m r pc next a b c :
+  get_compartment_id (SState m r pc (Sym.Internal next a b c)) =
+  get_compartment_id (SState m r' pc' (Sym.Internal next' a b c)).
+Proof. by []. Qed.
 
 Lemma unique_ids_replace sst sst' p pcid I1 I2 W1 W2 C A J1 J2 S1 S2 :
   unique_ids sst C ->
@@ -1559,11 +1563,11 @@ Qed.
 
 Lemma retag_set_get_compartment_id_disjoint ok retag (ps : {set word}) sst sst' c cid :
   Sym.retag_set ok retag (enum ps) sst = Some sst' ->
-  get_compartment_id sst c = Some cid ->
   [disjoint Abs.address_space c & ps] ->
+  get_compartment_id sst c = Some cid ->
   get_compartment_id sst' c = Some cid.
 Proof.
-  move=> Hretag Hid /pred0P Hdis.
+  move=> Hretag /pred0P Hdis Hid.
   have {Hdis} Hdis: forall p, p \in Abs.address_space c -> p \notin enum ps.
   { move=> p Hin_c.
     apply/negP => Hin_ps.
@@ -2100,7 +2104,30 @@ Proof.
       by case: (p' \in A'). }
     apply (Abs.in_compartment_opt_is_some _ _ cp').
     by rewrite /Abs.in_compartment !in_cons in_rem_all NE cp'_in_AC !orbT /=.
-  - admit.
+  - move=> c'.
+    rewrite !in_cons in_rem_all => /or3P [/eqP -> {c'}|/eqP -> {c'}|/andP [c'_not_old c'_in_AC]].
+    + suff ->: get_compartment_id (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+               <<Aprev :\: A',Jprev,Sprev>> = Some cid; first by [].
+      rewrite (get_compartment_id_irrelevancies RS pcS).
+      apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
+      apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
+      apply (retag_set_get_compartment_id_disjoint def_sA).
+      { rewrite disjoint_subset /=.
+        apply/subsetP => p''.
+        by rewrite in_setD => /andP []. }
+      rewrite (get_compartment_id_irrelevancies' SR pc@(Sym.PC F cid) Snext).
+      have := (get_compartment_id_subset _ _ RPREV).
+      apply.
+      * exact: pc'.
+      * by rewrite in_setD IN_pc' NIN.
+      * by rewrite subDset subsetUr.
+    + suff ->: get_compartment_id (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+               <<A',J',S'>> = Some Snext; first by [].
+      rewrite (get_compartment_id_irrelevancies RS pcS).
+      apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
+      apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
+      admit.
+    + admit.
   - move=> c1 c2. admit.
     (*rewrite !in_cons !in_rem_all /=
             => /or3P [/eqP -> {c1}|/eqP -> {c1}|/andP [not_pred1 c1_in_AC]]
@@ -2125,7 +2152,7 @@ Proof.
               RSCU ].
     move: (RSCU);
       rewrite /= !inE negb_or -!andbA => /and4P[] NEQiaJ NEQiaS NEQaJaS _.
-    
+
     have NIN_any : forall a, get AM a = None -> a \notin A'. {
       move=> a ANGET; apply/negP; move=> IN.
       move: ASS => /forallb_forall/(_ _ (elimT (inP _ _ _) AIN))/orP [UAS | SAS].
@@ -2142,33 +2169,33 @@ Proof.
     have NIN_i  : isolate_addr              \notin A' by apply NIN_any.
     have NIN_aJ : add_to_jump_targets_addr  \notin A' by apply NIN_any.
     have NIN_aS : add_to_store_targets_addr \notin A' by apply NIN_any.
-    
+
     move: (def_sA) => /Sym.retag_set_preserves_get_definedness GETS_sA.
     move: (def_sJ) => /Sym.retag_set_preserves_get_definedness GETS_sJ.
     move: (def_sS) => /Sym.retag_set_preserves_get_definedness GETS_sS.
     simpl in *.
-    
+
     have SNGET_sA_i : ~~ get (Symbolic.mem sA) isolate_addr
       by rewrite -GETS_sA SNGET_i.
     have SNGET_sA_aJ : ~~ get (Symbolic.mem sA) add_to_jump_targets_addr
       by rewrite -GETS_sA SNGET_aJ.
     have SNGET_sA_aS : ~~ get (Symbolic.mem sA) add_to_store_targets_addr
       by rewrite -GETS_sA SNGET_aS.
-    
+
     have SNGET_sJ_i  : ~~ get (Symbolic.mem sJ) isolate_addr
       by rewrite -GETS_sJ.
     have SNGET_sJ_aJ : ~~ get (Symbolic.mem sJ) add_to_jump_targets_addr
       by rewrite -GETS_sJ.
     have SNGET_sJ_aS : ~~ get (Symbolic.mem sJ) add_to_store_targets_addr
       by rewrite -GETS_sJ.
-   
+
     have SNGET_sS_i : ~~ get MS isolate_addr
       by rewrite -GETS_sS.
     have SNGET_sS_aJ : ~~ get MS add_to_jump_targets_addr
       by rewrite -GETS_sS.
     have SNGET_sS_aS : ~~ get MS add_to_store_targets_addr
       by rewrite -GETS_sS.
-    
+
     have SGINT_sA : Sym.good_internal sA. {
       eapply Sym.retag_set_updating_preserves_good_internal;
         try apply def_sA; try eauto 1; simpl;
@@ -2178,7 +2205,7 @@ Proof.
       - by rewrite SNGET_aS.
       - exact (enum_uniq (pred_of_set A')).
     }
-    
+
     have SGINT_sJ : Sym.good_internal sJ. {
       generalize def_sJ => GETS;
         move/Sym.retag_set_preserves_get_definedness in GETS.
@@ -2195,7 +2222,7 @@ Proof.
         + exact (enum_uniq (pred_of_set J')).
       - eapply Sym.retag_set_preserves_next_id; eassumption.
     }
-    
+
     have SGINT_sS : Sym.good_internal (SState MS RS pcS siS). {
       generalize def_sS => GETS;
         move/Sym.retag_set_preserves_get_definedness in GETS.
@@ -2212,7 +2239,7 @@ Proof.
         + exact (enum_uniq (pred_of_set S')).
       - eapply Sym.retag_set_preserves_next_id; eassumption.
     }
-    
+
     exact SGINT_sS.
 
 (* END REFINEMENT *)
