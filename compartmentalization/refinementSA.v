@@ -2460,8 +2460,44 @@ Proof.
       by apply IDSU.
   - move=> c' cid'. admit.
     (*rewrite !in_cons => /or3P [/eqP {c'} ->|/eqP {c'} ->|] /=.*)
-  - move=> c' cid'. admit.
-  - apply/andP; split; [apply eq_refl | apply/eqP; apply R_c_sys'].
+  - move=> c' cid'.
+    rewrite !inE => /or3P [ /eqP{c'}-> | /eqP{c'}-> | c'_in_AC'].
+    + admit.
+    + admit.
+    + move/(_ c' c'_in_AC') in RC_rest.
+      rewrite -RC_rest => GCI_cid'.
+      move: (c'_in_AC'); rewrite in_rem_all => /andP [c'_neq_prev c'_in_AC].
+      move/(_ c' cid' c'_in_AC GCI_cid') in STWF.
+      rewrite STWF.
+      apply/setP.
+      rewrite /eq_mem /= => a; rewrite !in_set.
+      move: TSI_rest => /(_ c' c'_in_AC' a).
+      case: (Sym.sget _ a) => [[]|] //=; [|by case: (Sym.sget _ a) => [[]|]].
+      move=> cid1 I1 W1.
+      case: (Sym.sget _ a) => [[]|] //=.
+      move=> cid2 I2 W2.
+      move=> [cid_eq [/subsetP SUBSET_Is /subsetP SUBSET_Ws]].
+      (*
+      
+      
+
+      have a_notin_Aprev : a \notin Aprev. {
+        apply/negP; move=> IN.
+        move: c'_neq_prev => /eqP; apply.
+        apply Abs.in_unique_compartment with (C := AC) (p := a).
+        - eapply Abs.good_state_decomposed__good_compartments; eassumption.
+        - apply/andP; split; first by [].
+          
+        - by apply/andP.
+      }
+      rewrite 
+      rewrite /oapp /=.
+      
+      simpl.
+      apply eq_in_imset.*)
+      admit.
+
+  - apply/andP; split; [apply eq_refl | apply/eqP; apply R_c_sys'].     
   - rewrite /refine_syscall_addrs_b.
     case/and3P: RSC => ? /eqP [/eqP H1 /eqP H2 /eqP H3] ?.
     apply/and3P.
