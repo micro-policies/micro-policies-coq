@@ -1111,7 +1111,8 @@ Proof.
              (Sym.get_supd_none _ _ _ _ _ Hs3 UPD).
 Qed.
 
-Lemma sget_supd_good_internal sst sst' p c I1 W1 I2 W2 :
+Lemma sget_supd_good_internal (sst sst' : sstate) p c I1 W1 I2 W2 :
+  (forall c', c' \in I2 :|: W2 -> (c' <? Sym.next_id (Symbolic.internal sst))) ->
   Sym.sget sst p ?= Sym.DATA c I1 W1 ->
   Sym.supd sst p (Sym.DATA c I2 W2) ?= sst' ->
   Sym.good_internal sst ->
@@ -1119,7 +1120,7 @@ Lemma sget_supd_good_internal sst sst' p c I1 W1 I2 W2 :
 Proof.
   case: sst => m r pc [? [? ?|? ? ?|] [? ?|? ? ?|] [? ?|? ? ?|]];
   rewrite /Sym.sget /Sym.supd /Sym.good_internal /rep //=.
-  case: sst' => m' r' pc' [? ? ? ?] /=.
+  case: sst' => m' r' pc' [? ? ? ?] /= OK.
   case GET: (get m p) => [[? tg]|].
   - move=> [Ht] /= [<- _ _ <- <- <- <-] [H1 [H2 H3]].
     subst tg.
@@ -1127,8 +1128,8 @@ Proof.
     move=> p' x c' I' W'.
     have [->|NE] := (p' =P p).
     + rewrite get_set_eq.
-      move=> [_ <- _ _].
-      by apply (H3 _ _ _ _ _ GET).
+      move=> [_ <- <- <-].
+      by apply H3 in GET; case: GET.
     + rewrite (get_set_neq _ _ NE).
       by apply H3.
   - by repeat case: (p =P _) => _ //; move=> [<- _ _] [<- _ _ <- <- <- <-].
@@ -1472,7 +1473,49 @@ Proof.
               -(get_compartment_id_supd_same def_xcIW def_s')
                R_c_sys.
   - exact: (supd_refine_syscall_addrs_b def_s').
-  - exact: (sget_supd_good_internal def_xcIW def_s').
+  - have in_range : forall c' : word_finType t,
+                      c' \in (cid' |: I'') :|: W'' ->
+                      c' <? Sym.next_id
+                              (Symbolic.internal
+                                 (SState SM SR
+                                         pc@(Sym.PC F cid')
+                                         (SInternal Snext SiT SaJT SaST))).
+    {
+      move=> c'; rewrite !inE -orbA => /= /or3P [/eqP->{c'} | IN_I'' | IN_W''].
+      - rewrite /Sym.good_internal /= in SGINT.
+        rewrite /Sym.sget /= in def_cid'.
+        destruct SiT,SaJT,SaST; try by [].
+        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: def_cid'; case GET: (get SM p') => [[]|] /=.
+        + move=> []?; subst.
+          apply GOOD in GET.
+          by case: GET.
+        + case: (p' == _); first by move=> [] *; subst.
+          case: (p' == _); first by move=> [] *; subst.
+          case: (p' == _); first by move=> [] *; subst.
+          by [].
+      - rewrite /Sym.good_internal /= in SGINT.
+        rewrite /Sym.sget /= in def_xcIW.
+        destruct SiT,SaJT,SaST; try by [].
+        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: def_xcIW; case GET: (get SM p) => [[]|] /=.
+        + move=> []?; subst.
+          apply GOOD in GET.
+          case: GET => [_ _ GOOD'].
+          by apply GOOD'; rewrite inE IN_I''.
+        + admit.
+      - rewrite /Sym.good_internal /= in SGINT.
+        rewrite /Sym.sget /= in def_xcIW.
+        destruct SiT,SaJT,SaST; try by [].
+        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: def_xcIW; case GET: (get SM p) => [[]|] /=.
+        + move=> []?; subst.
+          apply GOOD in GET.
+          case: GET => [_ _ GOOD'].
+          by apply GOOD'; rewrite inE IN_W'' orbT.
+        + admit.
+    }
+    exact: (sget_supd_good_internal in_range def_xcIW def_s').
 Qed.
 
 Theorem add_to_store_targets_refined : forall ast sst sst',
@@ -1628,7 +1671,49 @@ Proof.
               -(get_compartment_id_supd_same def_xcIW def_s')
                R_c_sys.
   - exact: (supd_refine_syscall_addrs_b def_s').
-  - exact: (sget_supd_good_internal def_xcIW def_s').
+  - have in_range : forall c' : word_finType t,
+                      c' \in I'' :|: (cid' |: W'') ->
+                      c' <? Sym.next_id
+                              (Symbolic.internal
+                                 (SState SM SR
+                                         pc@(Sym.PC F cid')
+                                         (SInternal Snext SiT SaJT SaST))).
+    {
+      move=> c'; rewrite !inE => /= /or3P [IN_I'' | /eqP->{c'} | IN_W''].
+      - rewrite /Sym.good_internal /= in SGINT.
+        rewrite /Sym.sget /= in def_xcIW.
+        destruct SiT,SaJT,SaST; try by [].
+        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: def_xcIW; case GET: (get SM p) => [[]|] /=.
+        + move=> []?; subst.
+          apply GOOD in GET.
+          case: GET => [_ _ GOOD'].
+          by apply GOOD'; rewrite inE IN_I''.
+        + admit.
+      - rewrite /Sym.good_internal /= in SGINT.
+        rewrite /Sym.sget /= in def_cid'.
+        destruct SiT,SaJT,SaST; try by [].
+        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: def_cid'; case GET: (get SM p') => [[]|] /=.
+        + move=> []?; subst.
+          apply GOOD in GET.
+          by case: GET.
+        + case: (p' == _); first by move=> [] *; subst.
+          case: (p' == _); first by move=> [] *; subst.
+          case: (p' == _); first by move=> [] *; subst.
+          by [].
+      - rewrite /Sym.good_internal /= in SGINT.
+        rewrite /Sym.sget /= in def_xcIW.
+        destruct SiT,SaJT,SaST; try by [].
+        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: def_xcIW; case GET: (get SM p) => [[]|] /=.
+        + move=> []?; subst.
+          apply GOOD in GET.
+          case: GET => [_ _ GOOD'].
+          by apply GOOD'; rewrite inE IN_W'' orbT.
+        + admit.
+    }
+    exact: (sget_supd_good_internal in_range def_xcIW def_s').
 Qed.
 
 (***** END MOVEMENT *****)
