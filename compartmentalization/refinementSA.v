@@ -2420,11 +2420,44 @@ Proof.
       rewrite in_rem_all in c'_in.
       by case/andP: c'_in.
   - move=> c1 c2.
-    have
-
-    (*rewrite !in_cons !in_rem_all /=
-            => /or3P [/eqP -> {c1}|/eqP -> {c1}|/andP [not_pred1 c1_in_AC]]
-               /or3P [/eqP -> {c2}|/eqP -> {c2}|/andP [not_pred2 c2_in_AC]] //=.*)
+    rewrite !in_cons /=
+            => /or3P [/eqP -> {c1}|/eqP -> {c1}|c1_in_AC]
+               /or3P [/eqP -> {c2}|/eqP -> {c2}|c2_in_AC] //=;
+    rewrite ?Hres ?Hnew; try congruence.
+    + rewrite -RPREV -RC_rest // => NEW.
+      rewrite in_rem_all in c2_in_AC.
+      case/andP: c2_in_AC => [/eqP ? ?].
+      by apply IDSU in NEW; try congruence.
+    + rewrite -RC_rest // /get_compartment_id.
+      case: pickP => [cid'' /eqP Hcid''|]//= [E].
+      subst cid''.
+      move: (set11 (Some Snext)).
+      rewrite -Hcid'' => /imsetP /= [p' _].
+      move: (SGMEM p').
+      rewrite /Sym.good_memory_tag.
+      case GETp': (Sym.sget _ _) => [[|cp' Ip' Wp'|]|] //= _ [E].
+      subst cp'.
+      move: (Sym.sget_lt_next _ _ _ _ _ RINT GETp') => /=.
+      by rewrite ltb_irrefl.
+    + rewrite -RPREV -RC_rest // => NEW.
+      rewrite in_rem_all in c1_in_AC.
+      case/andP: c1_in_AC => [/eqP ? ?].
+      by apply IDSU in NEW; try congruence.
+    + rewrite -RC_rest // /get_compartment_id.
+      case: pickP => [cid'' /eqP Hcid''|]//= [E].
+      subst cid''.
+      move: (set11 (Some Snext)).
+      rewrite -Hcid'' => /imsetP /= [p' _].
+      move: (SGMEM p').
+      rewrite /Sym.good_memory_tag.
+      case GETp': (Sym.sget _ _) => [[|cp' Ip' Wp'|]|] //= _ [E].
+      subst cp'.
+      move: (Sym.sget_lt_next _ _ _ _ _ RINT GETp') => /=.
+      by rewrite ltb_irrefl.
+    + rewrite -!RC_rest //.
+      rewrite !in_rem_all in c1_in_AC c2_in_AC.
+      case/andP: c1_in_AC => ? ?; case/andP: c2_in_AC => ? ?.
+      by apply IDSU.
   - move=> c' cid'. admit.
     (*rewrite !in_cons => /or3P [/eqP {c'} ->|/eqP {c'} ->|] /=.*)
   - move=> c' cid'. admit.
