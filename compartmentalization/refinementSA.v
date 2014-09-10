@@ -2364,6 +2364,29 @@ Proof.
 
 (* REFINEMENT *)
 
+  have Hres: get_compartment_id (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+                                <<Aprev :\: A',Jprev,Sprev>> = Some cid.
+  { rewrite (get_compartment_id_irrelevancies RS pcS).
+    apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
+    apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
+    apply (retag_set_get_compartment_id_disjoint def_sA).
+    { rewrite disjoint_subset /=.
+      apply/subsetP => p''.
+      by rewrite in_setD => /andP []. }
+    rewrite (get_compartment_id_irrelevancies' SR pc@(Sym.PC F cid) Snext).
+    have := (get_compartment_id_subset _ _ RPREV).
+    apply.
+    - exact: pc'.
+    - by rewrite in_setD IN_pc' NIN.
+    - by rewrite subDset subsetUr. }
+
+  have Hnew: get_compartment_id (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+                                <<A',J',S'>> = Some Snext.
+  { rewrite (get_compartment_id_irrelevancies RS pcS).
+    apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
+    apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
+    by apply (@retag_set_get_compartment_id_new_id _ _ _ _ <<A',J',S'>> Snext def_sA). }
+
   constructor=> //=.
   - rewrite /=.
     suff -> : RS = SR by [].
@@ -2389,59 +2412,23 @@ Proof.
     apply (Abs.in_compartment_opt_is_some _ _ cp').
     by rewrite /Abs.in_compartment !in_cons in_rem_all NE cp'_in_AC !orbT /=.
   - move=> c'.
-    rewrite !in_cons in_rem_all => /or3P [/eqP -> {c'}|/eqP -> {c'}|/andP [c'_not_old c'_in_AC]].
-    + suff ->: get_compartment_id (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
-               <<Aprev :\: A',Jprev,Sprev>> = Some cid; first by [].
-      rewrite (get_compartment_id_irrelevancies RS pcS).
-      apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
-      apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
-      apply (retag_set_get_compartment_id_disjoint def_sA).
-      { rewrite disjoint_subset /=.
-        apply/subsetP => p''.
-        by rewrite in_setD => /andP []. }
-      rewrite (get_compartment_id_irrelevancies' SR pc@(Sym.PC F cid) Snext).
-      have := (get_compartment_id_subset _ _ RPREV).
-      apply.
-      * exact: pc'.
-      * by rewrite in_setD IN_pc' NIN.
-      * by rewrite subDset subsetUr.
-    + suff ->: get_compartment_id (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
-               <<A',J',S'>> = Some Snext; first by [].
-      rewrite (get_compartment_id_irrelevancies RS pcS).
-      apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
-      apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
-      by apply (@retag_set_get_compartment_id_new_id _ _ _ _ <<A',J',S'>> Snext def_sA).
-    + move: (IDSWD c' c'_in_AC).
-      case Hcid''': (get_compartment_id _ _) => [cid'''|] // _.
-      suff ->: get_compartment_id (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
-               c' = Some cid'''; first by [].
-      apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
-      apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
-      apply (retag_set_get_compartment_id_disjoint def_sA).
-      { rewrite /Abs.non_overlapping -list_utils.all_pairs_in2_comm in ANOL.
-        { move/list_utils.all_pairs_spec/(_ c' <<Aprev,Jprev,Sprev>>) in ANOL.
-          have {ANOL} /ANOL IN2: list_utils.In2 c' <<Aprev,Jprev,Sprev>> AC.
-          { apply list_utils.in_neq_in2.
-            - by apply/eqP.
-            - by apply/inP.
-            - by apply/inP. }
-          rewrite /Abs.disjoint_comp /= in IN2.
-          case/andP: IN2 => _ DISJ.
-          rewrite !disjoints_subset in DISJ *.
-          rewrite -setCS in SUBSET_A'.
-          by eapply subset_trans; eauto. }
-        clear.
-        move=> x y _.
-        by rewrite /Abs.disjoint_comp /= orbC -setI_eq0 setIC setI_eq0. }
-      by rewrite (get_compartment_id_irrelevancies' SR pc@(Sym.PC F cid) Snext).
-  - move=> c1 c2. admit.
+    rewrite !in_cons => /or3P [/eqP -> {c'}|/eqP -> {c'}|c'_in].
+    + by rewrite Hres.
+    + by rewrite Hnew.
+    + rewrite -RC_rest //.
+      apply IDSWD.
+      rewrite in_rem_all in c'_in.
+      by case/andP: c'_in.
+  - move=> c1 c2.
+    have
+
     (*rewrite !in_cons !in_rem_all /=
             => /or3P [/eqP -> {c1}|/eqP -> {c1}|/andP [not_pred1 c1_in_AC]]
                /or3P [/eqP -> {c2}|/eqP -> {c2}|/andP [not_pred2 c2_in_AC]] //=.*)
   - move=> c' cid'. admit.
     (*rewrite !in_cons => /or3P [/eqP {c'} ->|/eqP {c'} ->|] /=.*)
   - move=> c' cid'. admit.
-  - apply/andP; split; [apply eq_refl | apply/eqP; apply R_c_sys'].     
+  - apply/andP; split; [apply eq_refl | apply/eqP; apply R_c_sys'].
   - rewrite /refine_syscall_addrs_b.
     case/and3P: RSC => ? /eqP [/eqP H1 /eqP H2 /eqP H3] ?.
     apply/and3P.
