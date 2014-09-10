@@ -423,7 +423,8 @@ Definition good_internal (s : Symbolic.state t) : Prop :=
       all  (fun c => c <? next) [:: iC; aJC; aST] /\
       forall p x c I W,
         get (Symbolic.mem s) p ?= x@(DATA c I W) ->
-        c <? next /\ c \notin [:: iC; aJC; aST]
+        [/\ c <? next, c \notin [:: iC; aJC; aST] &
+            forall c', c' \in I :|: W -> c' <? next]
     | _ , _ , _ =>
       False
   end.
@@ -649,7 +650,10 @@ Proof.
   case: GOOD => NEQ [/and4P [? ? ? ?] GOOD].
   rewrite /sget in SGET.
   destruct (get mem p) as [[? ?]|] eqn:GET; rewrite GET in SGET.
-  - move: SGET => [SGET]. rewrite SGET in GET; eapply GOOD; eassumption.
+  - move: SGET => [SGET].
+    rewrite SGET in GET.
+    by case:(GOOD _ _ c _ _ GET).
+
   - destruct (p == isolate_addr);              [by inversion SGET; subst|].
     destruct (p == add_to_jump_targets_addr);  [by inversion SGET; subst|].
     destruct (p == add_to_store_targets_addr); [by inversion SGET; subst|].
@@ -674,9 +678,12 @@ Proof.
     do 2 (split; eauto 2).
     by apply/and4P; split; eauto 2.
   intros p x c I W GET; specialize (GOOD p x c I W GET).
-  case: GOOD => *.
-  by split; eauto 2.
+  case: GOOD => H1 H2 H3.
+  split; eauto 2.
+  move=> c' /H3 Hc'.
+  by apply succ_trans.
 Qed.
+
 
 Lemma retag_set_preserves_definedness : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
@@ -1113,7 +1120,9 @@ Proof.
   rewrite /sget GET' in TAGS.
   destruct (get mem p) as [[y [|cy Iy Wy|]]|] eqn:GET;
    try done; subst.
-  - apply GOOD in GET; assumption.
+  - apply GOOD in GET.
+    case: GET => G1 G2 G3.
+    admit.
   - by destruct (p == isolate_addr) eqn:EQ_I;
          move/eqP in EQ_I;
          [|destruct (p == add_to_jump_targets_addr) eqn:EQ_aJ;
@@ -1272,7 +1281,8 @@ Proof.
   - rewrite /sget GET' GET in OLD.
     inversion OLD; subst.
     apply IF_GET in GET.
-    repeat invh and; repeat split; eauto 2.
+    admit. (*
+    repeat invh and; repeat split; eauto 2.*)
   - rewrite /sget GET  in THEN.
     rewrite /sget GET' in NOW.
     inversion THEN; subst; inversion NOW; subst.
@@ -1282,6 +1292,7 @@ Proof.
     + apply/negP.
       by case/or4P => // [/eqP ?|/eqP ?|/eqP ?]; subst cnew;
       rewrite ltb_irrefl /= ?andbF in LT.
+    + admit.
 Qed.
 
 End WithClasses.
