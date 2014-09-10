@@ -670,6 +670,35 @@ Definition tags_subsets_cid (cid : word) (sst1 sst2 : sstate) : Prop :=
         False
     end.
 
+Definition tags_subsets_add_1 (c' : word)
+                              (sst1 sst2 : sstate) : Prop :=
+  forall p,
+    match Sym.sget sst1 p , Sym.sget sst2 p with
+      | Some (Sym.DATA c1 I1 W1) , Some (Sym.DATA c2 I2 W2) =>
+        c1 = c2                    /\
+        (I1 = I2 \/ c' |: I1 = I2) /\
+        (W1 = W2 \/ c' |: W1 = W2)
+      | None , None =>
+        True
+      | _ , _ =>
+        False
+    end.
+
+Definition tags_subsets_add_1_in (ps : {set word})
+                                 (c' : word)
+                                 (sst1 sst2 : sstate) : Prop :=
+  forall p,
+    match Sym.sget sst1 p , Sym.sget sst2 p with
+      | Some (Sym.DATA c1 I1 W1) , Some (Sym.DATA c2 I2 W2) =>
+        (p \in ps -> c1 = c2)      /\
+        (I1 = I2 \/ c' |: I1 = I2) /\
+        (W1 = W2 \/ c' |: W1 = W2)
+      | None , None =>
+        True
+      | _ , _ =>
+        False
+    end.
+
 Lemma tags_subsets_in_tail : forall p ps sst sst',
   tags_subsets_in (p |: ps) sst sst' ->
   tags_subsets_in ps sst sst'.
@@ -714,11 +743,58 @@ Proof.
   repeat split; solve [intuition congruence|eauto using subset_trans].
 Qed.
 
+Lemma tags_subsets_add_1_trans : forall c' sst sst' sst'',
+  tags_subsets_add_1 c' sst  sst'  ->
+  tags_subsets_add_1 c' sst' sst'' ->
+  tags_subsets_add_1 c' sst  sst''.
+Proof.
+  move=> c' sst sst' sst'' TSA TSA' p.
+  specialize (TSA p); specialize (TSA' p).
+  destruct (Sym.sget sst   p) as [[| |]|],
+           (Sym.sget sst'  p) as [[| |]|],
+           (Sym.sget sst'' p) as [[| |]|];
+    try done.
+  move: TSA TSA' => [H1 [H2 H3]] [H1' [H2' H3']].
+  repeat split.
+  - by subst.
+  - destruct H2,H2'; subst; try rewrite setUA setUid; auto.
+  - destruct H3,H3'; subst; try rewrite setUA setUid; auto.
+Qed.
+
+Lemma tags_subsets_add_1_in_trans : forall ps c' sst sst' sst'',
+  tags_subsets_add_1_in ps c' sst  sst'  ->
+  tags_subsets_add_1_in ps c' sst' sst'' ->
+  tags_subsets_add_1_in ps c' sst  sst''.
+Proof.
+  move=> ps c' sst sst' sst'' TSAI TSAI' p.
+  specialize (TSAI p); specialize (TSAI' p).
+  destruct (Sym.sget sst   p) as [[| |]|],
+           (Sym.sget sst'  p) as [[| |]|],
+           (Sym.sget sst'' p) as [[| |]|];
+    try done.
+  move: TSAI TSAI' => [H1 [H2 H3]] [H1' [H2' H3']].
+  repeat split.
+  - intuition congruence.
+  - destruct H2,H2'; subst; try rewrite setUA setUid; auto.
+  - destruct H3,H3'; subst; try rewrite setUA setUid; auto.
+Qed.
+
 Lemma tags_subsets_any_in : forall ps sst sst',
   tags_subsets       sst sst' ->
   tags_subsets_in ps sst sst'.
 Proof.
-  move=> ps sst sst' TSI p; specialize (TSI p).
+  move=> ps sst sst' TS p; specialize (TS p).
+  destruct (Sym.sget sst  p) as [[| |]|],
+           (Sym.sget sst' p) as [[| |]|];
+    try done.
+  repeat invh and; subst; auto.
+Qed.
+
+Lemma tags_subsets_add_1_any_in : forall ps c' sst sst',
+  tags_subsets_add_1       c' sst sst' ->
+  tags_subsets_add_1_in ps c' sst sst'.
+Proof.
+  move=> ps c' sst sst' TSA p; specialize (TSA p).
   destruct (Sym.sget sst  p) as [[| |]|],
            (Sym.sget sst' p) as [[| |]|];
     try done.
@@ -2199,29 +2275,29 @@ Proof.
   have SNGET_sS_aS : ~~ get MS add_to_store_targets_addr
     by rewrite -GETS_sS.
 
-  have TSI_s'_sA : forall X : {set word},
-                     [disjoint A' & X] ->
-                     tags_subsets_in
-                       X
-                       (SState SM SR pc@(Sym.PC F cid)
-                               (SInternal (Snext + 1)%w SiT SaJT SaST))
-                       sA.
+  have TSAI_s'_sA : forall X : {set word},
+                      [disjoint A' & X] ->
+                      tags_subsets_add_1_in
+                        X
+                        Snext
+                        (SState SM SR pc@(Sym.PC F cid)
+                                (SInternal (Snext + 1)%w SiT SaJT SaST))
+                        sA.
   {
     move=> X DJX a.
-    assert (NIN_a : a \in X -> ~ a \in A'). {
+    have NIN_a : a \in X -> ~ a \in A'. {
       move=> IN_a IN'_a.
       rewrite -setI_eq0 in DJX; move/eqP in DJX.
       have: a \in A' :&: X by rewrite inE; apply/andP.
       by rewrite DJX inE.
     }
-    
     case M_IN: (a \in X); [move: M_IN => IN_X | move: M_IN => NIN_X].
     - specialize (NIN_a IN_X).
       generalize def_sA => def_sA';
         apply @Sym.retag_set_not_in with (p := a) in def_sA'; try assumption.
       + rewrite def_sA'.
         move: (SGOOD_sA a) => SGOOD'; rewrite /Sym.good_memory_tag in SGOOD'.
-        by destruct (Sym.sget sA a) as [[]|].
+        by destruct (Sym.sget sA a) as [[]|]; auto.
       + by rewrite (mem_enum (mem A')) /=; apply/negP.
     - generalize def_sA => def_sA';
         apply @Sym.retag_set_or_ok with (p := a) in def_sA';
@@ -2229,11 +2305,11 @@ Proof.
       move: def_sA' => [OLD | [cnew [Inew [Wnew [THEN [OK NOW]]]]]].
       + rewrite OLD.
         move: (SGOOD_sA a) => SGOOD'; rewrite /Sym.good_memory_tag in SGOOD'.
-        by destruct (Sym.sget sA a) as [[]|].
+        by destruct (Sym.sget sA a) as [[]|]; auto.
       + by rewrite THEN NOW; repeat split; auto.
   }
-   
-  have TS_sA_sJ : tags_subsets sA sJ. {
+  
+  have TSA_sA_sJ : tags_subsets_add_1 Snext sA sJ. {
     move=> a.
     generalize def_sJ => def_sJ';
       apply @Sym.retag_set_or with (p := a) in def_sJ';
@@ -2241,11 +2317,11 @@ Proof.
     move: def_sJ' => [OLD | [cnew [Inew [Wnew [THEN NOW]]]]].
     - rewrite -OLD.
       move: (SGOOD_sA a) => SGOOD'; rewrite /Sym.good_memory_tag in SGOOD'.
-      by destruct (Sym.sget sA a) as [[]|].
-    - by rewrite THEN NOW subsetU1.
+      destruct (Sym.sget sA a) as [[]|]; auto.
+    - rewrite THEN NOW; auto.
   }
    
-  have TS_sJ_sS : tags_subsets sJ (SState MS RS pcS siS). {
+  have TSA_sJ_sS : tags_subsets_add_1 Snext sJ (SState MS RS pcS siS). {
     move=> a.
     generalize def_sS => def_sS';
       apply @Sym.retag_set_or with (p := a) in def_sS';
@@ -2253,39 +2329,39 @@ Proof.
     move: def_sS' => [OLD | [cnew [Inew [Wnew [THEN NOW]]]]].
     - rewrite -OLD.
       move: (SGOOD_sJ a) => SGOOD'; rewrite /Sym.good_memory_tag in SGOOD'.
-      by destruct (Sym.sget sJ a) as [[]|].
-    - by rewrite THEN NOW subsetU1.
+      destruct (Sym.sget sJ a) as [[]|]; auto.
+    - rewrite THEN NOW; auto.
   }
    
-  have TSI_s0_sS' : forall X : {set word},
-                      [disjoint A' & X] ->
-                      tags_subsets_in
-                        X
-                        (SState SM SR pc@(Sym.PC F cid)
-                                (SInternal Snext SiT SaJT SaST))
-                        (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS).
+  have TSAI_s0_sS' : forall X : {set word},
+                       [disjoint A' & X] ->
+                       tags_subsets_add_1_in
+                         X
+                         Snext
+                         (SState SM SR pc@(Sym.PC F cid)
+                                 (SInternal Snext SiT SaJT SaST))
+                         (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS).
   {
     intros X DJX.
-    eapply tags_subsets_in_trans.
-    - rewrite /tags_subsets_in /Sym.sget.
-      apply TSI_s'_sA; assumption.
-    - eapply tags_subsets_in_trans.
-      + apply tags_subsets_any_in; eassumption.
-      + apply tags_subsets_any_in.
-        rewrite /tags_subsets /Sym.sget.
-        apply TS_sJ_sS; assumption.
+    eapply tags_subsets_add_1_in_trans.
+    - apply TSAI_s'_sA; assumption.
+    - eapply tags_subsets_add_1_in_trans.
+      + apply tags_subsets_add_1_any_in; eassumption.
+      + apply tags_subsets_add_1_any_in.
+        apply TSA_sJ_sS; assumption.
   }
    
-  have TSI_rest : forall c,
-                    c \in rem_all <<Aprev,Jprev,Sprev>> AC ->
-                    tags_subsets_in
-                      (Abs.address_space c)
-                      (SState SM SR pc@(Sym.PC F cid)
-                              (SInternal Snext SiT SaJT SaST))
-                      (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS).
+  have TSAI_rest : forall c,
+                     c \in rem_all <<Aprev,Jprev,Sprev>> AC ->
+                     tags_subsets_add_1_in
+                       (Abs.address_space c)
+                       Snext
+                       (SState SM SR pc@(Sym.PC F cid)
+                               (SInternal Snext SiT SaJT SaST))
+                       (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS).
   {
     move=> c; rewrite in_rem_all => /andP [NEQ IN] a.
-    apply TSI_s0_sS'.
+    apply TSAI_s0_sS'.
     have DJ' : [disjoint Aprev & Abs.address_space c]. {
       replace Aprev with (Abs.address_space <<Aprev,Jprev,Sprev>>)
         by reflexivity.
@@ -2313,7 +2389,7 @@ Proof.
     move=> c c_in_AC'.
     apply eq_pick => /= a; apply/f_equal2 => //; clear a.
     apply eq_in_imset => a IN_a.
-    move: TSI_rest => /(_ c c_in_AC' a).
+    move: TSAI_rest => /(_ c c_in_AC' a).
     case: (Sym.sget _ a) => [[]|] //=.
     - move=> c1 I1 W1.
       case: (Sym.sget _ a) => [[]|] //=.
@@ -2471,12 +2547,12 @@ Proof.
       rewrite STWF.
       apply/setP.
       rewrite /eq_mem /= => a; rewrite !in_set.
-      move: TSI_rest => /(_ c' c'_in_AC' a).
+      (*move: TSI_rest => /(_ c' c'_in_AC' a).
       case: (Sym.sget _ a) => [[]|] //=; [|by case: (Sym.sget _ a) => [[]|]].
       move=> cid1 I1 W1.
       case: (Sym.sget _ a) => [[]|] //=.
       move=> cid2 I2 W2.
-      move=> [cid_eq [/subsetP SUBSET_Is /subsetP SUBSET_Ws]].
+      move=> [cid_eq [/subsetP SUBSET_Is /subsetP SUBSET_Ws]].*)
       (*
       
       
