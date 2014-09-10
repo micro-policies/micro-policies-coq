@@ -2025,7 +2025,101 @@ Proof.
     by rewrite -!(Sym.retag_set_preserves_get_definedness _ _ _ _ _ def_sS)
                -!(Sym.retag_set_preserves_get_definedness _ _ _ _ _ def_sJ)
                -!(Sym.retag_set_preserves_get_definedness _ _ _ _ _ def_sA) H1 H2 H3 /=.
-  - admit.
+  - move: (RSC) => /and3P; rewrite {1 2}/syscall_addrs.
+    move => [ /eqP [] ANGET_i ANGET_aJ ANGET_aS
+              /eqP [] SNGET_i SNGET_aJ SNGET_aS
+              RSCU ].
+    move: (RSCU);
+      rewrite /= !inE negb_or -!andbA => /and4P[] NEQiaJ NEQiaS NEQaJaS _.
+    
+    have NIN_any : forall a, get AM a = None -> a \notin A'. {
+      move=> a ANGET; apply/negP; move=> IN.
+      move: ASS => /forallb_forall/(_ _ (elimT (inP _ _ _) AIN))/orP [UAS | SAS].
+      - have IN' : a \in Aprev by move/subsetP in SUBSET_A'; apply SUBSET_A'.
+        move/forall_inP/(_ _ IN') in UAS.
+        by rewrite ANGET in UAS.
+      - rewrite /Abs.syscall_address_space /Abs.address_space /= in SAS.
+        move: SAS => /existsP [sc /and3P [NONE ELEM /eqP?]]; subst Aprev.
+        move: SUBSET_A'; rewrite subset1; move => /orP [] /eqP?; subst A'.
+        + move: IN_pc' IN NIN; rewrite !in_set1; move=> /eqP->.
+          by rewrite eq_refl.
+        + by rewrite in_set0 in IN.
+    }
+    have NIN_i  : isolate_addr              \notin A' by apply NIN_any.
+    have NIN_aJ : add_to_jump_targets_addr  \notin A' by apply NIN_any.
+    have NIN_aS : add_to_store_targets_addr \notin A' by apply NIN_any.
+    
+    move: (def_sA) => /Sym.retag_set_preserves_get_definedness GETS_sA.
+    move: (def_sJ) => /Sym.retag_set_preserves_get_definedness GETS_sJ.
+    move: (def_sS) => /Sym.retag_set_preserves_get_definedness GETS_sS.
+    simpl in *.
+    
+    have SNGET_sA_i : ~~ get (Symbolic.mem sA) isolate_addr
+      by rewrite -GETS_sA SNGET_i.
+    have SNGET_sA_aJ : ~~ get (Symbolic.mem sA) add_to_jump_targets_addr
+      by rewrite -GETS_sA SNGET_aJ.
+    have SNGET_sA_aS : ~~ get (Symbolic.mem sA) add_to_store_targets_addr
+      by rewrite -GETS_sA SNGET_aS.
+    
+    have SNGET_sJ_i  : ~~ get (Symbolic.mem sJ) isolate_addr
+      by rewrite -GETS_sJ.
+    have SNGET_sJ_aJ : ~~ get (Symbolic.mem sJ) add_to_jump_targets_addr
+      by rewrite -GETS_sJ.
+    have SNGET_sJ_aS : ~~ get (Symbolic.mem sJ) add_to_store_targets_addr
+      by rewrite -GETS_sJ.
+   
+    have SNGET_sS_i : ~~ get MS isolate_addr
+      by rewrite -GETS_sS.
+    have SNGET_sS_aJ : ~~ get MS add_to_jump_targets_addr
+      by rewrite -GETS_sS.
+    have SNGET_sS_aS : ~~ get MS add_to_store_targets_addr
+      by rewrite -GETS_sS.
+    
+    have SGINT_sA : Sym.good_internal sA. {
+      eapply Sym.retag_set_updating_preserves_good_internal;
+        try apply def_sA; try eauto 1; simpl;
+        try (by rewrite (mem_enum (mem A'))).
+      - by rewrite SNGET_i.
+      - by rewrite SNGET_aJ.
+      - by rewrite SNGET_aS.
+      - exact (enum_uniq (pred_of_set A')).
+    }
+    
+    have SGINT_sJ : Sym.good_internal sJ. {
+      generalize def_sJ => GETS;
+        move/Sym.retag_set_preserves_get_definedness in GETS.
+      eapply Sym.good_internal_equiv; try apply SGINT_sA; try (by apply/eqP);
+        auto.
+      - intros a.
+        generalize def_sJ => def_sJ';
+          apply @Sym.retag_set_or with (p := a) in def_sJ'; try assumption.
+        move: def_sJ' => [OLD | [cnew [Inew [Wnew [THEN NOW]]]]].
+        + rewrite OLD.
+          specialize (SGOOD_sJ a); rewrite /Sym.good_memory_tag /= in SGOOD_sJ.
+          by destruct (Sym.sget sJ a) as [[]|].
+        + by rewrite THEN NOW.
+        + exact (enum_uniq (pred_of_set J')).
+      - eapply Sym.retag_set_preserves_next_id; eassumption.
+    }
+    
+    have SGINT_sS : Sym.good_internal (SState MS RS pcS siS). {
+      generalize def_sS => GETS;
+        move/Sym.retag_set_preserves_get_definedness in GETS.
+      eapply Sym.good_internal_equiv; try apply SGINT_sJ; try (by apply/eqP);
+        auto.
+      - intros a.
+        generalize def_sS => def_sS';
+          apply @Sym.retag_set_or with (p := a) in def_sS'; try assumption.
+        move: def_sS' => [OLD | [cnew [Inew [Wnew [THEN NOW]]]]].
+        + rewrite OLD.
+          specialize (SGOOD_sS a); rewrite /Sym.good_memory_tag /= in SGOOD_sS.
+          by destruct (Sym.sget (SState MS RS pcS siS) a) as [[]|].
+        + by rewrite THEN NOW.
+        + exact (enum_uniq (pred_of_set S')).
+      - eapply Sym.retag_set_preserves_next_id; eassumption.
+    }
+    
+    exact SGINT_sS.
 
 (* END REFINEMENT *)
 
