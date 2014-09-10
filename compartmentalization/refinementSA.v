@@ -2446,7 +2446,6 @@ Proof.
 *)
 Qed.
 
-
 Lemma prove_permitted_now_in AR AM AC Ask Aprev mem reg pc extra c i cid cid' cid'' II WW F :
   let ast := AState pc AR AM AC Ask Aprev in
   let sst := SState mem reg pc@(Sym.PC F cid') extra in
@@ -2768,20 +2767,19 @@ Proof.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * eassumption.
       * eassumption.
-      * { undo1 def_cid COND; unoption.
-          admit. (*
-          specialize RTAG with w1; rewrite OLD in RTAG.
-          move: RTAG => [[SAME _] [_ IN_W]].
-          apply in_app_iff; move: WRITE_OK => /orP [/eqP? | ELEM];
-            subst; [left | right].
-        - specialize (SAME Logic.eq_refl);
-           apply Abs.in_compartment_spec in SAME;
-           tauto.
-        - apply set_elem_true in ELEM; auto.
-          move: SGOOD => [[SMEM _] _].
-          specialize SMEM with w1;
-            rewrite /Sym.good_memory_tag /Sym.sget OLD in SMEM;
-          by move: SMEM => /andP [].*) }
+      * { have ac_cid: get_compartment_id (SState mem reg pc@(Sym.PC F cid') extra) ac ?= cid.
+            apply/eqP.
+            by eapply prove_get_compartment_id; eauto.
+          undo1 def_cid COND; unoption.
+          rewrite in_setU.
+          case/Abs.in_compartment_opt_correct/andP: COMP => ac_in_AC ?.
+          case/orP: WRITE_OK => [/eqP ?|cid_in_W].
+          - subst cid.
+            case: SGOOD => [[SGMEM _] _].
+            apply/orP. left.
+            apply (get_compartment_id_in_compartment SGMEM COMPSWD IDSWD IDSU ac_in_AC).
+            by rewrite /Sym.sget OLD /=.
+          - by rewrite (STWF _ _ ac_in_AC ac_cid) in_set /Sym.sget OLD /= cid_in_W orbT. }
       * unfold upd; rewrite GETM1; reflexivity.
     + assert (SAME :
                 equilabeled
@@ -2810,61 +2808,37 @@ Proof.
         - erewrite get_set_neq, get_upd_neq with (m' := mem')
             by eauto using word_map_axioms.
           apply RMEMS. }
-      * admit.
-      * admit.
-      * admit.
-      * admit.
-      * admit.
-      (** { unfold refine_compartments; simpl; split.
-        - apply forallb_forall; intros ac' IN.
-          erewrite <-refined_compartment_same; [|eassumption].
-          move/forallb_forall in RCOMPS; auto.
-        - intros p; unfold refine_compartment_tag.
-          generalize def_mem' => def_mem''.
-          destruct (p == w1) eqn:EQ_w1; move/eqP in EQ_w1; [subst p|].
-          + apply get_upd_eq in def_mem'; auto.
-            specialize RCTAGS with w1; rewrite /Sym.sget OLD in RCTAGS.
-            move: RCTAGS => [SET_I [SET_W [ac' [IC' RTAG']]]].
-            rewrite /Sym.sget def_mem'; repeat split; auto.
-            exists ac'; split; auto.
-            intros p'; specialize RTAG' with p'.
-            destruct (p' == w1) eqn:EQ_w1'; move/eqP in EQ_w1'; [subst p'|].
-            * rewrite OLD in RTAG'; rewrite def_mem'; assumption.
-            * apply get_upd_neq with (key' := p') in def_mem''; auto.
-              rewrite def_mem''; assumption.
-          + apply get_upd_neq with (key' := p) in def_mem'; auto.
-            specialize RCTAGS with p; rewrite /Sym.sget def_mem'.
-            rewrite /Sym.sget in RCTAGS.
-            case GET: (get mem p) RCTAGS => [[? []]|] RCTAGS; auto.
-            * move: RCTAGS => [SET_I [SET_W [ac' [IC' RTAG']]]].
-              repeat split; auto.
-              exists ac'; split; auto.
-              intros p'; specialize RTAG' with p'.
-              { destruct (p' == w1) eqn:EQ_w1'; move/eqP in EQ_w1'; [subst p'|].
-              - apply get_upd_eq in def_mem''; auto.
-                rewrite OLD in RTAG'; rewrite def_mem''; assumption.
-              - apply get_upd_neq with (key' := p') in def_mem''; auto.
-                rewrite def_mem''; assumption. }
-            * destruct (if      p == isolate_addr              then _
-                        else if p == add_to_jump_targets_addr  then _
-                        else if p == add_to_store_targets_addr then _
-                        else None)
-                as [[z []]|]; auto.
-              move: RCTAGS => [SET_I' [SET_W' [c' [IC' RTAG']]]].
-              repeat split; auto.
-              exists c'; split; auto.
-              intros p'.
-              rewrite /equilabeled /Sym.sget in SAME;
-                specialize RTAG' with p'; specialize SAME with p'.
-              by set G  := get mem  p' in RTAG' SAME;
-                 set G' := get mem' p' in SAME *;
-                 destruct G as [[x Lx]|] , G' as [[x' Lx']|];
-                 simpl in *; subst; try done;
-                 destruct (if      p' == isolate_addr              then _
-                           else if p' == add_to_jump_targets_addr  then _
-                           else if p' == add_to_store_targets_addr then _
-                           else None)
-                   as [[z' []]|]; subst. } *)
+      * move=> c' Hc'.
+        apply COMPSWD.
+        move: def_mem' Hc'.
+        rewrite !/Sym.sget /upd.
+        case GET': (get mem w1) => [[x tg]|] // [<-].
+        have [->|NE] := (c' =P w1); first by rewrite GET'.
+        by rewrite get_set_neq.
+      * move=> c' c'_in_AC.
+        rewrite -(get_compartment_id_same _ SAME).
+        by apply IDSWD.
+      * move=> c1 c2 c1_in_AC c2_in_AC.
+        rewrite -!(get_compartment_id_same _ SAME).
+        by apply IDSU.
+      * move=> c' c'_id c'_in_AC.
+        rewrite -(get_compartment_id_same _ SAME) => Hc'_id.
+        rewrite (JTWF _ _ c'_in_AC Hc'_id).
+        apply/setP => p.
+        rewrite !in_set.
+        move: (SAME p).
+        rewrite !/Sym.sget.
+        case: (get mem p) => [[? ?]|]; case: (get mem' p) => [[? ?]|] //=;
+        by [congruence | repeat case: (p =P _) => //= _; try congruence].
+      * move=> c' c'_id c'_in_AC.
+        rewrite -(get_compartment_id_same _ SAME) => Hc'_id.
+        rewrite (STWF _ _ c'_in_AC Hc'_id).
+        apply/setP => p.
+        rewrite !in_set.
+        move: (SAME p).
+        rewrite !/Sym.sget.
+        case: (get mem p) => [[? ?]|]; case: (get mem' p) => [[? ?]|] //=;
+        by [congruence | repeat case: (p =P _) => //= _; try congruence].
       * rewrite /refine_previous_b; simpl.
         erewrite <-get_compartment_id_same; [|eassumption].
         (* eassumption picked the wrong thing first *)
