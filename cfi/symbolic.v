@@ -173,9 +173,9 @@ Definition valid_jmp_tagged (mem : memory) :=
                 (Symbolic.entry_tag sc) = INSTR (word_to_id dst)).
 
 Definition registers_tagged (reg : registers) :=
-  forall r,
-    exists v,
-      get reg r = Some v@DATA.
+  forall r v tg,
+    get reg r = Some v@tg ->
+    tg = DATA.
 
 (* These are needed for forward simulation*)
 Definition jumps_tagged (mem : memory) :=
@@ -428,11 +428,11 @@ Proof.
   end;
   unfold registers_tagged in *;
   simpl in *;
-  intros r0;
+  intros r0 v tg GET;
   try match goal with
       | [H: upd _ ?R _ = _ |- _] =>
         have [EQ|/eqP NEQ] := altP (R =P r0); [simpl in EQ | simpl in NEQ]; subst
-  end;  
+  end; 
   try match goal with
     | [H: _ <> _, H': upd _ _ _ = _ |- _] =>
       apply PartMaps.get_upd_neq with (key' := r0) in H';
@@ -441,7 +441,14 @@ Proof.
     | [H: upd _ _ _ = _ |- _] =>
       apply PartMaps.get_upd_eq in H; try apply reg_map_axioms;
       eauto
-  end; 
+  end;
+  try match goal with
+        | [H: get ?Regs _ = _, H1: get ?Regs _ = _ |- _] =>
+          rewrite H in H1; inv H1; auto
+      end;
+  try match goal with
+        | [H: get _ _ = Some _ |- _] => apply RTAGS in H
+      end; try assumption;
    eapply syscall_preserves_register_tags in CALL; eauto.
 Qed.
 
@@ -610,19 +617,14 @@ Lemma register_tags_preserved_by_step_a'
   equiv reg reg' ->
   registers_tagged reg'.
 Proof.
-  intros RTG EQUIV.
-  intro r.
+  intros RTG EQUIV r v tg GET'.
   specialize (EQUIV r).
-  destruct (RTG r) as [? GET].
-  rewrite GET in EQUIV.
-  destruct (get reg' r) eqn:GET'.
-  - rewrite GET' in EQUIV. 
-    inversion EQUIV as [? ? ? H1 H2 H3 |? ? ? ? CONTRA]; subst. 
-    + destruct a as [val ?].
-      simpl in H1. subst.
-      eexists; eassumption.
-    + simpl in CONTRA. by inv CONTRA.
-  - rewrite GET' in EQUIV. by contradiction.
+  rewrite GET' in EQUIV.
+  destruct (get reg r) as [[? tgold]|] eqn:GET; rewrite GET in EQUIV;
+  try contradiction.
+  apply RTG in GET. subst.
+  inv EQUIV;
+  simpl in *; [assumption | discriminate].
 Qed.
   
 Lemma register_tags_preserved_by_step_a
@@ -631,7 +633,10 @@ Lemma register_tags_preserved_by_step_a
   step_a st st' ->
   registers_tagged (Symbolic.regs st').
 Proof.
- Admitted.
+ intros RTG STEPA.
+ inv STEPA.
+ eapply register_tags_preserved_by_step_a'; eauto.
+Qed.
 
 Lemma jal_tags_preserved_by_step_a 
       (st : Symbolic.state t) (st' : Symbolic.state t) :
@@ -639,7 +644,17 @@ Lemma jal_tags_preserved_by_step_a
   step_a st st' ->
   jals_tagged (Symbolic.mem st').
 Proof.
-  Admitted.
+  intros INV STEP.
+  destruct STEP.
+  simpl. unfold jals_tagged. intros addr i0 id0 r GET INST.
+  assert (MEQUIV' := MEQUIV addr).
+  rewrite GET in MEQUIV'.
+  destruct (get mem addr) eqn:GET'.
+  - inv MEQUIV'.
+    + simpl in H0. congruence.
+    + specialize (INV _ _ _ _ GET' INST). assumption.
+  - destruct MEQUIV'.
+Qed.
 
 Lemma jump_tags_preserved_by_step_a 
       (st : Symbolic.state t) (st' : Symbolic.state t) :
@@ -647,7 +662,17 @@ Lemma jump_tags_preserved_by_step_a
   step_a st st' ->
   jumps_tagged (Symbolic.mem st').
 Proof.
-  Admitted.
+  intros INV STEP.
+  destruct STEP.
+  simpl. unfold jumps_tagged. intros addr i0 id0 r GET INST.
+  assert (MEQUIV' := MEQUIV addr).
+  rewrite GET in MEQUIV'.
+  destruct (get mem addr) eqn:GET'.
+  - inv MEQUIV'.
+    + simpl in H0. congruence.
+    + specialize (INV _ _ _ _ GET' INST). assumption.
+  - destruct MEQUIV'.
+Qed.
 
 Lemma data_pc_no_violation : forall s,
   tag (Symbolic.pc s) = DATA ->

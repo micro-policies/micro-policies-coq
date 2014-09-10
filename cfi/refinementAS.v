@@ -406,7 +406,6 @@ Hint Resolve Sym.itags_preserved_by_step : invariant_db.
 Hint Resolve Sym.entry_point_tags_preserved_by_step : invariant_db.
 Hint Resolve Sym.valid_jmp_tagged_preserved_by_step : invariant_db.
 
-
 Theorem backwards_simulation ast sst sst' :
   refine_state ast sst ->
   Symbolic.step stable sst sst' ->
@@ -417,7 +416,7 @@ Proof.
   intros REF SSTEP;
   destruct ast as [imem dmem aregs apc b];
   destruct b.
-  { (*1st case*)
+  { (*1st case*) 
     inversion SSTEP; subst;
     destruct REF
       as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG [ETG [RTG [JUTG JATG]]]]]]]]]]];
@@ -452,18 +451,14 @@ Proof.
             assert (exists id, get Mem Pc = Some I@(INSTR id))
               by (eexists;eauto)
         end;
-    (* prove that all register reads have DATA tag*)
+    (* prove that all register reads have DATA tag*)    
     repeat match goal with
-        | [H1: refine_registers _ ?Reg, H: get ?Reg ?R = Some ?V@?TG |- _] =>
-          assert (TG = DATA)
-            by (destruct (RTG R);
-                match goal with
-                    |[A : get _ ?R = Some _, B: get _ ?R = Some _ |- _] =>
-                     rewrite A in B; inversion B; auto
-                end); subst;
-            assert (get Reg R = Some V@DATA /\ True)
-            by auto;
-            clear H
+        | [H1: Sym.registers_tagged ?Reg, H: get ?Reg ?R = Some ?V@?TG |- _] =>
+          assert (TMP: TG = DATA)
+            by (apply H1 in H; assumption);
+          assert (get Reg R = Some V@DATA /\ True)
+            by (subst; auto);
+          clear H TMP
            end;
       repeat match goal with
                | [H: get _ _ = _ /\ True |- _] =>
@@ -621,11 +616,11 @@ Proof.
             rewrite H
           | [H: is_true (cfg ?A ?B) |- cfg ?A ?B = true] => by assumption
         end;
-    (*re-establishing invariants*)
-   repeat  match goal with
+    (*re-establishing invariants*) 
+   repeat match goal with
              | [|- Sym.invariants _ ?St'] =>
                unfold Sym.invariants
-             | [|- _ /\ _] => split
+             | [|- _ /\ _] => split; try (simpl; assumption)
              | [|- Sym.instructions_tagged _] =>
                eapply Sym.itags_preserved_by_step; eauto; simpl; auto
              | [ |- Sym.valid_jmp_tagged _ _] =>
@@ -638,7 +633,7 @@ Proof.
                eapply Sym.jump_tags_preserved_by_step; eauto; simpl; auto
              | [ |- Sym.jals_tagged _] =>
                eapply Sym.jal_tags_preserved_by_step; eauto; simpl; auto
-        end; simpl; trivial. 
+        end; simpl; trivial.
   }
   { inversion SSTEP; subst;
     destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT INV]]]]]];
@@ -681,11 +676,12 @@ Definition untag_atom (a : atom (word t) cfi_tag) := common.val a.
 
 Lemma reg_refinement_preserved_by_equiv :
   forall areg reg reg',
+    Sym.registers_tagged reg -> 
     refine_registers areg reg ->
     Sym.equiv reg reg' ->
     refine_registers (PartMaps.map untag_atom reg') reg'.
 Proof.
-  intros areg reg reg' REF EQUIV.
+  intros areg reg reg' RTG REF EQUIV.
   unfold Sym.equiv in EQUIV.
   unfold refine_registers in REF.
   assert (MAP := PartMaps.map_correctness untag_atom reg').
@@ -698,10 +694,15 @@ Proof.
   - intro GET'.
     assert (MAP' := MAP r).
     rewrite GET' in MAP'.
-    remember (get reg' r) as a.
-    destruct a as [[v' tg]|].
+    destruct (get reg' r) as [[v' tg]|] eqn:GET''.
     + simpl in MAP'. inv MAP'.
-      admit.
+      specialize (EQUIV r).
+      rewrite GET'' in EQUIV.
+      destruct (get reg r) as [[vold told]|] eqn:GET;
+      rewrite GET in EQUIV; try contradiction.
+      apply RTG in GET. subst.
+      inv EQUIV; simpl in *; subst;
+      try (reflexivity || discriminate).
     + simpl in MAP'. discriminate.
 Qed.
 
@@ -747,7 +748,7 @@ Definition is_data (a : atom (word t) cfi_tag) :=
     | DATA => true
     | INSTR _ => false
   end.
-(*
+
 Lemma refine_dmemory_domains dmem mem :
   refine_dmemory dmem mem ->
   same_domain dmem (filter is_data mem).
@@ -856,8 +857,9 @@ Proof.
       rewrite GET in GET'. congruence.
   + destruct (get reg n) eqn:GET'.
     * destruct a as [v ut].
-      destruct (RTG n) as [v' GET''].
-      apply REF in GET''.
+      assert (ut = DATA)
+        by (apply RTG in GET'; assumption); subst.
+      apply REF in GET'.
       congruence.
     * constructor.
 Qed.
@@ -870,9 +872,11 @@ Lemma reg_domain_preserved_by_equiv :
     refine_registers areg' reg' ->
     same_domain areg areg'.
 Proof.
-  intros areg areg' reg reg' REF EQUIV REF'.
+  intros areg areg' reg reg' REF RTG EQUIV REF'.
   unfold same_domain. unfold pointwise.
   intro n.
+  assert (RTG' : Sym.registers_tagged (cfg := cfg) reg')
+    by (eapply Sym.register_tags_preserved_by_step_a'; eauto).
   assert (DOMAIN : same_domain areg reg)
     by (apply refine_reg_domains; auto).
   assert (DOMAIN' : same_domain areg' reg')
@@ -880,22 +884,23 @@ Proof.
   assert (EQUIV' := EQUIV n). clear EQUIV.
   destruct (get reg n) eqn:GET, (get reg' n) eqn:GET'; rewrite GET in EQUIV'.
   { destruct a as [v ut], a0 as [v' ut'].
-    assert (EGET: exists ut, get reg n = Some v@ut) by (eexists;eauto).
-    assert (EGET': exists ut, get reg' n = Some v'@ut) by (eexists;eauto).
-    apply REF in EGET. apply REF' in EGET'.
-    rewrite EGET EGET'. constructor.
+    assert (ut = DATA) by (apply RTG in GET; assumption).
+    assert (ut' = DATA) by (apply RTG' in GET'; assumption).
+    subst.
+    apply REF in GET. apply REF' in GET'.
+    rewrite GET GET'. constructor.
   }
   { destruct EQUIV'. }
   { destruct EQUIV'. }
   { destruct (get areg n) eqn:AGET, (get areg' n) eqn:AGET'.
     - constructor.
-    - apply REF in AGET. destruct AGET as [? AGET].
+    - apply REF in AGET.
       rewrite AGET in GET. congruence.
-    - apply REF' in AGET'. destruct AGET' as [? AGET'].
+    - apply REF' in AGET'.
       rewrite AGET' in GET'. congruence.
     - constructor.
   }
-Qed. *)
+Qed. 
 
 Theorem backwards_simulation_attacker ast sst sst' :
   refine_state ast sst ->
@@ -903,25 +908,25 @@ Theorem backwards_simulation_attacker ast sst sst' :
   exists ast',
     Abs.step_a ast ast' /\
     refine_state ast' sst'.
-Proof. Admitted.
-  (*intros REF SSTEP.
+Proof.
+  intros REF SSTEP.
   destruct ast as [imem dmem aregs apc b].
   inversion SSTEP; subst;
   unfold refine_state in REF;
-  destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT INV]]]]]];
+  destruct REF as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG [ETG [RTG FWD]]]]]]]]]];
   unfold refine_pc in REFPC; simpl in REFPC; destruct REFPC as [? TPC]; subst.
-  { destruct (reg_refinement_preserved_by_equiv REFR REQUIV) as [aregs' REFR'];
+  { assert (REFR' := reg_refinement_preserved_by_equiv RTG REFR REQUIV);
     assert (REFI' := imem_refinement_preserved_by_equiv REFI MEQUIV);
     destruct (dmem_refinement_preserved_by_equiv REFD MEQUIV) as [dmem' REFD'];
     assert (DOMAINM := dmem_domain_preserved_by_equiv REFD MEQUIV REFD').
-    assert (DOMAINR := reg_domain_preserved_by_equiv REFR REQUIV REFR').
-    exists (Abs.State imem dmem' aregs' pc b).
+    assert (DOMAINR := reg_domain_preserved_by_equiv REFR RTG REQUIV REFR').
+    exists (Abs.State imem dmem' (map untag_atom reg') pc b).
     split; [econstructor(eauto) | split; auto].
     split; auto.
     split; auto.
     split.
     unfold refine_pc. split; auto.
-    split.  intros ? ? H.
+    split. intros ? ? H.
     { (*proof of correctness for instructions*)
       split.
       - intros CONT src TAG.
@@ -987,10 +992,15 @@ Proof. Admitted.
           * destruct MEQUIV.
           * specialize (SYSCORRECT sc GET GETCALL).
             apply SYSCORRECT; auto.
-      -  eauto using Sym.invariants_preserved_by_step_a.
+      - assert (Sym.invariants stable (Symbolic.State mem reg pc@tpc int))
+          by (repeat (split; auto)).
+        eauto using Sym.invariants_preserved_by_step_a.
     }
   }
-Qed. *)
+Qed.
+
+
+(*Lemmas for forward simulation - Started after POPL 2015 submission*)
 
 Lemma refine_registers_upd_fwd reg reg' sreg r v' :
   refine_registers reg sreg ->
@@ -1061,6 +1071,9 @@ Proof.
     by congruence.
 Qed.
 
+(*Proof of forward simulation
+  - Started after POPL 2015 submission
+  - Current state : broken
 (*
 Theorem forward_simulation ast ast' sst :
   refine_state ast sst ->
@@ -1068,7 +1081,7 @@ Theorem forward_simulation ast ast' sst :
   exists sst',
     Symbolic.step stable sst sst' /\
     refine_state ast' sst'.
-Proof.
+Proof. 
   intros REF ASTEP;
   assert (REF2 : refine_state ast sst) by assumption;
   destruct ast as [imem dmem reg pc ok];
@@ -1078,7 +1091,7 @@ Proof.
                                                           [RTG [JUTG JATG]]]]]]]]]]];
   destruct ok; [idtac | inversion ASTEP];
   unfold refine_pc in REFPC;
-  inv ASTEP. Focus 9. 
+  inv ASTEP; 
   repeat match goal with
       | [H: get imem _ = Some _ |- _ ] => 
         apply REFI in H; destruct H as [? ?]
@@ -1224,10 +1237,10 @@ Proof.
     | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
       rewrite H
          end;
-  try match goal with
-        | [H: INSTR _ = INSTR _ |- _] =>
-          fail 4 "does not match"
-      end.
+    try match goal with
+      | [H: INSTR _ = INSTR _ |- _] => inv H
+      | [H: DATA = INSTR _ |- _] => inv H
+    end. Focus 12.
   try (discriminate || reflexivity || assumption);
   (*re-establishing invariants*)
   repeat  match goal with
@@ -1246,13 +1259,11 @@ Proof.
               eapply Sym.jump_tags_preserved_by_step; eauto; simpl; auto
             | [ |- Sym.jals_tagged _] =>
               eapply Sym.jal_tags_preserved_by_step; eauto; simpl; auto
-          end; simpl; trivial; 
+          end; simpl; trivial.
+
   (*if i stop the sequencing here it matches*)
   (* for jumps and jals refinement *)
-  try match goal with
-        | [H: INSTR _ = INSTR _ |- _] =>
-          fail 4 "does not match"
-      end.
+  try (inv H7); try (inv H4); try (inv H5); try (inv H8); try (inv H6);
   try match goal with
         | [H: Abs.valid_jmp _ _ _ = _ |- exists _, _] =>
           destruct (VTG _ _ H);
