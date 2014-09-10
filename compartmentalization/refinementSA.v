@@ -2547,32 +2547,29 @@ Proof.
       rewrite STWF.
       apply/setP.
       rewrite /eq_mem /= => a; rewrite !in_set.
-      (*move: TSI_rest => /(_ c' c'_in_AC' a).
+      move: TSAI_rest => /(_ c' c'_in_AC' a).
       case: (Sym.sget _ a) => [[]|] //=; [|by case: (Sym.sget _ a) => [[]|]].
       move=> cid1 I1 W1.
       case: (Sym.sget _ a) => [[]|] //=.
       move=> cid2 I2 W2.
-      move=> [cid_eq [/subsetP SUBSET_Is /subsetP SUBSET_Ws]].*)
-      (*
-      
-      
-
-      have a_notin_Aprev : a \notin Aprev. {
-        apply/negP; move=> IN.
-        move: c'_neq_prev => /eqP; apply.
-        apply Abs.in_unique_compartment with (C := AC) (p := a).
-        - eapply Abs.good_state_decomposed__good_compartments; eassumption.
-        - apply/andP; split; first by [].
-          
-        - by apply/andP.
-      }
-      rewrite 
-      rewrite /oapp /=.
-      
-      simpl.
-      apply eq_in_imset.*)
-      admit.
-
+      move=> [cid_eq [OR_Is OR_Ws]].
+      case: OR_Ws => [-> // | <-{W2}].
+      rewrite inE in_set1.
+      suff: cid' != Snext by move=> /negbTE-> //.
+      apply/eqP; move=> H; apply eq__nlt in H; contradict H; apply ltb_lt.
+      move: GCI_cid'; rewrite /get_compartment_id.
+      case: pickP => // x /eqP cid'_set []?; subst x.
+      have: Some cid' == Some cid' by apply eq_refl.
+      rewrite -(in_set1 (Some cid')) -cid'_set => /imsetP [p' p'_in_c'] /=.
+      move: (SGMEM p'); rewrite /Sym.good_memory_tag.
+      case SGET: (Sym.sget _ p') => [[|d I' W'|]|] //= => _ []?; subst d.
+      replace Snext
+        with (Sym.next_id
+                (Symbolic.internal
+                   (SState SM SR pc@(Sym.PC F cid)
+                           (SInternal Snext SiT SaJT SaST))))
+        by reflexivity.
+      eapply Sym.sget_lt_next; eassumption.
   - apply/andP; split; [apply eq_refl | apply/eqP; apply R_c_sys'].     
   - rewrite /refine_syscall_addrs_b.
     case/and3P: RSC => ? /eqP [/eqP H1 /eqP H2 /eqP H3] ?.
