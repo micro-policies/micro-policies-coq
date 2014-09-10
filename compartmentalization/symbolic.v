@@ -654,11 +654,36 @@ Proof.
   - move: SGET => [SGET].
     rewrite SGET in GET.
     by case:(GOOD2 _ _ c _ _ GET).
-
   - destruct (p == isolate_addr);              [by inversion SGET; subst|].
     destruct (p == add_to_jump_targets_addr);  [by inversion SGET; subst|].
     destruct (p == add_to_store_targets_addr); [by inversion SGET; subst|].
     discriminate.
+Qed.
+
+Lemma sget_IW_lt_next : forall s p c I W c',
+  good_internal s ->
+  sget s p ?= DATA c I W ->
+  c' \in I :|: W ->
+  c' <? next_id (Symbolic.internal s).
+Proof.
+  clear I; move=> [mem reg pc [next Li LaJ LaS]] /= p c I W c' GOOD SGET IN.
+  rewrite /good_internal /= in GOOD;
+    destruct Li  as [|ci  Ii  Wi|];  try done;
+    destruct LaJ as [|caJ IaJ WaJ|]; try done;
+    destruct LaS as [|caS IaS WaS|]; try done.
+  case: GOOD => NEQ [/and4P [? ? ? ?] [GOOD1 GOOD2]].
+  rewrite /sget in SGET.
+  destruct (get mem p) as [[? ?]|] eqn:GET; rewrite GET in SGET.
+  - move: SGET => [] *; subst.
+    apply GOOD2 in GET.
+    case: GET => [_ _ IF_IN].
+    by apply IF_IN.
+  - move: SGET => /=.
+    by repeat (case: (p == _);
+               first by move=> [] *; subst;
+                        move/forall_inP in GOOD1; apply GOOD1;
+                        rewrite !inE; rewrite inE in IN;
+                        case/orP: IN => IN; rewrite IN ?orbT).
 Qed.
 
 Lemma fresh_preserves_good : forall mem reg pc si si' fid,

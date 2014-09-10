@@ -1122,17 +1122,44 @@ Proof.
   rewrite /Sym.sget /Sym.supd /Sym.good_internal /rep //=.
   case: sst' => m' r' pc' [? ? ? ?] /= OK.
   case GET: (get m p) => [[? tg]|].
-  - move=> [Ht] /= [<- _ _ <- <- <- <-] [H1 [H2 H3]].
+  - move=> [Ht] /= [<- _ _ <- <- <- <-] [H1 [H2 [H3 H4]]].
     subst tg.
-    do 2?split; trivial.
+    do 3?split; trivial.
     move=> p' x c' I' W'.
     have [->|NE] := (p' =P p).
     + rewrite get_set_eq.
       move=> [_ <- <- <-].
-      by apply H3 in GET; case: GET.
+      by apply H4 in GET; case: GET.
     + rewrite (get_set_neq _ _ NE).
-      by apply H3.
-  - by repeat case: (p =P _) => _ //; move=> [<- _ _] [<- _ _ <- <- <- <-].
+      by apply H4.
+  - repeat case: (p =P _) => ? //; move=> [<- ? ?] [<- ? ? <- <- <- <- H]; subst.
+    + case: H => [NOTIN [NEXT [IWS WITH_GET]]].
+      split; [|split; [|split; [|move => p x c' I' W' GET'; split]]];
+        try done; try by apply WITH_GET in GET'; case: GET'.
+      apply/forall_inP => /= x IN.
+      move/forall_inP in IWS.
+      rewrite !inE -!orbA in IN.
+      repeat case/orP: IN => IN; try by apply IWS; rewrite !inE IN /= ?orbT.
+      * by apply OK; rewrite inE IN.
+      * by apply OK; rewrite inE IN orbT.
+    + case: H => [NOTIN [NEXT [IWS WITH_GET]]].
+      split; [|split; [|split; [|move => p x c' I' W' GET'; split]]];
+        try done; try by apply WITH_GET in GET'; case: GET'.
+      apply/forall_inP => /= x IN.
+      move/forall_inP in IWS.
+      rewrite !inE -!orbA in IN.
+      repeat case/orP: IN => IN; try by apply IWS; rewrite !inE IN /= ?orbT.
+      * by apply OK; rewrite inE IN.
+      * by apply OK; rewrite inE IN orbT.
+    + case: H => [NOTIN [NEXT [IWS WITH_GET]]].
+      split; [|split; [|split; [|move => p x c' I' W' GET'; split]]];
+        try done; try by apply WITH_GET in GET'; case: GET'.
+      apply/forall_inP => /= x IN.
+      move/forall_inP in IWS.
+      rewrite !inE -!orbA in IN.
+      repeat case/orP: IN => IN; try by apply IWS; rewrite !inE IN /= ?orbT.
+      * by apply OK; rewrite inE IN.
+      * by apply OK; rewrite inE IN orbT.
 Qed.
 
 Lemma sget_irrelevancies r' pc' m int r pc :
@@ -1485,35 +1512,38 @@ Proof.
       - rewrite /Sym.good_internal /= in SGINT.
         rewrite /Sym.sget /= in def_cid'.
         destruct SiT,SaJT,SaST; try by [].
-        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: SGINT => [_ [/and4P [? ? ? _] [ALL GOOD]]].
         move: def_cid'; case GET: (get SM p') => [[]|] /=.
         + move=> []?; subst.
           apply GOOD in GET.
           by case: GET.
-        + case: (p' == _); first by move=> [] *; subst.
-          case: (p' == _); first by move=> [] *; subst.
-          case: (p' == _); first by move=> [] *; subst.
-          by [].
+        + by repeat (case: (p' == _); first by move=> [] *; subst).
       - rewrite /Sym.good_internal /= in SGINT.
         rewrite /Sym.sget /= in def_xcIW.
         destruct SiT,SaJT,SaST; try by [].
-        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: SGINT => [_ [/and4P [? ? ? _] [ALL GOOD]]].
         move: def_xcIW; case GET: (get SM p) => [[]|] /=.
         + move=> []?; subst.
           apply GOOD in GET.
           case: GET => [_ _ GOOD'].
           by apply GOOD'; rewrite inE IN_I''.
-        + admit.
+        + by repeat (case: (p == _);
+                     first by move=> [] *; subst;
+                              move/forall_inP in ALL; apply ALL;
+                              rewrite !inE IN_I'' ?orbT).
       - rewrite /Sym.good_internal /= in SGINT.
         rewrite /Sym.sget /= in def_xcIW.
         destruct SiT,SaJT,SaST; try by [].
-        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: SGINT => [_ [/and4P [? ? ? _] [ALL GOOD]]].
         move: def_xcIW; case GET: (get SM p) => [[]|] /=.
         + move=> []?; subst.
           apply GOOD in GET.
           case: GET => [_ _ GOOD'].
           by apply GOOD'; rewrite inE IN_W'' orbT.
-        + admit.
+        + by repeat (case: (p == _);
+                     first by move=> [] *; subst;
+                              move/forall_inP in ALL; apply ALL;
+                              rewrite !inE IN_W'' ?orbT).
     }
     exact: (sget_supd_good_internal in_range def_xcIW def_s').
 Qed.
@@ -1683,35 +1713,38 @@ Proof.
       - rewrite /Sym.good_internal /= in SGINT.
         rewrite /Sym.sget /= in def_xcIW.
         destruct SiT,SaJT,SaST; try by [].
-        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: SGINT => [_ [/and4P [? ? ? _] [ALL GOOD]]].
         move: def_xcIW; case GET: (get SM p) => [[]|] /=.
         + move=> []?; subst.
           apply GOOD in GET.
           case: GET => [_ _ GOOD'].
           by apply GOOD'; rewrite inE IN_I''.
-        + admit.
+        + by repeat (case: (p == _);
+                     first by move=> [] *; subst;
+                              move/forall_inP in ALL; apply ALL;
+                              rewrite !inE IN_I'' ?orbT).
       - rewrite /Sym.good_internal /= in SGINT.
         rewrite /Sym.sget /= in def_cid'.
         destruct SiT,SaJT,SaST; try by [].
-        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: SGINT => [_ [/and4P [? ? ? _] [ALL GOOD]]].
         move: def_cid'; case GET: (get SM p') => [[]|] /=.
         + move=> []?; subst.
           apply GOOD in GET.
           by case: GET.
-        + case: (p' == _); first by move=> [] *; subst.
-          case: (p' == _); first by move=> [] *; subst.
-          case: (p' == _); first by move=> [] *; subst.
-          by [].
+        + by repeat (case: (p' == _); first by move=> [] *; subst).
       - rewrite /Sym.good_internal /= in SGINT.
         rewrite /Sym.sget /= in def_xcIW.
         destruct SiT,SaJT,SaST; try by [].
-        move: SGINT => [_ [/and4P [? ? ? _] GOOD]].
+        move: SGINT => [_ [/and4P [? ? ? _] [ALL GOOD]]].
         move: def_xcIW; case GET: (get SM p) => [[]|] /=.
         + move=> []?; subst.
           apply GOOD in GET.
           case: GET => [_ _ GOOD'].
           by apply GOOD'; rewrite inE IN_W'' orbT.
-        + admit.
+        + by repeat (case: (p == _);
+                     first by move=> [] *; subst;
+                              move/forall_inP in ALL; apply ALL;
+                              rewrite !inE IN_W'' ?orbT).
     }
     exact: (sget_supd_good_internal in_range def_xcIW def_s').
 Qed.
@@ -2877,6 +2910,63 @@ Proof.
         + by rewrite THEN NOW.
         + exact (enum_uniq (pred_of_set J')).
       - eapply Sym.retag_set_preserves_next_id; eassumption.
+      - move=> x.
+        let cleanup X := try first [assumption | exact (enum_uniq (mem X))]
+        in generalize def_sA => def_sA';
+             apply @Sym.retag_set_or with (p := x) in def_sA'; cleanup A';
+           generalize def_sJ => def_sJ';
+             apply @Sym.retag_set_or with (p := x) in def_sJ'; cleanup J'.
+        idtac;
+          case: def_sA' => [OLD_A | [cA [IA [WA [THEN_A NOW_A]]]]];
+          case: def_sJ' => [OLD_J | [cJ [IJ [WJ [THEN_J NOW_J]]]]];
+          try move/eqP in OK_A; subst;
+          first [move/id in OLD_A | move/id in THEN_A; move/id in NOW_A];
+          first [move/id in OLD_J | move/id in THEN_J; move/id in NOW_J].
+        + rewrite -OLD_J -OLD_A.
+          move: (SGMEM x); rewrite /Sym.good_memory_tag /=.
+          rewrite (sget_next_irrelevant Snext).
+          case SGET: (Sym.sget _ x) => [[|cid1 I1 W1|]|] //= _ cid' IN_cid'.
+          apply Sym.sget_IW_lt_next with (c' := cid') in SGET; try assumption.
+          rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sJ)
+                  -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sA).
+          simpl in *.
+          by apply Sym.succ_trans.
+        + rewrite NOW_J /=.
+          move=> cid'; rewrite -setUA inE in_set1 => /orP [/eqP->{cid'} | IN].
+          * rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sJ)
+                    -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sA)
+                    /=.
+            move: (lew_max Snext) => /le_iff_lt_or_eq [LT | //].
+            eapply ranges.lebw_succ; eassumption.
+          * rewrite THEN_J in OLD_A.
+            apply Sym.sget_IW_lt_next with (c' := cid') in OLD_A;
+              try assumption.
+            rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sJ)
+                    -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sA)
+                    /=.
+            exact OLD_A.
+        + rewrite -OLD_J NOW_A.
+          move=> cid' IN.
+          apply Sym.sget_IW_lt_next with (c' := cid') in THEN_A;
+            try assumption.
+          rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sJ)
+                  -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sA)
+                  /=.
+          exact THEN_A.
+        + rewrite NOW_J /=.
+          move=> cid'; rewrite -setUA inE in_set1 => /orP [/eqP->{cid'} | IN].
+          * rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sJ)
+                    -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sA)
+                    /=.
+            move: (lew_max Snext) => /le_iff_lt_or_eq [LT | //].
+            eapply ranges.lebw_succ; eassumption.
+          * rewrite THEN_J in NOW_A; case: NOW_A => *; subst.
+            apply Sym.sget_IW_lt_next with (c' := cid') in THEN_A;
+              try assumption.
+            rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sJ)
+                    -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sA)
+                    /=.
+            exact THEN_A.
     }
 
     have SGINT_sS : Sym.good_internal (SState MS RS pcS siS). {
@@ -2894,6 +2984,27 @@ Proof.
         + by rewrite THEN NOW.
         + exact (enum_uniq (pred_of_set S')).
       - eapply Sym.retag_set_preserves_next_id; eassumption.
+      - move=> x.
+        move: (def_sS) => def_sS';
+           apply @Sym.retag_set_or with (p := x) in def_sS';
+           try first [assumption | exact (enum_uniq (mem S'))].
+        case: def_sS' => [OLD_S | [cS [IS [WS [THEN_S NOW_S]]]]];
+          first [move/id in OLD_S | move/id in THEN_S; move/id in NOW_S].
+        + rewrite -OLD_S.
+          move: (SGOOD_sJ x); rewrite /Sym.good_memory_tag /=.
+          case SGET: (Sym.sget sJ x) => [[|cid' I' W'|]|] // _ cid'' IN''.
+          rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sS).
+          by apply Sym.sget_IW_lt_next with (c' := cid'') in SGET.
+        + rewrite NOW_S.
+          rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sS).
+          move=> cid'.
+          rewrite setUC -setUA inE in_set1 setUC => /orP [/eqP->{cid'} | IN].
+          * rewrite -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sJ)
+                    -(Sym.retag_set_preserves_next_id _ _ _ _ _ def_sA)
+                    /=.
+            move: (lew_max Snext) => /le_iff_lt_or_eq [LT | //].
+            eapply ranges.lebw_succ; eassumption.
+          * by apply Sym.sget_IW_lt_next with (c' := cid') in THEN_S.
     }
     
     exact SGINT_sS.
