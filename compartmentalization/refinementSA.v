@@ -2373,16 +2373,16 @@ Proof.
   rewrite IN_Jsys.
 
   eexists; split; [reflexivity|].
-  
+
   (* Some useful lemmas *)
-  
+
   move: (RSC) => /and3P; rewrite {1 2}/syscall_addrs.
   move => [ /eqP [] ANGET_i ANGET_aJ ANGET_aS
             /eqP [] SNGET_i SNGET_aJ SNGET_aS
             RSCU ].
   move: (RSCU);
     rewrite /= !inE negb_or -!andbA => /and4P[] NEQiaJ NEQiaS NEQaJaS _.
-  
+
   have NIN_any : forall a, get AM a = None -> a \notin A'. {
     move=> a ANGET; apply/negP; move=> IN.
     move: ASS => /forallb_forall/(_ _ (elimT (inP _ _ _) AIN))/orP [UAS | SAS].
@@ -2399,26 +2399,26 @@ Proof.
   have NIN_i  : isolate_addr              \notin A' by apply NIN_any.
   have NIN_aJ : add_to_jump_targets_addr  \notin A' by apply NIN_any.
   have NIN_aS : add_to_store_targets_addr \notin A' by apply NIN_any.
-  
+
   move: (def_sA) => /Sym.retag_set_preserves_get_definedness GETS_sA.
   move: (def_sJ) => /Sym.retag_set_preserves_get_definedness GETS_sJ.
   move: (def_sS) => /Sym.retag_set_preserves_get_definedness GETS_sS.
   simpl in *.
-  
+
   have SNGET_sA_i : ~~ get (Symbolic.mem sA) isolate_addr
     by rewrite -GETS_sA SNGET_i.
   have SNGET_sA_aJ : ~~ get (Symbolic.mem sA) add_to_jump_targets_addr
     by rewrite -GETS_sA SNGET_aJ.
   have SNGET_sA_aS : ~~ get (Symbolic.mem sA) add_to_store_targets_addr
     by rewrite -GETS_sA SNGET_aS.
-  
+
   have SNGET_sJ_i  : ~~ get (Symbolic.mem sJ) isolate_addr
     by rewrite -GETS_sJ.
   have SNGET_sJ_aJ : ~~ get (Symbolic.mem sJ) add_to_jump_targets_addr
     by rewrite -GETS_sJ.
   have SNGET_sJ_aS : ~~ get (Symbolic.mem sJ) add_to_store_targets_addr
     by rewrite -GETS_sJ.
-  
+
   have SNGET_sS_i : ~~ get MS isolate_addr
     by rewrite -GETS_sS.
   have SNGET_sS_aJ : ~~ get MS add_to_jump_targets_addr
@@ -2459,7 +2459,7 @@ Proof.
         by destruct (Sym.sget sA a) as [[]|]; auto.
       + by rewrite THEN NOW; repeat split; auto.
   }
-  
+
   have TSA_sA_sJ : tags_subsets_add_1 Snext sA sJ. {
     move=> a.
     generalize def_sJ => def_sJ';
@@ -2471,7 +2471,7 @@ Proof.
       destruct (Sym.sget sA a) as [[]|]; auto.
     - rewrite THEN NOW; auto.
   }
-   
+
   have TSA_sJ_sS : tags_subsets_add_1 Snext sJ (SState MS RS pcS siS). {
     move=> a.
     generalize def_sS => def_sS';
@@ -2483,7 +2483,7 @@ Proof.
       destruct (Sym.sget sJ a) as [[]|]; auto.
     - rewrite THEN NOW; auto.
   }
-   
+
   have TSAI_s0_sS' : forall X : {set word},
                        [disjoint A' & X] ->
                        tags_subsets_add_1_in
@@ -2501,7 +2501,7 @@ Proof.
       + apply tags_subsets_add_1_any_in.
         apply TSA_sJ_sS; assumption.
   }
-   
+
   have TSAI_rest : forall c,
                      c \in rem_all <<Aprev,Jprev,Sprev>> AC ->
                      tags_subsets_add_1_in
@@ -2527,7 +2527,7 @@ Proof.
     eapply disjoint_trans; [|exact DJ'].
     exact SUBSET_A'.
   }
-   
+
   have RC_rest : forall c,
                    c \in rem_all <<Aprev,Jprev,Sprev>> AC ->
                    get_compartment_id
@@ -2547,7 +2547,7 @@ Proof.
       by move=> c2 I2 W2 [/(_ IN_a)-> _].
     - by case: (Sym.sget _ a).
   }
-   
+
   have NOT_SYSCALL_prev : ~ Abs.syscall_address_space
                               AM <<Aprev,Jprev,Sprev>>.
   {
@@ -2558,27 +2558,27 @@ Proof.
     - by rewrite in_set1 eq_refl in NIN.
     - by rewrite eq_refl in NE_A'.
   }
-   
+
   have USER_prev : Abs.user_address_space AM <<Aprev,Jprev,Sprev>>. {
     move/forallb_forall in ASS.
     by move: (ASS _ (elimT (inP _ _ _) AIN)) => /orP [UAS | SAS].
   }
-  
+
   have NOT_USER_c_sys : ~ Abs.user_address_space AM c_sys. {
     move=> /forall_inP UAS.
     specialize (UAS _ pc_in_c_sys); simpl in UAS.
     rewrite -(lock eq) in IS_ISOLATE; subst.
     by rewrite ANGET_i in UAS.
   }
-   
+
   have SYSCALL_c_sys : Abs.syscall_address_space AM c_sys. {
     move/forallb_forall in ASS.
     by move: (ASS _ (elimT (inP _ _ _) c_sys_in_AC)) => /orP [UAS | SAS].
   }
-   
+
   have DIFF_prev_c_sys : <<Aprev,Jprev,Sprev>> <> c_sys
     by move=> ?; subst.
-   
+
   have R_c_sys' : get_compartment_id
                     (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
                     c_sys
@@ -2843,7 +2843,72 @@ Proof.
                            (SInternal Snext SiT SaJT SaST))))
         by reflexivity.
       eapply Sym.sget_lt_next; eassumption.
-    + admit.
+    + rewrite Hnew /= => [[E]]. subst cid'.
+      apply/setP => p'.
+      rewrite in_set (sget_irrelevancies RS pcS).
+      have [INs|NINs] := boolP (p' \in S').
+      * { rewrite -(mem_enum (mem S')) in INs.
+          have := Sym.retag_set_in _ _ _ _ _ (enum_uniq (mem S')) def_sS p' INs.
+          move => [cs [Is [Ws [H1 H2]]]].
+          rewrite H2 /=.
+          by rewrite in_setU1 eqxx /=. }
+      * { rewrite -(mem_enum (mem S')) in NINs.
+          have  DEFp' := Sym.retag_set_not_in _ _ _ _ _ def_sS p' NINs.
+          rewrite -DEFp' {DEFp'}.
+          have := Sym.retag_set_or _ _ _ _ _ (enum_uniq (mem J')) SGOOD_sA def_sJ p'.
+          case=> [DEFp | [ca [Ia [Wa [H1 H2]]]]].
+          { rewrite -DEFp {DEFp}.
+            have [AS|DEFp|H]:= Sym.retag_set_or _ _ _ _ _ (enum_uniq (mem A')) _ def_sA p'.
+            { apply SGMEM. }
+            - rewrite -DEFp {DEFp}.
+              move: (SGMEM p').
+              rewrite /Sym.good_memory_tag.
+              case GET: (Sym.sget _ _) => [[|ca Ia Wa|] |] // _.
+              + move: (GET).
+                rewrite !/Sym.sget /=.
+                move => -> /=.
+                have [INwa|NINwa] // := boolP (Snext \in Wa).
+                have := (bounded_tags RINT GET).
+                move=> /(_ Snext).
+                rewrite in_setU. rewrite INwa. rewrite orbT.
+                move => /(_ erefl).
+                rewrite /=.
+                by rewrite ltb_irrefl.
+              + move: GET.
+                rewrite !/Sym.sget /=.
+                by move => -> /=.
+            - case: H => ca [ia [wa [H1 H2]]].
+              rewrite H2 /=.
+              have [INwa|NINwa] // := boolP (Snext \in wa).
+              have := (bounded_tags RINT H1).
+              move=> /(_ Snext).
+              rewrite in_setU. rewrite INwa. rewrite orbT.
+              move => /(_ erefl).
+              rewrite /=.
+              by rewrite ltb_irrefl. }
+          have [AS|DEFp|H]:= Sym.retag_set_or _ _ _ _ _ (enum_uniq (mem A')) _ def_sA p'.
+          { apply SGMEM. }
+          - rewrite -DEFp in H1.
+            simpl.
+            rewrite H2 /=.
+            have [INwa|NINwa] // := boolP (Snext \in Wa).
+            have := (bounded_tags RINT H1).
+            move=> /(_ Snext).
+            rewrite in_setU. rewrite INwa. rewrite orbT.
+            move => /(_ erefl).
+            rewrite /=.
+            by rewrite ltb_irrefl.
+          - rewrite H2 /=.
+            case: H => ca' [Ia' [wa' [H1' H2']]].
+            rewrite H1 in H2'.
+            move: H2' => [? ? ?]. subst.
+            have [INwa|NINwa] // := boolP (Snext \in wa').
+            have := (@bounded_tags (SState SM SR pc@(Sym.PC F cid) (SInternal Snext SiT SaJT SaST)) _ _ _ _ _ RINT H1').
+            move=> /(_ Snext).
+            rewrite in_setU. rewrite INwa. rewrite orbT.
+            move => /(_ erefl).
+            rewrite /=.
+            by rewrite ltb_irrefl. }
     + move/(_ c' c'_in_AC') in RC_rest.
       rewrite -RC_rest => GCI_cid'.
       move: (c'_in_AC'); rewrite in_rem_all => /andP [c'_neq_prev c'_in_AC].
@@ -2874,7 +2939,7 @@ Proof.
                            (SInternal Snext SiT SaJT SaST))))
         by reflexivity.
       eapply Sym.sget_lt_next; eassumption.
-  - apply/andP; split; [apply eq_refl | apply/eqP; apply R_c_sys'].     
+  - apply/andP; split; [apply eq_refl | apply/eqP; apply R_c_sys'].
   - rewrite /refine_syscall_addrs_b.
     case/and3P: RSC => ? /eqP [/eqP H1 /eqP H2 /eqP H3] ?.
     apply/and3P.
