@@ -1651,6 +1651,49 @@ Proof.
   by rewrite GET.
 Qed.
 
+Lemma retag_set_get_compartment_id_new_id ok retag sst sst' c cid :
+  Sym.retag_set ok retag (enum (Abs.address_space c)) sst = Some sst' ->
+  (forall c I1 W1, Sym.stag_compartment (retag c I1 W1) = Some cid) ->
+  get_compartment_id sst' c = Some cid.
+Proof.
+  case: c => [Aprev Jprev Sprev] /= Hretag_set Hretag.
+  suff H: forall (ps : seq word) (Aprev : {set word}) sst,
+            @Sym.retag_set _ cmp_syscalls ok retag ps sst = Some sst' ->
+            get_compartment_id sst <<Aprev,Jprev,Sprev>> = Some cid ->
+            get_compartment_id sst' <<Aprev :|: [set p : word in ps],Jprev,Sprev>> = Some cid.
+  { admit. }
+  elim {sst Aprev Hretag_set} => [|p ps IH] Aprev sst /=.
+  { have -> : [set p : word in [::]] = set0 by [].
+    rewrite setU0.
+    congruence. }
+  case GET: (Sym.sget sst p) => [[|cid' I' W'|]|] //=.
+  case: (ok cid' I' W') => //.
+  move: (Hretag cid' I' W').
+  case: (retag _ _ _) => [|cid'' I'' W''|] //= [E].
+  subst cid''.
+  case UPD: (Sym.supd _ _ _) => [sst''|] //= Hretag_set Hcid.
+  rewrite set_cons setUA.
+  apply (IH _ sst'') => //.
+  move: Hcid.
+  rewrite /get_compartment_id.
+  case: pickP => /= [cid'' /eqP E|] //= [?].
+  subst cid''.
+  rewrite setUC imsetU1 (Sym.sget_supd _ _ _ _ UPD) eqxx /=.
+  suff -> : [set (do!X <- @Sym.sget _ cmp_syscalls sst'' x; Sym.stag_compartment X) | x in Aprev] =
+            [set (do!X <- @Sym.sget _ cmp_syscalls sst x; Sym.stag_compartment X) | x in Aprev].
+  { rewrite E setUid.
+    case: pickP => [cid''' /eqP/set1_inj H//|/(_ cid) contra].
+    by rewrite eqxx in contra. }
+  apply/eq_in_imset => p'.
+  rewrite (Sym.sget_supd _ _ _ _ UPD).
+  have [{p'} ->//=|//] := (p' =P p).
+  move => Hin.
+  apply/esym/eqP.
+  rewrite -(in_set1 _ (Some cid)) -E.
+  apply/imsetP.
+  eexists; eauto.
+Qed.
+
 Theorem isolate_refined : forall ast sst sst',
   Abs.pc ast = isolate_addr ->
   Abs.good_state ast ->
@@ -2339,7 +2382,7 @@ Proof.
       rewrite (get_compartment_id_irrelevancies RS pcS).
       apply (retag_set_get_compartment_id_same_ids def_sS); first by [].
       apply (retag_set_get_compartment_id_same_ids def_sJ); first by [].
-      admit.
+      by apply (@retag_set_get_compartment_id_new_id _ _ _ _ <<A',J',S'>> Snext def_sA).
     + admit.
   - move=> c1 c2. admit.
     (*rewrite !in_cons !in_rem_all /=
