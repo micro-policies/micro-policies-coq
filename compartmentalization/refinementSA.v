@@ -2546,6 +2546,25 @@ Proof.
         by rewrite (JTWF _ _ Aprev_in_AC Aprev_id) in_set /Sym.sget PC /= cid'_in_I orbT.
 Qed.
 
+Lemma prove_get_compartment_id AC mem reg pc F cid cid' cid'' extra i II WW c :
+  Sym.good_state (SState mem reg pc@(Sym.PC F cid') extra) ->
+  get mem pc ?= i@(Sym.DATA cid'' II WW) ->
+  (do! guard (cid'' == cid') || (F == JUMPED) && (cid' \in II);
+   Some cid'') ?= cid ->
+  well_defined_compartments (SState mem reg pc@(Sym.PC F cid') extra) AC ->
+  well_defined_ids(SState mem reg pc@(Sym.PC F cid') extra) AC ->
+  unique_ids (SState mem reg pc@(Sym.PC F cid') extra) AC ->
+  Abs.in_compartment_opt AC pc ?= c ->
+  get_compartment_id (SState mem reg pc@(Sym.PC F cid') extra) c == Some cid.
+Proof.
+  move=> SGOOD PC def_cid COMPSWD IDSWD IDSU /Abs.in_compartment_opt_correct/andP [c_in_AC pc_in_c].
+  apply/eqP.
+  case: SGOOD => [[SGMEM _] _].
+  rewrite (in_compartment_get_compartment_id SGMEM COMPSWD IDSWD IDSU c_in_AC pc_in_c)
+          /Sym.sget PC.
+  by undo1 def_cid COND; unoption.
+Qed.
+
 Theorem backward_simulation : forall ast sst sst',
   Abs.good_state ast ->
   refine ast sst ->
@@ -2586,11 +2605,9 @@ Proof.
         move/eqP in RMEMS; subst; assumption.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
     + constructor; simpl;
-        try solve [done | eapply prove_refined_compartment';
+        try solve [done | eapply (prove_get_compartment_id SGOOD);
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
-      rewrite /refine_previous_b /=.
-      admit.
 
   - (* Const *)
     undo1 NEXT rvec;
@@ -2620,7 +2637,7 @@ Proof.
         case: (get AR r) RREGS => [a|] RREGS;
           [reflexivity | rewrite OLD in RREGS; done].
     + constructor; simpl;
-        try solve [done | eapply prove_refined_compartment';
+        try solve [done | eapply (prove_get_compartment_id SGOOD);
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       rewrite /refine_registers /pointwise in RREGS *; intros r'.
@@ -2629,7 +2646,6 @@ Proof.
         by unfold refine_reg_b.
       * erewrite get_set_neq, get_upd_neq with (m' := regs') by eauto.
         apply RREGS.
-      * admit.
 
   - (* Mov *)
     undo1 NEXT rvec;
@@ -2662,7 +2678,7 @@ Proof.
       * eassumption.
       * unfold upd; rewrite GET2; reflexivity.
     + constructor; simpl;
-        try solve [done | eapply prove_refined_compartment';
+        try solve [done | eapply (prove_get_compartment_id SGOOD);
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       rewrite /refine_registers /pointwise in RREGS *; intros r2'.
@@ -2671,7 +2687,6 @@ Proof.
         by specialize RREGS with r1; rewrite GET1 R1W /refine_reg_b in RREGS *.
       * erewrite get_set_neq, get_upd_neq with (m' := regs') by eauto.
         apply RREGS.
-      * admit.
 
   - (* Binop *)
     undo1 NEXT rvec;
@@ -2707,7 +2722,7 @@ Proof.
       * eassumption.
       * unfold upd; rewrite GET3; reflexivity.
     + constructor; simpl;
-        try solve [done | eapply prove_refined_compartment';
+        try solve [done | eapply (prove_get_compartment_id SGOOD);
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       unfold upd; rewrite /refine_registers /pointwise in RREGS *; intros r3'.
@@ -2720,7 +2735,6 @@ Proof.
                rewrite GET2 R2W /refine_reg_b in RREGS *; apply/eqP. }
       * erewrite get_set_neq, get_upd_neq with (m' := regs') by eauto.
         apply RREGS.
-      * admit.
 
   - (* Load *)
     undo1 NEXT rvec;
@@ -2760,7 +2774,7 @@ Proof.
       * eassumption.
       * unfold upd; rewrite GET2; reflexivity.
     + constructor; simpl;
-        try solve [done | eapply prove_refined_compartment';
+        try solve [done | eapply (prove_get_compartment_id SGOOD);
                           (* eassumption picked the wrong thing first *)
                           solve [ apply def_cid
                                 | eassumption
@@ -2772,7 +2786,6 @@ Proof.
            rewrite GETM1 MEM1 /refine_mem_loc_b /refine_reg_b in RMEMS *.
       * erewrite get_set_neq, get_upd_neq with (m' := regs') by eauto.
         apply RREGS.
-      * admit.
 
   - (* Store *)
     undo1 NEXT rvec;
@@ -2972,10 +2985,9 @@ Proof.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * assumption.
     + constructor; simpl;
-        try solve [done | eapply prove_refined_compartment';
+        try solve [done | eapply (prove_get_compartment_id SGOOD);
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
-      admit.
   - (* Bnz *)
     undo1 NEXT rvec;
       destruct t1; try discriminate;
@@ -3008,10 +3020,10 @@ Proof.
       * eassumption.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
     + constructor; simpl;
-        try solve [done | eapply prove_refined_compartment';
+        try solve [done | eapply (prove_get_compartment_id SGOOD);
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
-      admit.
+
   - (* Jal *)
     undo1 NEXT rvec;
       destruct t1; try discriminate;
@@ -3051,7 +3063,7 @@ Proof.
             [reflexivity | rewrite OLD in RREGS; done]
         end.
     + constructor; simpl;
-        try solve [done | eapply prove_refined_compartment';
+        try solve [done | eapply (prove_get_compartment_id SGOOD);
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       rewrite /refine_registers /pointwise in RREGS *; intros r'.
@@ -3060,7 +3072,6 @@ Proof.
         by simpl.
       * erewrite get_set_neq, get_upd_neq with (m' := regs') by eauto.
         apply RREGS.
-      * admit.
   - (* Syscall *)
     destruct (isolate_addr == pc) eqn:EQ;
       [ move/eqP in EQ; subst
