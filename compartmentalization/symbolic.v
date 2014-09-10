@@ -1040,6 +1040,15 @@ Lemma good_internal_equiv : forall s s',
   isolate_addr != add_to_store_targets_addr ->
   add_to_jump_targets_addr != add_to_store_targets_addr ->
   good_internal s ->
+  (forall p,
+     match sget s' p with
+       | Some (DATA _ I W) =>
+         forall cid,
+           cid \in I :|: W ->
+           cid <? next_id (Symbolic.internal s')
+       | None => True
+       | _    => False
+     end) ->
   good_internal s'.
 Proof.
   clear I; move=> s s'
@@ -1100,7 +1109,7 @@ Proof.
                  add_to_store_targets_addr ?= aST')
     by by rewrite /sget ASNONE' FALSE_aS_I FALSE_aS_aJ eq_refl.
 
-  rewrite /good_internal /=; move=> GOOD.
+  rewrite /good_internal /=; move=> GOOD BOUNDS.
   generalize (TAGS isolate_addr) => TAGS_I;
     rewrite SGET_I SGET_I' in TAGS_I;
     destruct iT as [|ci Wi Ii|], iT' as [|ci' Wi' Ii'|]; try done;
@@ -1122,7 +1131,9 @@ Proof.
    try done; subst.
   - apply GOOD in GET.
     case: GET => G1 G2 G3.
-    admit.
+    constructor=> //.
+    move/(_ p): BOUNDS => /=.
+    by rewrite /sget /= GET'.
   - by destruct (p == isolate_addr) eqn:EQ_I;
          move/eqP in EQ_I;
          [|destruct (p == add_to_jump_targets_addr) eqn:EQ_aJ;
@@ -1281,8 +1292,11 @@ Proof.
   - rewrite /sget GET' GET in OLD.
     inversion OLD; subst.
     apply IF_GET in GET.
-    admit. (*
-    repeat invh and; repeat split; eauto 2.*)
+    case: GET => G1 G2 G3.
+    constructor;
+    repeat invh and; repeat split; eauto 2.
+    move=> c' Hc'.
+    by apply succ_trans; eauto.
   - rewrite /sget GET  in THEN.
     rewrite /sget GET' in NOW.
     inversion THEN; subst; inversion NOW; subst.
@@ -1292,7 +1306,8 @@ Proof.
     + apply/negP.
       by case/or4P => // [/eqP ?|/eqP ?|/eqP ?]; subst cnew;
       rewrite ltb_irrefl /= ?andbF in LT.
-    + admit.
+    + case: (IF_GET p _ _ _ _ GET) => G1 G2 G3 c'' Hc''.
+      by apply succ_trans; eauto.
 Qed.
 
 End WithClasses.
