@@ -2534,8 +2534,55 @@ Proof.
       rewrite !in_rem_all in c1_in_AC c2_in_AC.
       case/andP: c1_in_AC => ? ?; case/andP: c2_in_AC => ? ?.
       by apply IDSU.
-  - move=> c' cid'. admit.
-    (*rewrite !in_cons => /or3P [/eqP {c'} ->|/eqP {c'} ->|] /=.*)
+  - move=> c' cid'.
+    rewrite !inE => /or3P [ /eqP{c'}-> | /eqP{c'}-> | c'_in_AC'].
+    + rewrite Hres /= => [[E]]. subst cid'.
+      have /= -> := (JTWF _ _ AIN RPREV).
+      apply/setP => p'.
+      rewrite !in_set.
+      admit.
+    + rewrite Hnew /= => [[E]]. subst cid'.
+      apply/setP => p'.
+      rewrite in_set.
+      have [INp'|NINp'] := boolP (p' \in J').
+      * { have [Hs|Hs] := Sym.retag_set_or_ok _ _ _ _ _ (enum_uniq (mem S')) SGOOD_sJ def_sS p'.
+          - rewrite (sget_irrelevancies RS pcS) -Hs.
+            rewrite -(mem_enum (mem J')) in INp'.
+            have [? [? [? [? H]]]] := Sym.retag_set_in _ _ _ _ _ (enum_uniq (mem J')) def_sJ _ INp'.
+            by rewrite H /= in_setU1 eqxx.
+          - case: Hs => ? [? [? [H'' [H' H]]]].
+            rewrite (sget_irrelevancies RS pcS) H {H} /=.
+            rewrite -(mem_enum (mem J')) in INp'.
+            have [? [? [? [? H]]]] := Sym.retag_set_in _ _ _ _ _ (enum_uniq (mem J')) def_sJ _ INp'.
+            rewrite H in H''.
+            move: H'' => [? ? ?]. subst.
+            by rewrite in_setU1 eqxx. }
+      * { have [Hs|Hs] := Sym.retag_set_or_ok _ _ _ _ _ (enum_uniq (mem S')) SGOOD_sJ def_sS p'.
+          - rewrite (sget_irrelevancies RS pcS) -Hs.
+            rewrite -(mem_enum (mem J')) in NINp'.
+            have <- := Sym.retag_set_not_in _ _ _ _ _ def_sJ _ NINp'.
+            have [Ha|Ha|Ha] := Sym.retag_set_or_ok _ _ _ _ _ (enum_uniq (mem A')) _ def_sA p'.
+            + by apply SGMEM.
+            + rewrite -Ha.
+              move: (SGMEM p').
+              rewrite /Sym.good_memory_tag.
+              case Gp': (Sym.sget _ _) => [[|cp' Ip' Wp'|]|] // _.
+              * move: (Gp').
+                rewrite /Sym.sget => -> /=.
+                admit.
+              * move: Gp'. by rewrite /Sym.sget => -> /=.
+            + case: Ha => ca [Ia [Wa [a1 [/eqP a2 a3]]]].
+              subst ca.
+              rewrite a3 /=.
+              move: (Sym.sget_lt_next _ _ _ _ _ RINT a1) => /=.
+              admit.
+          - case: Hs => ? [? [? [H'' [H' H]]]].
+            rewrite (sget_irrelevancies RS pcS) H {H} /=.
+            rewrite -(mem_enum (mem J')) in NINp'.
+            have H := Sym.retag_set_not_in _ _ _ _ _ def_sJ _ NINp'.
+            rewrite -H in H''.
+            admit. }
+   + move/(_ c' c'_in_AC') in RC_rest. admit.
   - move=> c' cid'.
     rewrite !inE => /or3P [ /eqP{c'}-> | /eqP{c'}-> | c'_in_AC'].
     + admit.
