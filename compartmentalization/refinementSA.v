@@ -2582,7 +2582,36 @@ Proof.
             have H := Sym.retag_set_not_in _ _ _ _ _ def_sJ _ NINp'.
             rewrite -H in H''.
             admit. }
-   + move/(_ c' c'_in_AC') in RC_rest. admit.
+    + move/(_ c' c'_in_AC') in RC_rest.
+      rewrite -RC_rest => GCI_cid'.
+      move: (c'_in_AC'); rewrite in_rem_all => /andP [c'_neq_prev c'_in_AC].
+      move/(_ c' cid' c'_in_AC GCI_cid') in JTWF.
+      rewrite JTWF.
+      apply/setP.
+      rewrite /eq_mem /= => a; rewrite !in_set.
+      move: TSAI_rest => /(_ c' c'_in_AC' a).
+      case: (Sym.sget _ a) => [[]|] //=; [|by case: (Sym.sget _ a) => [[]|]].
+      move=> cid1 I1 W1.
+      case: (Sym.sget _ a) => [[]|] //=.
+      move=> cid2 I2 W2.
+      move=> [cid_eq [OR_Is OR_Ws]].
+      case: OR_Is => [-> // | <-{I2}].
+      rewrite inE in_set1.
+      suff: cid' != Snext by move=> /negbTE-> //.
+      apply/eqP; move=> H; apply eq__nlt in H; contradict H; apply ltb_lt.
+      move: GCI_cid'; rewrite /get_compartment_id.
+      case: pickP => // x /eqP cid'_set []?; subst x.
+      have: Some cid' == Some cid' by apply eq_refl.
+      rewrite -(in_set1 (Some cid')) -cid'_set => /imsetP [p' p'_in_c'] /=.
+      move: (SGMEM p'); rewrite /Sym.good_memory_tag.
+      case SGET: (Sym.sget _ p') => [[|d I' W'|]|] //= => _ []?; subst d.
+      replace Snext
+        with (Sym.next_id
+                (Symbolic.internal
+                   (SState SM SR pc@(Sym.PC F cid)
+                           (SInternal Snext SiT SaJT SaST))))
+        by reflexivity.
+      eapply Sym.sget_lt_next; eassumption.
   - move=> c' cid'.
     rewrite !inE => /or3P [ /eqP{c'}-> | /eqP{c'}-> | c'_in_AC'].
     + admit.
