@@ -1553,6 +1553,100 @@ Qed.
 
 (***** END MOVEMENT *****)
 
+(*
+*)
+
+
+Lemma retag_set_get_compartment_id_disjoint ok retag (ps : {set word}) sst sst' c cid :
+  Sym.retag_set ok retag (enum ps) sst = Some sst' ->
+  get_compartment_id sst c = Some cid ->
+  [disjoint Abs.address_space c & ps] ->
+  get_compartment_id sst' c = Some cid.
+Proof.
+  move=> Hretag Hid /pred0P Hdis.
+  have {Hdis} Hdis: forall p, p \in Abs.address_space c -> p \notin enum ps.
+  { move=> p Hin_c.
+    apply/negP => Hin_ps.
+    move: (Hdis p) => /=.
+    by rewrite Hin_c -(mem_enum (mem ps)) Hin_ps. }
+  elim: {ps} (enum ps) sst Hid Hretag Hdis => [|p ps IH] sst Hid /=; first congruence.
+  case GET: (Sym.sget sst p) => [[|cid' I' W'|]|] //=.
+  case: (ok cid' I' W') => //.
+  case: (retag cid' I' W') => [|cid'' I'' W''|] //.
+  case UPD: (Sym.supd _ _ _) => [sst''|] //= Hretag Hdis.
+  apply (IH sst'') => //.
+  - move: Hid.
+    rewrite /get_compartment_id.
+    case: pickP => [cid''' /eqP Hcid'''|] // [E].
+    subst cid'''.
+    move: (set11 (Some cid)).
+    rewrite -Hcid''' => /imsetP [p' H1 H2].
+    suff ->: [set (Sym.stag_compartment <=< @Sym.sget _ cmp_syscalls sst'') x | x in Abs.address_space c] =
+             [set (Sym.stag_compartment <=< @Sym.sget _ cmp_syscalls sst) x | x in Abs.address_space c].
+    { rewrite Hcid'''.
+      case: pickP => [cid''' /eqP/set1_inj H//|/(_ cid) contra].
+      by rewrite eqxx in contra. }
+    apply/eq_in_imset => pp /(Hdis _).
+    rewrite in_cons /= => /norP [pp_n_p pp_notin_ps].
+    by rewrite (Sym.sget_supd _ _ _ _ UPD) (negbTE pp_n_p).
+  - move=> pp Hin.
+    by case/norP: (Hdis pp Hin).
+Qed.
+
+Lemma get_compartment_id_subset sst c c' cid p :
+  p \in Abs.address_space c' ->
+  Abs.address_space c' \subset Abs.address_space c ->
+  get_compartment_id sst c = Some cid ->
+  get_compartment_id sst c' = Some cid.
+Proof.
+  move=> Hp Hsub.
+  rewrite /get_compartment_id.
+  case: pickP => [cid' /eqP Hcid|] // [E].
+  subst cid'.
+  suff ->: [set (Sym.stag_compartment <=< @Sym.sget _ cmp_syscalls sst) x | x in Abs.address_space c'] =
+           [set (Sym.stag_compartment <=< @Sym.sget _ cmp_syscalls sst) x | x in Abs.address_space c].
+  { rewrite Hcid.
+    case: pickP => [cid''' /eqP/set1_inj H//|/(_ cid) contra].
+    by rewrite eqxx in contra. }
+  apply/eqP. rewrite eqEsubset.
+  rewrite imsetS //= Hcid sub1set.
+  apply/imsetP.
+  exists p => //.
+  apply/eqP. rewrite eq_sym -in_set1 -Hcid.
+  apply/imsetP.
+  exists p => //.
+  move/subsetP: Hsub.
+  by apply.
+Qed.
+
+Lemma retag_set_get_compartment_id_same_ids ok retag ps sst sst' c cid :
+  Sym.retag_set ok retag ps sst = Some sst' ->
+  (forall c I1 W1, Sym.stag_compartment (retag c I1 W1) = Some c) ->
+  get_compartment_id sst c = Some cid ->
+  get_compartment_id sst' c = Some cid.
+Proof.
+  move=> Hretag_set Hretag.
+  elim: ps sst Hretag_set => [|p ps IH] sst //=; first congruence.
+  case GET: (Sym.sget _ _) => [[|cid1 I1 W1|]|] //=.
+  case: (ok _ _ _) => //.
+  move: Hretag => /(_ cid1 I1 W1).
+  case RETAG: (retag _ _ _) => [|cid2 I2 W2|] //= [E].
+  subst cid2.
+  case UPD: (Sym.supd _ _ _) => [sst''|] //= Hretag_set Hcid.
+  suff : get_compartment_id sst'' c = Some cid by apply IH.
+  move: (Hcid).
+  rewrite /get_compartment_id.
+  case: pickP => [cid' /eqP Hcid1|]//= [E].
+  subst cid'.
+  suff -> : [set (Sym.stag_compartment <=< @Sym.sget _ cmp_syscalls sst'') x | x in Abs.address_space c] =
+            [set (Sym.stag_compartment <=< @Sym.sget _ cmp_syscalls sst) x | x in Abs.address_space c].
+  { apply Hcid. }
+  apply/eq_in_imset => p' /= p'_in.
+  rewrite (Sym.sget_supd _ _ _ _ UPD).
+  have [-> //=|//] := (p' =P p).
+  by rewrite GET.
+Qed.
+
 Theorem isolate_refined : forall ast sst sst',
   Abs.pc ast = isolate_addr ->
   Abs.good_state ast ->
