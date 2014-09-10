@@ -2614,7 +2614,37 @@ Proof.
       eapply Sym.sget_lt_next; eassumption.
   - move=> c' cid'.
     rewrite !inE => /or3P [ /eqP{c'}-> | /eqP{c'}-> | c'_in_AC'].
-    + admit.
+    + (* This case (Aprev :\: A') ends up being very similar to the third
+         (neither Aprev :\: A' nor A') -- in fact, after a certain point,
+         identical (up to some stylistic changes. *)
+      rewrite Hres; move=> [] <-{cid'} /=.
+      move/(_ <<Aprev,Jprev,Sprev>> cid AIN RPREV) in STWF; simpl in STWF.
+      rewrite STWF.
+      apply/setP; rewrite /eq_mem /= => a; rewrite !in_set.
+      have DJ : [disjoint A' & Aprev :\: A']
+        by rewrite -setI_eq0 setIDA setIC -setIDA setDv setI0.
+      move: TSAI_s0_sS' => /(_ (Aprev :\: A') DJ a).
+      case: (Sym.sget _ a) => [[|cid1 I1 W1|]|] //=;
+        [|by case: (Sym.sget _ a) => [[]|] //].
+      case: (Sym.sget _ a) => [[|cid2 I2 W2|]|] //=.
+      move=> [cid_eq [OR_Is OR_Ws]].
+      case: OR_Ws => [-> // | <-{W2}].
+      rewrite inE in_set1.
+      suff: cid != Snext by move=> /negbTE-> //.
+      apply/eqP; move=> H; apply eq__nlt in H; contradict H; apply ltb_lt.
+      move: RPREV; rewrite /get_compartment_id.
+      case: pickP => // x /eqP cid_set []?; subst x.
+      have: Some cid == Some cid by apply eq_refl.
+      rewrite -(in_set1 (Some cid)) -cid_set => /imsetP [p' p'_in_prev] /=.
+      move: (SGMEM p'); rewrite /Sym.good_memory_tag.
+      case SGET: (Sym.sget _ p') => [[|d I' W'|]|] //= => _ []?; subst d.
+      replace Snext
+        with (Sym.next_id
+                (Symbolic.internal
+                   (SState SM SR pc@(Sym.PC F cid)
+                           (SInternal Snext SiT SaJT SaST))))
+        by reflexivity.
+      eapply Sym.sget_lt_next; eassumption.
     + admit.
     + move/(_ c' c'_in_AC') in RC_rest.
       rewrite -RC_rest => GCI_cid'.
@@ -2700,9 +2730,9 @@ Proof.
         + exact (enum_uniq (pred_of_set S')).
       - eapply Sym.retag_set_preserves_next_id; eassumption.
     }
-
+    
     exact SGINT_sS.
-
+    
 (* END REFINEMENT *)
 
 (*
