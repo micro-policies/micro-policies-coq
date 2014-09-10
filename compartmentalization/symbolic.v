@@ -418,9 +418,10 @@ Definition step := Symbolic.step syscalls.
 Definition good_internal (s : Symbolic.state t) : Prop :=
   let: Internal next iT aJT aST := Symbolic.internal s in
   match iT , aJT , aST with
-    | DATA iC _ _ , DATA aJC _ _ , DATA aST _ _ =>
+    | DATA iC iI iW , DATA aJC aJI aJW , DATA aST aSI aSW =>
       uniq [:: iC; aJC; aST] /\
       all  (fun c => c <? next) [:: iC; aJC; aST] /\
+      [forall c in iI :|: iW :|: aJI :|: aJW :|: aSI :|: aSW, c <? next] /\
       forall p x c I W,
         get (Symbolic.mem s) p ?= x@(DATA c I W) ->
         [/\ c <? next, c \notin [:: iC; aJC; aST] &
