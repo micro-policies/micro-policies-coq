@@ -648,12 +648,12 @@ Proof.
     destruct Li  as [|ci  Ii  Wi|];  try done;
     destruct LaJ as [|caJ IaJ WaJ|]; try done;
     destruct LaS as [|caS IaS WaS|]; try done.
-  case: GOOD => NEQ [/and4P [? ? ? ?] GOOD].
+  case: GOOD => NEQ [/and4P [? ? ? ?] [GOOD1 GOOD2]].
   rewrite /sget in SGET.
   destruct (get mem p) as [[? ?]|] eqn:GET; rewrite GET in SGET.
   - move: SGET => [SGET].
     rewrite SGET in GET.
-    by case:(GOOD _ _ c _ _ GET).
+    by case:(GOOD2 _ _ c _ _ GET).
 
   - destruct (p == isolate_addr);              [by inversion SGET; subst|].
     destruct (p == add_to_jump_targets_addr);  [by inversion SGET; subst|].
@@ -675,14 +675,19 @@ Proof.
            aJT as [|caJ IaJ WaJ|],
            aST as [|caS IaS WaS|];
     auto.
-  move=> [NEQ [/and4P [? ? ? _] GOOD]].
+  move=> [NEQ [/and4P [? ? ? _] [GOOD1 GOOD2]]].
     do 2 (split; eauto 2).
     by apply/and4P; split; eauto 2.
-  intros p x c I W GET; specialize (GOOD p x c I W GET).
-  case: GOOD => H1 H2 H3.
-  split; eauto 2.
-  move=> c' /H3 Hc'.
-  by apply succ_trans.
+  split.
+  - apply/forall_inP => c Hc.
+    apply succ_trans; eauto.
+    move/forall_inP: GOOD1.
+    by apply.
+  - intros p x c I W GET; specialize (GOOD2 p x c I W GET).
+    case: GOOD2 => H1 H2 H3.
+    split; eauto 2.
+    move=> c' /H3 Hc'.
+    by apply succ_trans.
 Qed.
 
 
@@ -1123,25 +1128,32 @@ Proof.
     rewrite SGET_aS SGET_aS' in TAGS_aS;
     destruct aST as [|caS WaS IaS|], aST' as [|caS' WaS' IaS'|]; try done;
     subst caS'.
-  repeat move: GOOD => [? GOOD].
+  case: GOOD=> ? [? [GOOD1 GOOD2]].
   repeat (split; [assumption|]).
-  intros p x c I W GET'.
-  move/id in TAGS; specialize TAGS with p.
-  rewrite /sget GET' in TAGS.
-  destruct (get mem p) as [[y [|cy Iy Wy|]]|] eqn:GET;
-   try done; subst.
-  - apply GOOD in GET.
-    case: GET => G1 G2 G3.
-    constructor=> //.
-    move/(_ p): BOUNDS => /=.
-    by rewrite /sget /= GET'.
-  - by destruct (p == isolate_addr) eqn:EQ_I;
-         move/eqP in EQ_I;
-         [|destruct (p == add_to_jump_targets_addr) eqn:EQ_aJ;
-           move/eqP in EQ_aJ;
-             [|destruct (p == add_to_store_targets_addr) eqn:EQ_aS;
-               move/eqP in EQ_aS]];
-       subst; try congruence.
+  split.
+  - apply/forall_inP => c Hc.
+    rewrite -(setUA _ _ IaS') in_setU -(setUA _ _ IaJ') in_setU -orbA in Hc.
+    case/or3P: Hc => [Hc | Hc | Hc].
+    + generalize (BOUNDS isolate_addr). rewrite SGET_I'. by apply.
+    + generalize (BOUNDS add_to_jump_targets_addr). rewrite SGET_aJ'. by apply.
+    + generalize (BOUNDS add_to_store_targets_addr). rewrite SGET_aS'. by apply.
+  - intros p x c I W GET'.
+    move/id in TAGS; specialize TAGS with p.
+    rewrite /sget GET' in TAGS.
+    destruct (get mem p) as [[y [|cy Iy Wy|]]|] eqn:GET;
+     try done; subst.
+    + apply GOOD2 in GET.
+      case: GET => G1 G2 G3.
+      constructor=> //.
+      move/(_ p): BOUNDS => /=.
+      by rewrite /sget /= GET'.
+    + by destruct (p == isolate_addr) eqn:EQ_I;
+           move/eqP in EQ_I;
+           [|destruct (p == add_to_jump_targets_addr) eqn:EQ_aJ;
+             move/eqP in EQ_aJ;
+               [|destruct (p == add_to_store_targets_addr) eqn:EQ_aS;
+                 move/eqP in EQ_aS]];
+         subst; try congruence.
 Qed.
 
 Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
@@ -1281,9 +1293,13 @@ Proof.
     by by apply retag_set_preserves_next_id in RETAG_SET.
   subst iT' aJT' aST' next' next.
 
-  move: GOOD => [NEQ [LT IF_GET]].
+  move: GOOD => [NEQ [LT [GOOD IF_GET]]].
   split; first solve [eauto 2].
   split; first by case/and4P: LT => *; apply/and4P; split; eauto 2.
+  split.
+  { apply/forall_inP => c Hc.
+    move/forall_inP in GOOD.
+    apply succ_trans; eauto. }
   intros p x c I W GET'.
 
   apply retag_set_or with (p := p) in RETAG_SET; auto.
