@@ -281,35 +281,24 @@ Theorem refine_good : forall `(REFINE : refine ast sst),
   Abs.good_state ast ->
   Sym.good_state sst.
 Proof.
-  clear S I. admit. (*
+  clear S I.
   move=> [Apc AR AM AC Ask Aprev]
          [SM SR [Spc Lpc] [Snext SiT SaJT SaST]]
-         [RPC RREGS RMEMS RCOMPS RPREV RSC RINT]
-         /andP [/andP [/andP [ELEM GOODS] SS] SP];
-    simpl in *;
-    unfold refine_compartments in RCOMPS; simpl in RCOMPS;
-    destruct RCOMPS as [RCOMPS RTAGS];
-  unfold Sym.good_state, Abs.good_state in *; simpl in *.
+         [RPC RREGS RMEMS WDCOMPS WDIDS UIDS WFJTS WFSTS RPREV RSCS RINT]
+         /and4P [ELEM GOODS SS SP];
+    simpl in *.
   repeat split.
   - intros p; unfold Sym.good_memory_tag.
     unfold refine_memory, pointwise in RMEMS; specialize RMEMS with p.
-    specialize RTAGS with p; unfold refine_compartment_tag in RTAGS;
-      simpl in RTAGS.
     unfold Sym.sget in *.
-    case SGET: (get SM p) RTAGS RMEMS => [[Sx SL]|] RTAGS RMEMS.
+    case SGET: (get SM p) RMEMS => [[Sx SL]|] RMEMS.
     + case AGET: (get AM p) RMEMS => [Ax|] RMEMS; [simpl in RMEMS | elim RMEMS].
       destruct SL as [|c I W|]; solve [apply/andP; tauto | done].
     + destruct (p == isolate_addr);
         [|destruct (p == add_to_jump_targets_addr);
           [|destruct (p == add_to_store_targets_addr)]];
-        unfold Sym.sget in *; simpl in *.
-      * destruct SiT; try done.
-        by repeat invh and; apply/andP.
-      * destruct SaJT; try done.
-        by repeat invh and; apply/andP.
-      * destruct SaST; try done.
-        by repeat invh and; apply/andP.
-      * done.
+        unfold Sym.sget in *; simpl in *;
+        try done; by destruct SiT,SaJT,SaST.
   - intros r; unfold Sym.good_register_tag.
     unfold refine_registers, pointwise in RREGS; specialize RREGS with r.
     case SGET: (get SR r) RREGS => [[Sx SL]|] RREGS; last by [].
@@ -318,36 +307,28 @@ Proof.
     by destruct SL.
   - destruct Lpc; try discriminate.
     move: RPREV => /andP [/eqP? /eqP RPREV]; subst.
-    let S := fresh "S" in explode_refined_compartment RPREV A J S.
-    destruct cids as [|c' cids]; [discriminate | clear NE_cids].
-    specialize (SAME_cid c' (or_introl Logic.eq_refl)); subst.
-    specialize MAP_sxs with c;
-      move: MAP_sxs => [MAP_sxs _];
-      specialize (MAP_sxs (or_introl Logic.eq_refl)).
-    move: MAP_sxs => [[x Lx] [TAG IN]].
-    apply def_sxs in IN.
-    destruct IN as [p [GET IN]].
-    rewrite /refine_memory /pointwise /refine_mem_loc_b in RMEMS.
-    specialize RMEMS with p; exists p;
-      specialize RTAGS with p;
-      rewrite /refine_compartment_tag in RTAGS.
-    unfold Sym.sget in *.
-    case SGET: (get SM p) RTAGS RMEMS GET => [?|] RTAGS RMEMS GET //=.
-    + inversion GET; subst; simpl in *.
-      case AGET: (get AM p) RMEMS => [?|] RMEMS; last by [].
-      destruct Lx as [|c' I W|]; try done.
-      simpl in TAG; inversion TAG; subst; eauto.
-    + destruct (p == isolate_addr);
-        [ destruct SiT; try done
-        | destruct (p == add_to_jump_targets_addr);
-          [ destruct SaJT; try done
-          | destruct (p == add_to_store_targets_addr);
-            [ destruct SaST; try done
-            | discriminate ]]];
-        inversion GET; subst;
-        simpl in TAG; inversion TAG; subst;
-        eauto.
-  - assumption.*)
+    rewrite /get_compartment_id in RPREV.
+    case: pickP RPREV => //= => x /eqP RPREV.
+    have: Some x == Some x by apply eq_refl.
+    rewrite -(in_set1 (Some x)) -RPREV => /imsetP [y IN_y ->] SGET.
+      clear x RPREV.
+      exists y; move: SGET.
+    case SGET: (Sym.sget _ y) => [L|//].
+    case: L SGET => //= [F' c' | c' I W] SGET []?; subst.
+    + move/(_ y) in RMEMS.
+      rewrite /Sym.sget in SGET.
+      move: RMEMS SGET.
+      case: (get SM y) => [[]|] /=.
+      * case: (get AM y) => //.
+        by move=> a x L MEM []?; subst; simpl in *.
+      * move=> _.
+        rewrite /Sym.good_internal /= in RINT.
+        destruct SiT,SaJT,SaST; try done.
+        case: (y == isolate_addr) => //.
+        case: (y == add_to_jump_targets_addr) => //.
+        case: (y == add_to_store_targets_addr) => //.
+    + by exists I,W.
+  - assumption.
 Qed.
 
 Ltac unoption :=
