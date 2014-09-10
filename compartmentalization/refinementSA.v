@@ -3071,9 +3071,9 @@ Proof.
             eapply ranges.lebw_succ; eassumption.
           * by apply Sym.sget_IW_lt_next with (c' := cid') in THEN_S.
     }
-    
+
     exact SGINT_sS.
-    
+
 (* END REFINEMENT *)
 
 (*
@@ -3907,7 +3907,7 @@ Proof.
       * rewrite /Sym.good_internal /= in RINT *.
         destruct extra as [next iT aJT aST].
         destruct iT,aJT,aST; auto.
-        destruct RINT as [? [? RINT]].
+        destruct RINT as [? [? [? RINT]]].
         repeat (split; [solve [auto]|]).
         intros p x c' I' W'; specialize (RINT p).
         { destruct (p == w1) eqn:EQ; move/eqP in EQ; subst.
