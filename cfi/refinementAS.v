@@ -1073,7 +1073,7 @@ Qed.
 
 (*Proof of forward simulation
   - Started after POPL 2015 submission
-  - Current state : broken
+  - Current state : broken *)
 (*
 Theorem forward_simulation ast ast' sst :
   refine_state ast sst ->

@@ -92,21 +92,27 @@ Definition backwards_simulation :=
                                     syscall_preserves_entry_tags.
 
 Lemma untag_implies_reg_refinement reg :
+  Sym.registers_tagged reg ->
   RefinementAS.refine_registers (cfg := cfg) (PartMaps.map RefinementAS.untag_atom reg) reg.
 Proof.
- (*  intros r v.
-   split.
-   - intros GET.
-     rewrite PartMaps.map_correctness.
-     rewrite GET. reflexivity.
-   - intros GET.
-     rewrite PartMaps.map_correctness in GET.
-     destruct (get reg r) eqn:GET'.
-     + destruct a. simpl in GET. inv GET.
-       eexists; reflexivity.
-     + simpl in GET. congruence.*)
-Admitted. (*requires register tags*)
-
+  intros RTG r v.
+  split.
+  - intros GET.
+    rewrite PartMaps.map_correctness.
+    rewrite GET. reflexivity.
+  - intros GET.
+    rewrite PartMaps.map_correctness in GET.
+    destruct (get reg r) eqn:GET'.
+    + destruct a. simpl in GET.
+      assert (tag = DATA)
+        by (apply RTG in GET'; assumption).
+      subst.
+      rewrite GET' in GET.
+      simpl in GET.
+      inv GET.
+      assumption.
+    + rewrite GET' in GET. simpl in GET. congruence.
+Qed.
 
 Lemma untag_data_implies_dmem_refinement mem :
   RefinementAS.refine_dmemory
@@ -340,7 +346,7 @@ Next Obligation.
   by case: (stepP' stable cst cst') => [H | H]; auto.
 Qed.
 Next Obligation. (*initial state*)
-  destruct H as [TPC [ITG [VTG [ETG ?]]]].
+  destruct H as [TPC [ITG [VTG [ETG [RTG ?]]]]].
   destruct cst as [mem reg [pc tpc] int].
   exists (Abs.State (PartMaps.map RefinementAS.untag_atom (filter is_instr mem))
                     (PartMaps.map RefinementAS.untag_atom (filter RefinementAS.is_data mem))
