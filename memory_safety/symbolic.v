@@ -220,8 +220,8 @@ Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=
   end.
 
 Definition write_block init base (v : atom) (sz : word) : option (Symbolic.memory t _) :=
-  if Word.signed base + Word.signed sz <=? Word.max_signed (word_size_minus_one t) then
-     write_block_rec init base v (Z.to_nat (Word.signed sz))
+  if Word.unsigned base + Word.unsigned sz <=? Word.max_unsigned (word_size_minus_one t) then
+     write_block_rec init base v (Z.to_nat (Word.unsigned sz))
   else None.
 
 Definition update_block_info info x (color : color) sz :=

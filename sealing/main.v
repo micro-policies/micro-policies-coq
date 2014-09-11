@@ -82,36 +82,26 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
 
 Instance sk_defs : Sym.sealing_key := {|
  key := [eqType of Word.int 27];
- max_key := Word.repr (Word.max_signed 27);
- inc_key := fun x => Word.add x (Word.repr 1);
+ max_key := Word.repr (Word.max_unsigned 27);
+ inc_key := fun x => Word.add x Word.one;
  ord_key := IntOrdered.int_ordered 27
 |}.
 Proof.
   rewrite /ordered.ltb /IntOrdered.int_ordered -(lock (IntOrdered.int_ordered_def _))
-          /= /IntOrdered.int_compare /Word.signed.
+          /= /IntOrdered.int_compare /Word.unsigned.
   intros sk.
-  destruct (equiv_dec sk (Word.repr (Word.max_signed 27))) as [H7 | H7] eqn:E1; first by [].
-  rewrite /Word.lt.
-  destruct (Coqlib.zlt (Word.signed sk) (Word.signed (@Word.repr 27 (Word.max_signed 27))))
-    as [H6 | H6] eqn: E2; last by [].
-  intros _.
-  move: (Word.signed_range _ sk) => [H1' H2'].
-  destruct (equiv_dec sk (Word.add sk (Word.repr 1))) as [H | H] eqn:E3.
-  - clear E3.
-    rewrite Word.add_signed -Word.add_repr /= !Word.repr_signed in H.
-    have H'': Word.sub sk sk = Word.sub (Word.add sk (Word.repr 1)) sk by congruence.
-    rewrite Word.sub_idem in H''.
-    assert (CONTRA: Word.add (Word.neg sk) sk = Word.add (Word.neg sk) (Word.add sk (Word.repr 1))) by congruence.
-    rewrite Word.add_commut Word.add_neg_zero -Word.add_assoc in CONTRA.
-    rewrite -(Word.add_commut _ sk) Word.add_neg_zero Word.add_zero_l in CONTRA.
-    by move: CONTRA => /esym/Word.one_not_zero CONTRA.
-  - case: (Coqlib.zlt _ _) => [E | E] {E2} //=.
-    rewrite Word.signed_repr in H6; last by [].
-    rewrite Word.add_signed Word.signed_repr in E.
-    + move: (Word.signed_range 27 (Word.repr (Word.signed sk + 1)%Z)) => [H1 H2].
-      rewrite Word.signed_repr in E H1 H2; last by (compute; split; congruence).
-      clear - E. omega.
-    + change (Word.signed (Word.repr 1)) with 1%Z. omega.
+  destruct (equiv_dec sk (Word.repr (Word.max_unsigned 27))) as [H7 | H7]; first by [].
+  rewrite {1 2 3}/Word.ltu.
+  rewrite Word.unsigned_repr //.
+  case: (Coqlib.zlt (Word.unsigned sk) (Word.max_unsigned 27)) => [H6 _ | H6]; last by [].
+  case: (equiv_dec sk (sk + 1)%w) => [|NEQ].
+  { rewrite /= -{1}(Word.add_zero _ sk) => /addwI contra.
+    discriminate. }
+  move: (Word.unsigned_range sk) => [H1' H2'].
+  rewrite addwC -{1 3 5}(add0w sk) Word.translate_ltu //.
+  - rewrite /= /Word.max_unsigned. omega.
+  - have {H7} H7 := H7 : sk <> Word.repr (Word.max_unsigned 27).
+    rewrite [_ 1%w]/=. omega.
 Defined.
 
 Import Word.Notations.

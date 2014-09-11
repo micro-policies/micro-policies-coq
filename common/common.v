@@ -20,6 +20,7 @@ Inductive binop :=
 | MUL
 | EQ
 | LEQ
+| LEQU
 | AND
 | OR
 | XOR
@@ -32,6 +33,7 @@ Definition binops := [
   MUL;
   EQ;
   LEQ;
+  LEQU;
   AND;
   OR;
   XOR;
@@ -85,6 +87,7 @@ Definition opcodes :=
    BINOP MUL;
    BINOP EQ;
    BINOP LEQ;
+   BINOP LEQU;
    BINOP AND;
    BINOP OR;
    BINOP XOR;
@@ -223,59 +226,51 @@ Class machine_ops_spec t (ops : machine_ops t) := {
 
 }.
 
-Definition min_word t : word t := Word.repr (Word.min_signed (word_size_minus_one t)).
+Definition min_word t : word t := Word.zero.
 
-Definition max_word t : word t := Word.repr (Word.max_signed (word_size_minus_one t)).
+Definition max_word t : word t := Word.repr (Word.max_unsigned (word_size_minus_one t)).
 
-Lemma signed_min_word t :
-  Word.signed (min_word t) = Word.min_signed (word_size_minus_one t).
+Lemma unsigned_min_word t : Word.unsigned (min_word t) = 0%Z.
+Proof. reflexivity. Qed.
+
+Lemma unsigned_max_word t :
+  Word.unsigned (max_word t) = Word.max_unsigned (word_size_minus_one t).
 Proof.
-  rewrite /min_word Word.signed_repr; first by [].
-  split; first by omega.
-  move: (Word.min_signed_neg (word_size_minus_one t)).
-  move: (Word.max_signed_pos (word_size_minus_one t)).
-  move => *. omega.
+  rewrite /max_word Word.unsigned_repr /Word.max_unsigned; first by [].
+  split; try reflexivity.
+  have ? := (Word.modulus_pos (word_size_minus_one t)). omega.
 Qed.
 
-Lemma signed_max_word t :
-  Word.signed (max_word t) = Word.max_signed (word_size_minus_one t).
+Lemma min_word_bound t : (Word.unsigned (min_word t) <= 0)%Z.
 Proof.
-  rewrite /max_word Word.signed_repr; first by [].
-  split; last by omega.
-  move: (Word.min_signed_neg (word_size_minus_one t)).
-  move: (Word.max_signed_pos (word_size_minus_one t)).
-  move => *. omega.
+rewrite unsigned_min_word -(Word.signed_zero (word_size_minus_one t)).
+omega.
 Qed.
 
-Lemma min_word_bound t : (Word.signed (min_word t) <= 0)%Z.
+Lemma max_word_bound t : (31 < Word.unsigned (max_word t))%Z.
 Proof.
-rewrite signed_min_word -(Word.signed_zero (word_size_minus_one t)).
-apply (proj1 (Word.signed_range _ _)).
-Qed.
-
-Lemma max_word_bound t : (31 < Word.signed (max_word t))%Z.
-Proof.
-rewrite signed_max_word /Word.max_signed Word.half_modulus_power
+rewrite unsigned_max_word /Word.max_unsigned Word.modulus_power
         /Word.zwordsize /Word.wordsize.
 zify. clear H.
 case: t => [s Hs ? ?]. simpl.
 have ->: (31 = two_p 5 - 1)%Z by [].
-suffices: (two_p 5 < two_p (Z.succ (Z.of_nat s) - 1))%Z by (move => ?; omega).
+suffices: (two_p 5 < two_p (Z.succ (Z.of_nat s)))%Z by (move => ?; omega).
 apply Coqlib.two_p_monotone_strict.
 omega.
 Qed.
 
 Lemma lew_min t (w : word t) : min_word t <= w.
 Proof.
-rewrite /le IntOrdered.compare_signed signed_min_word.
-move: (Word.signed_range _ w) => H1 /Z.compare_gt_iff => H2.
+rewrite /le IntOrdered.compare_unsigned unsigned_min_word.
+move: (Word.unsigned_range w) => H1 /Z.compare_gt_iff => H2.
 omega.
 Qed.
 
 Lemma lew_max t (w : word t) : w <= max_word t.
 Proof.
-rewrite /le IntOrdered.compare_signed signed_max_word.
-move: (Word.signed_range _ w) => H1 /Z.compare_gt_iff => H2.
+rewrite /le IntOrdered.compare_unsigned unsigned_max_word.
+move: (Word.unsigned_range w) => H1 /Z.compare_gt_iff => H2.
+rewrite /Word.max_unsigned in H2.
 omega.
 Qed.
 
@@ -295,7 +290,8 @@ Definition binop_denote (f : binop) : word t -> word t -> word t :=
   | SUB => Word.sub
   | MUL => Word.mul
   | EQ  => fun w1 w2 => bool_to_word (w1 == w2)
-  | LEQ => fun w1 w2 => bool_to_word (leb w1 w2)
+  | LEQ => fun w1 w2 => bool_to_word (Word.lt w1 w2 || (w1 == w2))
+  | LEQU => fun w1 w2 => bool_to_word (leb w1 w2)
   | AND => Word.and
   | OR => Word.or
   | XOR => Word.xor
@@ -392,90 +388,67 @@ Local Ltac reflect thm :=
 
 Local Ltac comparison :=
   intros until 0; unfold lt,gt,le,ge,Zlt,Zgt,Zle,Zge;
-  rewrite IntOrdered.compare_signed; split; auto.
+  rewrite IntOrdered.compare_unsigned; split; auto.
 
 Ltac comparison_b :=
   intros; unfold ltb,gtb,leb,geb,Z.ltb,Z.gtb,Z.leb,Z.geb;
-  rewrite IntOrdered.compare_signed; destruct (Word.signed _ ?= Word.signed _); reflexivity.
+  rewrite IntOrdered.compare_unsigned; destruct (Word.unsigned _ ?= Word.unsigned _); reflexivity.
 
-Theorem word_signed_lt : forall n (x y : Word.int n), x <  y <-> (Word.signed x <  Word.signed y)%Z.
+Theorem word_unsigned_lt : forall n (x y : Word.int n), x <  y <-> (Word.unsigned x <  Word.unsigned y)%Z.
 Proof. comparison. Qed.
 
-Theorem word_signed_gt : forall n (x y : Word.int n), x >  y <-> (Word.signed x >  Word.signed y)%Z.
+Theorem word_unsigned_gt : forall n (x y : Word.int n), x >  y <-> (Word.unsigned x >  Word.unsigned y)%Z.
 Proof. comparison. Qed.
 
-Theorem word_signed_le : forall n (x y : Word.int n), x <= y <-> (Word.signed x <= Word.signed y)%Z.
+Theorem word_unsigned_le : forall n (x y : Word.int n), x <= y <-> (Word.unsigned x <= Word.unsigned y)%Z.
 Proof. comparison. Qed.
 
-Theorem word_signed_ge : forall n (x y : Word.int n), x >= y <-> (Word.signed x >= Word.signed y)%Z.
+Theorem word_unsigned_ge : forall n (x y : Word.int n), x >= y <-> (Word.unsigned x >= Word.unsigned y)%Z.
 Proof. comparison. Qed.
 
-Theorem word_signed_ltb : forall n (x y : Word.int n), x <?  y = (Word.signed x <?  Word.signed y)%Z.
+Theorem word_unsigned_ltb : forall n (x y : Word.int n), x <?  y = (Word.unsigned x <?  Word.unsigned y)%Z.
 Proof. comparison_b. Qed.
 
-Theorem word_signed_gtb : forall n (x y : Word.int n), x >?  y = (Word.signed x >?  Word.signed y)%Z.
+Theorem word_unsigned_gtb : forall n (x y : Word.int n), x >?  y = (Word.unsigned x >?  Word.unsigned y)%Z.
 Proof. comparison_b. Qed.
 
-Theorem word_signed_leb : forall n (x y : Word.int n), x <=? y = (Word.signed x <=? Word.signed y)%Z.
+Theorem word_unsigned_leb : forall n (x y : Word.int n), x <=? y = (Word.unsigned x <=? Word.unsigned y)%Z.
 Proof. comparison_b. Qed.
 
-Theorem word_signed_geb : forall n (x y : Word.int n), x >=? y = (Word.signed x >=? Word.signed y)%Z.
+Theorem word_unsigned_geb : forall n (x y : Word.int n), x >=? y = (Word.unsigned x >=? Word.unsigned y)%Z.
 Proof. comparison_b. Qed.
-
-(*
-Corollary lew_minmax' : @min_word t <= max_word.
-Proof.
-  generalize min_word_bound,max_word_bound; rewrite word_signed_le; omega.
-Qed.
-
-Corollary lew_minmax : forall w, min_word <= w <= max_word.
-Proof. split; [apply lew_min | apply lew_max]. Qed.
-*)
-
-(*
-Lemma lew_add2l x y z :
-  x + y <= x + z <-> y <= z.
-Proof.
-rewrite !word_signed_le.
-rewrite -[x]Word.signedK -{1}[y]Word.signedK -{1}[z]Word.signedK.
-rewrite !addwP.
-rewrite !Z_to_wordK.
-omega.
-
-Qed.
-*)
 
 Lemma addwE (x y : word t) :
-  (Word.signed (min_word t) <= Word.signed x + Word.signed y <= Word.signed (max_word t))%Z ->
-  Word.signed (x + y) = (Word.signed x + Word.signed y)%Z.
+  (Word.unsigned (min_word t) <= Word.unsigned x + Word.unsigned y <= Word.unsigned (max_word t))%Z ->
+  Word.unsigned (x + y) = (Word.unsigned x + Word.unsigned y)%Z.
 Proof.
-rewrite signed_min_word signed_max_word.
+rewrite unsigned_min_word unsigned_max_word.
 move => ?.
-rewrite -{1}[x]Word.repr_signed -{1}[y]Word.repr_signed.
+rewrite -{1}[x]Word.repr_unsigned -{1}[y]Word.repr_unsigned.
 rewrite addwP.
-by rewrite Word.signed_repr.
+by rewrite Word.unsigned_repr.
 Qed.
 
 Lemma oppwE (x : word t) :
-  (Word.signed (min_word t) <= - Word.signed x <= Word.signed (max_word t))%Z ->
-  Word.signed (- x) = (- Word.signed x)%Z.
+  (Word.unsigned (min_word t) <= - Word.unsigned x <= Word.unsigned (max_word t))%Z ->
+  Word.unsigned (- x) = (- Word.unsigned x)%Z.
 Proof.
-rewrite signed_min_word signed_max_word.
+rewrite unsigned_min_word unsigned_max_word.
 move=> ?.
-rewrite -{1}[x]Word.repr_signed.
+rewrite -{1}[x]Word.repr_unsigned.
 rewrite oppwP.
-by rewrite Word.signed_repr.
+by rewrite Word.unsigned_repr.
 Qed.
 
 Lemma subwE (x y : word t) :
-(Word.signed (min_word t) <= Word.signed x - Word.signed y <= Word.signed (max_word t))%Z ->
-  Word.signed (x - y) = (Word.signed x - Word.signed y)%Z.
+(Word.unsigned (min_word t) <= Word.unsigned x - Word.unsigned y <= Word.unsigned (max_word t))%Z ->
+  Word.unsigned (x - y) = (Word.unsigned x - Word.unsigned y)%Z.
 Proof.
-rewrite signed_min_word signed_max_word.
+rewrite unsigned_min_word unsigned_max_word.
 move=> ?.
-rewrite -{1}[x]Word.repr_signed -{1}[y]Word.repr_signed Word.sub_add_opp.
+rewrite -{1}[x]Word.repr_unsigned -{1}[y]Word.repr_unsigned Word.sub_add_opp.
 rewrite oppwP addwP.
-by rewrite Word.signed_repr.
+by rewrite Word.unsigned_repr.
 Qed.
 
 End WordCompare.
@@ -508,13 +481,14 @@ Definition Z_to_op (z : Z) : option opcode :=
   | 15 => Some (BINOP MUL)
   | 16 => Some (BINOP EQ)
   | 17 => Some (BINOP LEQ)
-  | 18 => Some (BINOP AND)
-  | 19 => Some (BINOP OR)
-  | 20 => Some (BINOP XOR)
-  | 21 => Some (BINOP SHRU)
-  | 22 => Some (BINOP SHL)
-  | 23 => Some HALT
-  | 24 => Some SERVICE
+  | 18 => Some (BINOP LEQU)
+  | 19 => Some (BINOP AND)
+  | 20 => Some (BINOP OR)
+  | 21 => Some (BINOP XOR)
+  | 22 => Some (BINOP SHRU)
+  | 23 => Some (BINOP SHL)
+  | 24 => Some HALT
+  | 25 => Some SERVICE
   | _  => None
   end.
 
@@ -537,16 +511,17 @@ Definition op_to_Z (o : opcode) : Z :=
   | BINOP MUL  => 15
   | BINOP EQ   => 16
   | BINOP LEQ  => 17
-  | BINOP AND  => 18
-  | BINOP OR   => 19
-  | BINOP XOR  => 20
-  | BINOP SHRU => 21
-  | BINOP SHL  => 22
-  | HALT       => 23
-  | SERVICE    => 24
+  | BINOP LEQU => 18
+  | BINOP AND  => 19
+  | BINOP OR   => 20
+  | BINOP XOR  => 21
+  | BINOP SHRU => 22
+  | BINOP SHL  => 23
+  | HALT       => 24
+  | SERVICE    => 25
   end.
 
-Definition max_opcode := 24.
+Definition max_opcode := 25.
 
 Lemma max_opcodeP o : 0 <= op_to_Z o <= max_opcode.
 Proof. by move: o; do! case; split; apply/Z.leb_le. Qed.

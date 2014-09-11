@@ -25,7 +25,7 @@ Hint Resolve @compare_refl @compare_asym
 
 Delimit Scope ordered_scope with ordered.
 Open Scope ordered_scope.
-  
+
 Instance nat_ordered : Ordered nat.
 Proof.
   apply Build_Ordered with nat_compare; intros until 0.
@@ -57,62 +57,61 @@ Module IntOrdered.
   Import Integers.Word.
 
   Instance int_eqdec n : EqDec (eq_setoid (int n)) := @eqType_EqDec (@Integers.int_eqType _).
-  
+
   Definition int_compare {n} (a b : int n) : comparison :=
     if a == b
     then Eq
-    else if lt a b
+    else if ltu a b
          then Lt
          else Gt.
-  
+
   Definition int_ordered_def n : Ordered (int n).
   Proof.
     apply Build_Ordered with int_compare; unfold int_compare; intros.
     - destruct (a == a); [reflexivity | congruence].
     - destruct (a == b) as [ | NEQAB], (b == a) as [ | NEQBA]; auto; try congruence.
-      unfold lt;
-        destruct (zlt (signed a) (signed b)), (zlt (signed b) (signed a));
+      unfold ltu;
+        destruct (zlt (unsigned a) (unsigned b)), (zlt (unsigned b) (unsigned a));
         try solve [auto | omega].
-      assert (E : signed a = signed b) by omega.
-      generalize (eq_signed _ a b). rewrite E. rewrite zeq_true.
-      intros TRUE.
-      generalize (eq_false _  _ _ NEQAB). congruence.
-    - destruct (a == b); [auto | destruct (lt a b); discriminate].
-    - unfold lt in *;
+      assert (E : unsigned a = unsigned b) by omega.
+      move/unsigned_inj in E.
+      congruence.
+    - destruct (a == b); [auto | destruct (ltu a b); discriminate].
+    - unfold ltu in *;
         destruct (a == b), (b == c),
-                 (zlt (signed a) (signed b)), (zlt (signed b) (signed c));
+                 (zlt (unsigned a) (unsigned b)), (zlt (unsigned b) (unsigned c));
         try congruence.
-      destruct (a == c), (zlt (signed a) (signed c)); ssubst;
+      destruct (a == c), (zlt (unsigned a) (unsigned c)); ssubst;
         first [reflexivity | omega].
-    - unfold lt in *;
+    - unfold ltu in *;
         destruct (a == b) as [|NEQAB], (b == c) as [|NEQBC],
-                 (zlt (signed a) (signed b)), (zlt (signed b) (signed c));
+                 (zlt (unsigned a) (unsigned b)), (zlt (unsigned b) (unsigned c));
         try congruence.
-      destruct (a == c), (zlt (signed a) (signed c)); ssubst;
+      destruct (a == c), (zlt (unsigned a) (unsigned c)); ssubst;
         try first [reflexivity | omega].
-      assert (E : signed b = signed c) by omega.
-      generalize (eq_signed _ b c). rewrite E. rewrite zeq_true.
-      intros TRUE.
-      generalize (eq_false _  _ _ NEQBC). congruence.
+      assert (E : unsigned b = unsigned c) by omega.
+      move/unsigned_inj in E.
+      congruence.
   Defined.
 
   Instance int_ordered n : Ordered (int n) := ssreflect.locked (int_ordered_def n).
 
-  Lemma compare_signed n (x y : int n) : compare x y = (signed x ?= signed y)%Z.
+  Lemma compare_unsigned n (x y : int n) : compare x y = (unsigned x ?= unsigned y)%Z.
   Proof.
     simpl; intros.
-    rewrite /int_ordered.  
+    rewrite /int_ordered.
     rewrite <- (ssreflect.lock (int_ordered_def _)). simpl.
-    unfold int_compare,lt.    
+    unfold int_compare,ltu.
     destruct (@SetoidDec.equiv_dec _ _ _ x y) as [EQ | NE]; [ssubst; auto using Zcompare_refl|].
-    destruct (zlt (signed x) (signed y)) as [LT | GE]; [auto with zarith|].
+    destruct (zlt (unsigned x) (unsigned y)) as [LT | GE]; [auto with zarith|].
     unfold Zge in GE; destruct (_ ?= _)%Z eqn:CMP.
     + apply Z.compare_eq in CMP.
       destruct x as [x px], y as [y py].
       unfold signed,unsigned in CMP; simpl in CMP.
-      destruct (zlt x (half_modulus _)),(zlt y (half_modulus _)); ssubst;
-      solve [omega
-            | contradict NE; apply mkint_eq; solve [reflexivity | omega]].
+      subst y.
+      rewrite /complement in NE.
+      contradict NE.
+      by apply unsigned_inj.
     + congruence.
     + reflexivity.
   Qed.
@@ -152,7 +151,7 @@ Definition ltb : bool := (a <=> b) ==  Lt.
 Definition gtb : bool := (a <=> b) ==  Gt.
 Definition leb : bool := (a <=> b) =/= Gt.
 Definition geb : bool := (a <=> b) =/= Lt.
-              
+
 Definition lt : Prop := (a <=> b) =  Lt.
 Definition gt : Prop := (a <=> b) =  Gt.
 Definition le : Prop := (a <=> b) <> Gt.
@@ -278,7 +277,7 @@ Lemma gt_irrefl : ~ a > a. Proof. solve_same. Qed.
 Lemma le_refl   : a <= a.  Proof. solve_same. Qed.
 Lemma ge_refl   : a >= a.  Proof. solve_same. Qed.
 
-End reflexivity_irreflexivity.  
+End reflexivity_irreflexivity.
 
 Hint Resolve @ltb_irrefl @gtb_irrefl @leb_refl @geb_refl
              @lt_irrefl  @gt_irrefl  @le_refl  @ge_refl
@@ -336,7 +335,7 @@ Context `{ORD : Ordered A}.
 Variables a b : A.
 
 Local Ltac solve_eq := intros; subst; auto with ordered.
-  
+
 Lemma eq__leb  : a = b -> a <=? b = true.  Proof. solve_eq. Qed.
 Lemma eq__nltb : a = b -> a <?  b = false. Proof. solve_eq. Qed.
 Lemma eq__geb  : a = b -> a >=? b = true.  Proof. solve_eq. Qed.
@@ -380,7 +379,7 @@ Ltac solve_not :=
       destruct ((a <=> b) == C) eqn:CMP; [tauto | exfalso; auto]
   end.
 
-Lemma ltb_not_geb : a <?  b = negb (a >=? b). Proof. solve_negb. Qed. 
+Lemma ltb_not_geb : a <?  b = negb (a >=? b). Proof. solve_negb. Qed.
 Lemma gtb_not_leb : a >?  b = negb (a <=? b). Proof. solve_negb. Qed.
 Lemma leb_not_gtb : a <=? b = negb (a >?  b). Proof. solve_negb. Qed.
 Lemma geb_not_ltb : a >=? b = negb (a <?  b). Proof. solve_negb. Qed.
@@ -502,7 +501,7 @@ Local Ltac solve_mixed :=
   first [mixed_bool | mixed_prop]; simpl; ssubst;
   intros; try match goal with H : _ \/ _ |- _ => destruct H; [|congruence] end;
   eauto 2 using ltb_trans, gtb_trans, lt_trans, gt_trans.
-  
+
 Local Notation SL_TRANS_B strict lax :=
   (strict a b = true -> lax b c = true -> strict a c = true)
   (only parsing).
@@ -515,7 +514,7 @@ Lemma ltb_leb_trans : SL_TRANS_B ltb leb. Proof. solve_mixed. Qed.
 Lemma gtb_geb_trans : SL_TRANS_B gtb geb. Proof. solve_mixed. Qed.
 Lemma leb_ltb_trans : LS_TRANS_B leb ltb. Proof. solve_mixed. Qed.
 Lemma geb_gtb_trans : LS_TRANS_B geb gtb. Proof. solve_mixed. Qed.
-  
+
 Local Notation SL_TRANS strict lax :=
   (strict a b -> lax b c -> strict a c)
   (only parsing).
@@ -529,7 +528,7 @@ Lemma gt_ge_trans : SL_TRANS gt ge. Proof. solve_mixed. Qed.
 Lemma le_lt_trans : LS_TRANS le lt. Proof. solve_mixed. Qed.
 Lemma ge_gt_trans : LS_TRANS ge gt. Proof. solve_mixed. Qed.
 
-End transitivity.  
+End transitivity.
 
 Hint Resolve @ltb_trans     @gtb_trans     @leb_trans     @geb_trans
              @lt_trans      @gt_trans      @le_trans      @ge_trans
@@ -572,7 +571,7 @@ Lemma gtb_asym : a >? b = true -> b >? a = false. Proof. solve_bool. Qed.
 Local Notation EQ_SYM_B rel := (rel a b = true -> rel b a = true -> a = b)
   (only parsing).
 
-Lemma leb_sym_eq : EQ_SYM_B leb. Proof. solve_bool. Qed.  
+Lemma leb_sym_eq : EQ_SYM_B leb. Proof. solve_bool. Qed.
 Lemma geb_sym_eq : EQ_SYM_B geb. Proof. solve_bool. Qed.
 
 End asymmetry.

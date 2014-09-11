@@ -23,22 +23,23 @@ Fixpoint range' (meas : nat) (l h : word) : list word :=
   end.
 
 Lemma addw_succ : forall w1 w2 : word,
-  w1 < w2 -> Word.signed (w1 + 1)%w = (Word.signed w1 + 1)%Z.
+  w1 < w2 -> Word.unsigned (w1 + 1)%w = (Word.unsigned w1 + 1)%Z.
 Proof.
   move => x y LT.
-  rewrite -{1}(Word.repr_signed _ x) /Word.one Word.add_repr.
-  apply Word.signed_repr.
-  rewrite /lt IntOrdered.compare_signed in LT.
-  move: (Word.signed_range _ x) (Word.signed_range _ y) => *.
-  have ?: (Word.signed x < Word.signed y)%Z by auto.
+  rewrite -{1}(Word.repr_unsigned _ x) /Word.one Word.add_repr.
+  apply Word.unsigned_repr.
+  rewrite /lt IntOrdered.compare_unsigned in LT.
+  move: (Word.unsigned_range x) (Word.unsigned_range y) => H1 H2.
+  have H3: (Word.unsigned x < Word.unsigned y)%Z by auto.
+  rewrite /Word.max_unsigned.
   omega.
 Qed.
 
 Lemma lebw_succ : forall x y : word, x < y -> x <? x + 1 = true.
 Proof.
   move => x y /(addw_succ _) H.
-  rewrite /ltb !IntOrdered.compare_signed H.
-  case E: (Word.signed _ ?= Word.signed _ + _)%Z => //=.
+  rewrite /ltb !IntOrdered.compare_unsigned H.
+  case E: (Word.unsigned _ ?= Word.unsigned _ + _)%Z => //=.
   - move/Z.compare_eq_iff: E => E. omega.
   - move/Z.compare_gt_iff: E => E. omega.
 Qed.
@@ -70,7 +71,7 @@ Proof.
 Qed.
 
 Definition range (l h : word) :=
-  range' (Z.to_nat ((Word.signed h - Word.signed l) + 1)%Z) l h.
+  range' (Z.to_nat ((Word.unsigned h - Word.unsigned l) + 1)%Z) l h.
 
 Corollary range_set : forall l h, is_set (range l h) = true.
 Proof. intros until 0; apply range'_set. Qed.
@@ -84,9 +85,9 @@ Lemma addw_le : forall x y : word,
   x < y -> x + 1 <= y.
 Proof.
   move => x y LT.
-  rewrite /le IntOrdered.compare_signed (addw_succ _ _ LT).
+  rewrite /le IntOrdered.compare_unsigned (addw_succ _ _ LT).
   move => /Z.compare_gt_iff ?.
-  rewrite /lt IntOrdered.compare_signed in LT.
+  rewrite /lt IntOrdered.compare_unsigned in LT.
   move: LT => /Z.compare_lt_iff LT. omega.
 Qed.
 
@@ -95,13 +96,13 @@ Theorem range_elts_all : forall l h e,
 Proof.
   unfold range; intros l h e [LE EH];
     assert (LH : l <= h) by eauto with ordered.
-  remember (Z.to_nat ((Word.signed h - Word.signed l) + 1)%Z) as meas eqn:meas_def'.
-  assert (meas_def : meas = S (Z.to_nat (Word.signed h - Word.signed l))). {
+  remember (Z.to_nat ((Word.unsigned h - Word.unsigned l) + 1)%Z) as meas eqn:meas_def'.
+  assert (meas_def : meas = S (Z.to_nat (Word.unsigned h - Word.unsigned l))). {
     rewrite Z2Nat.inj_add in meas_def'.
     - rewrite plus_comm in meas_def'; simpl in meas_def'; exact meas_def'.
     - clear meas.
       move: LH => /(le__lt_or_eq _ _) [LH | ->].
-      + rewrite /lt IntOrdered.compare_signed in LH.
+      + rewrite /lt IntOrdered.compare_unsigned in LH.
         move/Z.compare_lt_iff: LH => LH. omega.
       + move/Z.compare_gt_iff => H. omega.
     - move/Z.compare_gt_iff => ?. omega.
@@ -115,12 +116,12 @@ Proof.
   - simpl. apply le__lt_or_eq in LE; destruct LE as [LE | LE]; auto.
     right; apply IHmeas; eauto using addw_le.
     erewrite addw_succ by eassumption.
-    replace (Word.signed h - (Word.signed l + 1))%Z
-       with (Word.signed h - Word.signed l - 1)%Z
+    replace (Word.unsigned h - (Word.unsigned l + 1))%Z
+       with (Word.unsigned h - Word.unsigned l - 1)%Z
          by omega.
     rewrite <- Z2Nat.inj_succ.
     + f_equal; omega.
-    + rewrite IntOrdered.compare_signed in CMP.
+    + rewrite IntOrdered.compare_unsigned in CMP.
       move/Z.compare_lt_iff: CMP => CMP. omega.
   - contradiction.
 Qed.

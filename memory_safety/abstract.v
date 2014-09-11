@@ -73,7 +73,7 @@ Class allocator := {
 Definition getv (mem : memory) (ptr : pointer) :=
   match get mem (fst ptr) with
   | None => None
-  | Some fr => index_list_Z (Word.signed (snd ptr)) fr
+  | Some fr => index_list_Z (Word.unsigned (snd ptr)) fr
   end.
 
 Class allocator_spec (alloc : allocator) := {
@@ -184,7 +184,7 @@ Inductive step : state -> state -> Prop :=
              forall (R1W :   get reg r1 = Some (VPtr (b,off))),
              forall (R2W :   get reg r2 = Some v),
              forall (MEM1 :  get mem b = Some fr),
-             forall (UPDFR : update_list_Z (Word.signed off) v fr = Some fr'),
+             forall (UPDFR : update_list_Z (Word.unsigned off) v fr = Some fr'),
              forall (UPD :   upd mem b fr' = Some mem'),
              step (mkState mem reg bl (VPtr pc)) (mkState mem' reg bl (VPtr pc.+1))
 | step_jump : forall mem reg bl pc i r pt,

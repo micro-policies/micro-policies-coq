@@ -60,13 +60,13 @@ Definition sstring := string -> string.
 
 Definition ssempty : sstring := fun s => s.
 
-Definition ss (s : string) : sstring := 
+Definition ss (s : string) : sstring :=
   fun s' => s ++ s'.
 
-Definition schar (c : ascii) : sstring := 
+Definition schar (c : ascii) : sstring :=
   fun s => String c s.
 
-Definition ssappend (s1 s2 : sstring) : sstring := 
+Definition ssappend (s1 s2 : sstring) : sstring :=
   fun s => s1 (s2 s).
 
 Notation "x +++ y" := (ssappend x y) (right associativity, at level 60).
@@ -108,7 +108,7 @@ Fixpoint writeNatAux (time n : nat) (acc : sstring) : sstring :=
   end.
 
 Definition format_nat (n : nat) : sstring :=
-  writeNatAux n n ssempty. 
+  writeNatAux n n ssempty.
 
 Open Scope string_scope.
 
@@ -119,6 +119,7 @@ Definition format_binop (b : binop) :=
    | MUL => ss "MUL"
    | EQ => ss "EQ"
    | LEQ => ss "LEQ"
+   | LEQU => ss "LEQU"
    | AND => ss "AND"
    | OR => ss "OR"
    | XOR => ss "XOR"
@@ -160,21 +161,21 @@ Definition format_reg_r (r : reg t) := ss "r" +++ format_reg r.
 
 Definition format_instr (i : instr t) :=
   match i with
-  | Nop => ss "Nop" 
+  | Nop => ss "Nop"
   | Const im r => ss "Const " +++ format_imm im +++ ss " " +++ format_reg_r r
   | Mov r1 r2 => ss "Mov " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2
-  | Binop b r1 r2 r3 => format_binop b +++ ss " " +++ format_reg_r r1 +++ ss " " 
+  | Binop b r1 r2 r3 => format_binop b +++ ss " " +++ format_reg_r r1 +++ ss " "
                         +++ format_reg_r r2 +++ ss " " +++ format_reg_r r3
   | Load r1 r2 => ss "Load " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2
   | Store r1 r2 => ss "Store " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2
   | Jump r1 => ss "Jump " +++ format_reg_r r1
-  | Bnz r im => ss "Bnz " +++ format_reg_r r +++ ss " " +++ format_imm im 
+  | Bnz r im => ss "Bnz " +++ format_reg_r r +++ ss " " +++ format_imm im
   | Jal r1 => ss "Jal " +++ format_reg_r r1
-  | JumpEpc => ss "JumpEpc" 
-  | AddRule => ss "AddRule" 
+  | JumpEpc => ss "JumpEpc"
+  | AddRule => ss "AddRule"
   | GetTag r1 r2 => ss "GetTag " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2
   | PutTag r1 r2 r3 => ss "PutTag  " +++ format_reg_r r1 +++ ss " " +++ format_reg_r r2 +++ ss " " +++ format_reg_r r3
-  | Halt => ss "Halt"  
+  | Halt => ss "Halt"
   end.
 
 End Printing.
