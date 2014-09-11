@@ -236,33 +236,6 @@ Ltac unoption :=
     | EQ  : None   = None   |- _ => clear EQ
   end.
 
-Lemma prove_refined_compartment' : forall pc cid cid' cid'' I W F
-                                          AR AM AC Ask Aprev c sst,
-  Sym.sget sst pc ?= Sym.DATA cid'' I W ->
-  (do! guard (cid'' == cid') || ((F == JUMPED) && (cid' \in I));
-   Some cid'') ?= cid ->
-  Abs.good_state (AState pc AR AM AC Ask Aprev) ->
-  all (is_some ∘ refined_compartment^~ sst) AC ->
-  (forall p, refine_compartment_tag AC sst p) ->
-  AC ⊢ pc ∈ c ->
-  (forall p' : word,
-     match Sym.sget sst p' with
-       | Some (Sym.PC _ _) => False
-       | Some (Sym.DATA cid''' I' W') =>
-         (cid'' = cid''' <-> AC ⊢ p' ∈ c) /\
-         (cid'' \in I' -> p' \in Abs.jump_targets c) /\
-         (cid'' \in W' -> p' \in Abs.store_targets c)
-       | Some Sym.REG => False
-       | None => True
-     end) ->
-  refined_compartment c sst == Some cid.
-Proof.
-  intros until 0; intros SGET GUARD.
-  undo1 GUARD COND; inversion GUARD; subst.
-  intros; apply/eqP; eapply prove_refined_compartment; eauto.
-Qed.
-*)
-
 Lemma get_compartment_id_in_compartment_eq (C : seq (Abs.compartment t)) sst c p :
   (forall p, Sym.good_memory_tag sst p) ->
   well_defined_compartments sst C ->
