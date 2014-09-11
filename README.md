@@ -1,6 +1,6 @@
 ### Description
 
-Coq code accompanying the paper:
+Coq formalization accompanying the paper:
 - Micro-Policies: A Framework for Verified, Hardware-Assisted Security Monitors. Arthur Azevedo de Amorim, Maxime Dénès, Nick Giannarakis, Cătălin Hriţcu, Benjamin C. Pierce, Antal Spector-Zabusky, Andrew Tolmach. Submitted. July 2014. (http://prosecco.gforge.inria.fr/personal/hritcu/publications/micropolicies-draft.pdf)
 
 ### Prerequisites
