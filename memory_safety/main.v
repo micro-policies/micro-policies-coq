@@ -31,12 +31,26 @@ Definition inc_color (c : color) := Word.add c (Word.repr 1).
 Instance col : Sym.color_class := {|
   color := color;
   max_color := Word.repr (Word.max_unsigned color_size);
-  inc_color c := Word.add c (Word.repr 1)
+  inc_color c := Word.add c Word.one
 |}.
-Proof. 
-  admit. 
+Proof.
+  rewrite /ordered.ltb /= /ordered.IntOrdered.int_ordered -(lock (ordered.IntOrdered.int_ordered_def _))
+          /= /ordered.IntOrdered.int_compare /Word.unsigned /color_size.
+  intros col.
+  destruct (SetoidDec.equiv_dec col (Word.repr (Word.max_unsigned 12))) as [H7 | H7]; first by [].
+  rewrite {1 2 3}/Word.ltu.
+  rewrite Word.unsigned_repr //.
+  case: (Coqlib.zlt (Word.unsigned col) (Word.max_unsigned 12)) => [H6 _ | H6]; last by [].
+  case: (SetoidDec.equiv_dec col (col + 1)%w) => [|NEQ].
+  { rewrite /= -{1}(Word.add_zero _ col) => /addwI contra.
+    discriminate. }
+  move: (Word.unsigned_range col) => [H1' H2'].
+  rewrite addwC -{1 3 5}(add0w col) Word.translate_ltu //.
+  - rewrite /= /Word.max_unsigned. omega.
+  - have {H7} H7 := H7 : col <> Word.repr (Word.max_unsigned 12).
+    rewrite [_ 1%w]/=. omega.
 Defined.
- 
+
 (* Encoding scheme
 
   type_bits = color_bits + 1 = 14
@@ -45,7 +59,7 @@ Defined.
 
   stag_bits = type_bits + color_bits + 3 = 29
     TagFree       -> 0
-    TagValue t    -> (enc t)*4+1 
+    TagValue t    -> (enc t)*4+1
     TagMemory c t -> c*2^(type_bits+3) + (enc t)*8 + 2
 *)
 
@@ -94,7 +108,7 @@ Definition encode_mtag (tg : Sym.tag) : Word.int 29 :=
   match tg with
       TagFree => Word.zero
     | TagValue ty => Word.pack [12;13;2] [Word.zero; encode_type ty; Word.one]%wp
-    | TagMemory c ty => Word.pack [12;13;2] [c; encode_type ty; Word.repr 2]%wp 
+    | TagMemory c ty => Word.pack [12;13;2] [c; encode_type ty; Word.repr 2]%wp
   end.
 
 Import DoNotation.
@@ -111,7 +125,7 @@ Definition decode_mtag' (ctg : Word.int 29) : option Sym.tag :=
         do! cty <- decode_type ty;
         Some (TagValue cty)
       else None
-    else 
+    else
       if m == Word.repr 2 then
         do! cty <- decode_type ty;
         Some (TagMemory c cty)
@@ -120,7 +134,7 @@ Definition decode_mtag' (ctg : Word.int 29) : option Sym.tag :=
 Definition decode_mtag (ctg : Word.int 29) : option Sym.tag :=
   let: [c;ty; m]%wu := Word.unpack [12;13;2] ctg in
   if m == Word.zero then
-    if c == Word.zero then 
+    if c == Word.zero then
       if ty == Word.zero then Some TagFree
       else None
     else None
@@ -130,7 +144,7 @@ Definition decode_mtag (ctg : Word.int 29) : option Sym.tag :=
         do! cty <- decode_type ty;
         Some (TagValue cty)
       else None
-    else 
+    else
       if m == Word.repr 2 then
         do! cty <- decode_type ty;
         Some (TagMemory c cty)
@@ -139,7 +153,7 @@ Definition decode_mtag (ctg : Word.int 29) : option Sym.tag :=
 (*decode_mtag' would work too probably*)
 Lemma encode_mtagK tg : decode_mtag (encode_mtag tg) = Some tg.
 Proof.
-  destruct tg as  [ty | c ty |]; 
+  destruct tg as  [ty | c ty |];
   rewrite /decode_mtag /encode_mtag;
 
   try (remember (encode_type ty); rewrite Word.packK;
@@ -155,7 +169,7 @@ Proof.
   move: (Word.unpackK [12;13;2] w). rewrite E.
   have [?|?] := altP (m =P Word.zero); try subst m.
   { have [?|?] := altP (c =P Word.zero); try subst c; last by [].
-    have [?|?] := altP (cty =P Word.zero); try subst cty; last by []. 
+    have [?|?] := altP (cty =P Word.zero); try subst cty; last by [].
     by move => H [<-].
   }
   have [?|?] := altP (m =P Word.one); try subst m.
@@ -169,7 +183,7 @@ Proof.
   apply decode_typeK in DEC; subst;
     by move => H [<-].
 Qed.
-  
+
 Instance enc: @encodable t Sym.tag_eqType := {|
   encode t :=
     match t with
@@ -211,7 +225,7 @@ Proof.
     apply decode_mtagK in DEC. subst ut.
     by move => H [<-].
 Qed.
- 
+
 Instance sp : Symbolic.params := Sym.sym_memory_safety t.
 
 Context {color_map : Type -> Type}
