@@ -735,10 +735,17 @@ Proof.
   - have ISUSER: rules.word_lift (fun x => rules.is_user x) (Concrete.ctpc cmvec) = true.
     { move: CMVEC => /(build_cmvec_ctpc _) ->.
       by rewrite CSI /rules.word_lift ?rules.decodeK /=. }
-    move: (CACHE _ _ ISUSER LOOKUP) => [? [? [HANDLER1 [HANDLER2 [HANDLER3 HANDLER4]]]]].
+    generalize (mvec_in_kernel_store_mvec cmvec MVEC); move => [cmem' STORE].
+    exists cmem'.
+    split.
+    { by rewrite CSI. }
+    move: (CACHE _ _ ISUSER LOOKUP) => {ISUSER} [ivec [ovec [HANDLER1 [HANDLER2 [HANDLER3 HANDLER4]]]]].
     rewrite /khandler /rules.handler HANDLER1 /= rules.decode_ivecK
-            /= rules.ivec_of_uivec_privileged (negbTE HANDLER4) in KHANDLER.    
-    admit.
+            /= rules.ivec_of_uivec_privileged (negbTE HANDLER4) in KHANDLER.
+    subst cmvec rvec.
+    rewrite rules.ivec_of_uivecK /= in KHANDLER.
+    case CFIHANDLER: (cfi_handler cfg ivec) KHANDLER => [uovec|] //= _.
+    by rewrite /= CFIHANDLER in HANDLER3.
   - generalize (mvec_in_kernel_store_mvec cmvec MVEC).
     move => {MVEC} [cmem' MVEC].
     eexists cmem'.
