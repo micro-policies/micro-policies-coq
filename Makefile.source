@@ -1,8 +1,9 @@
 -R . MicroPolicies
 
-lib/Coqlib.v
-lib/Maps.v
-lib/Integers.v
+compcert/lib/Coqlib.v
+compcert/lib/Maps.v
+compcert/lib/Integers.v
+
 lib/utils.v
 lib/FiniteMaps.v
 lib/ordered.v

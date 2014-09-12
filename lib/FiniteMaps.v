@@ -1,5 +1,5 @@
 Require Import List.
-Require Import lib.Coqlib lib.Maps lib.utils.
+Require Import compcert.lib.Coqlib compcert.lib.Maps lib.utils.
 
 Set Implicit Arguments.
 
@@ -249,7 +249,7 @@ Module NatIndexed <: INDEXED_TYPE.
   Arguments eq_nat_dec /.
 End NatIndexed.
 
-Require Import Integers.
+Require Import compcert.lib.Integers.
 
 Module IntIndexed (WS : WORDSIZE) <: INDEXED_TYPE.
   Import WS.
