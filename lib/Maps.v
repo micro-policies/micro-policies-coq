@@ -114,6 +114,10 @@ Module Type TREE.
   Hypothesis gmap_filter:
     forall (A B: Type) (f: A -> option B) (i: elt) (m: t A),
       get i (map_filter f m) = bind f (get i m).
+  Hypothesis smap_filter :
+    forall (A B: Type) (f : A -> B) (i: elt) (a: A) (m: t A),
+      map_filter (fun x => Some (f x)) (set i a m) =
+      set i (f a) (map_filter (fun x => Some (f x)) m).
 
   (** Applying a function pairwise to all data of two trees. *)
   Variable combine:
@@ -531,6 +535,15 @@ Module PTree <: TREE.
     get i (map_filter f m) = bind f (get i m).
   Proof.
     induction i; intros; destruct m; simpl; auto.
+  Qed.
+
+  Lemma smap_filter :
+    forall (A B: Type) (f : A -> B) (i: elt) (a: A) (m: t A),
+      map_filter (fun x => Some (f x)) (set i a m) =
+      set i (f a) (map_filter (fun x => Some (f x)) m).
+  Proof.
+    intros A B f i a.
+    induction i as [i IH|i IH|]; intros [|l o r]; simpl; try rewrite IH; reflexivity.
   Qed.
 
   Definition Node' (A: Type) (l: t A) (x: option A) (r: t A): t A :=

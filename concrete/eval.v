@@ -3,14 +3,14 @@
 Require Import ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.Integers lib.utils lib.partial_maps lib.Coqlib common.common concrete.concrete.
-Require Import List. 
+Require Import List.
 
-Import ListNotations. 
+Import ListNotations.
 Import Concrete. Import DoNotation.
 
 Open Scope Z_scope.
 
-Section WithClasses. 
+Section WithClasses.
 
 
 Context (mt : machine_types).
@@ -36,23 +36,23 @@ Inductive pvalue :=
 
 Let patom := atom pvalue pvalue.
 
-Let atom := atom (word mt) (word mt). 
+Let atom := atom (word mt) (word mt).
 
 Definition known  (pv:pvalue): option (word mt)  :=
 match pv with
 | C a => Some a
 | _ => None  (* could try to be smarter if it proves useful *)
-end. 
- 
+end.
+
 Local Notation memory := (word_map mt patom).
-Local Notation registers := (reg_map mt patom). 
-Local Notation rules := (rules pvalue). 
+Local Notation registers := (reg_map mt patom).
+Local Notation rules := (rules pvalue).
 
 Record pstate := mkPState {
-  pmem   : memory;  
-  pregs  : registers; 
+  pmem   : memory;
+  pregs  : registers;
   pcache : rules;
-  ppc    : atom; 
+  ppc    : atom;
   pepc   : patom
 }.
 
@@ -80,7 +80,7 @@ Definition add_rule (cache : rules) (masks: Masks) (mem : memory) : option rules
   do! at2   <- PartMaps.get mem (Mt2 mt);
   do! at3   <- PartMaps.get mem (Mt3 mt);
   do! atrpc <- PartMaps.get mem (Mtrpc mt);
-  do! atr   <- PartMaps.get mem (Mtr mt); 
+  do! atr   <- PartMaps.get mem (Mtr mt);
   do! aop'  <- known (val aop); (* for now; this may not really work though *)
   do! op    <- word_to_op aop';
   let dcm := dc (masks false op) in
@@ -117,7 +117,7 @@ Definition next_tr (mvec : MVec pvalue) : option pvalue :=
 Definition next_pstate (mvec : MVec pvalue)
                        (k : word mt -> pvalue -> option pstate) : option pstate :=
   do! tr <- next_tr mvec;
-  k TKernel tr. 
+  k TKernel tr.
 
 Definition next_pstate_reg_and_pc (st : pstate) (mvec : MVec pvalue) r x pc' : option pstate :=
   next_pstate mvec (fun trpc tr =>
@@ -143,7 +143,7 @@ Variable masks: Masks.
 
 Definition pstep (st : pstate) : option tstate :=
   let 'mkPState mem reg cache pc@tpc epc := st in
-  do! i : patom <- PartMaps.get mem pc;  
+  do! i : patom <- PartMaps.get mem pc;
   do! v : word mt <- known (val i);
   do! instr <- decode_instr v;
   let mvec := mkMVec (C (op_to_word (opcode_of instr))) (C tpc) (tag i) in
@@ -152,11 +152,11 @@ Definition pstep (st : pstate) : option tstate :=
     let mvec := mvec (C TNone) (C TNone) (C TNone) in
     do! st' <- next_pstate_pc st mvec (pc.+1);
     Some (St st')
-  | Const n r => 
+  | Const n r =>
     do! old <- PartMaps.get reg r;
     let mvec := mvec (tag old) (C TNone) (C TNone) in
     do! st' <- next_pstate_reg st mvec r (C (Word.casts n));
-    Some (St st')  
+    Some (St st')
   | Mov r1 r2 =>
     do! v1 <- PartMaps.get reg r1;
     do! old <- PartMaps.get reg r2;
@@ -184,8 +184,8 @@ Definition pstep (st : pstate) : option tstate :=
     do! a <- known (val v1);
     do! v3 <- PartMaps.get mem a;
     let mvec := mvec (tag v1) (tag v2) (tag v3) in
-    do! st' <- 
-      next_pstate mvec 
+    do! st' <-
+      next_pstate mvec
       (fun trpc tr =>
          do! mem' <- PartMaps.upd mem a (val v2)@tr;
          Some (mkPState mem' reg cache (pc.+1)@trpc epc));
@@ -212,8 +212,8 @@ Definition pstep (st : pstate) : option tstate :=
   | JumpEpc => None  (* For now at least, let's just say we can't do this. *)
   | AddRule =>
     let mvec := mvec (C TNone) (C TNone) (C TNone) in
-    do! st' <- 
-      next_pstate mvec 
+    do! st' <-
+      next_pstate mvec
       (fun trpc _ =>
          do! cache' <- add_rule cache masks mem;
          Some (mkPState mem reg cache' (pc.+1)@trpc epc));
@@ -229,8 +229,8 @@ Definition pstep (st : pstate) : option tstate :=
     do! v2 <- PartMaps.get reg r2;
     do! old <- PartMaps.get reg r3;
     let mvec := mvec (tag v1) (tag v2) (tag old) in
-    do! st' <- 
-      next_pstate mvec 
+    do! st' <-
+      next_pstate mvec
       (fun trpc _ =>
          do! reg' <- PartMaps.upd reg r3 (val v1)@(val v2);
          Some (mkPState mem reg' cache (pc.+1)@trpc epc));
@@ -250,14 +250,14 @@ Fixpoint tstep (ts: tstate) : option tstate :=
 Fixpoint teval (fuel:nat) (ts: tstate) : option tstate :=
   match fuel with
   | O => Some ts
-  | S fuel' => 
+  | S fuel' =>
        do! ts' <- tstep ts;
        teval fuel' ts'
   end.
 
 End WithMasks.
 
-Definition environment := cat * word mt -> word mt. 
+Definition environment := cat * word mt -> word mt.
 
 Section WithEnvironment.
 
@@ -265,16 +265,16 @@ Variable env: environment.
 
 Fixpoint concretize_pvalue (pv:pvalue) : word mt :=
   match pv with
-  | V a => env a 
+  | V a => env a
   | C w => w
-  | E f v1 v2 => binop_denote f (concretize_pvalue v1) (concretize_pvalue v2) 
+  | E f v1 v2 => binop_denote f (concretize_pvalue v1) (concretize_pvalue v2)
   end.
 
 Lemma concretize_known: forall pv w,
   known pv = Some w ->
-  concretize_pvalue pv = w. 
+  concretize_pvalue pv = w.
 Proof.
-  induction pv; intros; inv H; auto. 
+  induction pv; intros; inv H; auto.
 Qed.
 
 Definition concretize_atom (a:patom) : atom :=
@@ -282,7 +282,7 @@ Definition concretize_atom (a:patom) : atom :=
 
 Definition concretize_mvec (mvec: MVec pvalue) : MVec (word mt) :=
  mkMVec (concretize_pvalue (cop mvec))
-        (concretize_pvalue (ctpc mvec)) 
+        (concretize_pvalue (ctpc mvec))
         (concretize_pvalue (cti mvec))
         (concretize_pvalue (ct1 mvec))
         (concretize_pvalue (ct2 mvec))
@@ -328,15 +328,15 @@ Section WithStuff.
 Variable masks: Masks.
 
 Context (mt: machine_types).
-Context {ops: machine_ops mt}. 
+Context {ops: machine_ops mt}.
 
-Ltac inv H := (inversion H; subst; clear H). 
+Ltac inv H := (inversion H; subst; clear H).
 
-Ltac undo := 
+Ltac undo :=
   repeat match goal with
            | STEP : (do! x <- ?t; _) = Some _ |- _ =>
                destruct t eqn:?; simpl in STEP; try discriminate
-           | STEP : Some _ = (do! x <- ?t; _) |- _ => 
+           | STEP : Some _ = (do! x <- ?t; _) |- _ =>
                destruct t eqn:?; simpl in STEP; try discriminate
            | H : Some _ = Some _ |- _ =>
                inv H
@@ -344,61 +344,45 @@ Ltac undo :=
 
 
 Hypothesis sound_next_tr : forall env cache (mvec: MVec (pvalue mt)) (tr:pvalue mt),
-  ctpc mvec = C mt TKernel ->                         
+  ctpc mvec = C mt TKernel ->
   Some tr = next_tr mt mvec ->
-  Some (mkRVec TKernel (concretize_pvalue mt env tr)) = cache_lookup cache masks (concretize_mvec mt env mvec). 
+  Some (mkRVec TKernel (concretize_pvalue mt env tr)) = cache_lookup cache masks (concretize_mvec mt env mvec).
 
 Lemma sound_next_pstate : forall env ps mvec k kk ps',
   ctpc mvec = C mt TKernel ->
-  (forall tr ps', Some ps' = k TKernel tr -> Some (concretize_pstate mt env ps') = kk (mkRVec TKernel (concretize_pvalue mt env tr))) -> 
+  (forall tr ps', Some ps' = k TKernel tr -> Some (concretize_pstate mt env ps') = kk (mkRVec TKernel (concretize_pvalue mt env tr))) ->
   Some ps' = next_pstate mt mvec k ->
   Some (concretize_pstate mt env ps') = next_state masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) kk.
 Proof.
-  intros. 
-  unfold next_state.   
-  unfold next_pstate in H1. 
+  intros.
+  unfold next_state.
+  unfold next_pstate in H1.
   undo.
   erewrite <- sound_next_tr.
-  3: rewrite Heqo; auto. 
-  erewrite <- H0. 
+  3: rewrite Heqo; auto.
+  erewrite <- H0.
   2: rewrite <- H1; auto.
   auto.
   auto.
 Qed.
 
-(* Not sure if these are true.
-   If so, should only have to prove once and instantiate. *)
-Lemma upd_map_reg_map : forall env (pregs pregs':reg_map mt (atom (pvalue mt) (pvalue mt))) r a,
-       PartMaps.upd pregs r a = Some pregs' ->
-       PartMaps.upd (PartMaps.map (concretize_atom mt env) pregs) 
-                    r (concretize_atom mt env a) = 
-          Some (PartMaps.map (concretize_atom mt env) pregs'). 
-Admitted.
-
-Lemma upd_map_word_map : forall env (pmem pmem': word_map mt (atom (pvalue mt) (pvalue mt))) r a,
-       PartMaps.upd pmem r a = Some pmem' ->
-       PartMaps.upd (PartMaps.map (concretize_atom mt env) pmem) 
-                    r (concretize_atom mt env a) = 
-          Some (PartMaps.map (concretize_atom mt env) pmem'). 
-Admitted.
-
-Lemma sound_add_rule: forall env 
-                             (pcache pcache' : rules (pvalue mt)) 
+Lemma sound_add_rule: forall env
+                             (pcache pcache' : rules (pvalue mt))
                              (pmem : word_map mt (atom (pvalue mt) (pvalue mt))),
        add_rule mt pcache masks pmem = Some pcache' ->
        Concrete.add_rule (map (concretize_rule mt env) pcache) masks
                          (PartMaps.map (concretize_atom mt env) pmem) =
-       Some (map (concretize_rule mt env) pcache'). 
+       Some (map (concretize_rule mt env) pcache').
 Proof.
-  unfold Concrete.add_rule, add_rule. 
+  unfold Concrete.add_rule, add_rule.
   intros.
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo Heqo0 Heqo1 Heqo2 Heqo3 Heqo4 Heqo5 Heqo6. simpl. 
-  unfold concretize_mvec, concretize_rvec. simpl. 
-  rewrite (concretize_known _ env _ _ Heqo7). 
-  rewrite Heqo8. 
-  simpl. 
+  rewrite Heqo Heqo0 Heqo1 Heqo2 Heqo3 Heqo4 Heqo5 Heqo6. simpl.
+  unfold concretize_mvec, concretize_rvec. simpl.
+  rewrite (concretize_known _ env _ _ Heqo7).
+  rewrite Heqo8.
+  simpl.
   destruct (dc (masks false o) mvp_tpc);
   destruct (dc (masks false o) mvp_ti);
   destruct (dc (masks false o) mvp_t1);
@@ -414,82 +398,82 @@ Lemma sound_next_pstate_reg_and_pc: forall env ps mvec r x pc' ps',
   Some ps' = next_pstate_reg_and_pc mt ps mvec r x pc' ->
   Some (concretize_pstate mt env ps') = next_state_reg_and_pc masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) r (concretize_pvalue mt env x) pc'.
 Proof.
-  intros.  
-  unfold next_state_reg_and_pc. 
-  unfold next_pstate_reg_and_pc in H0. 
+  intros.
+  unfold next_state_reg_and_pc.
+  unfold next_pstate_reg_and_pc in H0.
   eapply sound_next_pstate. eauto.
-  2: apply H0. 
-  intros. 
+  2: apply H0.
+  intros.
   simpl in H1. undo.
-  simpl.  
-  rename r0 into pregs'. 
+  simpl.
+  rename r0 into pregs'.
   replace ((concretize_pvalue mt env x)@(concretize_pvalue mt env tr))
           with (concretize_atom mt env (x@tr)) by auto.
-  erewrite upd_map_reg_map; eauto. simpl.
+  erewrite PartMaps.map_upd; eauto. simpl.
   auto.
 Qed.
 
 Lemma sound_next_pstate_reg: forall env ps mvec r x ps',
-  ctpc mvec = C mt TKernel -> 
-  Some ps' = next_pstate_reg mt ps mvec r x -> 
-  Some (concretize_pstate mt env ps') = next_state_reg masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) r (concretize_pvalue mt env x). 
+  ctpc mvec = C mt TKernel ->
+  Some ps' = next_pstate_reg mt ps mvec r x ->
+  Some (concretize_pstate mt env ps') = next_state_reg masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) r (concretize_pvalue mt env x).
 Proof.
   intros.
-  unfold next_state_reg. 
-  eapply sound_next_pstate_reg_and_pc; eauto. 
+  unfold next_state_reg.
+  eapply sound_next_pstate_reg_and_pc; eauto.
 Qed.
 
 Lemma sound_next_pstate_pc : forall env ps mvec pc' ps',
-  ctpc mvec = C mt TKernel -> 
-  Some ps' = next_pstate_pc mt ps mvec pc' -> 
+  ctpc mvec = C mt TKernel ->
+  Some ps' = next_pstate_pc mt ps mvec pc' ->
   Some (concretize_pstate mt env ps') = next_state_pc masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) pc'.
 Proof.
   intros.
-  unfold next_state_pc. 
+  unfold next_state_pc.
   eapply sound_next_pstate; eauto.
-  intros. simpl in H1. undo. 
+  intros. simpl in H1. undo.
   auto.
 Qed.
 
 
 Lemma sound_step : forall env ps ts,
-  tag (ppc mt ps) = TKernel -> 
-  Some ts = pstep mt masks ps -> 
-  Some (concretize_tstate mt env ts) = step masks mt (concretize_pstate mt env ps). 
-Proof.  
-  intros. 
+  tag (ppc mt ps) = TKernel ->
+  Some ts = pstep mt masks ps ->
+  Some (concretize_tstate mt env ts) = step masks mt (concretize_pstate mt env ps).
+Proof.
+  intros.
   unfold step. (* unfold concretize_pstate.  *)
-  unfold pstep in H0. 
-  destruct ps. simpl. 
-  destruct ppc0. 
+  unfold pstep in H0.
+  destruct ps. simpl.
+  destruct ppc0.
   simpl in H. subst tag.
-  undo. 
+  undo.
   replace (PartMaps.get (PartMaps.map (concretize_atom mt env) pmem0) val)
           with (option_map (concretize_atom mt env) (PartMaps.get pmem0 val))
                  by (rewrite <- PartMaps.map_correctness; auto).
-  rewrite Heqo.  simpl. 
-  rewrite (concretize_known _ env _ _ Heqo0). 
-  rewrite Heqo1.  simpl. 
-  destruct i. 
+  rewrite Heqo.  simpl.
+  rewrite (concretize_known _ env _ _ Heqo0).
+  rewrite Heqo1.  simpl.
+  destruct i.
 
-  undo. 
-  simpl. 
+  undo.
+  simpl.
   symmetry in Heqo2.
-  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo2); eauto. 
+  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo2); eauto.
 
-  undo.     
-  rewrite PartMaps.map_correctness. rewrite Heqo2. simpl. 
+  undo.
+  rewrite PartMaps.map_correctness. rewrite Heqo2. simpl.
   symmetry in Heqo3.
   erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo3); eauto.
 
-  undo. 
-  repeat rewrite PartMaps.map_correctness. rewrite Heqo2. rewrite Heqo3. simpl. 
+  undo.
+  repeat rewrite PartMaps.map_correctness. rewrite Heqo2. rewrite Heqo3. simpl.
   symmetry in Heqo4.
   erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo4); eauto.
 
-  undo. 
+  undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. rewrite Heqo3. rewrite Heqo4. simpl. 
+  rewrite Heqo2. rewrite Heqo3. rewrite Heqo4. simpl.
   symmetry in Heqo5.
   erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo5); eauto.
 
@@ -497,16 +481,16 @@ Proof.
   repeat rewrite PartMaps.map_correctness.
   rewrite Heqo2. simpl. rewrite (concretize_known _ env _ _ Heqo3).
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo4. rewrite Heqo5. simpl. 
+  rewrite Heqo4. rewrite Heqo5. simpl.
   symmetry in Heqo6.
   erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo6); eauto.
 
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. rewrite Heqo3. simpl. 
-  rewrite (concretize_known _ env _ _ Heqo4). 
-  rewrite PartMaps.map_correctness. rewrite Heqo5. simpl. 
-  replace 
+  rewrite Heqo2. rewrite Heqo3. simpl.
+  rewrite (concretize_known _ env _ _ Heqo4).
+  rewrite PartMaps.map_correctness. rewrite Heqo5. simpl.
+  replace
    ({|
     cop := op_to_word STORE;
     ctpc := TKernel;
@@ -515,8 +499,8 @@ Proof.
     ct2 := concretize_pvalue mt env (tag a1);
     ct3 := concretize_pvalue mt env (tag a2) |})
    with
-    (concretize_mvec mt env 
-       {| 
+    (concretize_mvec mt env
+       {|
          cop := (C mt (op_to_word STORE));
          ctpc := (C mt TKernel);
          cti := tag a;
@@ -524,40 +508,40 @@ Proof.
          ct2 := tag a1;
          ct3 := tag a2 |}) by auto.  (* why is this needed? *)
   eapply sound_next_pstate; eauto.
-  intros. simpl in H. undo. simpl. 
-  replace 
+  intros. simpl in H. undo. simpl.
+  replace
    ((concretize_pvalue mt env (common.val a1))@(concretize_pvalue mt env tr)) with
   (concretize_atom mt env ((common.val a1)@tr)) by auto.
-  erewrite upd_map_word_map; eauto.
+  erewrite PartMaps.map_upd; eauto.
   simpl. auto.
 
-  undo. 
-  repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. simpl. 
-  rewrite (concretize_known _ env _ _ Heqo3). 
-  symmetry in Heqo4.
-  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo4); eauto. 
-  
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. simpl. 
-  have [zer|nonzer] := altP (concretize_pvalue mt env (common.val a0) =P Word.zero).
-  symmetry in Heqo3. 
-  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo3); eauto. 
+  rewrite Heqo2. simpl.
+  rewrite (concretize_known _ env _ _ Heqo3).
   symmetry in Heqo4.
-  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo4); eauto. 
+  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo4); eauto.
+
+  undo.
+  repeat rewrite PartMaps.map_correctness.
+  rewrite Heqo2. simpl.
+  have [zer|nonzer] := altP (concretize_pvalue mt env (common.val a0) =P Word.zero).
+  symmetry in Heqo3.
+  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo3); eauto.
+  symmetry in Heqo4.
+  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo4); eauto.
 
   undo.
   repeat rewrite PartMaps.map_correctness.
   rewrite Heqo2. rewrite Heqo3. simpl.
-  rewrite (concretize_known _ env _ _ Heqo4). 
+  rewrite (concretize_known _ env _ _ Heqo4).
   symmetry in Heqo5.
   erewrite (sound_next_pstate_reg_and_pc _ _ _ _ _ _ _ _ Heqo5); eauto.
 
   undo. discriminate.
 
-  undo. simpl. 
-  replace 
+  undo. simpl.
+  replace
    ({|
     cop := op_to_word ADDRULE;
     ctpc := TKernel;
@@ -566,8 +550,8 @@ Proof.
     ct2 := TNone;
     ct3 := TNone |})
    with
-    (concretize_mvec mt env 
-       {| 
+    (concretize_mvec mt env
+       {|
          cop := (C mt (op_to_word ADDRULE));
          ctpc := (C mt TKernel);
          cti := tag a;
@@ -575,22 +559,22 @@ Proof.
          ct2 := (C mt TNone);
          ct3 := (C mt TNone) |}) by auto.  (* why is this needed? *)
   eapply sound_next_pstate; eauto.
-  intros. simpl in H. 
+  intros. simpl in H.
   undo.
   erewrite sound_add_rule; eauto.
   simpl.  auto.
 
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2.  rewrite Heqo3. simpl. 
-  symmetry in Heqo4. 
+  rewrite Heqo2.  rewrite Heqo3. simpl.
+  symmetry in Heqo4.
   erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo4); eauto.
-  
+
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2.  rewrite Heqo3. rewrite Heqo4. simpl. 
+  rewrite Heqo2.  rewrite Heqo3. rewrite Heqo4. simpl.
   symmetry in Heqo5.
-  replace 
+  replace
    ({|
     cop := op_to_word PUTTAG;
     ctpc := TKernel;
@@ -599,8 +583,8 @@ Proof.
     ct2 := concretize_pvalue mt env (tag a1);
     ct3 := concretize_pvalue mt env (tag a2) |})
    with
-    (concretize_mvec mt env 
-       {| 
+    (concretize_mvec mt env
+       {|
          cop := (C mt (op_to_word PUTTAG));
          ctpc := (C mt TKernel);
          cti := tag a;
@@ -608,12 +592,12 @@ Proof.
          ct2 := tag a1;
          ct3 := tag a2 |}) by auto.  (* why is this needed? *)
   eapply sound_next_pstate; eauto.
-  intros. simpl in H. 
+  intros. simpl in H.
   undo.
-  replace 
+  replace
    ((concretize_pvalue mt env (common.val a0))@(concretize_pvalue mt env (common.val a1))) with
   (concretize_atom mt env ((common.val a0)@(common.val a1))) by auto.
-  erewrite upd_map_reg_map; eauto.
+  erewrite PartMaps.map_upd; eauto.
   auto.
 
   discriminate.
@@ -634,5 +618,3 @@ Qed.
 
 
 End WithStuff.
-
-

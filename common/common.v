@@ -708,6 +708,8 @@ Proof.
     congruence.
   + (* map_filter_correctness *)
     intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* map_filter_set *)
+    intros V1 V2 f m k v1. by apply ZMap.smap_filter.
   + (* get_remove_eq *)
     intros V m k. by apply ZMap.grs.
   + (* get_remove_neq *)
@@ -787,6 +789,8 @@ Proof.
     congruence.
   + (* map_filter_correctness *)
     intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* map_filter_set *)
+    intros V1 V2 f m k v1. by rewrite /funcomp /= ZMap.smap_filter.
   + (* get_remove_eq *)
     intros V m k. by apply ZMap.grs.
   + (* get_remove_neq *)
@@ -823,6 +827,8 @@ Proof.
     congruence.
   + (* map_filter_correctness *)
     intros V1 V2 f m k. by apply ZMap.gmap_filter.
+  + (* map_filter_set *)
+    intros V1 V2 f m k v1. by rewrite /funcomp /= ZMap.smap_filter.
   + (* get_remove_eq *)
     intros V m k. by apply ZMap.grs.
   + (* get_remove_neq *)
@@ -858,6 +864,8 @@ Proof.
   - (* get_set_eq *) intros V m n v. by apply NatPMap.gss.
   - (* get_set_neq *) intros V m n1 n2 v. by apply NatPMap.gso.
   - (* map_filter_correctness *) intros V1 V2 f m k. by apply NatPMap.gmap_filter.
+  + (* map_filter_set *)
+    intros V1 V2 f m k v1. by rewrite /funcomp /= NatPMap.smap_filter.
   - (* get_remove_eq *)
     intros V m k. by apply NatPMap.grs.
   - (* get_remove_neq *)

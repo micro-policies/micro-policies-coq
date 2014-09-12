@@ -12,7 +12,7 @@ Module FiniteMap (I : INDEXED_TYPE).
     PTree.gempty PTree.gss PTree.gso PTree.gsspec PTree.gsident PTree.grs
       PTree.gro PTree.grspec
     PTree.beq_correct
-    PTree.gmap PTree.gmap1 PTree.gmap_filter
+    PTree.gmap PTree.gmap1 PTree.gmap_filter PTree.smap_filter
     PTree.gcombine PTree.combine_commut
     PTree.elements_correct PTree.elements_complete PTree.elements_keys_norepet
     PTree.fold_spec PTree.fold1_spec.
@@ -118,6 +118,11 @@ Module FiniteMap (I : INDEXED_TYPE).
 
   Theorem gmap_filter : forall (A B : Type) (f : A -> option B) (i : elt) (m : t A),
     get i (map_filter f m) = bind f (get i m).
+  Proof. basic. Qed.
+
+  Theorem smap_filter : forall (A B : Type) (f : A -> B) (i : elt) (a : A) (m : t A),
+    map_filter (fun x => Some (f x)) (set i a m) =
+    set i (f a) (map_filter (fun x => Some (f x)) m).
   Proof. basic. Qed.
 
   (* Combining *)
