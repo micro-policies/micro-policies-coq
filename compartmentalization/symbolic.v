@@ -14,10 +14,13 @@ Set Bullet Behavior "Strict Subproofs".
 
 Module Sym.
 
-Inductive stag {t : machine_types} :=
-| PC     : forall (F : where_from) (c : word t), stag
-| DATA   : forall (c : word t) (I W : {set (word t)}), stag
-| REG    : stag.
+Inductive pc_tag (t : machine_types) :=
+| PC (F : where_from) (c : word t).
+Arguments PC [t] F c.
+
+Inductive data_tag (t : machine_types) :=
+| DATA (c : word t) (I W : {set word t}).
+Arguments DATA [t] c I W.
 
 Module Exports.
 
@@ -25,23 +28,36 @@ Section Equality.
 
 Context (t : machine_types).
 
-Definition stag_eq (t1 t2 : @stag t) : bool :=
+Definition pc_tag_eq (t1 t2 : pc_tag t) : bool :=
   match t1, t2 with
-    | PC F1 c1      , PC F2 c2      => (F1 == F2) && (c1 == c2)
-    | DATA c1 I1 W1 , DATA c2 I2 W2 => (c1 == c2) && (I1 == I2) && (W1 == W2)
-    | REG           , REG           => true
-    | _             , _             => false
+  | PC F1 c1, PC F2 c2 => (F1 == F2) && (c1 == c2)
   end.
 
-Lemma stag_eqP : Equality.axiom stag_eq.
+Lemma pc_tag_eqP : Equality.axiom pc_tag_eq.
 Proof.
-  by move=> [F1 c1|c1 I1 W1|] [F2 c2|c2 I2 W2|] /=; apply: (iffP idP) => //;
-     do [ do ! move/andP=> []; do ! move=> /eqP->
-        | case; do ! move=> ->; do ! (apply/andP; split) ].
+  move=> [F1 c1] [F2 c2] /=.
+  apply/(iffP idP) => [/andP [/eqP -> /eqP ->]|[-> ->]] //.
+  by rewrite !eqxx.
 Qed.
 
-Definition stag_eqMixin := EqMixin stag_eqP.
-Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
+Definition pc_tag_eqMixin := EqMixin pc_tag_eqP.
+Canonical pc_tag_eqType := Eval hnf in EqType _ pc_tag_eqMixin.
+
+Definition data_tag_eq (t1 t2 : data_tag t) : bool :=
+  match t1, t2 with
+  | DATA c1 I1 W1, DATA c2 I2 W2 =>
+    [&& c1 == c2, I1 == I2 & W1 == W2]
+  end.
+
+Lemma data_tag_eqP : Equality.axiom data_tag_eq.
+Proof.
+  move=> [? ? ?] [? ? ?] /=.
+  apply/(iffP idP) => [/and3P [/eqP -> /eqP -> /eqP ->]|[-> -> ->]] //.
+  by rewrite !eqxx.
+Qed.
+
+Definition data_tag_eqMixin := EqMixin data_tag_eqP.
+Canonical data_tag_eqType := Eval hnf in EqType _ data_tag_eqMixin.
 
 End Equality.
 
@@ -51,6 +67,8 @@ Import Exports.
 
 Module EnhancedDo.
 Export DoNotation.
+
+Notation REG := tt.
 
 Notation "'do!' ( X , Y ) <- A ; B" :=
   (bind (fun XY => let '(X,Y) := XY in B) A)
@@ -74,27 +92,15 @@ Notation "'do!' X @ 'REG' <- A ; B" :=
   (at level 200, X ident, A at level 100, B at level 200).
 
 Notation "'do!' 'PC' F c <- A ; B" :=
-  (bind (fun Fc => match Fc with PC F c => B | _ => None end) A)
+  (bind (fun Fc => match Fc with PC F c => B end) A)
   (at level 200, F ident, c ident, A at level 100, B at level 200).
 
 Notation "'do!' 'DATA' c' I' W' <- A ; B" :=
-  (bind (fun cIW => match cIW with DATA c' I' W' => B | _ => None end) A)
+  (bind (fun cIW => match cIW with DATA c' I' W' => B end) A)
   (at level 200, c' ident, I' ident, W' ident, A at level 100, B at level 200).
 
 Notation "'do!' 'REG' <- A ; B" :=
-  (bind (fun maybeREG => match maybeREG with REG => B | _ => None end) A)
-  (at level 200, A at level 100, B at level 200).
-
-Notation "'do!' 'PC' F c <-! A ; B" :=
-  (match A with PC F c => B | _ => None end)
-  (at level 200, F ident, c ident, A at level 100, B at level 200).
-
-Notation "'do!' 'DATA' c' I' W' <-! A ; B" :=
-  (match A with DATA c' I' W' => B | _ => None end)
-  (at level 200, c' ident, I' ident, W' ident, A at level 100, B at level 200).
-
-Notation "'do!' 'REG' <-! A ; B" :=
-  (match A with REG => B | _ => None end)
+  (bind (fun maybeREG => match maybeREG with REG => B end) A)
   (at level 200, A at level 100, B at level 200).
 
 Ltac undo1 hyp var :=
@@ -119,8 +125,7 @@ Ltac undo2 hyp v1 v2 :=
 
 Ltac undoDATA hyp x c I W :=
   let xcIW := fresh "xcIW" in
-  undo1 hyp xcIW; destruct xcIW as [|c I W|];
-  [discriminate | simpl in hyp | discriminate].
+  undo1 hyp xcIW; destruct xcIW as [c I W]; simpl in hyp.
 End EnhancedDo.
 
 Section WithClasses.
@@ -138,39 +143,39 @@ Context {t            : machine_types}
 Let I := Logic.I.
 Local Notation II := Logic.I.
 
-Notation stag := (@stag t).
+Notation pc_tag := (pc_tag t).
+Notation data_tag := (data_tag t).
 
-Definition stag_is_PC (L : stag) : bool :=
-  match L with PC _ _ => true | _ => false end.
+Definition pc_tag_compartment (L : pc_tag) : word t :=
+  match L with PC _ c => c end.
 
-Definition stag_is_DATA (L : stag) : bool :=
-  match L with DATA _ _ _ => true | _ => false end.
+Definition data_tag_compartment (L : data_tag) : word t :=
+  match L with DATA c _ _ => c end.
 
-Definition stag_is_REG (L : stag) : bool :=
-  match L with REG => true | _ => false end.
+Definition pc_tag_source (L : pc_tag) : where_from :=
+  match L with PC F _ => F end.
 
-Definition stag_compartment (L : stag) : option (word t) :=
-  match L with PC _ c | DATA c _ _ => Some c | _ => None end.
+Definition data_tag_incoming (L : data_tag) : {set word t} :=
+  match L with DATA _ I _ => I end.
 
-Definition stag_source (L : stag) : option where_from :=
-  match L with PC F _ => Some F | _ => None end.
+Definition data_tag_writers (L : data_tag) : {set word t} :=
+  match L with DATA _ _ W => W end.
 
-Definition stag_incoming (L : stag) : option {set (word t)} :=
-  match L with DATA _ I _ => Some I | _ => None end.
-
-Definition stag_writers (L : stag) : option {set (word t)} :=
-  match L with DATA _ _ W => Some W | _ => None end.
-
-Definition stags : Symbolic.tag_kind -> eqType := fun _ => [eqType of stag].
+Definition stags (tk : Symbolic.tag_kind) : eqType :=
+  match tk with
+  | Symbolic.R => [eqType of unit]
+  | Symbolic.M => [eqType of data_tag]
+  | Symbolic.P => [eqType of pc_tag]
+  end.
 
 Section WithHLists.
 Import Symbolic HListNotations.
 
-Definition can_execute (Lpc LI : stag) : option (word t) :=
-  do! PC   F  c   <-! Lpc;
-  do! DATA c' I _ <-! LI;
-  do! guard (c' == c) || ((F == JUMPED) && (c \in I));
-  Some c'.
+Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (word t) :=
+  do! guard (data_tag_compartment LI == pc_tag_compartment Lpc) ||
+            ((pc_tag_source Lpc == JUMPED) &&
+             (pc_tag_compartment Lpc \in data_tag_incoming LI));
+  Some (data_tag_compartment LI).
 
 Definition compartmentalization_rvec (op : opcode)
                                      (F : where_from)
@@ -180,20 +185,20 @@ Definition compartmentalization_rvec (op : opcode)
 
 Definition rvec_step op
                      (rv : word t -> option (OVec stags op))
-                     (Lpc LI : stag)  : option (OVec stags op) :=
+                     (Lpc : pc_tag) (LI : data_tag)  : option (OVec stags op) :=
   do! c <- can_execute Lpc LI;
   rv c.
 
 Definition rvec_simple op (F : where_from) (tr : type_of_result stags (outputs op)) :
-                       stag -> stag -> option (OVec stags op) :=
+                       pc_tag -> data_tag -> option (OVec stags op) :=
   rvec_step op (fun c => Some (compartmentalization_rvec op F c tr)).
 
-Definition rvec_next op (tr : type_of_result stags (outputs op)) : stag -> stag -> option (OVec stags op) :=
+Definition rvec_next op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (OVec stags op) :=
   rvec_simple op INTERNAL tr.
-Definition rvec_jump op (tr : type_of_result stags (outputs op)) : stag -> stag -> option (OVec stags op) :=
+Definition rvec_jump op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (OVec stags op) :=
   rvec_simple op JUMPED tr.
 Definition rvec_store (c : word t) (I W : {set (word t)})
-                      : stag -> stag -> option (OVec stags STORE) :=
+                      : pc_tag -> data_tag -> option (OVec stags STORE) :=
   rvec_step STORE (fun c' =>
     do! guard (c == c') || (c' \in W);
     Some (@mkOVec stags STORE (PC INTERNAL c') (DATA c I W))).
@@ -211,7 +216,7 @@ Definition compartmentalization_handler (iv : IVec stags) : option (OVec stags (
     | mkIVec JUMP      Lpc LI [REG]                  => rvec_jump JUMP      tt  Lpc LI
     | mkIVec BNZ       Lpc LI [REG]                  => rvec_next BNZ       tt  Lpc LI
     | mkIVec JAL       Lpc LI [REG; REG]             => rvec_jump JAL       REG Lpc LI
-    | mkIVec SERVICE   Lpc LI  []                    => Some (@mkOVec stags SERVICE REG tt)
+    | mkIVec SERVICE   Lpc LI []                     => Some (@mkOVec stags SERVICE Lpc tt)
     | mkIVec _         _   _  _                      => None
   end.
 
@@ -219,9 +224,9 @@ End WithHLists.
 
 Record compartmentalization_internal :=
   Internal { next_id                  : word t
-           ; isolate_tag              : stag
-           ; add_to_jump_targets_tag  : stag
-           ; add_to_store_targets_tag : stag }.
+           ; isolate_tag              : data_tag
+           ; add_to_jump_targets_tag  : data_tag
+           ; add_to_store_targets_tag : data_tag }.
 
 Definition compartmentalization_internal_eqb : rel compartmentalization_internal :=
   [rel i1 i2 | [&& next_id i1 == next_id i2,
@@ -255,7 +260,7 @@ Hint Immediate word_map_axioms.
 Hint Immediate reg_map_axioms.
 
 Definition sget (s : Symbolic.state t) (p : word t)
-                : option stag :=
+                : option data_tag :=
   let: Symbolic.State mem _ _ si := s in
   let sctag get_tag := Some (get_tag si) in
   match get mem p with
@@ -268,7 +273,7 @@ Definition sget (s : Symbolic.state t) (p : word t)
   end.
 Arguments sget s p : simpl never.
 
-Definition supd (s : Symbolic.state t) (p : word t) (tg : stag)
+Definition supd (s : Symbolic.state t) (p : word t) (tg : data_tag)
                 : option (Symbolic.state t) :=
   let: Symbolic.State mem reg pc si := s in
   let: Internal next_id
@@ -307,16 +312,16 @@ Definition fresh (si : compartmentalization_internal)
   else Some (next, Internal (next+1)%w iT ajtT asmT).
 
 Fixpoint retag_set (ok : word t -> {set (word t)} -> {set (word t)} -> bool)
-                   (retag : word t -> {set (word t)} -> {set (word t)}-> stag)
+                   (retag : word t -> {set (word t)} -> {set (word t)}-> data_tag)
                    (ps : list (word t))
                    (s : Symbolic.state t)
                    : option (Symbolic.state t) :=
   match ps with
     | []       => Some s
-    | p :: ps' => do! DATA c I W <-  sget s p;
-                  do! guard (ok c I W);
-                  do! DATA c' I' W'  <-! retag c I W;
-                  do! s'             <-  supd s p (DATA c' I' W');
+    | p :: ps' => do!  DATA c I W <-  sget s p;
+                  do!  guard (ok c I W);
+                  let: DATA c' I' W' := retag c I W in
+                  do!  s'            <- supd s p (DATA c' I' W');
                   retag_set ok retag ps' s'
   end.
 
@@ -357,7 +362,6 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
 
       let: Symbolic.State M_next R_next _ si_next := sS in
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
-    | _ => None
   end.
 
 Definition add_to_jump_targets (s : Symbolic.state t)
@@ -381,7 +385,6 @@ Definition add_to_jump_targets (s : Symbolic.state t)
 
       let: Symbolic.State M_next R_next _ si_next := s' in
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
-    | _ => None
   end.
 
 Definition add_to_store_targets (s : Symbolic.state t)
@@ -405,13 +408,13 @@ Definition add_to_store_targets (s : Symbolic.state t)
 
       let: Symbolic.State M_next R_next _ si_next := s' in
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
-    | _ => None
   end.
 
 Definition syscalls : list (Symbolic.syscall t) :=
-  [Symbolic.Syscall isolate_addr              REG isolate;
-   Symbolic.Syscall add_to_jump_targets_addr  REG add_to_jump_targets;
-   Symbolic.Syscall add_to_store_targets_addr REG add_to_store_targets].
+  let dummy := DATA Word.zero set0 set0 in
+  [Symbolic.Syscall isolate_addr              dummy isolate;
+   Symbolic.Syscall add_to_jump_targets_addr  dummy add_to_jump_targets;
+   Symbolic.Syscall add_to_store_targets_addr dummy add_to_store_targets].
 
 Definition step := Symbolic.step syscalls.
 
@@ -426,48 +429,16 @@ Definition good_internal (s : Symbolic.state t) : Prop :=
         get (Symbolic.mem s) p ?= x@(DATA c I W) ->
         [/\ c <? next, c \notin [:: iC; aJC; aST] &
             forall c', c' \in I :|: W -> c' <? next]
-    | _ , _ , _ =>
-      False
-  end.
-
-Definition good_memory_tag (s : Symbolic.state t)
-                           (p : word t) : bool :=
-  match sget s p with
-    | Some (DATA _ _ _) => true
-    | Some _            => false
-    | None              => true
-  end.
-
-CoInductive good_memory_tag_spec (s : Symbolic.state t)
-                                 (p : word t) : option stag -> Prop :=
-| GoodMemoryTagData c I W : good_memory_tag_spec s p (Some (DATA c I W))
-| GoodMemoryTagNone       : good_memory_tag_spec s p None.
-
-Lemma good_memory_tagP s p : good_memory_tag s p ->
-                             good_memory_tag_spec s p (sget s p).
-Proof.
-  rewrite /good_memory_tag.
-  by case: (sget s p) => [[|c I' W'|]|] // _; constructor.
-Qed.
-
-Definition good_register_tag (R : registers) (r : reg t) : bool :=
-  match get R r with
-    | Some (_ @ REG) => true
-    | Some (_ @ _)   => false
-    | None           => true
   end.
 
 Definition good_pc_tag (s : Symbolic.state t)
-                       (pc : atom (word t) stag) : Prop :=
+                       (pc : atom (word t) pc_tag) : Prop :=
   match pc with
     | _ @ (PC _ c) => exists p I W, sget s p ?= Sym.DATA c I W
-    | _ @ _        => False
   end.
 
 Definition good_tags (s : Symbolic.state t) : Prop :=
   let: Symbolic.State M R pc si := s in
-  (forall p, good_memory_tag   s p) /\
-  (forall r, good_register_tag R r) /\
   good_pc_tag s pc.
 
 Definition good_state (s : Symbolic.state t) : Prop :=
@@ -645,9 +616,9 @@ Lemma sget_lt_next : forall s p c I W,
 Proof.
   clear I; move=> [mem reg pc [next Li LaJ LaS]] /= p c I W GOOD SGET.
   rewrite /good_internal /= in GOOD;
-    destruct Li  as [|ci  Ii  Wi|];  try done;
-    destruct LaJ as [|caJ IaJ WaJ|]; try done;
-    destruct LaS as [|caS IaS WaS|]; try done.
+    destruct Li  as [ci  Ii  Wi];  try done;
+    destruct LaJ as [caJ IaJ WaJ]; try done;
+    destruct LaS as [caS IaS WaS]; try done.
   case: GOOD => NEQ [/and4P [? ? ? ?] [GOOD1 GOOD2]].
   rewrite /sget in SGET.
   destruct (get mem p) as [[? ?]|] eqn:GET; rewrite GET in SGET.
@@ -668,9 +639,9 @@ Lemma sget_IW_lt_next : forall s p c I W c',
 Proof.
   clear I; move=> [mem reg pc [next Li LaJ LaS]] /= p c I W c' GOOD SGET IN.
   rewrite /good_internal /= in GOOD;
-    destruct Li  as [|ci  Ii  Wi|];  try done;
-    destruct LaJ as [|caJ IaJ WaJ|]; try done;
-    destruct LaS as [|caS IaS WaS|]; try done.
+    destruct Li  as [ci  Ii  Wi];  try done;
+    destruct LaJ as [caJ IaJ WaJ]; try done;
+    destruct LaS as [caS IaS WaS]; try done.
   case: GOOD => NEQ [/and4P [? ? ? ?] [GOOD1 GOOD2]].
   rewrite /sget in SGET.
   destruct (get mem p) as [[? ?]|] eqn:GET; rewrite GET in SGET.
@@ -696,9 +667,9 @@ Proof.
     [discriminate | simpl in FRESH; move/eqP in EQ].
   inversion FRESH; subst; clear FRESH.
   rewrite /good_internal /=.
-  destruct iT  as [|ci Ii Wi|],
-           aJT as [|caJ IaJ WaJ|],
-           aST as [|caS IaS WaS|];
+  destruct iT  as [ci Ii Wi],
+           aJT as [caJ IaJ WaJ],
+           aST as [caS IaS WaS];
     auto.
   move=> [NEQ [/and4P [? ? ? _] [GOOD1 GOOD2]]].
     do 2 (split; eauto 2).
@@ -725,7 +696,7 @@ Proof.
   - by inversion RETAG; subst.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [|c' I' W'|]; try discriminate;
+       destruct (retag c I W) as [c' I' W']; try discriminate;
        undo1 RETAG s''.
     apply IHps with (p := p') in RETAG.
     assert (EQUIV : isSome (sget s'' p') = isSome (sget s p')). {
@@ -748,7 +719,7 @@ Proof.
   - by inversion RETAG; subst.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [|c' I' W'|]; try discriminate;
+       destruct (retag c I W) as [c' I' W']; try discriminate;
        undo1 RETAG s'.
     apply IHps with (p := p') in RETAG.
     assert (EQUIV : isSome (get (Symbolic.mem s)  p') =
@@ -776,9 +747,9 @@ Lemma retag_set_preserves_registers ok retag ps s s' :
 Proof.
   clear I.
   elim: ps s => [|p ps IH] s //=; first by congruence.
-  case: (sget s p) => [[|? ? ?|]|] //=.
+  case: (sget s p) => [[? ? ?]|] //=.
   case: (ok _ _ _) => //.
-  case: (retag _ _ _) => [|? ? ?|] //=.
+  case: (retag _ _ _) => [? ? ?] //=.
   case SUPD: (supd _ _ _) => [s''|] //=.
   rewrite (supd_preserves_regs _ _ _ _ SUPD).
   exact: IH.
@@ -796,7 +767,7 @@ Proof.
   let I := fresh "I"
   in undoDATA RETAG_SET x c I W;
      undo1    RETAG_SET OK;
-     destruct (retag c I W) as [|c' I' W'|] eqn:RETAG; simpl in *; try done;
+     destruct (retag c I W) as [c' I' W'] eqn:RETAG; simpl in *; try done;
      undo1    RETAG_SET s'.
   rewrite in_cons in IN.
   case/orP: IN => [/eqP ? | IN]; [subst p'|].
@@ -820,7 +791,7 @@ Proof.
   - by inversion RETAG; subst.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [|c' I' W'|] eqn:TAG; try discriminate;
+       destruct (retag c I W) as [c' I' W'] eqn:TAG; try discriminate;
        undo1 RETAG s''.
     case/norP: NIN => NEQ NIN.
     apply IHps with (p := p') in RETAG; auto.
@@ -843,7 +814,7 @@ Proof.
   - inversion IN.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [|c' I' W'|] eqn:TAG; try discriminate;
+       destruct (retag c I W) as [c' I' W'] eqn:TAG; try discriminate;
        undo1 RETAG s''.
     case/andP: NODUP => NIN NODUP.
     apply retag_set_not_in with (ok := ok) (retag := retag)
@@ -881,7 +852,6 @@ Qed.
 
 Lemma retag_set_or_ok : forall ok retag ps s s',
   uniq ps ->
-  (forall p, good_memory_tag s p) ->
   retag_set ok retag ps s ?= s' ->
   forall p,
     sget s p = sget s' p \/
@@ -889,7 +859,7 @@ Lemma retag_set_or_ok : forall ok retag ps s s',
                   ok c I W /\
                   sget s' p ?= retag c I W.
 Proof.
-  intros ok retag ps s s' NODUP GMEM RETAG p.
+  intros ok retag ps s s' NODUP RETAG p.
   have [IN | NIN] := boolP (p \in ps).
   - by eapply retag_set_in_ok in RETAG; eauto.
   - by eapply retag_set_not_in in RETAG; eauto.
@@ -897,33 +867,16 @@ Qed.
 
 Lemma retag_set_or : forall ok retag ps s s',
   uniq ps ->
-  (forall p, good_memory_tag s p) ->
   retag_set ok retag ps s ?= s' ->
   forall p,
     sget s p = sget s' p \/
     exists c I W, sget s p ?= DATA c I W /\ sget s' p ?= retag c I W.
 Proof.
-  intros ok retag ps s s' NODUP GMEM RETAG p.
+  intros ok retag ps s s' NODUP RETAG p.
   have [IN | NIN] := boolP (p \in ps).
   - by eapply retag_set_in in RETAG; eauto.
   - by eapply retag_set_not_in in RETAG; eauto.
 Qed.
-
-(*Lemma sget_eq__get_eq : forall s s' p,
-  (isSome (get (Symbolic.mem s) p) <-> isSome (get (Symbolic.mem s') p)) ->
-  sget s p = sget s' p ->
-  get (Symbolic.mem s) p = get (Symbolic.mem s') p.
-Proof.
-  intros [mem reg pc [next iT aJT aST]] [mem' reg' pc' [next' iT' aJT' aST']]
-         p GETS SGETS; simpl in *.
-  rewrite /sget /= in SGETS.
-  destruct (get mem p) as [[? ?]|],(get mem' p) as [[? ?]|]; simpl in *; try discriminate.
-     try (destruct GETS;
-          match goal with H : is_true true -> is_true false |- _ =>
-            specialize (H erefl)
-          end).
-Qed.
-*)
 
 Lemma retag_set_same_val ok retag ps s s' :
   retag_set ok retag ps s ?= s' ->
@@ -932,7 +885,7 @@ Lemma retag_set_same_val ok retag ps s s' :
 Proof.
   clear I.
   elim: ps s s' => [|p ps IH] s s' /=; first by move=> [->].
-  case: (sget s p) => //; move=> [|c I W|] //=.
+  case: (sget s p) => //; move=> [c I W] //=.
   case: (ok c I W) => //.
   case: (retag c I W) => // c' I' W'.
   case UPD: (supd _ _ _) => [s''|] //= RETAG p'.
@@ -942,7 +895,6 @@ Qed.
 
 Lemma retag_set_or_ok_get : forall ok retag ps s s',
   uniq ps ->
-  (forall p, good_memory_tag s p) ->
   retag_set ok retag ps s ?= s' ->
   forall p,
     get (Symbolic.mem s) p = get (Symbolic.mem s') p \/
@@ -950,17 +902,17 @@ Lemma retag_set_or_ok_get : forall ok retag ps s s',
                     ok c I W /\
                     get (Symbolic.mem s') p ?= x@(retag c I W).
 Proof.
-  clear I; intros ok retag ps s s' NODUP GMEM RETAG p.
+  clear I; intros ok retag ps s s' NODUP RETAG p.
   move: (retag_set_same_val _ _ _ _ _ RETAG p) => /= GET.
-  generalize (retag_set_or_ok ok retag ps s s' NODUP GMEM RETAG p)
+  generalize (retag_set_or_ok ok retag ps s s' NODUP RETAG p)
              => [[EQ | [c [I [W [OLD [OK NEW]]]]]]].
-  - move: EQ GET {RETAG GMEM NODUP}.
+  - move: EQ GET {RETAG NODUP}.
     rewrite /sget.
     case: s => m ? ? [? ? ? ?]; case: s' => m' ? ? [? ? ? ?] /=.
     case: (get m p)  => [[v l]|];
     case: (get m' p) => [[v' l']|] //=; last by auto.
     by move=> [<-] [<-]; left.
-  - move: GET OLD OK NEW {RETAG GMEM}.
+  - move: GET OLD OK NEW {RETAG}.
     rewrite /sget.
     case: s => m ? ? [? ? ? ?]; case: s' => m' ? ? [? ? ? ?] /=.
     case: (get m p)  => [[v l]|];
@@ -969,37 +921,6 @@ Proof.
     right.
     eexists v', c, I, W.
     by auto.
-Qed.
-
-Lemma retag_set_preserves_good_memory_tag : forall ok retag ps s s',
-  (forall c I W,
-     match retag c I W with
-       | DATA _ I' W' => true
-       | _            => false
-     end) ->
-  retag_set ok retag ps s ?= s' ->
-  (forall p, good_memory_tag s  p) ->
-  (forall p, good_memory_tag s' p).
-Proof.
-  clear I.
-  intros ok retag ps s s' RETAG RETAG_SET; simpl.
-  move: s s' RETAG_SET; induction ps as [|p ps];
-    move=> /= s s' RETAG_SET.
-  - by inversion RETAG_SET; subst.
-  - idtac;
-      undoDATA RETAG_SET x c I' W; rename I' into I;
-      undo1 RETAG_SET OK;
-      destruct (retag c I W) as [|c' I' W'|] eqn:def_c'_I'_W'; try discriminate;
-      undo1 RETAG_SET s2.
-    intros MEM.
-    unfold good_memory_tag in *.
-    eapply IHps; try eassumption.
-    intros p'; destruct (p == p') eqn:EQ_p_p'; move/eqP in EQ_p_p'.
-    + subst p'.
-      by eapply sget_supd_eq in def_s2; eauto 1; rewrite def_s2.
-    + apply sget_supd_neq with (p' := p') in def_s2; auto.
-      rewrite def_s2; specialize MEM with p'.
-      by destruct (sget s p') as [[|c'' I'' W''|]|].
 Qed.
 
 Lemma retag_set_preserves_regs : forall ok retag ps s s',
@@ -1014,7 +935,7 @@ Proof.
   - idtac;
       undoDATA RETAG_SET x c I' W; rename I' into I;
       undo1 RETAG_SET OK;
-      destruct (retag c I W) as [|c' I' W'|] eqn:def_c'_I'_W'; try discriminate;
+      destruct (retag c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
       undo1 RETAG_SET s2.
     apply supd_preserves_regs in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
@@ -1031,7 +952,7 @@ Proof.
   - idtac;
       undoDATA RETAG_SET x c I' W; rename I' into I;
       undo1 RETAG_SET OK;
-      destruct (retag c I W) as [|c' I' W'|] eqn:def_c'_I'_W'; try discriminate;
+      destruct (retag c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
       undo1 RETAG_SET s2.
     apply supd_preserves_pc in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
@@ -1048,7 +969,7 @@ Proof.
   - idtac;
       undoDATA RETAG_SET x c I' W; rename I' into I;
       undo1 RETAG_SET OK;
-      destruct (retag c I W) as [|c' I' W'|] eqn:def_c'_I'_W'; try discriminate;
+      destruct (retag c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
       undo1 RETAG_SET s2.
     apply supd_preserves_next_id in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
@@ -1078,7 +999,6 @@ Lemma good_internal_equiv : forall s s',
            cid \in I :|: W ->
            cid <? next_id (Symbolic.internal s')
        | None => True
-       | _    => False
      end) ->
   good_internal s'.
 Proof.
@@ -1143,15 +1063,15 @@ Proof.
   rewrite /good_internal /=; move=> GOOD BOUNDS.
   generalize (TAGS isolate_addr) => TAGS_I;
     rewrite SGET_I SGET_I' in TAGS_I;
-    destruct iT as [|ci Wi Ii|], iT' as [|ci' Wi' Ii'|]; try done;
+    destruct iT as [ci Wi Ii], iT' as [ci' Wi' Ii']; try done;
     subst ci'.
   generalize (TAGS add_to_jump_targets_addr) => TAGS_aJ;
     rewrite SGET_aJ SGET_aJ' in TAGS_aJ;
-    destruct aJT as [|caJ WaJ IaJ|], aJT' as [|caJ' WaJ' IaJ'|]; try done;
+    destruct aJT as [caJ WaJ IaJ], aJT' as [caJ' WaJ' IaJ']; try done;
     subst caJ'.
   generalize (TAGS add_to_store_targets_addr) => TAGS_aS;
     rewrite SGET_aS SGET_aS' in TAGS_aS;
-    destruct aST as [|caS WaS IaS|], aST' as [|caS' WaS' IaS'|]; try done;
+    destruct aST as [caS WaS IaS], aST' as [caS' WaS' IaS']; try done;
     subst caS'.
   case: GOOD=> ? [? [GOOD1 GOOD2]].
   repeat (split; [assumption|]).
@@ -1165,7 +1085,7 @@ Proof.
   - intros p x c I W GET'.
     move/id in TAGS; specialize TAGS with p.
     rewrite /sget GET' in TAGS.
-    destruct (get mem p) as [[y [|cy Iy Wy|]]|] eqn:GET;
+    destruct (get mem p) as [[y [cy Iy Wy]]|] eqn:GET;
      try done; subst.
     + apply GOOD2 in GET.
       case: GET => G1 G2 G3.
@@ -1194,7 +1114,6 @@ Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
   add_to_jump_targets_addr \notin ps ->
   add_to_store_targets_addr \notin ps ->
   uniq ps ->
-  (forall p, good_memory_tag s p) ->
   retag_set ok (fun _ I W => DATA cnew I W) ps s ?= s' ->
   good_internal (Symbolic.State
                    (Symbolic.mem s) (Symbolic.regs s) (Symbolic.pc s)
@@ -1210,8 +1129,7 @@ Proof.
                   NOT_SOME_i NOT_SOME_aJ NOT_SOME_aS
                   DIFF_i_aJ DIFF_i_aS DIFF_aJ_aS
                   NIN_i NIN_aJ NIN_aS
-                  NODUP GMEM
-                  RETAG_SET.
+                  NODUP RETAG_SET.
 
   assert (GETS : forall p, isSome (get (Symbolic.mem s) p) =
                            isSome (get (Symbolic.mem s') p)).
@@ -1290,9 +1208,9 @@ Proof.
     by by rewrite /sget ASNONE' FALSE_aS_i FALSE_aS_aJ eq_refl.
 
   rewrite /good_internal /=; move => GOOD;
-    destruct iT  as [|ci  Ii  Wi|];  try done;
-    destruct aJT as [|caJ IaJ WaJ|]; try done;
-    destruct aST as [|caS IaS WaS|]; try done.
+    destruct iT  as [ci  Ii  Wi];  try done;
+    destruct aJT as [caJ IaJ WaJ]; try done;
+    destruct aST as [caS IaS WaS]; try done.
 
   assert (def_iT' : iT' = DATA ci Ii Wi). {
     apply retag_set_not_in with (p := isolate_addr) in RETAG_SET; auto.
