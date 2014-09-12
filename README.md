@@ -1,3 +1,5 @@
+# Micro-Policies in Coq
+
 ### Description
 
 Coq formalization accompanying the paper:
