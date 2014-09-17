@@ -228,9 +228,8 @@ Proof.
     rewrite Hcid' in_set1.
     by rewrite eq_sym.
 
-  - case GET: (Sym.sget sst p) WDC => [[? Ia Sa]|] //= /(_ erefl).
-    case E: (Abs.in_compartment_opt C p) => [c'|] // _ /eqP [E'].
-    rewrite -E' in GET => {E'}.
+  - case GET: (Sym.sget sst p) WDC => [[cid' Ia Sa]|] //= /(_ erefl).
+    case E: (Abs.in_compartment_opt C p) => [c'|] // _ /eqP [E']. subst cid'.
     case/Abs.in_compartment_opt_correct/andP: E => IN' INp.
     suff {UNIQUE} ID' : get_compartment_id sst c' = Some cid.
     { rewrite -ID' in ID.
@@ -905,11 +904,10 @@ Proof.
   }
   rewrite SYS_SEP; simpl.
 
-  generalize RREGS => RREGS';
-    rewrite /refine_registers /pointwise /refine_reg_b in RREGS';
-    specialize (RREGS' syscall_arg1); rewrite def_p_Lp in RREGS'.
+  move/(_ syscall_arg1): (RREGS).
+  rewrite def_p_Lp.
   destruct (get AR syscall_arg1) as [Ap|]; destruct Lp; try done;
-    move/eqP in RREGS'; subst; simpl.
+    move/eqP => ?; subst; simpl.
 
   destruct Aprev as [Aprev Jprev Sprev]; simpl.
 
@@ -928,11 +926,10 @@ Proof.
       by rewrite in_set def_xcIW.
   }
 
-  generalize RREGS => RREGS';
-    rewrite /refine_registers /pointwise /refine_reg_b in RREGS';
-    specialize (RREGS' ra); rewrite def_pc'_Lpc' in RREGS'.
+  move/(_ ra): (RREGS).
+  rewrite def_pc'_Lpc'.
   destruct (get AR ra) as [Apc'|]; destruct Lpc'; try done;
-    move/eqP in RREGS'; subst; simpl.
+    move/eqP => ?; subst Apc'; simpl.
 
   have IN_pc' : pc' \in Aprev.
   { apply/(get_compartment_id_in_compartment COMPSWD IDSWD IDSU AIN).
@@ -1101,18 +1098,16 @@ Proof.
 
   rewrite /Sym.good_pc_tag in SGPC; move: SGPC => [p' [I' [W' def_cid']]].
 
-  assert (SYS_SEP : Aprev != c_sys). {
+  have -> /=: Aprev != c_sys. {
     apply/eqP; intro; subst.
     replace cid_sys with cid' in * by congruence.
     rewrite eq_refl in NEQ_cid_sys; discriminate.
   }
-  rewrite SYS_SEP; simpl.
 
-  generalize RREGS => RREGS';
-    rewrite /refine_registers /pointwise /refine_reg_b in RREGS';
-    specialize (RREGS' syscall_arg1); rewrite def_p_Lp in RREGS'.
+  move/(_ syscall_arg1): (RREGS).
+  rewrite def_p_Lp.
   destruct (get AR syscall_arg1) as [Ap|]; destruct Lp; try done;
-    move/eqP in RREGS'; subst; simpl.
+    move/eqP => ?; subst Ap; simpl.
 
   destruct Aprev as [Aprev Jprev Sprev]; simpl.
 
@@ -1131,11 +1126,10 @@ Proof.
       by rewrite in_set def_xcIW.
   }
 
-  generalize RREGS => RREGS';
-    rewrite /refine_registers /pointwise /refine_reg_b in RREGS';
-    specialize (RREGS' ra); rewrite def_pc'_Lpc' in RREGS'.
+  move/(_ ra): (RREGS).
+  rewrite def_pc'_Lpc'.
   destruct (get AR ra) as [Apc'|]; destruct Lpc'; try done;
-    move/eqP in RREGS'; subst; simpl.
+    move/eqP=> ?; subst Apc'; simpl.
 
   have IN_pc' : pc' \in Aprev.
   { apply/(get_compartment_id_in_compartment COMPSWD IDSWD IDSU AIN).
@@ -1444,11 +1438,10 @@ Theorem isolate_refined : forall ast sst sst',
 Proof.
   clear S I; move=> ast sst sst' IS_ISOLATE AGOOD REFINE ISOLATE;
     rewrite (lock eq) in IS_ISOLATE.
-  assert (SGOOD : Sym.good_state sst) by (eapply refine_good; eassumption).
+  have [SGPC SGINT] : Sym.good_state sst by eapply refine_good; eassumption.
   destruct REFINE as [RPC RREGS RMEMS COMPSWD IDSWD IDSU JTWF STWF RPREV RSC RINT],
            ast    as [Apc AR    AM    AC    Ask Aprev],
            sst    as [SM SR Spc [Snext SiT SaJT SaST]].
-  generalize SGOOD; move=> [SGPC SGINT].
   case/and4P: (AGOOD) => AIN /andP [ANOL ACC] ASS ASP.
   rewrite /Abs.semantics /Abs.isolate /Abs.isolate_fn
           (lock Abs.in_compartment_opt);
@@ -1480,15 +1473,14 @@ Proof.
   move: (COMPSWD pc).
   rewrite def_LI => /(_ erefl).
   case IN_c: (Abs.in_compartment_opt AC pc) => [c_sys|] _ //.
-  case/Abs.in_compartment_opt_correct/andP: (IN_c) => c_sys_in_AC pc_in_c_sys.
+  case/Abs.in_compartment_opt_correct/andP: (IN_c) => c_sys_in_AC pc_in_c_sys {COND_sys}.
 
-  move=> {COND_sys}.
   undo1 def_cid_sys COND; unoption.
 
   repeat (erewrite refined_reg_value; [|eassumption]).
   rewrite def_pA_LpA def_pJ_LpJ def_pS_LpS def_pc'_Lpc' /=.
 
-  move: RPREV => /andP [/eqP ? /eqP RPREV]; subst.
+  move: RPREV => /andP [/eqP ? /eqP RPREV]; subst Ask.
   have -> /=: Abs.permitted_now_in AC F Aprev pc ?= c_sys.
   { rewrite /Abs.permitted_now_in IN_c /=.
     case/orP: COND => [/eqP E| /andP [/eqP E cid_in_I_sys]].
@@ -1513,7 +1505,7 @@ Proof.
   destruct (Snext == max_word t) eqn:SMALL_Snext; move/eqP in SMALL_Snext;
     inversion def_c'_si'; subst c' si'; clear def_c'_si'.
 
-  assert (SUBSET_A' : A' \subset Aprev). {
+  have SUBSET_A' : A' \subset Aprev. {
     apply/subsetP; intros a IN.
     have := (Sym.retag_set_forall _ _ _ _ _ (enum_uniq (mem A')) def_sA a).
     rewrite (mem_enum (mem A')) IN => /(_ erefl).
@@ -1524,9 +1516,9 @@ Proof.
   }
   rewrite SUBSET_A'.
 
-  assert (IN_A' : forall a I' W',
+  have IN_A' : forall a I' W',
                     Sym.sget sA a ?= Sym.DATA Snext I' W' ->
-                    a \in A'). {
+                    a \in A'. {
     intros until 0; intros SGET.
     have [// | NIN] := boolP (a \in A').
     have := (Sym.retag_set_not_in _ _ _ _ _ def_sA a).
@@ -1536,7 +1528,7 @@ Proof.
     by rewrite ltb_irrefl in RINT.
   }
 
-  assert (SUBSET_J' : J' \subset Aprev :|: Jprev). {
+  have SUBSET_J' : J' \subset Aprev :|: Jprev. {
     apply/subsetP; move=> a IN.
     rewrite in_setU. apply/orP.
     generalize def_sA => def_sA';
@@ -1571,9 +1563,9 @@ Proof.
   }
   rewrite SUBSET_J'.
 
-  assert (IN_A'_sJ : forall a I' W',
-                       Sym.sget sJ a ?= Sym.DATA Snext I' W' ->
-                       a \in A'). {
+  have IN_A'_sJ : forall a I' W',
+                      Sym.sget sJ a ?= Sym.DATA Snext I' W' ->
+                      a \in A'. {
     intros until 0; intros SGET.
     apply @Sym.retag_set_or with (p := a) in def_sJ; try assumption.
     rewrite SGET in def_sJ.
@@ -1584,7 +1576,7 @@ Proof.
     - by apply (enum_uniq (mem J')).
   }
 
-  assert (SUBSET_S' : S' \subset Aprev :|: Sprev). {
+  have SUBSET_S' : S' \subset Aprev :|: Sprev. {
     apply/subsetP; move=> a IN.
     rewrite in_setU. apply/orP.
     generalize def_sA => def_sA';
@@ -1676,34 +1668,28 @@ Proof.
   }
   rewrite SUBSET_S'.
 
-  assert (COMPARTMENTS :
-            forall p,
-              match
-                Sym.sget (SState SM SR pc@(Sym.PC F cid)
-                                 (SInternal Snext SiT SaJT SaST))
-                         p
-                ,
-                Sym.sget (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
-                         p
-              with
-                | Some (Sym.DATA cid1 _ _) , Some (Sym.DATA cid2 _ _) =>
-                  cid1 = cid2 \/ (cid1 = cid /\ cid2 = Snext)
-                | None , None =>
-                  True
-                | _ , _ =>
-                  False
-              end). {
+  have COMPARTMENTS :
+        forall p,
+          match
+            Sym.sget (SState SM SR pc@(Sym.PC F cid)
+                             (SInternal Snext SiT SaJT SaST))
+                     p
+            ,
+            Sym.sget (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS)
+                     p
+          with
+            | Some (Sym.DATA cid1 _ _) , Some (Sym.DATA cid2 _ _) =>
+              cid1 = cid2 \/ (cid1 = cid /\ cid2 = Snext)
+            | None , None =>
+              True
+            | _ , _ =>
+              False
+          end. {
     intros a.
-    replace (Sym.sget (SState SM SR pc@(Sym.PC F cid)
-                              (SInternal Snext SiT SaJT SaST))
-                      a)
-       with (Sym.sget (SState SM SR pc@(Sym.PC F cid)
-                              (SInternal (Snext + 1)%w SiT SaJT SaST))
-                      a)
-         by reflexivity.
-    replace (Sym.sget (SState MS RS pc'@(Sym.PC JUMPED cid_sys) siS) a)
-       with (Sym.sget (SState MS RS pcS siS) a)
-         by reflexivity.
+    rewrite -[Sym.sget _ _]/(Sym.sget (SState SM SR pc@(Sym.PC F cid)
+                                              (SInternal (Snext + 1)%w SiT SaJT SaST))
+                                      a)
+            -[Sym.sget (SState MS _ _ _) _]/(Sym.sget (SState MS RS pcS siS) a).
     let cleanup X := try first [assumption | exact (enum_uniq (mem X))]
     in generalize def_sA => def_sA';
         apply @Sym.retag_set_or_ok with (p := a) in def_sA'; cleanup A';
@@ -1749,19 +1735,19 @@ Proof.
     rewrite RPREV.
     by intuition congruence. }
 
-  assert (DIFF : cid <> Snext). {
+  have DIFF : cid <> Snext. {
     intros ?; subst.
     eapply Sym.sget_lt_next in RINT; [simpl in RINT | eassumption].
     by rewrite ltb_irrefl in RINT.
   }
 
-  assert (DIFF_sys : cid_sys <> Snext). {
+  have DIFF_sys : cid_sys <> Snext. {
     intros ?; subst.
     eapply Sym.sget_lt_next in RINT; [simpl in RINT | eassumption].
     by rewrite ltb_irrefl in RINT.
   }
 
-  assert (NIN : pc' \notin A'). {
+  have NIN : pc' \notin A'. {
     apply/negP => IN.
     have := Sym.retag_set_in_ok _ _ _ _ _ (enum_uniq (mem A')) def_sA pc'.
     rewrite (mem_enum (mem A')) => /(_ IN) [cpc' [Ipc' [Wpc' [THEN [OK NOW]]]]].
