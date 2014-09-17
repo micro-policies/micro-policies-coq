@@ -44,22 +44,4 @@ Definition isolate_create_set (M : Map V)
 
 Local Notation "x ?= y" := (x = Some y) (at level 70, no associativity).
 
-Local Ltac isolate_fn_is_set :=
-  let H := fresh in
-  intros until 0; intros H;
-  let unfix gen f n := first [ gen; induction n; intros; simpl in H;
-                               [solve [inversion H; auto]|]
-                             | unfold f in H; simpl in H ] in
-  match type of H with
-      | ?f ?a ?b ?c ?n ?= ?X => unfix ltac:(gdep c; gdep b; gdep a; gdep X) f n
-      | ?f ?a ?b ?n    ?= ?X => unfix ltac:(gdep b; gdep a; gdep X)         f n
-      | ?f ?a ?n       ?= ?X => unfix ltac:(gdep a; gdep X)                 f n
-      | ?f ?n          ?= ?X => unfix ltac:(gdep X)                         f n
-  end ;
-  repeat match type of H with (do! _ <- ?x; _) ?= _ =>
-    destruct x eqn:?; simpl in H; [|discriminate H]
-  end;
-  inversion H; subst;
-  eauto 4.
-
 End WithClasses.
