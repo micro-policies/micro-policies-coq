@@ -60,6 +60,7 @@ Inductive tstate :=
 | St : pstate -> tstate
 | Ch : pvalue (* Zero? *) -> tstate -> tstate -> tstate.
 
+
 (* Some cut-and-paste for adding rules in the pvalue world. *)
 
 Definition mask_dc (dcm : DCMask) (mv : MVec pvalue) : MVec pvalue :=
@@ -238,6 +239,7 @@ Definition pstep (st : pstate) : option tstate :=
   | Halt => None
 end.
 
+
 Fixpoint tstep (ts: tstate) : option tstate :=
   match ts with
   | St s => pstep s
@@ -330,6 +332,15 @@ Variable masks: Masks.
 Context (mt: machine_types).
 Context {ops: machine_ops mt}.
 
+Fixpoint eval (fuel:nat) (s:state mt) : option (state mt) :=
+  match fuel with
+  | O => Some s
+  | S fuel' =>
+       do! s' <- step masks mt s;
+       eval fuel' s'
+  end.
+
+
 Ltac inv H := (inversion H; subst; clear H).
 
 Ltac undo :=
@@ -342,6 +353,42 @@ Ltac undo :=
                inv H
          end.
 
+
+(* parametric evaluation stays in kernel mode *)
+
+Fixpoint kernel_tstate (ts: tstate mt) : Prop :=
+  match ts with
+  | St ps => tag (ppc mt ps) = TKernel 
+  | Ch _ ts1 ts2 => kernel_tstate ts1 /\ kernel_tstate ts2
+  end.
+
+Lemma kernel_pstep: forall ps ts,
+  tag (ppc mt ps) = TKernel  -> 
+  Some ts = pstep mt masks ps ->
+  kernel_tstate ts.
+Proof.
+  intros. unfold pstep in H0.  
+  destruct ps.  simpl in H. subst. destruct ppc0. undo. 
+  destruct i; undo; try unfold next_pstate_pc in *;
+                    try unfold next_pstate_reg in *;
+                    try unfold next_pstate_reg_and_pc in *; 
+                    try unfold next_pstate in *; undo; simpl; auto. 
+  inv H0. 
+  inv H0. 
+Qed.
+
+Lemma kernel_tstep: forall ts ts',
+  kernel_tstate ts -> 
+  Some ts' = tstep mt masks ts -> 
+  kernel_tstate ts'. 
+Proof.
+  induction ts; intros. 
+  simpl in *. eapply kernel_pstep; eauto.
+  simpl in *. inv H. undo. 
+  simpl; split; eauto.  
+Qed.
+
+(* parametric evaluation is sound *)
 
 Hypothesis sound_next_tr : forall env cache (mvec: MVec (pvalue mt)) (tr:pvalue mt),
   ctpc mvec = C mt TKernel ->
@@ -616,5 +663,30 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma sound_tstep: forall env ts ts',
+  kernel_tstate ts -> 
+  Some ts' = tstep mt masks ts ->
+  Some (concretize_tstate mt env ts') = step masks mt (concretize_tstate mt env ts).
+Proof.
+  induction ts; intros. 
+    inv H. eapply sound_step; eauto. 
+    inv H0. undo. inv H. 
+    simpl. 
+    have [zer|nonzer] := altP (concretize_pvalue mt env p =P Word.zero); eauto.
+Qed.    
+
+Lemma sound_eval : forall env fuel ts ts', 
+  kernel_tstate ts -> 
+  Some ts' = teval mt masks fuel ts -> 
+  Some (concretize_tstate mt env ts') = eval fuel (concretize_tstate mt env ts). 
+Proof.
+  induction fuel; intros. 
+    inv H0. auto.
+    simpl. simpl in H0. undo. 
+    symmetry in Heqo. 
+    erewrite <- sound_tstep; eauto. simpl. 
+    eapply IHfuel; eauto. 
+    eapply kernel_tstep; eauto.
+Qed. 
 
 End WithStuff.
