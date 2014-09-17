@@ -311,16 +311,16 @@ Definition fresh (si : compartmentalization_internal)
   then None
   else Some (next, Internal (next+1)%w iT ajtT asmT).
 
-Fixpoint retag_set (ok : word t -> {set (word t)} -> {set (word t)} -> bool)
-                   (retag : word t -> {set (word t)} -> {set (word t)}-> data_tag)
+Fixpoint retag_set (ok : word t -> word t -> {set (word t)} -> {set (word t)} -> bool)
+                   (retag : word t -> word t -> {set (word t)} -> {set (word t)}-> data_tag)
                    (ps : list (word t))
                    (s : Symbolic.state t)
                    : option (Symbolic.state t) :=
   match ps with
     | []       => Some s
     | p :: ps' => do!  DATA c I W <-  sget s p;
-                  do!  guard (ok c I W);
-                  let: DATA c' I' W' := retag c I W in
+                  do!  guard (ok p c I W);
+                  let: DATA c' I' W' := retag p c I W in
                   do!  s'            <- supd s p (DATA c' I' W');
                   retag_set ok retag ps' s'
   end.
@@ -340,19 +340,19 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
 
       do! A' <- isolate_create_set (@val _ _) M pA;
       do! guard A' != set0;
-      do! sA <- retag_set (fun c'' _ _ => c == c'')
-                          (fun _   I W => DATA c' I W)
+      do! sA <- retag_set (fun _ c'' _ _ => c == c'')
+                          (fun _ _   I W => DATA c' I W)
                           (enum A') s';
 
       do! J' : {set word t} <- isolate_create_set (@val _ _) M pJ;
-      do! sJ <- retag_set (fun c'' I _ => (c == c'') || (c' == c'') || (c \in I))
-                          (fun c'' I W => DATA c'' ((c' : word t) |: I) W)
+      do! sJ <- retag_set (fun _ c'' I _ => (c == c'') || (c' == c'') || (c \in I))
+                          (fun _ c'' I W => DATA c'' ((c' : word t) |: I) W)
                           (enum J') sA;
 
       do! S' : {set word t} <- isolate_create_set (@val _ _) M pS;
-      do! sS <- retag_set (fun c'' _ W => (c == c'') || (c' == c'') ||
+      do! sS <- retag_set (fun _ c'' _ W => (c == c'') || (c' == c'') ||
                                           (c \in W))
-                          (fun c'' I W => DATA c'' I ((c' : word t) |: W))
+                          (fun _ c'' I W => DATA c'' I ((c' : word t) |: W))
                           (enum S') sJ;
 
       do! pc' @ _                    <- get  R  ra;
@@ -696,7 +696,7 @@ Proof.
   - by inversion RETAG; subst.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [c' I' W']; try discriminate;
+       destruct (retag p c I W) as [c' I' W']; try discriminate;
        undo1 RETAG s''.
     apply IHps with (p := p') in RETAG.
     assert (EQUIV : isSome (sget s'' p') = isSome (sget s p')). {
@@ -719,7 +719,7 @@ Proof.
   - by inversion RETAG; subst.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [c' I' W']; try discriminate;
+       destruct (retag p c I W) as [c' I' W']; try discriminate;
        undo1 RETAG s'.
     apply IHps with (p := p') in RETAG.
     assert (EQUIV : isSome (get (Symbolic.mem s)  p') =
@@ -760,14 +760,14 @@ Lemma retag_set_forall : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
   forall p,
     p \in ps ->
-    exists c I W, sget s p ?= DATA c I W /\ ok c I W.
+    exists c I W, sget s p ?= DATA c I W /\ ok p c I W.
 Proof.
   clear I; move=> ok retag ps; move: ok retag; induction ps as [|p ps];
     move=> //= ok retag s s'' NODUP RETAG_SET p' IN.
   let I := fresh "I"
   in undoDATA RETAG_SET x c I W;
      undo1    RETAG_SET OK;
-     destruct (retag c I W) as [c' I' W'] eqn:RETAG; simpl in *; try done;
+     destruct (retag p c I W) as [c' I' W'] eqn:RETAG; simpl in *; try done;
      undo1    RETAG_SET s'.
   rewrite in_cons in IN.
   case/orP: IN => [/eqP ? | IN]; [subst p'|].
@@ -791,7 +791,7 @@ Proof.
   - by inversion RETAG; subst.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [c' I' W'] eqn:TAG; try discriminate;
+       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate;
        undo1 RETAG s''.
     case/norP: NIN => NEQ NIN.
     apply IHps with (p := p') in RETAG; auto.
@@ -806,15 +806,15 @@ Lemma retag_set_in_ok : forall ok retag ps s s',
   forall p,
     p \in ps ->
     exists c I W, sget s  p ?= DATA c I W /\
-                  ok c I W /\
-                  sget s' p ?= retag c I W.
+                  ok p c I W /\
+                  sget s' p ?= retag p c I W.
 Proof.
   clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
     intros s s' NODUP RETAG p' IN.
   - inversion IN.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [c' I' W'] eqn:TAG; try discriminate;
+       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate;
        undo1 RETAG s''.
     case/andP: NODUP => NIN NODUP.
     apply retag_set_not_in with (ok := ok) (retag := retag)
@@ -843,7 +843,7 @@ Lemma retag_set_in : forall ok retag ps s s',
   forall p,
     p \in ps ->
     exists c I W, sget s  p ?= DATA c I W /\
-                  sget s' p ?= retag c I W.
+                  sget s' p ?= retag p c I W.
 Proof.
   intros until 0; intros NODUP RETAG p IN.
   eapply retag_set_in_ok in RETAG; eauto.
@@ -856,8 +856,8 @@ Lemma retag_set_or_ok : forall ok retag ps s s',
   forall p,
     sget s p = sget s' p \/
     exists c I W, sget s p ?= DATA c I W /\
-                  ok c I W /\
-                  sget s' p ?= retag c I W.
+                  ok p c I W /\
+                  sget s' p ?= retag p c I W.
 Proof.
   intros ok retag ps s s' NODUP RETAG p.
   have [IN | NIN] := boolP (p \in ps).
@@ -870,7 +870,7 @@ Lemma retag_set_or : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
   forall p,
     sget s p = sget s' p \/
-    exists c I W, sget s p ?= DATA c I W /\ sget s' p ?= retag c I W.
+    exists c I W, sget s p ?= DATA c I W /\ sget s' p ?= retag p c I W.
 Proof.
   intros ok retag ps s s' NODUP RETAG p.
   have [IN | NIN] := boolP (p \in ps).
@@ -886,8 +886,8 @@ Proof.
   clear I.
   elim: ps s s' => [|p ps IH] s s' /=; first by move=> [->].
   case: (sget s p) => //; move=> [c I W] //=.
-  case: (ok c I W) => //.
-  case: (retag c I W) => // c' I' W'.
+  case: (ok p c I W) => //.
+  case: (retag p c I W) => // c' I' W'.
   case UPD: (supd _ _ _) => [s''|] //= RETAG p'.
   rewrite (supd_same_val _ _ _ _ UPD).
   exact: (IH _ _ RETAG).
@@ -899,8 +899,8 @@ Lemma retag_set_or_ok_get : forall ok retag ps s s',
   forall p,
     get (Symbolic.mem s) p = get (Symbolic.mem s') p \/
     exists x c I W, get (Symbolic.mem s) p ?= x@(DATA c I W) /\
-                    ok c I W /\
-                    get (Symbolic.mem s') p ?= x@(retag c I W).
+                    ok p c I W /\
+                    get (Symbolic.mem s') p ?= x@(retag p c I W).
 Proof.
   clear I; intros ok retag ps s s' NODUP RETAG p.
   move: (retag_set_same_val _ _ _ _ _ RETAG p) => /= GET.
@@ -935,7 +935,7 @@ Proof.
   - idtac;
       undoDATA RETAG_SET x c I' W; rename I' into I;
       undo1 RETAG_SET OK;
-      destruct (retag c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
+      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
       undo1 RETAG_SET s2.
     apply supd_preserves_regs in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
@@ -952,7 +952,7 @@ Proof.
   - idtac;
       undoDATA RETAG_SET x c I' W; rename I' into I;
       undo1 RETAG_SET OK;
-      destruct (retag c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
+      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
       undo1 RETAG_SET s2.
     apply supd_preserves_pc in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
@@ -969,7 +969,7 @@ Proof.
   - idtac;
       undoDATA RETAG_SET x c I' W; rename I' into I;
       undo1 RETAG_SET OK;
-      destruct (retag c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
+      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
       undo1 RETAG_SET s2.
     apply supd_preserves_next_id in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
@@ -1114,7 +1114,7 @@ Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
   add_to_jump_targets_addr \notin ps ->
   add_to_store_targets_addr \notin ps ->
   uniq ps ->
-  retag_set ok (fun _ I W => DATA cnew I W) ps s ?= s' ->
+  retag_set ok (fun _ _ I W => DATA cnew I W) ps s ?= s' ->
   good_internal (Symbolic.State
                    (Symbolic.mem s) (Symbolic.regs s) (Symbolic.pc s)
                    (Internal

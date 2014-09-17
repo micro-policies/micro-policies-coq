@@ -520,7 +520,7 @@ Proof.
   - by inversion RETAG; subst.
   - let I := fresh "I"
     in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag c I W) as [c' I' W'] eqn:TAG; try discriminate;
+       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate;
        undo1 RETAG sst'.
     apply IHps with (AM := AM) in RETAG; [assumption|].
     rewrite /refine_memory /refine_mem_loc_b /pointwise in REFINE *; intros a;
@@ -1247,8 +1247,8 @@ Proof.
     by rewrite Hin_c -(mem_enum (mem ps)) Hin_ps. }
   elim: {ps} (enum ps) sst Hid Hretag Hdis => [|p ps IH] sst Hid /=; first congruence.
   case GET: (Sym.sget sst p) => [[cid' I' W']|] //=.
-  case: (ok cid' I' W') => //.
-  case: (retag cid' I' W') => [cid'' I'' W''] //.
+  case: (ok p cid' I' W') => //.
+  case: (retag p cid' I' W') => [cid'' I'' W''] //.
   case UPD: (Sym.supd _ _ _) => [sst''|] //= Hretag Hdis.
   apply (IH sst'') => //.
   - move: Hid.
@@ -1297,16 +1297,16 @@ Qed.
 
 Lemma retag_set_get_compartment_id_same_ids ok retag ps sst sst' c cid :
   Sym.retag_set ok retag ps sst = Some sst' ->
-  (forall c I1 W1, Sym.data_tag_compartment (retag c I1 W1) = c) ->
+  (forall p c I1 W1, Sym.data_tag_compartment (retag p c I1 W1) = c) ->
   get_compartment_id sst c = Some cid ->
   get_compartment_id sst' c = Some cid.
 Proof.
   move=> Hretag_set Hretag.
   elim: ps sst Hretag_set => [|p ps IH] sst //=; first congruence.
   case GET: (Sym.sget _ _) => [[cid1 I1 W1]|] //=.
-  case: (ok _ _ _) => //.
-  move: Hretag => /(_ cid1 I1 W1).
-  case RETAG: (retag _ _ _) => [cid2 I2 W2] //= [E].
+  case: (ok _ _ _ _) => //.
+  move: Hretag => /(_ p cid1 I1 W1).
+  case RETAG: (retag _ _ _ _) => [cid2 I2 W2] //= E.
   subst cid2.
   case UPD: (Sym.supd _ _ _) => [sst''|] //= Hretag_set Hcid.
   suff : get_compartment_id sst'' c = Some cid by apply IH.
@@ -1326,7 +1326,7 @@ Qed.
 Lemma retag_set_get_compartment_id_new_id ok retag sst sst' c cid :
   Sym.retag_set ok retag (enum (Abs.address_space c)) sst = Some sst' ->
   Abs.address_space c != set0 ->
-  (forall c I1 W1, Sym.data_tag_compartment (retag c I1 W1) = cid) ->
+  (forall p c I1 W1, Sym.data_tag_compartment (retag p c I1 W1) = cid) ->
   get_compartment_id sst' c = Some cid.
 Proof.
   case: c => [Aprev Jprev Sprev] /= Hretag_set not0 Hretag.
@@ -1344,9 +1344,9 @@ Proof.
                  get_compartment_id sst <<[set p],Jprev,Sprev>> = Some cid.
   { move: Hretag_set => /=.
     case GET1: (Sym.sget sst p) => [[cid1 I1 W1]|] //=.
-    case: (ok cid1 I1 W1) => //.
-    move: (Hretag cid1 I1 W1).
-    case: (retag _ _ _) => [cid1' I1' W1'] //= [E].
+    case: (ok p cid1 I1 W1) => //.
+    move: (Hretag p cid1 I1 W1).
+    case: (retag _ _ _ _) => [cid1' I1' W1'] //= [E].
     subst cid1'.
     case UPD1: (Sym.supd sst p (Sym.DATA cid I1' W1')) => [sst''|] //=.
     eexists; eauto.
@@ -1367,9 +1367,9 @@ Proof.
     rewrite setU0.
     congruence. }
   case GET: (Sym.sget sst p) => [[ cid' I' W']|] //=.
-  case: (ok cid' I' W') => //.
-  move: (Hretag cid' I' W').
-  case: (retag _ _ _) => [cid'' I'' W''] //= [E].
+  case: (ok p cid' I' W') => //.
+  move: (Hretag p cid' I' W').
+  case: (retag _ _ _ _) => [cid'' I'' W''] //= [E].
   subst cid''.
   case UPD: (Sym.supd _ _ _) => [sst''|] //= Hretag_set Hcid.
   rewrite set_cons setUA (setUC _ [set p]) -set_cons.
