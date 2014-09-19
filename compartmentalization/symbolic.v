@@ -311,19 +311,41 @@ Definition fresh (si : compartmentalization_internal)
   then None
   else Some (next, Internal (next+1)%w iT ajtT asmT).
 
-Fixpoint retag_set (ok : word t -> word t -> {set (word t)} -> {set (word t)} -> bool)
+Definition retag_one (ok : word t -> word t -> {set word t} -> {set word t} -> bool)
+                     (retag : word t -> word t -> {set word t} -> {set word t} -> data_tag)
+                     (s : Symbolic.state t)
+                     (p : word t)
+                     : option (Symbolic.state t) :=
+  do!  DATA c I W <- sget s p;
+  do!  guard (ok p c I W);
+  let: DATA c' I' W' := retag p c I W in
+  supd s p (DATA c' I' W').
+
+Fixpoint ofoldl {T S} (f : S -> T -> option S) (s : S) (ts : seq T) : option S :=
+  match ts with
+  | [::] => Some s
+  | t :: ts => obind (ofoldl f ^~ ts) (f s t)
+  end.
+
+Lemma ofoldl_preserve T S (R : S -> S -> Prop) (f : S -> T -> option S) ts :
+  (forall s, R s s) ->
+  (forall s s' s'', R s s' -> R s' s'' -> R s s'') ->
+  (forall s t s', f s t = Some s' -> R s s') ->
+  forall s s', ofoldl f s ts = Some s' ->
+               R s s'.
+Proof.
+  move=> Hrefl Htrans Hstep s s'.
+  elim: ts s => /= [ ? [->] //|t' ts IH /=] s.
+  case Hf: (f s t') => [s''|] //= /IH.
+  by apply Htrans; eauto.
+Qed.
+
+Definition retag_set (ok : word t -> word t -> {set (word t)} -> {set (word t)} -> bool)
                    (retag : word t -> word t -> {set (word t)} -> {set (word t)}-> data_tag)
                    (ps : list (word t))
                    (s : Symbolic.state t)
                    : option (Symbolic.state t) :=
-  match ps with
-    | []       => Some s
-    | p :: ps' => do!  DATA c I W <-  sget s p;
-                  do!  guard (ok p c I W);
-                  let: DATA c' I' W' := retag p c I W in
-                  do!  s'            <- supd s p (DATA c' I' W');
-                  retag_set ok retag ps' s'
-  end.
+  ofoldl (retag_one ok retag) s ps.
 
 Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
   match s with
@@ -686,73 +708,72 @@ Proof.
     by apply succ_trans.
 Qed.
 
-
-Lemma retag_set_preserves_definedness : forall ok retag ps s s',
-  retag_set ok retag ps s ?= s' ->
-  forall p, isSome (sget s p) = isSome (sget s' p).
+Lemma retag_one_preserves_definedness ok retag s p s' :
+  retag_one ok retag s p ?= s' ->
+  forall p', sget s p' = sget s' p' :> bool.
 Proof.
-  clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
-    intros s s' RETAG p'.
-  - by inversion RETAG; subst.
-  - let I := fresh "I"
-    in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag p c I W) as [c' I' W']; try discriminate;
-       undo1 RETAG s''.
-    apply IHps with (p := p') in RETAG.
-    assert (EQUIV : isSome (sget s'' p') = isSome (sget s p')). {
-      destruct (p == p') eqn:EQ; move/eqP in EQ; [subst p'|].
-      - eapply sget_supd_eq in def_s''; eauto.
-        by rewrite def_s'' def_xcIW.
-      - apply sget_supd_neq with (p' := p') in def_s''; auto.
-        by rewrite def_s''.
-    }
-    congruence.
+  clear I.
+  rewrite /retag_one.
+  case GET: (sget _ _) => [[cid I W]|] //=.
+  case: (ok _ _ _ _) => //=.
+  case: (retag _ _ _ _) => [cid' I' W'] //= UPD p'.
+  rewrite (sget_supd _ _ _ _ UPD).
+  by have [{p'} ->|//] := (p' =P p); rewrite GET.
 Qed.
 
-Lemma retag_set_preserves_get_definedness : forall ok retag ps s s',
+Lemma retag_set_preserves_definedness ok retag ps s s' :
   retag_set ok retag ps s ?= s' ->
-  forall p, isSome (get (Symbolic.mem s) p) =
-            isSome (get (Symbolic.mem s') p).
+  forall p, sget s p = sget s' p :> bool.
 Proof.
-  clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
-    intros s s'' RETAG p'.
-  - by inversion RETAG; subst.
-  - let I := fresh "I"
-    in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag p c I W) as [c' I' W']; try discriminate;
-       undo1 RETAG s'.
-    apply IHps with (p := p') in RETAG.
-    assert (EQUIV : isSome (get (Symbolic.mem s)  p') =
-                    isSome (get (Symbolic.mem s') p')). {
-      destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
-               s' as [mem' reg' pc' [next' iT' aJT' aST']];
-        simpl in *.
-      destruct (p == p') eqn:EQ; move/eqP in EQ; [subst p'|].
-      - destruct (get mem p) as [[y Ly]|] eqn:GET'.
-        + rewrite /sget GET' in def_xcIW.
-          move: def_xcIW => [] *; subst.
-          eapply get_supd_eq in def_s'; eauto; simpl in *.
-          by rewrite def_s'.
-        + eapply get_supd_none in def_s'; eauto; simpl in *.
-          by rewrite def_s'.
-      - eapply get_supd_neq in def_s'; eauto; simpl in *.
-        by rewrite def_s'.
-    }
-    by rewrite -RETAG.
+  move=> H.
+  have := (ofoldl_preserve _ _ _ _ _ _ _ (retag_one_preserves_definedness ok retag) _ _ H).
+  by apply; eauto.
+Qed.
+
+Lemma retag_one_preserves_get_definedness ok retag s p s' :
+  retag_one ok retag s p ?= s' ->
+  forall p, get (Symbolic.mem s) p = get (Symbolic.mem s') p :> bool.
+Proof.
+  clear I.
+  rewrite /retag_one.
+  case GET: (sget _ _) => [[cid I W]|] //=.
+  case: (ok _ _ _ _) => //=.
+  case: (retag _ _ _ _) => [cid' I' W'] //= UPD p'.
+  have [{p'} ->|NEQ] := (p' =P p).
+  - case GET': (get (Symbolic.mem s) p) => [[x L]|].
+    + by rewrite (get_supd_eq _ _ _ _ _ _ GET' UPD).
+    + by rewrite (get_supd_none _ _ _ _ _ GET' UPD).
+  - by rewrite (get_supd_neq _ _ _ _ _ NEQ UPD).
+Qed.
+
+Lemma retag_set_preserves_get_definedness ok retag ps s s' :
+  retag_set ok retag ps s ?= s' ->
+  forall p, get (Symbolic.mem s) p = get (Symbolic.mem s') p :> bool.
+Proof.
+  move=> H.
+  have := (ofoldl_preserve _ _ _ _ _ _ _ (retag_one_preserves_get_definedness ok retag) _ _ H).
+  by apply; eauto.
+Qed.
+
+Lemma retag_one_preserves_registers ok retag s p s' :
+  retag_one ok retag s p ?= s' ->
+  Symbolic.regs s' = Symbolic.regs s.
+Proof.
+  clear I.
+  rewrite /retag_one.
+  case: (sget _ _) => [[? ? ?]|] //=.
+  case: (ok _ _ _ _) => //=.
+  case: (retag _ _ _ _) => ? ? ? UPD.
+  by rewrite (supd_preserves_regs _ _ _ _ UPD).
 Qed.
 
 Lemma retag_set_preserves_registers ok retag ps s s' :
   retag_set ok retag ps s ?= s' ->
   Symbolic.regs s' = Symbolic.regs s.
 Proof.
-  clear I.
-  elim: ps s => [|p ps IH] s //=; first by congruence.
-  case: (sget s p) => [[? ? ?]|] //=.
-  case: (ok _ _ _) => //.
-  case: (retag _ _ _) => [? ? ?] //=.
-  case SUPD: (supd _ _ _) => [s''|] //=.
-  rewrite (supd_preserves_regs _ _ _ _ SUPD).
-  exact: IH.
+  move=> H.
+  have := (ofoldl_preserve _ _ _ _ _ _ _ (retag_one_preserves_registers ok retag) _ _ H).
+  apply; eauto; congruence.
 Qed.
 
 Lemma retag_set_forall : forall ok retag ps s s',
@@ -762,13 +783,14 @@ Lemma retag_set_forall : forall ok retag ps s s',
     p \in ps ->
     exists c I W, sget s p ?= DATA c I W /\ ok p c I W.
 Proof.
+  rewrite /retag_set /retag_one.
   clear I; move=> ok retag ps; move: ok retag; induction ps as [|p ps];
     move=> //= ok retag s s'' NODUP RETAG_SET p' IN.
   let I := fresh "I"
-  in undoDATA RETAG_SET x c I W;
-     undo1    RETAG_SET OK;
-     destruct (retag p c I W) as [c' I' W'] eqn:RETAG; simpl in *; try done;
-     undo1    RETAG_SET s'.
+  in undo1    RETAG_SET s';
+     undoDATA def_s' x c I W;
+     undo1    def_s' OK;
+     destruct (retag p c I W) as [c' I' W'] eqn:RETAG; simpl in *; try done.
   rewrite in_cons in IN.
   case/orP: IN => [/eqP ? | IN]; [subst p'|].
   - by rewrite def_xcIW; repeat eexists.
@@ -786,13 +808,14 @@ Lemma retag_set_not_in : forall ok retag ps s s',
     p \notin ps ->
     sget s p = sget s' p.
 Proof.
+  rewrite /retag_set /retag_one.
   clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
     intros s s' RETAG p' NIN.
   - by inversion RETAG; subst.
   - let I := fresh "I"
-    in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate;
-       undo1 RETAG s''.
+    in undo1 RETAG s'';
+       undoDATA def_s'' x c I W; undo1 def_s'' OK;
+       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate.
     case/norP: NIN => NEQ NIN.
     apply IHps with (p := p') in RETAG; auto.
     apply sget_supd_neq with (p' := p') in def_s'';
@@ -809,13 +832,13 @@ Lemma retag_set_in_ok : forall ok retag ps s s',
                   ok p c I W /\
                   sget s' p ?= retag p c I W.
 Proof.
+  rewrite /retag_set /retag_one.
   clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
     intros s s' NODUP RETAG p' IN.
   - inversion IN.
   - let I := fresh "I"
-    in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate;
-       undo1 RETAG s''.
+    in undo1 RETAG s''; undoDATA def_s'' x c I W; undo1 def_s'' OK;
+       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate.
     case/andP: NODUP => NIN NODUP.
     apply retag_set_not_in with (ok := ok) (retag := retag)
                                 (s := s'') (s' := s')
@@ -883,6 +906,7 @@ Lemma retag_set_same_val ok retag ps s s' :
   omap (fun x => val x) \o get (Symbolic.mem s) =1
   omap (fun x => val x) \o get (Symbolic.mem s').
 Proof.
+  rewrite /retag_set /retag_one.
   clear I.
   elim: ps s s' => [|p ps IH] s s' /=; first by move=> [->].
   case: (sget s p) => //; move=> [c I W] //=.
@@ -927,33 +951,35 @@ Lemma retag_set_preserves_regs : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
   Symbolic.regs s = Symbolic.regs s'.
 Proof.
+  rewrite /retag_set /retag_one.
   clear I.
   intros ok retag ps s s' RETAG_SET; simpl.
   move: s s' RETAG_SET; induction ps as [|p ps];
     move=> /= s s' RETAG_SET.
   - by inversion RETAG_SET; subst.
   - idtac;
-      undoDATA RETAG_SET x c I' W; rename I' into I;
-      undo1 RETAG_SET OK;
-      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
-      undo1 RETAG_SET s2.
-    apply supd_preserves_regs in def_s2; apply IHps in RETAG_SET; congruence.
+      undo1 RETAG_SET s'';
+      undoDATA def_s'' x c I' W; rename I' into I;
+      undo1 def_s'' OK;
+      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate.
+    apply supd_preserves_regs in def_s''; apply IHps in RETAG_SET; congruence.
 Qed.
 
 Lemma retag_set_preserves_pc : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
   Symbolic.pc s = Symbolic.pc s'.
 Proof.
+  rewrite /retag_set /retag_one.
   clear I.
   intros ok retag ps s s' RETAG_SET; simpl.
   move: s s' RETAG_SET; induction ps as [|p ps];
     move=> /= s s' RETAG_SET.
   - by inversion RETAG_SET; subst.
   - idtac;
-      undoDATA RETAG_SET x c I' W; rename I' into I;
-      undo1 RETAG_SET OK;
-      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
-      undo1 RETAG_SET s2.
+      undo1 RETAG_SET s2;
+      undoDATA def_s2 x c I' W; rename I' into I;
+      undo1 def_s2 OK;
+      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate.
     apply supd_preserves_pc in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
 
@@ -961,16 +987,17 @@ Lemma retag_set_preserves_next_id : forall ok retag ps s s',
   retag_set ok retag ps s ?= s' ->
   next_id (Symbolic.internal s) = next_id (Symbolic.internal s').
 Proof.
+  rewrite /retag_set /retag_one.
   clear I.
   intros ok retag ps s s' RETAG_SET; simpl.
   move: s s' RETAG_SET; induction ps as [|p ps];
     move=> /= s s' RETAG_SET.
   - by inversion RETAG_SET; subst.
   - idtac;
-      undoDATA RETAG_SET x c I' W; rename I' into I;
-      undo1 RETAG_SET OK;
-      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate;
-      undo1 RETAG_SET s2.
+      undo1 RETAG_SET s2;
+      undoDATA def_s2 x c I' W; rename I' into I;
+      undo1 def_s2 OK;
+      destruct (retag p c I W) as [c' I' W'] eqn:def_c'_I'_W'; try discriminate.
     apply supd_preserves_next_id in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
 

@@ -515,13 +515,13 @@ Theorem retag_set_preserves_memory_refinement : forall ok retag ps sst sst' AM,
   refine_memory AM (Symbolic.mem sst) ->
   refine_memory AM (Symbolic.mem sst').
 Proof.
+  rewrite /Sym.retag_set /Sym.retag_one.
   clear S I; intros ok retag ps; induction ps as [|p ps]; simpl;
     intros sst sst'' AM RETAG REFINE.
   - by inversion RETAG; subst.
   - let I := fresh "I"
-    in undoDATA RETAG x c I W; undo1 RETAG OK;
-       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate;
-       undo1 RETAG sst'.
+    in undo1 RETAG sst'; undoDATA def_sst' x c I W; undo1 def_sst' OK;
+       destruct (retag p c I W) as [c' I' W'] eqn:TAG; try discriminate.
     apply IHps with (AM := AM) in RETAG; [assumption|].
     rewrite /refine_memory /refine_mem_loc_b /pointwise in REFINE *; intros a;
       specialize REFINE with a.
@@ -1239,6 +1239,7 @@ Lemma retag_set_get_compartment_id_disjoint ok retag (ps : {set word}) sst sst' 
   get_compartment_id sst c = Some cid ->
   get_compartment_id sst' c = Some cid.
 Proof.
+  rewrite /Sym.retag_set /Sym.retag_one.
   move=> Hretag /pred0P Hdis Hid.
   have {Hdis} Hdis: forall p, p \in Abs.address_space c -> p \notin enum ps.
   { move=> p Hin_c.
@@ -1301,6 +1302,7 @@ Lemma retag_set_get_compartment_id_same_ids ok retag ps sst sst' c cid :
   get_compartment_id sst c = Some cid ->
   get_compartment_id sst' c = Some cid.
 Proof.
+  rewrite /Sym.retag_set /Sym.retag_one.
   move=> Hretag_set Hretag.
   elim: ps sst Hretag_set => [|p ps IH] sst //=; first congruence.
   case GET: (Sym.sget _ _) => [[cid1 I1 W1]|] //=.
@@ -1343,6 +1345,7 @@ Proof.
     exists2 sst, Sym.retag_set ok retag ps sst = Some sst' &
                  get_compartment_id sst <<[set p],Jprev,Sprev>> = Some cid.
   { move: Hretag_set => /=.
+    rewrite /Sym.retag_set /Sym.retag_one /=.
     case GET1: (Sym.sget sst p) => [[cid1 I1 W1]|] //=.
     case: (ok p cid1 I1 W1) => //.
     move: (Hretag p cid1 I1 W1).
@@ -1362,6 +1365,7 @@ Proof.
   { move: (H ps [:: p] _ Hretag_set).
     rewrite !set_cons setU0. by apply. }
 
+  rewrite /Sym.retag_set /Sym.retag_one.
   elim=> {p ps sst} [|p ps IH] ps' sst /=.
   { have -> : [set p : word in [::]] = set0 by [].
     rewrite setU0.
