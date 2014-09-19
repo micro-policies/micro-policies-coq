@@ -23,9 +23,6 @@ Import Abs.Notations.
 Import Abs.Hints.
 Import Sym.EnhancedDo.
 
-(* I want to use S and I as variables. *)
-Let S := Datatypes.S.
-Let I := Logic.I.
 (* ssreflect exposes `succn' as a synonym for `S' *)
 Local Notation II := Logic.I.
 
@@ -177,7 +174,6 @@ Theorem refine_good : forall `(REFINE : refine ast sst),
   Abs.good_state ast ->
   Sym.good_state sst.
 Proof.
-  clear S I.
   move=> [Apc AR AM AC Ask Aprev]
          [SM SR [Spc Lpc] [Snext SiT SaJT SaST]]
          [RPC RREGS RMEMS WDCOMPS WDIDS UIDS WFJTS WFSTS RPREV RSCS RINT]
@@ -477,7 +473,7 @@ Lemma get_compartment_id_same : forall sst sst' c,
   equilabeled sst sst' ->
   get_compartment_id sst c = get_compartment_id sst' c.
 Proof.
-  clear S I; intros sst sst' [A J S] SAME.
+  intros sst sst' [A J S] SAME.
   rewrite /get_compartment_id.
   apply eq_pick => p.
   apply f_equal2 => //.
@@ -516,7 +512,7 @@ Theorem retag_set_preserves_memory_refinement : forall ok retag ps sst sst' AM,
   refine_memory AM (Symbolic.mem sst').
 Proof.
   rewrite /Sym.retag_set /Sym.retag_one.
-  clear S I; intros ok retag ps; induction ps as [|p ps]; simpl;
+  intros ok retag ps; induction ps as [|p ps]; simpl;
     intros sst sst'' AM RETAG REFINE.
   - by inversion RETAG; subst.
   - let I := fresh "I"
@@ -677,7 +673,6 @@ Lemma supd_tags_subsets sst sst' p c I1 W1 I2 W2 :
   I1 \subset I2 -> W1 \subset W2 ->
   tags_subsets sst sst'.
 Proof.
-  clear I S.
   move=> GET UPD HI HW p'.
   have [{p'} -> //|NE] := altP (p' =P p).
   { by rewrite GET (Sym.sget_supd _ _ _ _ UPD) eqxx. }
@@ -750,7 +745,6 @@ Lemma well_formed_targets_augment (targets : Abs.compartment t -> {set word})
   sources (Sym.DATA pcid I1 W1) = Ss ->
   well_formed_targets targets sources sst' (c' :: rem_all c C).
 Proof.
-  clear S I.
   move=> WF UNIQUE GET UPD ID c_in_C AS TARGETS SOURCES2 SOURCES1  c'' cid''.
   rewrite in_cons mem_filter
           -(get_compartment_id_supd_same GET UPD)
@@ -796,7 +790,6 @@ Lemma well_formed_targets_same (targets : Abs.compartment t -> {set word})
   sources (Sym.DATA pcid I1 W1) = Ss ->
   well_formed_targets targets sources sst' (c' :: rem_all c C).
 Proof.
-  clear S I.
   move=> WF UNIQUE GET UPD ID c_in_C AS TARGETS SOURCES2 SOURCES1  c'' cid''.
   rewrite in_cons mem_filter
           -(get_compartment_id_supd_same GET UPD)
@@ -841,7 +834,7 @@ Theorem add_to_jump_targets_refined : forall ast sst sst',
     Abs.semantics (Abs.add_to_jump_targets (t:=t)) ast ?= ast' /\
     refine ast' sst'.
 Proof.
-  clear S I; move=> ast sst sst' AGOOD REFINE ADD.
+  move=> ast sst sst' AGOOD REFINE ADD.
   assert (SGOOD : Sym.good_state sst) by (eapply refine_good; eassumption).
   destruct REFINE as [RPC RREGS RMEMS COMPSWD IDSWD IDSU JTWF STWF RPREV RSC RINT],
            ast    as [Apc AR    AM    AC    Ask Aprev],
@@ -1042,7 +1035,7 @@ Theorem add_to_store_targets_refined : forall ast sst sst',
     Abs.semantics (Abs.add_to_store_targets (t:=t)) ast ?= ast' /\
     refine ast' sst'.
 Proof.
-  clear S I; move=> ast sst sst' AGOOD REFINE ADD.
+  move=> ast sst sst' AGOOD REFINE ADD.
   assert (SGOOD : Sym.good_state sst) by (eapply refine_good; eassumption).
   destruct REFINE as [RPC RREGS RMEMS COMPSWD IDSWD IDSU JTWF STWF RPREV RSC RINT],
            ast    as [Apc AR    AM    AC    Ask Aprev],
@@ -1440,7 +1433,7 @@ Theorem isolate_refined : forall ast sst sst',
     Abs.isolate_fn ast ?= ast' /\
     refine ast' sst'.
 Proof.
-  clear S I; move=> ast sst sst' IS_ISOLATE AGOOD REFINE ISOLATE;
+  move=> ast sst sst' IS_ISOLATE AGOOD REFINE ISOLATE;
     rewrite (lock eq) in IS_ISOLATE.
   have [SGPC SGINT] : Sym.good_state sst by eapply refine_good; eassumption.
   destruct REFINE as [RPC RREGS RMEMS COMPSWD IDSWD IDSU JTWF STWF RPREV RSC RINT],
@@ -2568,7 +2561,7 @@ Theorem backward_simulation : forall ast sst sst',
     astep ast ast' /\
     refine ast' sst'.
 Proof.
-  clear S I; move=> ast sst sst' AGOOD REFINE SSTEP.
+  move=> ast sst sst' AGOOD REFINE SSTEP.
   assert (SGOOD : Sym.good_state sst) by (eapply refine_good; eassumption).
   destruct REFINE as [RPC RREGS RMEMS COMPSWD IDSWD IDSU JTWF STWF RPREV RSC RINT],
            ast    as [Apc AR    AM    AC    Ask Aprev];

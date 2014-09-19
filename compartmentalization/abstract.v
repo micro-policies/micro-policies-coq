@@ -38,10 +38,6 @@ Implicit Type M : memory.
 Implicit Type R : registers.
 Implicit Type r rsrc rdest rpsrc rpdest rtgt : reg t.
 
-(* I want to use S as a variable. *)
-Let S := Datatypes.S.
-Local Notation Suc := Datatypes.S.
-
 (* BCP: Can we change `store_targets' to `writable_memory', and disallow writes
    to `address_space'?  [TODO] *)
 Record compartment := Compartment { address_space : {set value}
@@ -131,7 +127,9 @@ Definition isolate_fn (MM : state) : option state :=
   do! pA <- get R syscall_arg1;
   do! pJ <- get R syscall_arg2;
   do! pS <- get R syscall_arg3;
-  let '<<A,J,S>> := c in
+  let A := address_space c in
+  let J := jump_targets c in
+  let S := store_targets c in
   do! A' : {set value} <- isolate_create_set id M pA;
   do! guard A' \subset A;
   do! guard A' != set0;
@@ -182,7 +180,7 @@ Definition add_to_jump_targets :=
   {| address   := add_to_jump_targets_addr
    ; semantics := add_to_compartment_component
                     jump_targets
-                    (fun J' c => let '<<A,_,S>> := c in <<A,J',S>>) |}.
+                    (fun J' c => let '<<Aprev,_,Sprev>> := c in <<Aprev,J',Sprev>>) |}.
 
 Definition add_to_store_targets :=
   {| address   := add_to_store_targets_addr
@@ -350,12 +348,12 @@ Inductive step (MM MM' : state) : Prop :=
 Theorem user_address_space_same : forall M c c',
   address_space c = address_space c' ->
   user_address_space M c = user_address_space M c'.
-Proof. clear S; move=> M [A J S] [A' J' S'] /= -> //. Qed.
+Proof. move=> M [A J S] [A' J' S'] /= -> //. Qed.
 
 Theorem syscall_address_space_same : forall M c c',
   address_space c = address_space c' ->
   syscall_address_space M c = syscall_address_space M c'.
-Proof. clear S; move=> M [A J S] [A' J' S'] /= -> //. Qed.
+Proof. move=> M [A J S] [A' J' S'] /= -> //. Qed.
 
 Theorem user__not_syscall : forall M c,
   user_address_space M c -> ~~ syscall_address_space M c.
@@ -437,7 +435,6 @@ Proof. good_compartments_trivial. Qed.
 Theorem good_no_duplicates : forall C,
   good_compartments C -> uniq C.
 Proof.
-  clear S.
   move=> C /andP [NOL CC].
   rewrite /non_overlapping -all_pairs_in2_comm in NOL; last done.
   apply all_pairs_distinct_nodup in NOL.
@@ -571,7 +568,7 @@ Tactic Notation "destruct" "set_elem" "by" tactic(t) :=
 Theorem in_compartment_here : forall p C A J S,
   p \in A -> <<A,J,S>> :: C ⊢ p ∈ <<A,J,S>>.
 Proof.
-  clear S; move=> p C A J S IN.
+  move=> p C A J S IN.
   rewrite /in_compartment inE /=.
   apply/andP; split.
   - by apply/orP; left.
@@ -736,7 +733,7 @@ Theorem contained_compartments_spec C :
   (forall c a, c \in C -> (a \in jump_targets c \/ a \in store_targets c) ->
                exists c', c' \in C /\ a \in address_space c').
 Proof.
-  clear S; rewrite /contained_compartments; split.
+  rewrite /contained_compartments; split.
   - rewrite subUset; move=> /andP [IN_a_J IN_a_S] c a IN_c IN_a.
     by case: IN_a => IN_a; [move: IN_a_J => IN | move: IN_a_S => IN];
        move/subsetP/(_ a) in IN;
@@ -881,7 +878,7 @@ Qed.
 
 Theorem isolate_good : forall MM, good_syscall isolate MM = true.
 Proof.
-  clear S; unfold isolate, good_syscall; intros MM; simpl.
+  unfold isolate, good_syscall; intros MM; simpl.
   destruct (good_state MM) eqn:GOOD; [simpl|reflexivity].
   destruct (in_compartment_opt _ _) as [c_sys0|] eqn:ICO_sys;
     [simpl|reflexivity].
@@ -1135,7 +1132,7 @@ Lemma add_to_compartment_component_good : forall addr rd wr MM,
                store_targets (wr X c) = X /\ rd c = store_targets c) ->
   good_syscall (Syscall addr (add_to_compartment_component rd wr)) MM.
 Proof.
-  clear S; rewrite /good_syscall /= => _ rd wr MM ADDR eqJ eqS.
+  rewrite /good_syscall /= => _ rd wr MM ADDR eqJ eqS.
   destruct (good_state MM) eqn:GOOD; [simpl|reflexivity].
   destruct (in_compartment_opt _ _) as [c_sys0|] eqn:ICO_pc;
     [simpl|reflexivity].
@@ -1360,7 +1357,7 @@ Lemma syscalls_separated_preserved : forall `(STEP : step MM MM'),
   good_state MM ->
   syscalls_separated (mem MM') (compartments MM').
 Proof.
-  clear S; intros MM MM' STEP GOOD; destruct STEP;
+  intros MM MM' STEP GOOD; destruct STEP;
     try solve [subst; cbv [mem compartments]; eauto 2].
   - (* Store *)
     subst; assert (SS : syscalls_separated M C) by eauto; simpl in *.
@@ -1420,7 +1417,7 @@ Lemma step__permitted_now_in : forall `(STEP : step MM MM'),
                              (pc MM)
               ?= c.
 Proof.
-  clear S; intros MM MM' STEP GOOD; destruct STEP; subst; simpl in *;
+  intros MM MM' STEP GOOD; destruct STEP; subst; simpl in *;
     try (eexists; eassumption).
   (* Syscalls *)
   unfold get_syscall in GETSC; unfold table in GETSC; simpl in GETSC.
@@ -1438,7 +1435,6 @@ Theorem was_in_compartment : forall `(STEP : step MM MM'),
   good_state MM ->
   in_compartment_opt (compartments MM) (pc MM).
 Proof.
-  clear S.
   intros MM MM' STEP GOOD; apply step__permitted_now_in in STEP; auto.
   move: STEP => [c /permitted_now_in_spec PNI].
   repeat (lapply PNI; clear PNI; [intros PNI | auto]).
@@ -1454,7 +1450,7 @@ Theorem permitted_pcs : forall MM MM' MM''
   exists c, compartments MM ⊢ pc MM ∈ c /\
             (pc MM' \in address_space c \/ pc MM' \in jump_targets c).
 Proof.
-  clear S; intros MM MM' MM'' STEP STEP' GOOD; generalize STEP => STEPPED;
+  intros MM MM' MM'' STEP STEP' GOOD; generalize STEP => STEPPED;
     destruct STEP;
     subst; simpl in *;
     try solve

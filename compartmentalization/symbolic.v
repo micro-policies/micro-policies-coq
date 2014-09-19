@@ -140,7 +140,6 @@ Context {t            : machine_types}
         {cmp_syscalls : compartmentalization_syscall_addrs t}.
 
 (* I want to use I as a variable. *)
-Let I := Logic.I.
 Local Notation II := Logic.I.
 
 Notation pc_tag := (pc_tag t).
@@ -156,7 +155,7 @@ Definition pc_tag_source (L : pc_tag) : where_from :=
   match L with PC F _ => F end.
 
 Definition data_tag_incoming (L : data_tag) : {set word t} :=
-  match L with DATA _ I _ => I end.
+  match L with DATA _ In _ => In end.
 
 Definition data_tag_writers (L : data_tag) : {set word t} :=
   match L with DATA _ _ W => W end.
@@ -207,17 +206,17 @@ Definition rvec_store (c : word t) (I W : {set (word t)})
    registers are always tagged with `REG'. *)
 Definition compartmentalization_handler (iv : IVec stags) : option (OVec stags (op iv)) :=
   match iv with
-    | mkIVec NOP       Lpc LI []                     => rvec_next NOP       tt  Lpc LI
-    | mkIVec CONST     Lpc LI [REG]                  => rvec_next CONST     REG Lpc LI
-    | mkIVec MOV       Lpc LI [REG; REG]             => rvec_next MOV       REG Lpc LI
-    | mkIVec (BINOP b) Lpc LI [REG; REG; REG]        => rvec_next (BINOP b) REG Lpc LI
-    | mkIVec LOAD      Lpc LI [REG; DATA _ _ _; REG] => rvec_next LOAD      REG Lpc LI
-    | mkIVec STORE     Lpc LI [REG; REG; DATA c I W] => rvec_store c I W Lpc LI
-    | mkIVec JUMP      Lpc LI [REG]                  => rvec_jump JUMP      tt  Lpc LI
-    | mkIVec BNZ       Lpc LI [REG]                  => rvec_next BNZ       tt  Lpc LI
-    | mkIVec JAL       Lpc LI [REG; REG]             => rvec_jump JAL       REG Lpc LI
-    | mkIVec SERVICE   Lpc LI []                     => Some (@mkOVec stags SERVICE Lpc tt)
-    | mkIVec _         _   _  _                      => None
+    | mkIVec NOP       Lpc LI []                      => rvec_next NOP       tt  Lpc LI
+    | mkIVec CONST     Lpc LI [REG]                   => rvec_next CONST     REG Lpc LI
+    | mkIVec MOV       Lpc LI [REG; REG]              => rvec_next MOV       REG Lpc LI
+    | mkIVec (BINOP b) Lpc LI [REG; REG; REG]         => rvec_next (BINOP b) REG Lpc LI
+    | mkIVec LOAD      Lpc LI [REG; DATA _ _ _; REG]  => rvec_next LOAD      REG Lpc LI
+    | mkIVec STORE     Lpc LI [REG; REG; DATA c In W] => rvec_store c In W Lpc LI
+    | mkIVec JUMP      Lpc LI [REG]                   => rvec_jump JUMP      tt  Lpc LI
+    | mkIVec BNZ       Lpc LI [REG]                   => rvec_next BNZ       tt  Lpc LI
+    | mkIVec JAL       Lpc LI [REG; REG]              => rvec_jump JAL       REG Lpc LI
+    | mkIVec SERVICE   Lpc LI []                      => Some (@mkOVec stags SERVICE Lpc tt)
+    | mkIVec _         _   _  _                       => None
   end.
 
 End WithHLists.
@@ -636,7 +635,7 @@ Lemma sget_lt_next : forall s p c I W,
   sget s p ?= DATA c I W ->
   c <? next_id (Symbolic.internal s).
 Proof.
-  clear I; move=> [mem reg pc [next Li LaJ LaS]] /= p c I W GOOD SGET.
+  move=> [mem reg pc [next Li LaJ LaS]] /= p c I W GOOD SGET.
   rewrite /good_internal /= in GOOD;
     destruct Li  as [ci  Ii  Wi];  try done;
     destruct LaJ as [caJ IaJ WaJ]; try done;
@@ -659,7 +658,7 @@ Lemma sget_IW_lt_next : forall s p c I W c',
   c' \in I :|: W ->
   c' <? next_id (Symbolic.internal s).
 Proof.
-  clear I; move=> [mem reg pc [next Li LaJ LaS]] /= p c I W c' GOOD SGET IN.
+  move=> [mem reg pc [next Li LaJ LaS]] /= p c I W c' GOOD SGET IN.
   rewrite /good_internal /= in GOOD;
     destruct Li  as [ci  Ii  Wi];  try done;
     destruct LaJ as [caJ IaJ WaJ]; try done;
@@ -684,7 +683,7 @@ Lemma fresh_preserves_good : forall mem reg pc si si' fid,
   good_internal (Symbolic.State mem reg pc si) ->
   good_internal (Symbolic.State mem reg pc si').
 Proof.
-  clear I; move=> mem reg pc [next iT aJT aST] /= si' fid FRESH.
+  move=> mem reg pc [next iT aJT aST] /= si' fid FRESH.
   destruct (next == max_word t) eqn:EQ;
     [discriminate | simpl in FRESH; move/eqP in EQ].
   inversion FRESH; subst; clear FRESH.
@@ -712,7 +711,6 @@ Lemma retag_one_preserves_definedness ok retag s p s' :
   retag_one ok retag s p ?= s' ->
   forall p', sget s p' = sget s' p' :> bool.
 Proof.
-  clear I.
   rewrite /retag_one.
   case GET: (sget _ _) => [[cid I W]|] //=.
   case: (ok _ _ _ _) => //=.
@@ -734,7 +732,6 @@ Lemma retag_one_preserves_get_definedness ok retag s p s' :
   retag_one ok retag s p ?= s' ->
   forall p, get (Symbolic.mem s) p = get (Symbolic.mem s') p :> bool.
 Proof.
-  clear I.
   rewrite /retag_one.
   case GET: (sget _ _) => [[cid I W]|] //=.
   case: (ok _ _ _ _) => //=.
@@ -759,7 +756,6 @@ Lemma retag_one_preserves_registers ok retag s p s' :
   retag_one ok retag s p ?= s' ->
   Symbolic.regs s' = Symbolic.regs s.
 Proof.
-  clear I.
   rewrite /retag_one.
   case: (sget _ _) => [[? ? ?]|] //=.
   case: (ok _ _ _ _) => //=.
@@ -784,7 +780,7 @@ Lemma retag_set_forall : forall ok retag ps s s',
     exists c I W, sget s p ?= DATA c I W /\ ok p c I W.
 Proof.
   rewrite /retag_set /retag_one.
-  clear I; move=> ok retag ps; move: ok retag; induction ps as [|p ps];
+  move=> ok retag ps; move: ok retag; induction ps as [|p ps];
     move=> //= ok retag s s'' NODUP RETAG_SET p' IN.
   let I := fresh "I"
   in undo1    RETAG_SET s';
@@ -809,7 +805,7 @@ Lemma retag_set_not_in : forall ok retag ps s s',
     sget s p = sget s' p.
 Proof.
   rewrite /retag_set /retag_one.
-  clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
+  intros ok retag ps; induction ps as [|p ps]; simpl;
     intros s s' RETAG p' NIN.
   - by inversion RETAG; subst.
   - let I := fresh "I"
@@ -833,7 +829,7 @@ Lemma retag_set_in_ok : forall ok retag ps s s',
                   sget s' p ?= retag p c I W.
 Proof.
   rewrite /retag_set /retag_one.
-  clear I; intros ok retag ps; induction ps as [|p ps]; simpl;
+  intros ok retag ps; induction ps as [|p ps]; simpl;
     intros s s' NODUP RETAG p' IN.
   - inversion IN.
   - let I := fresh "I"
@@ -907,7 +903,6 @@ Lemma retag_set_same_val ok retag ps s s' :
   omap (fun x => val x) \o get (Symbolic.mem s').
 Proof.
   rewrite /retag_set /retag_one.
-  clear I.
   elim: ps s s' => [|p ps IH] s s' /=; first by move=> [->].
   case: (sget s p) => //; move=> [c I W] //=.
   case: (ok p c I W) => //.
@@ -926,7 +921,7 @@ Lemma retag_set_or_ok_get : forall ok retag ps s s',
                     ok p c I W /\
                     get (Symbolic.mem s') p ?= x@(retag p c I W).
 Proof.
-  clear I; intros ok retag ps s s' NODUP RETAG p.
+  intros ok retag ps s s' NODUP RETAG p.
   move: (retag_set_same_val _ _ _ _ _ RETAG p) => /= GET.
   generalize (retag_set_or_ok ok retag ps s s' NODUP RETAG p)
              => [[EQ | [c [I [W [OLD [OK NEW]]]]]]].
@@ -952,7 +947,6 @@ Lemma retag_set_preserves_regs : forall ok retag ps s s',
   Symbolic.regs s = Symbolic.regs s'.
 Proof.
   rewrite /retag_set /retag_one.
-  clear I.
   intros ok retag ps s s' RETAG_SET; simpl.
   move: s s' RETAG_SET; induction ps as [|p ps];
     move=> /= s s' RETAG_SET.
@@ -970,7 +964,6 @@ Lemma retag_set_preserves_pc : forall ok retag ps s s',
   Symbolic.pc s = Symbolic.pc s'.
 Proof.
   rewrite /retag_set /retag_one.
-  clear I.
   intros ok retag ps s s' RETAG_SET; simpl.
   move: s s' RETAG_SET; induction ps as [|p ps];
     move=> /= s s' RETAG_SET.
@@ -988,7 +981,6 @@ Lemma retag_set_preserves_next_id : forall ok retag ps s s',
   next_id (Symbolic.internal s) = next_id (Symbolic.internal s').
 Proof.
   rewrite /retag_set /retag_one.
-  clear I.
   intros ok retag ps s s' RETAG_SET; simpl.
   move: s s' RETAG_SET; induction ps as [|p ps];
     move=> /= s s' RETAG_SET.
@@ -1021,15 +1013,15 @@ Lemma good_internal_equiv : forall s s',
   good_internal s ->
   (forall p,
      match sget s' p with
-       | Some (DATA _ I W) =>
+       | Some (DATA _ In W) =>
          forall cid,
-           cid \in I :|: W ->
+           cid \in In :|: W ->
            cid <? next_id (Symbolic.internal s')
        | None => True
      end) ->
   good_internal s'.
 Proof.
-  clear I; move=> s s'
+  move=> s s'
                   TAGS NEXT
                   NOT_SOME_I NOT_SOME_aJ NOT_SOME_aS
                   NOT_SOME_I' NOT_SOME_aJ' NOT_SOME_aS'
@@ -1151,7 +1143,7 @@ Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
                       (add_to_store_targets_tag (Symbolic.internal s)))) ->
   good_internal s'.
 Proof.
-  clear I; move=> ok cnew ps s s'
+  move=> ok cnew ps s s'
                   NMAX NEXT
                   NOT_SOME_i NOT_SOME_aJ NOT_SOME_aS
                   DIFF_i_aJ DIFF_i_aS DIFF_aJ_aS
