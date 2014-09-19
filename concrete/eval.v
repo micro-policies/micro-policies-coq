@@ -21,15 +21,15 @@ Open Scope word_scope.
 Local Notation "x .+1" := (x + Word.one).
 
 
-Inductive cat :=
-| MP  (* memory payload *)
-| MT  (* memory tag *)
-| RP  (* register payload *)
-| RT  (* register tag *)
+Inductive var :=
+| MP : word mt -> var (* memory payload *)
+| MT : word mt -> var  (* memory tag *)
+| RP : reg mt -> var  (* register payload *)
+| RT : reg mt -> var  (* register tag *)
 .
 
 Inductive pvalue :=
-| V : cat * word mt -> pvalue (* initial contents of a named category, address *)
+| V : var -> pvalue (* initial contents of a named category, address *)
 | C : word mt -> pvalue
 | E : binop -> pvalue -> pvalue -> pvalue
 .
@@ -259,7 +259,7 @@ Fixpoint teval (fuel:nat) (ts: tstate) : option tstate :=
 
 End WithMasks.
 
-Definition environment := cat * word mt -> word mt.
+Definition environment := var -> word mt.
 
 Section WithEnvironment.
 
