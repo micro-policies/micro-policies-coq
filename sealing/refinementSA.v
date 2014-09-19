@@ -202,7 +202,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* CONST *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (Word.casts n)). reflexivity.
@@ -213,7 +213,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* MOV *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct (refine_get_pointwise_inv rreg R1W) as [v [g rva]].
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
@@ -226,8 +226,8 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* BINOP *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
-    apply bind_inv in NEXT; destruct NEXT as [sregs' [upd NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply obind_inv in NEXT; destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; destruct t2; try discriminate stag.
        injection stag; intro H; subst; clear stag. simpl in *.
@@ -246,8 +246,8 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* LOAD *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
-    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; try discriminate stag.
        injection stag; intro H; subst; clear stag; simpl in *.
@@ -265,8 +265,8 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* STORE *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
-    apply bind_inv in NEXT. destruct NEXT as [smem' [upd NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [smem' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; try discriminate stag.
        injection stag; intro H; subst; clear stag; simpl in *.
@@ -284,7 +284,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* JUMP *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; try discriminate stag.
        injection stag; intro H; subst; clear stag; simpl in *.
@@ -297,7 +297,7 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     + split4; now trivial.
   - (* BNZ *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     destruct t1; try discriminate stag.
        injection stag; intro H; subst; clear stag; simpl in *.
@@ -311,8 +311,8 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
   - (* JAL - not system call *)
     (* copy paste (all cases) *)
     REFINE_INSTR PC ti rmem rpc NEXT.
-    apply bind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
-    apply bind_inv in NEXT. destruct NEXT as [sregs' [upd' NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
+    apply obind_inv in NEXT. destruct NEXT as [sregs' [upd' NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     (* new *)
     destruct t1; try discriminate stag. injection stag; intro; subst; clear stag.
@@ -337,11 +337,11 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];
       move => GETCALL ; injection GETCALL; move {GETCALL} => ?; subst.
     + {(* mkkey *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
+    apply obind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL; move: CALL.
     case lt_skey : (skey <? Sym.max_key) => // CALL.
-    apply bind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
-    apply bind_inv in CALL. destruct CALL as [ret [GET CALL]].
+    apply obind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
+    apply obind_inv in CALL. destruct CALL as [ret [GET CALL]].
     destruct ret as [ret [| |]]; try done.
     injection CALL; intro H; subst; clear CALL.
     apply (refine_get_pointwise_inv rreg) in GET.
@@ -396,14 +396,14 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     }
     + {(* seal *)
     (* break up the effects of the system call *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
+    apply obind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL.
-    apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
+    apply obind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
     destruct tp; try discriminate CALL.
-    apply bind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
+    apply obind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
     destruct tk; try discriminate CALL.
-    apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
-    apply bind_inv in CALL.
+    apply obind_inv in CALL. destruct CALL as [sregs' [up CALL]].
+    apply obind_inv in CALL.
     destruct CALL as [[ret [| |]] [GET CALL]]; try discriminate CALL.
     injection CALL; intro H; subst; clear CALL.
     apply (refine_get_pointwise_inv rreg) in GET.
@@ -425,17 +425,17 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     }
     + {(* unseal -- very similar to seal *)
     (* break up the effects of the system call *)
-    apply bind_inv in CALL. destruct CALL as [_ [_ CALL]].
+    apply obind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL.
-    apply bind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
+    apply obind_inv in CALL. destruct CALL as [[p tp] [gp CALL]].
     destruct tp; try discriminate CALL.
-    apply bind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
+    apply obind_inv in CALL. destruct CALL as [[? tk] [gk CALL]].
     destruct tk; try discriminate CALL.
     move: CALL.
     (* additional: equality check between keys *)
     have [eq_s CALL|//] := eqP.
-    apply bind_inv in CALL. destruct CALL as [sregs' [up CALL]].
-    apply bind_inv in CALL.
+    apply obind_inv in CALL. destruct CALL as [sregs' [up CALL]].
+    apply obind_inv in CALL.
     destruct CALL as [[ret [| |]] [GET CALL]]; try discriminate CALL.
     injection CALL; intro H; subst; clear CALL.
     apply (refine_get_pointwise_inv rreg) in GET.

@@ -210,7 +210,7 @@ Definition syscalls_separated (M : memory) : list compartment -> bool :=
 Arguments syscalls_separated M C /.
 
 Definition syscalls_present (C : list compartment) : bool :=
-  forallb (is_some ∘ (in_compartment_opt C) ∘ address) table.
+  forallb (isSome ∘ (in_compartment_opt C) ∘ address) table.
 
 Definition good_state (MM : state) : bool :=
   [&& previous MM \in compartments MM,
@@ -747,7 +747,7 @@ Proof.
     by case/orP: IN_a => IN_a; move: IN_a => /bigcup_seqP [c [IN_c IN_a]];
        apply (SPEC c) => //;
        [left | right].
-Qed.    
+Qed.
 
 (*** Proofs for/requiring `good_compartments' ***)
 
@@ -1054,7 +1054,7 @@ Proof.
     apply/orP; left.
     by eapply forall_subset; [|exact USER_c].
   - (* syscalls_separated (delete c C) *)
-    
+
     assert (SS : syscalls_separated M C = true) by
       (eapply good_state_decomposed__syscalls_separated; eassumption).
     replace @all with @forallb by reflexivity; rewrite rem_all_is_delete.
@@ -1273,7 +1273,7 @@ Qed.
 Lemma stepping_syscall_preserves_good : forall MM MM' sc,
   get (mem MM) (pc MM)                                    = None       ->
   pc MM                                                   = address sc ->
-  is_some (in_compartment_opt (compartments MM) (pc MM))        ->
+  isSome (in_compartment_opt (compartments MM) (pc MM))        ->
   good_syscall sc MM                                            ->
   semantics sc MM                                        ?= MM'        ->
   good_state MM                                                 ->

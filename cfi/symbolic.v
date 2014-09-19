@@ -432,7 +432,7 @@ Proof.
   try match goal with
       | [H: upd _ ?R _ = _ |- _] =>
         have [EQ|/eqP NEQ] := altP (R =P r0); [simpl in EQ | simpl in NEQ]; subst
-  end; 
+  end;
   try match goal with
     | [H: _ <> _, H': upd _ _ _ = _ |- _] =>
       apply PartMaps.get_upd_neq with (key' := r0) in H';
@@ -626,7 +626,7 @@ Proof.
   inv EQUIV;
   simpl in *; [assumption | discriminate].
 Qed.
-  
+
 Lemma register_tags_preserved_by_step_a
       (st : Symbolic.state t) (st' : Symbolic.state t) :
   registers_tagged (Symbolic.regs st) ->
@@ -638,7 +638,7 @@ Proof.
  eapply register_tags_preserved_by_step_a'; eauto.
 Qed.
 
-Lemma jal_tags_preserved_by_step_a 
+Lemma jal_tags_preserved_by_step_a
       (st : Symbolic.state t) (st' : Symbolic.state t) :
   jals_tagged (Symbolic.mem st) ->
   step_a st st' ->
@@ -656,7 +656,7 @@ Proof.
   - destruct MEQUIV'.
 Qed.
 
-Lemma jump_tags_preserved_by_step_a 
+Lemma jump_tags_preserved_by_step_a
       (st : Symbolic.state t) (st' : Symbolic.state t) :
   jumps_tagged (Symbolic.mem st) ->
   step_a st st' ->
@@ -921,7 +921,7 @@ Proof.
     destruct tpc as [[src|]|], itg as [[dst|]|];
       try (by inversion VIO);
       simpl in UMVEC;
-      unfold bind in UMVEC;
+      unfold obind, oapp in UMVEC;
       repeat match goal with
                | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
              rewrite H1 in H

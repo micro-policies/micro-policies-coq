@@ -71,36 +71,36 @@ Export DoNotation.
 Notation REG := tt.
 
 Notation "'do!' ( X , Y ) <- A ; B" :=
-  (bind (fun XY => let '(X,Y) := XY in B) A)
+  (obind (fun XY => let '(X,Y) := XY in B) A)
   (at level 200, X ident, Y ident, A at level 100, B at level 200).
 
 Notation "'do!' X @ L <- A ; B" :=
-  (bind (fun XL => let '(X @ L) := XL in B) A)
+  (obind (fun XL => let '(X @ L) := XL in B) A)
   (at level 200, X ident, L ident, A at level 100, B at level 200).
 
 Notation "'do!' X @ 'PC' F c <- A ; B" :=
-  (bind (fun XFc => match XFc with X @ (PC F c) => B | _ => None end) A)
+  (obind (fun XFc => match XFc with X @ (PC F c) => B | _ => None end) A)
   (at level 200, X ident, F ident, c ident, A at level 100, B at level 200).
 
 Notation "'do!' X @ 'DATA' c' I' W' <- A ; B" :=
-  (bind (fun XcIW => match XcIW with X @ (DATA c' I' W') => B | _ => None end) A)
+  (obind (fun XcIW => match XcIW with X @ (DATA c' I' W') => B | _ => None end) A)
   (at level 200, X ident, c' ident, I' ident, W' ident,
    A at level 100, B at level 200).
 
 Notation "'do!' X @ 'REG' <- A ; B" :=
-  (bind (fun XREG => match XREG with X @ REG => B | _ => None end) A)
+  (obind (fun XREG => match XREG with X @ REG => B | _ => None end) A)
   (at level 200, X ident, A at level 100, B at level 200).
 
 Notation "'do!' 'PC' F c <- A ; B" :=
-  (bind (fun Fc => match Fc with PC F c => B end) A)
+  (obind (fun Fc => match Fc with PC F c => B end) A)
   (at level 200, F ident, c ident, A at level 100, B at level 200).
 
 Notation "'do!' 'DATA' c' I' W' <- A ; B" :=
-  (bind (fun cIW => match cIW with DATA c' I' W' => B end) A)
+  (obind (fun cIW => match cIW with DATA c' I' W' => B end) A)
   (at level 200, c' ident, I' ident, W' ident, A at level 100, B at level 200).
 
 Notation "'do!' 'REG' <- A ; B" :=
-  (bind (fun maybeREG => match maybeREG with REG => B end) A)
+  (obind (fun maybeREG => match maybeREG with REG => B end) A)
   (at level 200, A at level 100, B at level 200).
 
 Ltac undo1 hyp var :=

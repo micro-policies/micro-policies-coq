@@ -1,4 +1,5 @@
 Require Import Coq.Classes.SetoidDec.
+Require ssreflect ssrfun.
 Require Import ZArith. (* omega *)
 Require Import List.
 Require Import Bool.
@@ -535,19 +536,19 @@ Qed.
 Lemma nth_error_Some (T:Type): forall n (l:list T) v,
    nth_error l n = Some v -> n < length l. (* APT: converse isn't true, due to quantification of v! *)
 Proof.
-  induction n. 
-  - intros. destruct l; inv H.  simpl; omega. 
-  - intros. destruct l; inv H.  simpl. pose proof (IHn _ _ H1).  omega. 
+  induction n.
+  - intros. destruct l; inv H.  simpl; omega.
+  - intros. destruct l; inv H.  simpl. pose proof (IHn _ _ H1).  omega.
 Qed.
 
 Lemma index_list_Z_Some (T:Type): forall i (l:list T) v,  (* APT: ditto *)
    index_list_Z i l = Some v -> (0 <= i < Z.of_nat (length l))%Z.
 Proof.
-  unfold index_list_Z. intros. 
-  destruct (i <? 0)%Z eqn:?. inv H. 
+  unfold index_list_Z. intros.
+  destruct (i <? 0)%Z eqn:?. inv H.
   pose proof (nth_error_Some H). clear H.
   rewrite Z.ltb_nlt in Heqb.
-  zify. rewrite Z2Nat.id in H0; omega. 
+  zify. rewrite Z2Nat.id in H0; omega.
 Qed.
 
 Fixpoint update_list A (n : nat) (y : A) (xs : list A) : option (list A) :=
@@ -817,118 +818,12 @@ Proof.
   inv H. eauto.
 Qed.
 
-Definition is_some {T} (o : option T) :=
-  match o with
-    | Some _ => true
-    | None => false
-  end.
-
-Definition remove_none {T} (l : list (option T)) :=
-  filter (@is_some _) l.
-
 Fixpoint just_somes {X Y} (l : list (X * option Y)) :=
   match l with
   | nil => nil
   | (_, None) :: l' => just_somes l'
   | (x, Some y) :: l' => (x,y) :: just_somes l'
   end.
-
-Inductive with_silent {T:Type} := | E (e:T) | Silent.
-Notation "T +τ" := (@with_silent T) (at level 1).
-
-Inductive match_actions {T1 T2} (match_events : T1 -> T2 -> Prop) : T1+τ -> T2+τ -> Prop :=
-| match_actions_silent : match_actions match_events Silent Silent
-| match_actions_event : forall e1 e2,
-  match_events e1 e2 -> match_actions match_events (E e1) (E e2).
-
-(** Reflexive transitive closure. *)
-Definition op_cons (E: Type) (oe: E+τ) (l: list E) :=
-  match oe with
-      | E e => e::l
-      | Silent => l
-  end.
-
-
-Inductive star (S E: Type) (Rstep: S -> E+τ -> S -> Prop): S -> list E -> S -> Prop :=
-  | star_refl: forall s,
-      star Rstep s nil s
-  | star_step: forall s1 s2 s3 e t t',
-      Rstep s1 e s2 -> star Rstep s2 t s3 ->
-      t' = (op_cons e t) ->
-      star Rstep s1 t' s3.
-Hint Constructors star.
-
-Lemma op_cons_app : forall E (e: E+τ) t t', (op_cons e t)++t' = op_cons e (t++t').
-Proof. intros. destruct e; reflexivity. Qed.
-
-Lemma star_right : forall S E (Rstep: S -> E+τ -> S -> Prop) s1 s2 t,
-                     star Rstep s1 t s2 ->
-                     forall s3 e t',
-                       Rstep s2 e s3 ->
-                       t' = (t++(op_cons e nil)) ->
-                       star Rstep s1 t' s3.
-Proof.
-  induction 1; intros.
-  eapply star_step; eauto.
-  exploit IHstar; eauto. intros.
-  inv H3. rewrite op_cons_app; eauto.
-Qed.
-
-Inductive plus (S E: Type) (Rstep: S -> E+τ -> S -> Prop): S -> list E -> S -> Prop :=
-  | plus_step: forall s t s' e,
-      Rstep s e s' ->
-      t = (op_cons e nil) ->
-      plus Rstep s t s'
-  | plus_trans: forall s1 s2 s3 e t t',
-      Rstep s1 e s2 -> plus Rstep s2 t s3 ->
-      t' = (op_cons e t) ->
-      plus Rstep s1 t' s3.
-
-Hint Constructors star.
-Hint Constructors plus.
-
-Lemma plus_right : forall E S (Rstep: S -> E+τ -> S -> Prop) s1 s2 t,
-                     plus Rstep s1 t s2 ->
-                     forall s3 e t',
-                       t' = (t++(op_cons e nil)) ->
-                       Rstep s2 e s3 -> plus Rstep s1 t' s3.
-Proof.
-  induction 1; intros.
-  inv H1.
-  rewrite op_cons_app. simpl.
-  eapply plus_trans; eauto.
-  exploit IHplus; eauto.
-  inv H2. rewrite op_cons_app.  eauto.
-Qed.
-
-Lemma step_star_plus :
-  forall (S E: Type)
-         (Rstep: S -> E+τ -> S -> Prop) s1 t s2
-         (STAR : star Rstep s1 t s2)
-         (NEQ : s1 <> s2),
-    plus Rstep s1 t s2.
-Proof.
-  intros. inv STAR. congruence.
-  clear NEQ.
-  gdep e. gdep s1.
-  induction H0; subst; eauto.
-Qed.
-Hint Resolve step_star_plus.
-
-Lemma star_trans: forall S E (Rstep: S -> E+τ -> S -> Prop) s0 t s1,
-  star Rstep s0 t s1 ->
-  forall t' s2,
-  star Rstep s1 t' s2 ->
-  star Rstep s0 (t++t') s2.
-Proof.
-  induction 1.
-  - auto.
-  - inversion 1.
-    + rewrite app_nil_r.
-      subst; econstructor; eauto.
-    + subst; econstructor; eauto.
-      rewrite op_cons_app; reflexivity.
-Qed.
 
 Fixpoint replicate T (a: T) n : list T :=
   match n with
@@ -1123,38 +1018,42 @@ Proof.
   induction l1 as [|x' l1 IH]; intros; simpl in *; subst; eauto.
 Qed.
 
-Definition bind (A B:Type) (f:A->option B) (a:option A) : option B :=
-    match a with
-      | None => None
-      | Some a => f a
-    end.
+Module WithSsr.
 
-Lemma bind_inv A B (f : A -> option B) (a : option A) (b : B) :
-  bind f a = Some b -> exists a', a = Some a' /\ f a' = Some b.
+Import ssrfun.
+
+Lemma obind_inv A B (f : A -> option B) (a : option A) (b : B) :
+  obind f a = Some b -> exists a', a = Some a' /\ f a' = Some b.
 Proof.
   destruct a as [a'|]; simpl; solve [eauto | discriminate].
 Qed.
 
-Theorem bind_assoc : forall A B C
-                            (mx : option A)
-                            (my : A -> option B)
-                            (mz : B -> option C),
-  bind (bind mz ∘ my) mx = bind mz (bind my mx).
+Theorem obind_assoc : forall A B C
+                             (mx : option A)
+                             (my : A -> option B)
+                             (mz : B -> option C),
+  obind (obind mz \o my) mx = obind mz (obind my mx).
 Proof.
   intros A B C mx my mz.
   destruct mx as [x|]; [destruct (my x) as [y|]|]; reflexivity.
 Qed.
 
+End WithSsr.
+
+Export WithSsr.
+
 (* This notation breaks parsing of the "do" tactical, so it should be
 packaged in a module. *)
 Module DoNotation.
 
+Import ssrfun.
+
 Notation "'do!' X <- A ; B" :=
-  (bind (fun X => B) A)
+  (obind (fun X => B) A)
   (at level 200, X ident, A at level 100, B at level 200).
 
 Notation "'do!' X : T <- A ; B" :=
-  (bind (fun X : T => B) A)
+  (obind (fun X : T => B) A)
   (at level 200, X ident, A at level 100, B at level 200).
 
 Notation "'do!' 'guard' cond ; rest" :=
@@ -1282,7 +1181,7 @@ Proof. intros. simpl. omega. Defined.
 Fixpoint In2 (l : list A) {struct l} : Prop :=
   match l with
       | nil => False
-      | a :: l' => 
+      | a :: l' =>
         match l' with
           | nil => False
           | b :: l'' => (a = x /\ b = y) \/ (In2 l')
@@ -1315,7 +1214,7 @@ Lemma in2_trivial : forall xs ys,
   In2 (xs ++ x :: y :: ys).
 Proof.
   intros xs ys. induction xs; intros. simpl; auto.
-  simpl. 
+  simpl.
   destruct (xs ++ x :: y :: ys). inversion IHxs.
   right; assumption.
 Qed.
@@ -1323,11 +1222,11 @@ Qed.
 Lemma in2_reverse : forall xs i j,
   In2 (xs ++ [i;j]) ->
   In2 (xs ++ [i]) \/ i = x /\ j = y.
-Proof. 
+Proof.
   intros xs i j IN2.
   induction xs.
-  - right. simpl in IN2; destruct IN2 as [[EQ1 EQ2] | CONTRA]; [auto | inversion CONTRA]. 
-  - destruct xs. simpl in IN2. 
+  - right. simpl in IN2; destruct IN2 as [[EQ1 EQ2] | CONTRA]; [auto | inversion CONTRA].
+  - destruct xs. simpl in IN2.
     { destruct IN2 as [[EQ1 EQ2] | [[EQ1 EQ2] | CONTRA]]; subst.
       *  left. simpl; auto.
       * right; auto.
@@ -1367,7 +1266,7 @@ Lemma In2_implies_In xs :
   In x xs.
 Proof.
   intros IN2.
-  induction xs. 
+  induction xs.
   - now destruct IN2.
   - destruct xs.
     + now destruct IN2.
@@ -1375,8 +1274,8 @@ Proof.
       * simpl; auto.
       * simpl. right. apply IHxs; assumption.
 Qed.
-        
-End In2. 
+
+End In2.
 
 Section exec.
 
@@ -1663,14 +1562,14 @@ Lemma intermrev_forward : forall xs s s' s'',
   interm_reverse (s :: xs) s s''.
 Proof.
   intro xs.
-  induction xs using rev_ind. 
+  induction xs using rev_ind.
   - intros s s' s'' CONTRA ?. inversion CONTRA; subst. destruct xs; inversion H0.
   - intros.
     inversion H; subst.
     + assert (REW : [s;s';s''] = [s;s'] ++ [s'']) by reflexivity. rewrite REW.
       eapply intermrev_multi; eauto.
     + apply list_app_eq in H1. destruct H1; subst.
-      apply IHxs with (s := s) in H3. 
+      apply IHxs with (s := s) in H3.
       rewrite app_comm_cons.
       eapply intermrev_multi; eauto. assumption.
 Qed.
@@ -1708,7 +1607,7 @@ Proof.
   induction INTERMR; subst; simpl; try (destruct IHINTERM); auto.
   split; auto. destruct IHINTERMR. auto.
 Qed.
-     
+
 Lemma intermr_trans : forall (s s' s'' : A) xs xs',
   intermr xs s s' ->
   intermr xs' s' s'' ->
@@ -1747,14 +1646,14 @@ Proof.
   intros s s' s'' xs xs' INTERMR INTERMR'.
   induction INTERMR as [s | s y s' xs'' SSTEP INTERMR IHINTERMR].
   + eexists; split. eauto. intros. split. intro H. destruct H; [destruct H | assumption].
-    intros x0 H. destruct H as [H | H]; 
-                 [destruct H as [|CONTRA]; 
+    intros x0 H. destruct H as [H | H];
+                 [destruct H as [|CONTRA];
                    [subst; inversion INTERMR'; subst; simpl; auto | destruct CONTRA] | assumption].
   + destruct xs''; inversion INTERMR; subst.
     { destruct (IHINTERMR INTERMR') as [zs [INTERMR'' INH]].
       exists (s :: zs). split.
       - eapply intermr_multi; eauto.
-      - intros x' y'. 
+      - intros x' y'.
         split.
         { (* In2 *)
           intros H.
@@ -1770,7 +1669,7 @@ Proof.
          }
         { (*In*)
           intros x H.
-          destruct (INH x' y') as [? IN]. 
+          destruct (INH x' y') as [? IN].
           destruct H as [H | H].
           - destruct H as [H | H]; subst.
             * simpl; auto.
@@ -1922,8 +1821,8 @@ End vectors.
 
 Ltac match_inv :=
   repeat match goal with
-  | H : bind (fun x : _ => _) _ = Some _ |- _ =>
-    apply bind_inv in H;
+  | H : ssrfun.obind (fun x : _ => _) _ = Some _ |- _ =>
+    apply obind_inv in H;
     let x := fresh x in
     let E := fresh "E" in
     destruct H as (x & H & E);
@@ -1935,7 +1834,7 @@ Ltac match_inv :=
   | H : match ?E with _ => _ end = _ |- _ =>
     destruct E eqn:?; try discriminate
   | H : Some _ = Some _ |- _ => inv H
-  | H : ?O = Some _ |- context[bind _ ?O] => rewrite H; simpl
+  | H : ?O = Some _ |- context[ssrfun.obind _ ?O] => rewrite H; simpl
   | H : True |- _ => clear H
   end.
 
@@ -1943,14 +1842,14 @@ Fixpoint stepn {A} (step : A -> option A) (max_steps : nat) (st : A) : option A 
   match max_steps with
   | O => Some st
   | S max_steps' =>
-    match step st with 
+    match step st with
       Some st' => stepn step max_steps' st'
     | None => None
     end
   end.
 
 Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : list A :=
-  st :: 
+  st ::
   match max_steps with
   | O => []
   | S max_steps' =>
@@ -1970,4 +1869,3 @@ move=> x y.
 have [->|neq_xy] := altP (x =P y); first by left.
 by right=> eq_xy; move: neq_xy; rewrite eq_xy eqxx.
 Qed.
-

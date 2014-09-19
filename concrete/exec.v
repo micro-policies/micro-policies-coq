@@ -111,9 +111,9 @@ Lemma stepP : forall st st', step st = Some st' <->
 Proof.
   intros st st'. split; intros STEP.
   - destruct st as [mem reg cache [pc tpc] epc]. simpl in STEP.
-    apply bind_inv in STEP.
+    apply obind_inv in STEP.
     destruct STEP as ([i it] & MEM & STEP).
-    apply bind_inv in STEP.
+    apply obind_inv in STEP.
     destruct STEP as (instr & INSTR & STEP).
     destruct instr; try discriminate;
 

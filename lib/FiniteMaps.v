@@ -1,5 +1,6 @@
 Require Import List.
 Require Import compcert.lib.Coqlib compcert.lib.Maps lib.utils.
+Require Import ssrfun.
 
 Set Implicit Arguments.
 
@@ -117,7 +118,7 @@ Module FiniteMap (I : INDEXED_TYPE).
   Definition map_filter : forall A B : Type, (A -> option B) -> t A -> t B := PTree.map_filter.
 
   Theorem gmap_filter : forall (A B : Type) (f : A -> option B) (i : elt) (m : t A),
-    get i (map_filter f m) = bind f (get i m).
+    get i (map_filter f m) = obind f (get i m).
   Proof. basic. Qed.
 
   Theorem smap_filter : forall (A B : Type) (f : A -> B) (i : elt) (a : A) (m : t A),

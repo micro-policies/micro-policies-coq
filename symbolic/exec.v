@@ -113,7 +113,7 @@ Proof.
   { destruct st as [mem reg [pc tpc] int].
     simpl in STEP.
     destruct (get mem pc) as [[i ti]|] eqn:GET;
-    apply bind_inv in STEP.
+    apply obind_inv in STEP.
     - destruct STEP as (instr & INSTR & STEP).
       destruct instr; try discriminate;
           repeat match goal with

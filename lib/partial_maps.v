@@ -32,7 +32,7 @@ Class axioms (pm : partial_map) := mkAxioms {
                   get (set km ak sk) ak' = get km ak';
 
   map_filter_correctness : forall V1 V2 (f : V1 -> option V2) (m : M V1) (k : K),
-                             get (map_filter f m) k = bind f (get m k);
+                             get (map_filter f m) k = obind f (get m k);
 
   map_filter_set : forall V1 V2 (f : V1 -> V2) (m : M V1) (k : K) (v1 : V1),
                      map_filter (Some \o f) (set m k v1) =
@@ -242,9 +242,9 @@ Context {M : Type -> Type} {K : Type}
 Definition map (m : M V1) : M V2 :=
   map_filter (Some \o f) m.
 
-Lemma map_correctness m k : get (map m) k = option_map f (get m k).
+Lemma map_correctness m k : get (map m) k = omap f (get m k).
 Proof.
-  by rewrite /map map_filter_correctness /bind /option_map //=.
+  by rewrite /map map_filter_correctness /obind //=.
 Qed.
 
 Lemma map_upd (m : M V1) m' (k : K) v :
@@ -269,7 +269,7 @@ Definition filter (m : M V) : M V :=
 
 Lemma filter_correctness m k : get (filter m) k = option_filter f (get m k).
 Proof.
-  by rewrite /filter map_filter_correctness /bind /option_map //=.
+  by rewrite /filter map_filter_correctness /obind /omap //=.
 Qed.
 
 End filter.

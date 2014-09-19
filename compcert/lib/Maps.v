@@ -33,6 +33,7 @@
 *)
 
 Require Import Equivalence EquivDec.
+Require Import ssrfun.
 Require Import lib.Coqlib.
 Require Import lib.utils.
 
@@ -113,7 +114,7 @@ Module Type TREE.
     forall (A B: Type), (A -> option B) -> t A -> t B.
   Hypothesis gmap_filter:
     forall (A B: Type) (f: A -> option B) (i: elt) (m: t A),
-      get i (map_filter f m) = bind f (get i m).
+      get i (map_filter f m) = obind f (get i m).
   Hypothesis smap_filter :
     forall (A B: Type) (f : A -> B) (i: elt) (a: A) (m: t A),
       map_filter (fun x => Some (f x)) (set i a m) =
@@ -527,12 +528,12 @@ Module PTree <: TREE.
   Fixpoint map_filter (A B: Type) (f: A -> option B) (m: t A) {struct m} : t B :=
     match m with
     | Leaf => Leaf
-    | Node l o r => Node (map_filter f l) (bind f o) (map_filter f r)
+    | Node l o r => Node (map_filter f l) (obind f o) (map_filter f r)
     end.
 
   Lemma gmap_filter:
     forall (A B: Type) (f: A -> option B) (i: elt) (m: t A),
-    get i (map_filter f m) = bind f (get i m).
+    get i (map_filter f m) = obind f (get i m).
   Proof.
     induction i; intros; destruct m; simpl; auto.
   Qed.

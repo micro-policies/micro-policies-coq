@@ -284,7 +284,7 @@ Qed.
 Hint Resolve StronglySorted_NoDup.
 
 Theorem find_existsb : forall {A} (p : A -> bool) xs,
-  is_some (find p xs) = existsb p xs.
+  ssrbool.isSome (find p xs) = existsb p xs.
 Proof.
   induction xs as [|x xs]; simpl; [|destruct (p x)]; auto.
 Qed.
@@ -375,7 +375,7 @@ Proof.
   intros; rewrite forallb_forall, <- Forall_forall in *; auto.
 Qed.
 Hint Resolve @delete_preserves_forallb.
-  
+
 Corollary delete_preserves_strongly_sorted :
   forall `{eqdec : ! EqDec (eq_setoid A)} (R : A -> A -> Prop) a xs,
     StronglySorted R xs ->
@@ -430,11 +430,11 @@ Qed.
 Hint Resolve NoDup_cat_somes.
 
 Theorem map_options_somes : forall {A B} (f : A -> option B) xs,
-  is_some (map_options f xs) = true <->
-  (forall x, In x xs -> is_some (f x) = true).
+  ssrbool.isSome (map_options f xs) = true <->
+  (forall x, In x xs -> ssrbool.isSome (f x) = true).
 Proof.
   induction xs as [|x xs]; simpl;
-    [tauto | unfold bind; split; [intros SOME x' IN | intros ALL]].
+    [tauto | unfold ssrfun.obind; split; [intros SOME x' IN | intros ALL]].
   - destruct IN as [<- | IN]; (destruct (f x); [auto | discriminate]).
     apply IHxs in IN; auto.
     destruct (map_options f xs); [reflexivity | discriminate].
@@ -447,7 +447,7 @@ Theorem map_options_none : forall {A B} (f : A -> option B) xs,
   map_options f xs = None <-> (exists x, In x xs /\ f x = None).
 Proof.
   induction xs as [|x xs]; simpl;
-    [split; [discriminate | intros []; tauto] | unfold bind; split].
+    [split; [discriminate | intros []; tauto] | unfold ssrfun.obind; split].
   - intros SOME. destruct (f x) eqn:fx.
     + destruct (map_options f xs); [discriminate | apply IHxs in SOME].
       destruct SOME as [x' [IN fx']]; eauto.
@@ -463,10 +463,10 @@ Theorem map_options_in : forall {A B} (f : A -> option B) xs ys,
   map_options f xs = Some ys ->
   forall y, In y ys <-> (exists x, f x = Some y /\ In x xs).
 Proof.
-  induction xs as [|x xs]; simpl; unfold bind; intros until 0; intros SOME y.
+  induction xs as [|x xs]; simpl; unfold ssrfun.obind; intros until 0; intros SOME y.
   - inversion_clear SOME; simpl; split; [|intros []]; tauto.
-  - destruct (f x) as [y'|] eqn:fx; [|congruence].
-    destruct (map_options f xs) as [ys'|]; [|congruence].
+  - destruct (f x) as [y'|] eqn:fx; simpl in *; [|congruence].
+    destruct (map_options f xs) as [ys'|]; simpl in *; [|congruence].
     inversion SOME; subst; clear SOME; simpl.
     split.
     + intros [<- | IN]; [eauto|].
@@ -479,7 +479,7 @@ Qed.
 
 Theorem map_options_bind : forall {A B C}
                                   (f : A -> option B) (g : B -> option C) xs,
-  bind (map_options g) (map_options f xs) = map_options (bind g ∘ f) xs.
+  ssrfun.obind (map_options g) (map_options f xs) = map_options (ssrfun.obind g ∘ f) xs.
 Proof.
   intros A B C f g xs.
   induction xs as [|x xs]; simpl in *; [reflexivity|].
@@ -487,7 +487,7 @@ Proof.
   rewrite <-IHxs.
   destruct (map_options f xs); simpl; [reflexivity|].
   destruct (g fx); reflexivity.
-Qed.  
+Qed.
 
 Theorem the_in : forall `{eqdec : ! EqDec (eq_setoid A)} (xs : list A) x,
   the xs = Some x -> In x xs.
@@ -722,7 +722,7 @@ Proof.
   cut (length xs = length (h :: hs ++ xs)).
   - simpl; rewrite app_length, <- plus_Sn_m; omega.
   - f_equal; assumption.
-Qed.  
+Qed.
 Hint Resolve tails_unique.
 
 Theorem concat_app : forall {A} (xss yss : list (list A)),
@@ -761,7 +761,7 @@ Proof.
   induction xss; simpl; [|rewrite IHxss, map_app]; reflexivity.
 Qed.
 Hint Resolve concat_map_map.
-  
+
 Theorem concat_in : forall {A} (xss : list (list A)) x,
   In x (concat xss) <-> (exists xs, In xs xss /\ In x xs).
 Proof.
@@ -790,11 +790,11 @@ Qed.
 Hint Resolve tail_pairs_spec_1.
 
 Lemma tails_init_all_cons : forall {A} (xs : list A),
-  forallb is_some (map (fun t => match t with
-                                   | h :: t' => Some (h,t')
-                                   | []      => None
-                                 end)
-                       (init (tails xs)))
+  forallb ssrbool.isSome (map (fun t => match t with
+                                          | h :: t' => Some (h,t')
+                                          | []      => None
+                                        end)
+                              (init (tails xs)))
   = true.
 Proof.
   induction xs.
@@ -1038,7 +1038,7 @@ Proof.
     rewrite all_pairs_spec in ALL; rewrite all_pairs_spec;
     intros; eauto.
 Qed.
-Hint Resolve all_pairs_subset.                                       
+Hint Resolve all_pairs_subset.
 
 Theorem all_pairs_distinct_nodup : forall {A} (p : A -> A -> bool) xs,
   (forall a, p a a = false) ->
@@ -1091,7 +1091,7 @@ Proof.
     + inversion IN2; subst;
         solve [auto | constructor; eapply filter_In; eassumption].
     + auto.
-Qed.        
+Qed.
 Hint Resolve filter_preserves_all_pairs.
 
 Theorem all_tail_pairs_tail : forall {A} (p : A -> A -> bool) x xs,
