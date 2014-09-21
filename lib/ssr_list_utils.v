@@ -1,5 +1,5 @@
 Require Import Coq.Lists.List.
-Require Import lib.list_utils.
+Require Import lib.utils.
 Require Import ssreflect ssrfun ssrbool eqtype seq.
 
 Set Bullet Behavior "Strict Subproofs".
@@ -21,7 +21,7 @@ Proof.
     + by left.
     + right; destruct (x \in xs'); first done.
       by exfalso; apply IH.
-Qed.        
+Qed.
 
 Theorem uniqP (T : eqType) (xs : seq T) : reflect (NoDup xs) (uniq xs).
 Proof.
@@ -39,15 +39,6 @@ Qed.
 
 Definition rem_all {T : eqType} : T -> seq T -> seq T :=
   filter \o predC1.
-
-Theorem rem_all_is_delete (T : eqType) (a : T) (xs : seq T) :
-  rem_all a xs = delete a xs.
-Proof.
-  rewrite /rem_all /delete.
-  elim: xs => [// | /= x xs' IH].
-  rewrite eq_sym eq_op_is_equiv_dec.
-  by case: (SetoidDec.equiv_dec _ _) => /=; rewrite IH.
-Qed.
 
 (* This corollary's proof is so trivial, you'd think we could always use
    `rewrite mem_filter /=` instead.  That's true, but I'd rather have an actual

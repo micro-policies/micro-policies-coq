@@ -5,7 +5,6 @@ Require Import lib.Integers.
 Require Import lib.utils.
 Require Import lib.partial_maps.
 Require Import lib.Coqlib.
-Require lib.list_utils.
 Require Import common.common.
 Require Import symbolic.symbolic.
 Require Import symbolic.exec.
@@ -1702,8 +1701,8 @@ Proof.
              - inv CLST.
                  by assumption.
              - apply all_attacker_implies_all_user' in ALLA'.
-               assert (IN: In csi' (s :: chd ++ [csi']))
-                 by (eauto using list_utils.in_last).
+               have IN: In csi' (s :: chd ++ [csi'])
+                 by rewrite /= in_app_iff /=; eauto.
                assert (ALLU: forall x, In x ((s :: chd) ++ [csi']) -> in_user x)
                by (apply forallb_forall; auto).
              specialize (ALLU _ IN). by auto.
@@ -1733,8 +1732,8 @@ Proof.
                assert (ALLU : forall x, In x (s :: chd ++ [csi']) ->
                                         in_user x = true)
                  by (apply forallb_forall; auto).
-               assert (IN: In csi' (s :: chd ++ [csi']))
-                 by (eauto using list_utils.in_last).
+               have IN: In csi' (s :: chd ++ [csi'])
+                 by rewrite /= in_app_iff /=; auto.
                by auto.
            }
            assert (USERN: in_user csn = true)

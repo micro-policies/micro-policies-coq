@@ -1,7 +1,6 @@
 Require Import List Bool ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import lib.Integers lib.utils common.common lib.ordered.
-Require Import lib.list_utils lib.set_utils.
 Set Bullet Behavior "Strict Subproofs".
 
 Section WithClasses.
@@ -44,17 +43,6 @@ Proof.
   - move/Z.compare_gt_iff: E => E. omega.
 Qed.
 
-Theorem range'_set : forall meas l h,
-  is_set (range' meas l h) = true.
-Proof.
-  induction meas as [|meas]; simpl; [reflexivity|].
-  intros l h; destruct (l <=> h) eqn:CMP; try reflexivity.
-  simpl; rewrite IHmeas.
-  destruct meas; simpl; [reflexivity|].
-  case CMP': (l + 1 <=> h); try
-    try solve [ reflexivity | rewrite andb_true_r; eapply lebw_succ; eassumption ].
-Qed.
-
 Theorem range'_elts_ok : forall meas l h e,
   In e (range' meas l h) -> l <= e <= h.
 Proof.
@@ -73,10 +61,6 @@ Qed.
 Definition range (l h : word) :=
   range' (Z.to_nat ((Word.unsigned h - Word.unsigned l) + 1)%Z) l h.
 
-Corollary range_set : forall l h, is_set (range l h) = true.
-Proof. intros until 0; apply range'_set. Qed.
-Hint Resolve range_set.
-
 Corollary range_elts_ok : forall l h e,
   In e (range l h) -> l <= e <= h.
 Proof. intros until 0; apply range'_elts_ok. Qed.
@@ -91,55 +75,4 @@ Proof.
   move: LT => /Z.compare_lt_iff LT. omega.
 Qed.
 
-Theorem range_elts_all : forall l h e,
-  l <= e <= h -> In e (range l h).
-Proof.
-  unfold range; intros l h e [LE EH];
-    assert (LH : l <= h) by eauto with ordered.
-  remember (Z.to_nat ((Word.unsigned h - Word.unsigned l) + 1)%Z) as meas eqn:meas_def'.
-  assert (meas_def : meas = S (Z.to_nat (Word.unsigned h - Word.unsigned l))). {
-    rewrite Z2Nat.inj_add in meas_def'.
-    - rewrite plus_comm in meas_def'; simpl in meas_def'; exact meas_def'.
-    - clear meas.
-      move: LH => /(le__lt_or_eq _ _) [LH | ->].
-      + rewrite /lt IntOrdered.compare_unsigned in LH.
-        move/Z.compare_lt_iff: LH => LH. omega.
-      + move/Z.compare_gt_iff => H. omega.
-    - move/Z.compare_gt_iff => ?. omega.
-  }
-  clear meas_def'; gdep e; gdep h; gdep l; induction meas; intros;
-    simpl in *; inversion meas_def; subst; clear meas_def.
-  destruct (l <=> h) eqn:CMP.
-  - apply compare_eq in CMP; apply le__lt_or_eq in EH; apply le__lt_or_eq in LE;
-      subst; destruct EH,LE; auto with ordered.
-    elim (lt_asym h e); assumption.
-  - simpl. apply le__lt_or_eq in LE; destruct LE as [LE | LE]; auto.
-    right; apply IHmeas; eauto using addw_le.
-    erewrite addw_succ by eassumption.
-    replace (Word.unsigned h - (Word.unsigned l + 1))%Z
-       with (Word.unsigned h - Word.unsigned l - 1)%Z
-         by omega.
-    rewrite <- Z2Nat.inj_succ.
-    + f_equal; omega.
-    + rewrite IntOrdered.compare_unsigned in CMP.
-      move/Z.compare_lt_iff: CMP => CMP. omega.
-  - contradiction.
-Qed.
-
-Corollary range_elts : forall l h e,
-  In e (range l h) <-> l <= e <= h.
-Proof. split; [apply range_elts_ok | apply range_elts_all]. Qed.
-
-Corollary range_empty : forall l h,
-  range l h = [] <-> l > h.
-Proof.
-  intros; rewrite nil_iff_not_in; split.
-  - intros NOT_IN; apply gt_not_le; intros LE.
-    apply NOT_IN with l, range_elts; auto with ordered.
-  - intros GT e IN. apply range_elts in IN.
-    destruct IN; assert (l <= h) by eauto 2 with ordered; auto.
-Qed.
-
 End WithClasses.
-
-Hint Resolve range_set.

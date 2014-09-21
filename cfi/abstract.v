@@ -7,7 +7,6 @@ Require Import common.common.
 Require Import lib.Coqlib.
 Require Import cfi.property.
 Require Import cfi.classes.
-Require lib.list_utils.
 Set Implicit Arguments.
 
 Import ListNotations.
@@ -292,10 +291,10 @@ Proof.
       * inv STEPA; simpl in *;
         inv STEP; by discriminate.
       * inv STEPN; by discriminate.
-  - destruct IN as [? | IN]; 
+  - destruct IN as [? | IN];
     [inv STEP; by discriminate | subst].
     destruct STEP' as [STEPA | STEPN].
-    + inv STEPA. 
+    + inv STEPA.
       simpl in *.
       by auto.
     + inv STEPN; by discriminate.
@@ -314,12 +313,12 @@ Proof.
       destruct (succ si sj) eqn:SUCC; first assumption.
       destruct (step_succ_violation SUCC STEP) as [CONT1 CONT2].
       assert (CONTRA := step_a_violation STEPA).
-      destruct INTRACE as [[? ?]|INTRACE]; 
+      destruct INTRACE as [[? ?]|INTRACE];
         [subst; by congruence | by (inv INTRACE)].
     + unfold trace_has_cfi.
       destruct (succ s s') eqn:SUCC.
       * left. intros.
-        destruct INTRACE as [[? ?]|INTRACE]; 
+        destruct INTRACE as [[? ?]|INTRACE];
         [subst; by assumption | by (inv INTRACE)].
       * right.
         exists s; exists s'; do 2 exists [].
@@ -339,7 +338,7 @@ Proof.
         assert (CONTRA := step_a_violation STEPA);
         destruct xs; first (by inv INTRACE);
         apply interm_first_step in INTERM; subst;
-        destruct INTRACE as [[? ?]|INTRACE]; 
+        destruct INTRACE as [[? ?]|INTRACE];
           [subst; by congruence | auto].
       - destruct (succ s s') eqn:SUCC.
         + left. intros ? ? INTRACE STEP.
@@ -371,9 +370,9 @@ Proof.
     { destruct VIOLATION as [LST [[STEPV SUCC] [HCFI [TCFI STOP]]]].
       right.
       exists sv1; exists sv2; exists (s :: hs); exists tl.
-      repeat split; 
-        try solve [rewrite LST; reflexivity 
-                  | auto 
+      repeat split;
+        try solve [rewrite LST; reflexivity
+                  | auto
                   | simpl in STOP; destruct STOP; assumption].
       intros si sj IN2 STEPN.
       destruct hs.
@@ -391,8 +390,7 @@ Proof.
           assert (Heq: sj :: hs ++ sv1 :: sv2 :: tl = sj :: lst)
             by (rewrite Heqlst; reflexivity).
           rewrite Heq in INTERM.
-          assert (IN: In sv1 ((sj :: hs) ++ sv1 :: (sv2 :: tl)))
-            by (apply list_utils.in_anywhere).
+          have IN: In sv1 ((sj :: hs) ++ sv1 :: (sv2 :: tl)) by rewrite in_app_iff /=; auto.
           simpl ((sj :: hs) ++ sv1 :: sv2 :: tl) in IN.
           rewrite  Heq in IN.
           assert (EQ := interm_first_step INTERM); subst.
@@ -400,295 +398,6 @@ Proof.
         + apply HCFI; by assumption.
     }
 Qed.
-
-(*
-Theorem cfi : cfi abstract_cfi_machine.
-Proof.
- unfold cfi. intros.
-  apply interm_equiv_intermrev in INTERM.
-  induction INTERM as [s s' STEP | s s' s'' xs STEP INTERM ].
-  + destruct (succ s s') eqn:SUCC.
-    * (*case the step is in the control flow graph*)
-      left. intros si sj IN2.
-      destruct IN2 as [[? ?] | CONTRA]; [idtac | destruct CONTRA];
-      subst. auto.
-    * (*case the step is outside the contro flow graph*)
-      destruct STEP as [STEPA | STEP].
-      - (*case it's an attacker step*)
-        left. intros si sj IN2. simpl in *.
-        destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
-        intro STEP.
-        destruct (step_succ_violation SUCC STEP) as [CONT1 CONT2].
-        assert (CONTRA := step_a_violation STEPA).
-        rewrite CONTRA in CONT1. congruence.
-      - (*case it's a normal step*)
-        right; exists s; exists s'; exists []; exists [].
-        simpl; repeat (split;auto).
-        intros ? ? IN2. destruct IN2.
-        intros ? ? IN2. destruct IN2.
-        unfold stopping.
-        intros si sj CONTRA. by destruct CONTRA.
-        intros si IN. destruct IN as [? | IN]; [subst | destruct IN].
-        destruct (step_succ_violation SUCC STEP) as [H1 H2].
-        intros (? & CONTRA).
-        inv CONTRA; simpl in H2; by discriminate.
-  + apply interm_equiv_intermrev in INTERM.
-    destruct (IHINTERM INIT) as [TSAFE | [sv1 [sv2 [hs [tl VIOLATION]]]]].
-    { unfold trace_has_cfi in TSAFE.
-      destruct (succ s' s'') eqn:SUCC.
-      * (*case the step is in the control flow graph*)
-        left. intros si sj IN2.
-        induction xs using rev_ind.
-        { destruct IN2. }
-        { clear IHxs.
-          rewrite <- app_assoc in IN2.
-          simpl in IN2.
-          destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]].
-          - apply TSAFE; assumption.
-          - subst. apply interm_last_step in INTERM; subst.
-            auto.
-        }
-      * (*case the step is not in the control flow graph*)
-        destruct STEP as [STEPA | STEP].
-      - (*case it's an attacker step*)
-        left. intros si sj IN2.
-        induction xs using rev_ind.
-        { destruct IN2. }
-        { rewrite <- app_assoc in IN2.
-          simpl in IN2.
-          destruct (in2_reverse IN2) as [IN2' | [EQ1 EQ2]].
-          - apply TSAFE; assumption.
-          - subst. apply interm_last_step in INTERM; subst; auto.
-            intro STEP. destruct (step_succ_violation SUCC STEP) as [H1 H2].
-            assert (CONTRA := step_a_violation STEPA).
-            rewrite CONTRA in H1. congruence. }
-      - (*case it's a normal step*)
-        right. induction xs using rev_ind; [inversion INTERM | idtac].
-        apply interm_last_step in INTERM; subst.
-        exists s'; exists s''; exists xs; exists [].
-        simpl; rewrite <- app_assoc. repeat (split; auto).
-        intros ? ? IN2.
-        destruct IN2.
-        unfold stopping.
-        intros ? ? CONTRA. destruct CONTRA.
-        intros si IN.
-        destruct IN as [? | IN]; [subst | destruct IN].
-        destruct (step_succ_violation SUCC STEP) as [H1 H2].
-        intros (? & CONTRA).
-        inv CONTRA; simpl in H2; by discriminate.
-    }
-    { (*Case a violation occurs in the trace*)
-     induction xs using rev_ind; [inversion INTERM | subst; clear IHxs].
-     destruct VIOLATION as [LST [VIO [T1 [T2 STOPS]]]].
-     rewrite LST in INTERM. simpl in *.
-     destruct STOPS as [ALLATTACKER ALLSTUCK].
-     destruct VIO as [VSTEP SUCC].
-     destruct (step_succ_violation SUCC VSTEP) as [H1 H2].
-     destruct STEP as [STEPA | STEP].
-     - unfold trace_has_at_most_one_violation.
-       right.
-       rewrite LST.
-       exists sv1; exists sv2; exists hs; exists (tl ++ [s'']).
-       split.
-       { rewrite <- app_assoc. by reflexivity. }
-       { split.
-         { simpl; split; by auto. }
-         { split; [assumption | simpl].
-           split.
-           - intros si sj IN2 STEP.
-             induction tl using rev_ind.
-             * simpl in IN2.
-               destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
-               inv STEP; simpl in H2; discriminate.
-             * clear IHtl.
-               rewrite <- LST in INTERM.
-               assert (EQ := list_theorem x xs hs sv1 sv2 tl x0 LST).
-               subst.
-               apply interm_last_step in INTERM; subst.
-               rewrite <- app_assoc in IN2.
-               simpl ((sv2 :: tl ++ [s'] ++ [s''])) in IN2.
-               rewrite app_comm_cons in IN2.
-               remember (sv2 :: tl) as tl'.
-               destruct (in2_reverse IN2) as [IN2' | [? ?]]; subst.
-               + unfold all_stuck in ALLSTUCK.
-                 apply In2_implies_In in IN2'.
-                 apply ALLSTUCK in IN2'.
-                 assert (ESTEP: exists s, step si s)
-                   by (eexists; eauto).
-                 destruct (IN2' ESTEP).
-               + destruct (succ si sj) eqn:SUCC'.
-                 * assumption.
-                 * destruct (step_succ_violation SUCC' STEP) as [H3 H4].
-                   assert (EQ := step_a_violation STEPA).
-                   rewrite EQ in H3.
-                   congruence.
-           - unfold stopping.
-             split.
-             { (*all attacker*)
-               intros si sj IN2.
-               destruct tl using rev_ind.
-               - simpl in IN2.
-                 destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
-                 change (hs ++ [sv1; si]) with (hs ++ [sv1] ++ [si]) in INTERM.
-                 rewrite app_assoc in INTERM.
-                 apply interm_last_step in INTERM; subst.
-                 assumption.
-               - clear IHtl.
-                 rewrite <- LST in INTERM.
-                 apply list_theorem in LST; subst.
-                 apply interm_last_step in INTERM; subst.
-                 rewrite <- app_assoc in IN2.
-                 simpl (sv2 :: tl ++ [s'] ++ [s'']) in IN2.
-                 rewrite app_comm_cons in IN2.
-                 destruct (in2_reverse IN2) as [IN2' | [? ?]]; subst.
-                 + apply ALLATTACKER; assumption.
-                 + assumption.
-             }
-             { (*all stuck*)
-               intros si IN.
-               destruct tl using rev_ind.
-               - destruct IN as [? | IN].
-                 + subst. intros (? & CONTRA).
-                   destruct (step_succ_violation SUCC VSTEP) as [H3 H4].
-                   inv CONTRA; simpl in H3; by discriminate.
-                 + destruct IN as [? | CONTRA].
-                   * subst. intros (? & CONTRA).
-                     destruct (step_succ_violation SUCC VSTEP) as [H3 H4].
-                     change (hs ++ [sv1;sv2]) with (hs ++ [sv1] ++ [sv2]) in INTERM.
-                     rewrite app_assoc in INTERM.
-                     apply interm_last_step in INTERM. subst.
-                     assert (EQ:= step_a_violation STEPA).
-                     rewrite EQ in H4.
-                     inv CONTRA; simpl in H4; by discriminate.
-                   * destruct CONTRA.
-               - clear IHtl.
-                 rewrite app_comm_cons in IN.
-                 apply list_utils.in_reverse in IN.
-                 destruct IN as [IN | ?]; subst.
-                 + apply ALLSTUCK; by assumption.
-                 + rewrite <- LST in INTERM.
-                   assert (EQ:= interm_last_step INTERM);
-                   apply list_theorem in LST; subst.
-                   subst.
-                   unfold all_stuck in ALLSTUCK.
-                   specialize (ALLSTUCK s').
-                   assert (IN: In s' (sv2 :: tl ++ [s']))
-                     by (eauto using list_utils.in_last).
-                   assert (STUCK := stuck_states_preserved_by_a ALLATTACKER H2).
-                   assert (IN' : In s' (tl ++ [s']))
-                     by (eauto using list_utils.in_last).
-                   apply STUCK in IN'.
-                   assert (CONT := step_a_violation STEPA).
-                   rewrite CONT in IN'.
-                   intros (? & CONTRA).
-                   inv CONTRA; simpl in IN'; discriminate.
-             }
-         }
-       }
-     - right.
-       rewrite LST.
-       exists sv1; exists sv2; exists hs; exists (tl ++ [s'']).
-       split.
-       { rewrite <- app_assoc. by reflexivity. }
-       { split.
-         { simpl; split; by auto. }
-         { split; [assumption | simpl].
-           split.
-           - intros si sj IN2 STEP'.
-             induction tl using rev_ind.
-             * simpl in IN2.
-               destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
-               inv STEP'; simpl in H2; discriminate.
-             * clear IHtl.
-               rewrite <- LST in INTERM.
-               assert (EQ := list_theorem x xs hs sv1 sv2 tl x0 LST).
-               subst.
-               apply interm_last_step in INTERM; subst.
-               rewrite <- app_assoc in IN2.
-               simpl ((sv2 :: tl ++ [s'] ++ [s''])) in IN2.
-               rewrite app_comm_cons in IN2.
-               remember (sv2 :: tl) as tl'.
-               destruct (in2_reverse IN2) as [IN2' | [? ?]]; subst.
-               + unfold all_stuck in ALLSTUCK.
-                 apply In2_implies_In in IN2'.
-                 apply ALLSTUCK in IN2'.
-                 assert (ESTEP: exists s, step si s)
-                   by (eexists; eauto).
-                 destruct (IN2' ESTEP).
-               + unfold all_stuck in ALLSTUCK.
-                 assert (IN: In si (sv2 :: tl ++ [si]))
-                   by (eauto using list_utils.in_last).
-                 apply ALLSTUCK in IN.
-                 assert (ESTEP : exists s, step si s)
-                   by (eexists; eauto).
-                 destruct (IN ESTEP).
-           - unfold stopping.
-             split.
-             { (*all attacker*)
-               intros si sj IN2.
-               destruct tl using rev_ind.
-               - simpl in IN2.
-                 destruct IN2 as [[? ?] | CONTRA]; [subst | destruct CONTRA].
-                 change (hs ++ [sv1; si]) with (hs ++ [sv1] ++ [si]) in INTERM.
-                 rewrite app_assoc in INTERM.
-                 apply interm_last_step in INTERM; subst.
-                 assert (IN: In s' [s']) by (simpl; auto).
-                 apply ALLSTUCK in IN.
-                 exfalso.
-                 apply IN. eexists; eauto.
-               - clear IHtl.
-                 rewrite <- LST in INTERM.
-                 apply list_theorem in LST; subst.
-                 apply interm_last_step in INTERM; subst.
-                 rewrite <- app_assoc in IN2.
-                 simpl (sv2 :: tl ++ [s'] ++ [s'']) in IN2.
-                 rewrite app_comm_cons in IN2.
-                 destruct (in2_reverse IN2) as [IN2' | [? ?]]; subst.
-                 + apply ALLATTACKER; assumption.
-                 + assert (IN: In si (sv2 :: tl ++ [si]))
-                     by (eauto using list_utils.in_last).
-                   apply ALLSTUCK in IN.
-                   exfalso. apply IN. eexists; eauto.
-             }
-             { (*all stuck*)
-               intros si IN.
-               destruct tl using rev_ind.
-               - destruct IN as [? | IN].
-                 + subst. intros (? & CONTRA).
-                   destruct (step_succ_violation SUCC VSTEP) as [H3 H4].
-                   inv CONTRA; simpl in H3; by discriminate.
-                 + destruct IN as [? | CONTRA].
-                   * subst. intros (? & CONTRA).
-                     destruct (step_succ_violation SUCC VSTEP) as [H3 H4].
-                     change (hs ++ [sv1;sv2]) with (hs ++ [sv1] ++ [sv2]) in INTERM.
-                     rewrite app_assoc in INTERM.
-                     apply interm_last_step in INTERM. subst.
-                     assert (IN: In s' [s']) by (simpl; auto).
-                     apply ALLSTUCK in IN.
-                     exfalso.
-                     apply IN. eexists; eauto.
-                   * destruct CONTRA.
-               - clear IHtl.
-                 rewrite app_comm_cons in IN.
-                 apply list_utils.in_reverse in IN.
-                 destruct IN as [IN | ?]; subst.
-                 + apply ALLSTUCK; by assumption.
-                 + rewrite <- LST in INTERM.
-                   assert (EQ:= interm_last_step INTERM);
-                   apply list_theorem in LST; subst.
-                   subst.
-                   unfold all_stuck in ALLSTUCK.
-                   specialize (ALLSTUCK s').
-                   assert (IN: In s' (sv2 :: tl ++ [s']))
-                     by (eauto using list_utils.in_last).
-                  apply ALLSTUCK in IN.
-                  exfalso.
-                  apply IN; eexists; eauto.
-             }
-         }
-       }
-    }
-Qed.*)
 
 End WithClasses.
 
