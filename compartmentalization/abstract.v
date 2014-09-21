@@ -3,7 +3,7 @@ Require Import List Arith Sorted Bool.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
 
 Require Import lib.Integers lib.utils lib.partial_maps lib.ordered common.common.
-Require Import lib.list_utils lib.ssr_list_utils lib.ssr_set_utils.
+Require Import lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
 
 Set Bullet Behavior "Strict Subproofs".
@@ -893,11 +893,8 @@ Proof.
          simpl; intros c''; rewrite andb_true_iff; intros []; intros GOOD'';
          apply disjoint_subset; auto; simpl).
   - (* c_sys \in [:: c_upd, c' & rem_all c C] *)
-    apply/inP; rewrite rem_all_is_delete.
-    do 2 right; apply delete_in_iff; split; auto.
-    assert (GC : good_compartments C) by
-      (eapply good_state_decomposed__good_compartments; eassumption).
-    by move: def_c_sys => /permitted_now_in_spec => /(_ GC) [] /andP [] /inP.
+    case/in_compartment_opt_correct/andP: ICO_sys => c_in _.
+    by rewrite !in_cons in_rem_all c_in (eq_sym _ c) (introF eqP DIFF) !orbT.
   - (* non_overlapping c_upd c' *)
     by rewrite !non_overlapping_cons (non_overlapping_rem _ _ NOL) andbT /=
                -setI_eq0 {1}setDE -setIA [_ :&: A']setIC setICr setI0 eqxx /=
@@ -959,8 +956,8 @@ Proof.
 
     assert (SS : syscalls_separated M C = true) by
       (eapply good_state_decomposed__syscalls_separated; eassumption).
-    replace @all with @forallb by reflexivity; rewrite rem_all_is_delete.
-    auto using delete_preserves_forallb.
+    apply/allP=> c''. rewrite in_rem_all=> /andP [_].
+    move/allP: SS. by apply.
   - (* syscalls_present *)
     assert (SP : syscalls_present C) by
       (eapply good_state_decomposed__syscalls_present; eassumption).
@@ -1081,8 +1078,8 @@ Proof.
     rewrite (syscall_address_space_same M _ c); auto.
     unfold is_true in SS; rewrite ->forallb_forall in SS.
     by apply/SS/inP.
-  - rewrite rem_all_is_delete; replace @all with @forallb by reflexivity;
-      auto using delete_preserves_forallb.
+  - apply/allP=> c''. rewrite in_rem_all=> /andP [_].
+    move/allP: SS. by apply.
   - move/id in SP.
     rewrite /syscalls_present /table /is_true in SP *.
     rewrite ->forallb_forall in SP; rewrite ->forallb_forall.
@@ -1124,21 +1121,18 @@ Corollary good_syscalls_b : forall MM,
 Proof. rewrite /table /= => MM; apply/and4P; split; auto. Qed.
 (*Global*) Hint Resolve good_syscalls_b.
 
-Corollary good_syscalls : forall MM sc,
-  In sc table -> good_syscall sc MM.
-Proof. intros MM; apply forallb_forall. apply good_syscalls_b. Qed.
-(*Global*) Hint Resolve good_syscalls.
-
-Lemma get_syscall_in : forall addr sc,
-  get_syscall addr ?= sc -> In sc table.
-Proof.
-  unfold get_syscall; intros addr sc GS; apply find_in in GS; tauto.
-Qed.
-(*Global*) Hint Resolve get_syscall_in.
-
-Lemma get_syscall_good : forall addr sc,
+Lemma get_syscall_good addr sc :
   get_syscall addr ?= sc -> forall MM, good_syscall sc MM.
-Proof. move=> addr sc GS; apply get_syscall_in in GS; auto. Qed.
+Proof.
+  move: good_syscalls_b.
+  rewrite /get_syscall /table /= => Hgood.
+  have [_ /= {addr sc} [<-] MM|_] := isolate_addr =P addr.
+    by case/and4P: (Hgood MM).
+  have [_ /= {addr sc} [<-] MM|_] := add_to_jump_targets_addr =P addr.
+    by case/and4P: (Hgood MM).
+  have [_ /= {addr sc} [<-] MM|//] := add_to_store_targets_addr =P addr.
+  by case/and4P: (Hgood MM).
+Qed.
 (*Global*) Hint Resolve get_syscall_good.
 
 (*** Proofs about the machine. ***)
@@ -1535,8 +1529,6 @@ Module Hints.
   Hint Resolve add_to_jump_targets_good.
   Hint Resolve add_to_store_targets_good.
   Hint Resolve good_syscalls_b.
-  Hint Resolve good_syscalls.
-  Hint Resolve get_syscall_in.
   Hint Resolve get_syscall_good.
   Hint Resolve previous_compartment.
   Hint Resolve good_compartments_preserved.
