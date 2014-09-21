@@ -2,7 +2,7 @@ Require Import Coq.Classes.SetoidDec.
 Require Import ZArith. (* omega *)
 Require Import Bool.
 Require Import lib.Coqlib.
-Require Import ssreflect ssrfun seq.
+Require Import ssreflect ssrbool ssrfun eqtype seq.
 
 Close Scope Z_scope.
 
@@ -278,11 +278,7 @@ Proof.
   exact: (inv_inj revK).
 Qed.
 
-(* Function composition *)
-Definition compose {A B C : Type} (f : B -> C) (g : A -> B) : A -> C :=
-  fun x => f (g x).
-Infix "∘" := compose (at level 30).
-Arguments compose {A B C} f g / x.
+Notation "f ∘ g" := (f \o g) (at level 30).
 
 Definition index_list_Z A i (xs: list A) : option A :=
   if Z.ltb i 0 then
@@ -705,10 +701,6 @@ Proof.
   induction l1 as [|x' l1 IH]; intros; simpl in *; subst; eauto.
 Qed.
 
-Module WithSsr.
-
-Import ssrfun.
-
 Lemma obind_inv A B (f : A -> option B) (a : option A) (b : B) :
   obind f a = Some b -> exists a', a = Some a' /\ f a' = Some b.
 Proof.
@@ -724,10 +716,6 @@ Proof.
   intros A B C mx my mz.
   destruct mx as [x|]; [destruct (my x) as [y|]|]; reflexivity.
 Qed.
-
-End WithSsr.
-
-Export WithSsr.
 
 (* This notation breaks parsing of the "do" tactical, so it should be
 packaged in a module. *)
@@ -800,38 +788,13 @@ Proof.
   - split; [intros _ _ [] | reflexivity].
   - destruct (select x) eqn:SEL.
     + split; [discriminate|].
-      intros IN; specialize (IN (x,y) (or_introl eq_refl)); simpl in *;
+      intros IN; specialize (IN (x,y) (or_introl erefl)); simpl in *;
         congruence.
     + split.
       * intros ASSOC; rewrite -> IHxys in ASSOC.
         intros [x' y'] [<- | IN]; simpl; [|apply ASSOC in IN]; assumption.
       * intros ALL; apply IHxys; auto.
 Qed.
-
-Section EqDec.
-
-Context {A : Type}
-        {E : EqDec (eq_setoid A)}.
-
-Lemma eqb_refl (x : A) : (x ==b x) = true.
-Proof.
-  unfold equiv_decb.
-  destruct (equiv_dec x x); congruence.
-Qed.
-
-Lemma eqb_true_iff (x y : A) : (x ==b y) = true <-> x = y.
-Proof.
-  unfold equiv_decb.
-  destruct (equiv_dec x y); simpl in *; split; congruence.
-Qed.
-
-Lemma eqb_false_iff (x y : A) : (x ==b y) = false <-> x <> y.
-Proof.
-  unfold equiv_decb.
-  destruct (equiv_dec x y); simpl in *; split; congruence.
-Qed.
-
-End EqDec.
 
 Require Import Recdef.
 Require Import Omega.
@@ -1469,17 +1432,6 @@ Definition caseS A n (T : Vector.t A (S n) -> Type)
   | Vector.cons a n v => fun T H => H a v
   end T H.
 
-Import DoNotation.
-
-Fixpoint sequence A n (v : Vector.t (option A) n) : option (Vector.t A n) :=
-  match v with
-  | Vector.nil => Some (Vector.nil _)
-  | Vector.cons a n' v' =>
-    do! a  <- a;
-    do! v' <- sequence v';
-    Some (Vector.cons _ a _ v')
-  end.
-
 End vectors.
 
 Ltac match_inv :=
@@ -1524,7 +1476,7 @@ Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : list A :=
 
 Definition run {A} (step: A -> option A) (st : A) := runn step 10000 st.
 
-Require Import ssreflect ssrbool eqtype.
+
 
 Instance eqType_EqDec (A : eqType) : EqDec (eq_setoid A).
 Proof.

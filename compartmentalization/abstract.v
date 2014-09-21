@@ -1,5 +1,3 @@
-Require Import List Arith Sorted Bool.
-
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
 
 Require Import lib.Integers lib.utils lib.partial_maps lib.ordered common.common.
@@ -10,8 +8,6 @@ Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.
 
 Set Implicit Arguments.
-
-Import ListNotations.
 
 Module Abs.
 
@@ -124,7 +120,7 @@ Notation "C ⊢ p1 , p2 , .. , pk ∈ c" :=
 Fixpoint in_compartment_opt (C : list compartment)
                             (p : value) : option compartment :=
   match C with
-    | []     => None
+    | [::]     => None
     | c :: C => if p \in address_space c
                 then Some c
                 else in_compartment_opt C p
@@ -218,7 +214,7 @@ Definition add_to_store_targets :=
                     store_targets
                     (fun S' c => let '<<A,J,_>> := c in <<A,J,S'>>) |}.
 
-Let table := [isolate; add_to_jump_targets; add_to_store_targets].
+Let table := [:: isolate; add_to_jump_targets; add_to_store_targets].
 
 Definition get_syscall (addr : value) : option syscall :=
   List.find (fun sc => address sc == addr) table.
@@ -238,7 +234,7 @@ Definition syscalls_separated (M : memory) : list compartment -> bool :=
 Arguments syscalls_separated M C /.
 
 Definition syscalls_present (C : list compartment) : bool :=
-  forallb (isSome ∘ (in_compartment_opt C) ∘ address) table.
+  all (isSome ∘ in_compartment_opt C) [seq address sc | sc <- table].
 
 Definition good_state (MM : state) : bool :=
   [&& previous MM \in compartments MM,
@@ -414,21 +410,16 @@ Qed.
 
 (*** Proofs for `good_compartments' ***)
 
-Local Ltac good_compartments_trivial :=
-  unfold good_compartments; intros C GOOD;
-  repeat rewrite ->andb_true_iff in GOOD;
-  tauto.
-
 (* For `auto' *)
-Lemma good_compartments__non_overlapping : forall C,
+Lemma good_compartments__non_overlapping C :
   good_compartments C = true -> non_overlapping C = true.
-Proof. good_compartments_trivial. Qed.
+Proof. by case/andP. Qed.
 (*Global*) Hint Resolve good_compartments__non_overlapping.
 
 (* For `auto' *)
-Lemma good_compartments__contained_compartments : forall C,
+Lemma good_compartments__contained_compartments C :
   good_compartments C = true -> contained_compartments C = true.
-Proof. good_compartments_trivial. Qed.
+Proof. by case/andP. Qed.
 (*Global*) Hint Resolve good_compartments__contained_compartments.
 
 (*** Proofs for `non_overlapping' ***)
@@ -784,7 +775,7 @@ Proof.
     rewrite IC; simpl.
     move: COND => [/eqP -> | [/eqP -> ELEM]]; simpl.
     + reflexivity.
-    + rewrite ELEM /=; auto; rewrite orb_true_r; reflexivity.
+    + rewrite ELEM /=; auto. by rewrite orbT.
 Qed.
 
 Corollary permitted_now_in__in_compartment_opt : forall C sk prev pc c,
@@ -799,7 +790,7 @@ Qed.
 
 (*** Proofs about `good_syscall' and `get_syscall'. ***)
 
-Theorem isolate_good : forall MM, good_syscall isolate MM = true.
+Theorem isolate_good : forall MM, good_syscall isolate MM.
 Proof.
   unfold isolate, good_syscall; intros MM; simpl.
   destruct (good_state MM) eqn:GOOD; [simpl|reflexivity].
@@ -813,11 +804,11 @@ Proof.
   (* Now, compute in `isolate_fn'. *)
   let (* Can't get the binder name, so we provide it *)
       DO var := match goal with
-                  | |- match (do! _ <- ?GET;   _) with _ => _ end = true =>
+                  | |- is_true match (do! _ <- ?GET;   _) with _ => _ end =>
                     let def_var := fresh "def_" var in
                     destruct GET as [var|] eqn:def_var
-                  | |- match (match ?COND with true => _ | false => None end)
-                       with _ => _ end = true =>
+                  | |- is_true match (match ?COND with true => _ | false => None end)
+                       with _ => _ end =>
                     destruct COND eqn:var
                 end; simpl; [|reflexivity]
   in DO c_sys;
@@ -837,9 +828,8 @@ Proof.
   unfold good_compartments in *; simpl;
     assert (TEMP : good_compartments C = true) by
       (rewrite /good_state /good_compartments /= in GOOD *;
-       repeat rewrite ->andb_true_iff in GOOD; andb_true_split; try tauto).
-    move TEMP before GOOD; unfold good_compartments in TEMP;
-    repeat rewrite ->andb_true_iff in TEMP; destruct TEMP as [NOL CC].
+       case/and4P: GOOD; tauto);
+    case/andP: TEMP=> NOL CC.
   have IN : c \in C by case/and4P: GOOD.
   assert (NONEMPTY_A_A' : (A :\: A') != set0). {
     move/eqP in SAME; subst c_next.
@@ -888,10 +878,8 @@ Proof.
     intro; subst c_sys.
     by rewrite SAS in NOT_SYSCALL_c.
   }
-  andb_true_split; auto;
-    try (eapply forallb_impl; [|apply C'_DISJOINT]; cbv beta;
-         simpl; intros c''; rewrite andb_true_iff; intros []; intros GOOD'';
-         apply disjoint_subset; auto; simpl).
+  rewrite -!andbA.
+  apply/and5P. split; last (apply/and3P; split).
   - (* c_sys \in [:: c_upd, c' & rem_all c C] *)
     case/in_compartment_opt_correct/andP: ICO_sys => c_in _.
     by rewrite !in_cons in_rem_all c_in (eq_sym _ c) (introF eqP DIFF) !orbT.
@@ -906,7 +894,7 @@ Proof.
               \bigcup_(d <- C) address_space d. {
       rewrite big_filter /= (bigID (pred1 c) predT) /= -subsetDU //.
       apply f_equal2=> //.
-      have Heq : [seq i <- C | i == c] =i [<<A,J,S>>].
+      have Heq : [seq i <- C | i == c] =i [:: <<A,J,S>>].
         rewrite def_AJS=> c'.
         rewrite in_cons mem_filter orbF.
         have [{c'} ->/=|//] := c' =P <<A,J,S>>.
@@ -953,7 +941,6 @@ Proof.
     apply/orP; left.
     by eapply forall_subset; [|exact USER_c].
   - (* syscalls_separated (delete c C) *)
-
     assert (SS : syscalls_separated M C = true) by
       (eapply good_state_decomposed__syscalls_separated; eassumption).
     apply/allP=> c''. rewrite in_rem_all=> /andP [_].
@@ -961,12 +948,11 @@ Proof.
   - (* syscalls_present *)
     assert (SP : syscalls_present C) by
       (eapply good_state_decomposed__syscalls_present; eassumption).
-    rewrite /syscalls_present /table /is_true in SP *.
-    rewrite ->forallb_forall in SP; rewrite ->forallb_forall.
-    intros sc IN_sc; specialize (SP sc IN_sc); cbv [compose] in *.
-    destruct sc as [sc sc_fn]; cbv [address] in *; clear IN_sc sc_fn.
-    destruct (in_compartment_opt C sc) as [c_sc|] eqn:ICO;
-      [clear SP | discriminate].
+    rewrite /syscalls_present /table in SP *.
+    move/allP in SP. apply/allP.
+    move=> sc /SP IN_sc.
+    cbv [funcomp] in *.
+    case ICO: (in_compartment_opt C sc) IN_sc => [c_sc|//] _.
     move: (ICO) => /in_compartment_opt_correct /andP [IN_c_sc IN_sc].
     destruct (c_sc == c) eqn:EQ.
     + move/eqP in EQ; subst; simpl in *.
@@ -1076,18 +1062,16 @@ Proof.
                rewrite orbT ].
   - rewrite (user_address_space_same M _ c); auto.
     rewrite (syscall_address_space_same M _ c); auto.
-    unfold is_true in SS; rewrite ->forallb_forall in SS.
-    by apply/SS/inP.
+    by move/allP/(_ _ PREV): SS.
   - apply/allP=> c''. rewrite in_rem_all=> /andP [_].
     move/allP: SS. by apply.
   - move/id in SP.
     rewrite /syscalls_present /table /is_true in SP *.
-    rewrite ->forallb_forall in SP; rewrite ->forallb_forall.
-    intros sc IN_sc; specialize (SP sc IN_sc); cbv [compose] in *.
-    destruct sc as [sc sc_fn]; cbv [address] in *; clear IN_sc sc_fn.
+    move/allP in SP.
+    apply/allP => sc /SP.
+    cbv [funcomp] in *.
     simpl; rewrite <-ADDR.
-    destruct (in_compartment_opt C sc) as [c_sc|] eqn:ICO;
-      [clear SP | discriminate].
+    case ICO: (in_compartment_opt C sc) => [c_sc|//] _.
     move: (ICO) => /in_compartment_opt_correct/andP [IN_c_sc IN_sc].
     have [<- | NEQ_sc] := altP (c_sc =P c).
     + by rewrite IN_sc.
@@ -1179,10 +1163,10 @@ Proof.
     [clear ICO; rename ICO' into ICO | discriminate].
   destruct (syscall_address_space M c) eqn:SAS; [assumption | clear GOODSC].
   apply in_compartment_opt_correct in ICO; eauto 3;
-    move: ICO => /andP [/inP IN IN'].
+    move: ICO => /andP [IN IN'].
   assert (SS : syscalls_separated M C) by eauto; simpl in *.
-  move: SS => /forallb_forall/(_ c IN) /= SS.
-  rewrite SAS orb_false_r /user_address_space /= in SS.
+  move: SS => /allP/(_ c IN) /= SS.
+  rewrite SAS orbF /user_address_space /= in SS.
   move/forallP/(_ (address sc))/implyP/(_ IN') in SS.
   by rewrite INST in SS.
 Qed.
@@ -1197,23 +1181,16 @@ Proof.
   intros MM MM' sc INST GETSC CALL GOOD; generalize GETSC => GETSC'.
   unfold get_syscall,table in GETSC; simpl in *.
   assert (SP : syscalls_present (compartments MM)) by eauto.
-  unfold syscalls_present,is_true in SP; rewrite ->forallb_forall in SP.
+  unfold syscalls_present,is_true in SP; move/allP in SP.
   unfold get_syscall,table in *; simpl in *.
-  specialize SP with sc; cbv [compose] in *.
-  repeat match type of GETSC with
-    | context[if ?COND then _ else _] =>
-        destruct COND eqn:EQ; [move/eqP in EQ | clear EQ]
-    | None ?= _ =>
-      discriminate
-    | Some _ ?= _ =>
-      lapply SP; [clear SP; intros SP; simpl in SP | solve [auto]];
-      clear CALL
-  end; inversion GETSC; subst; clear GETSC;
-  eapply stepping_syscall_preserves_good; try eassumption; eauto 3.
-  (* Have to repeat this thanks, I think, to evar unification timing *)
-  - rewrite <-EQ; auto.
-  - rewrite <-EQ; auto.
-  - rewrite <-EQ; apply SP; auto.
+  move: SP GETSC GETSC' CALL => /(_ (pc MM))/=.
+  rewrite !in_cons !(eq_sym _ (pc MM)).
+  have [E /(_ erefl) ? [<-] _ ?|NE1] //= := pc MM =P _.
+    eapply stepping_syscall_preserves_good; try eassumption; eauto 3.
+  have [E /(_ erefl) ? [<-] _ ?|NE2] //= := pc MM =P _.
+    eapply stepping_syscall_preserves_good; try eassumption; eauto 3.
+  have [E /(_ erefl) ? [<-] _ ?|NE3] //= := pc MM =P _.
+  by eapply stepping_syscall_preserves_good; try eassumption; eauto 3.
 Qed.
 
 Lemma previous_compartment : forall `(STEP : step MM MM'),
