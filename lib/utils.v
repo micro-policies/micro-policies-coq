@@ -1,9 +1,8 @@
 Require Import Coq.Classes.SetoidDec.
-Require ssreflect ssrfun.
 Require Import ZArith. (* omega *)
-Require Import List.
 Require Import Bool.
 Require Import lib.Coqlib.
+Require Import ssreflect ssrfun seq.
 
 Close Scope Z_scope.
 
@@ -274,11 +273,9 @@ Lemma rev_nil_nil (A: Type) : forall (l: list A),
   rev l = nil ->
   l = nil.
 Proof.
-  induction l; intros ; auto.
-  simpl in *.
-  exploit app_eq_nil ; eauto.
-  intros [Hcont1 Hcont2].
-  inv Hcont2.
+  move=> l.
+  rewrite -{1}[[::]]/(rev [::]).
+  exact: (inv_inj revK).
 Qed.
 
 (* Function composition *)
@@ -286,175 +283,6 @@ Definition compose {A B C : Type} (f : B -> C) (g : A -> B) : A -> C :=
   fun x => f (g x).
 Infix "∘" := compose (at level 30).
 Arguments compose {A B C} f g / x.
-
-(* Useful functions on lists *)
-
-(* What I wanted to write for group_by (taken from ghc stdlib)
-Fixpoint span A (p : A -> bool) (xs : list A) : list A * list A :=
-  match xs with
-  | nil => (nil,nil)
-  | x :: xs' =>
-      if p x then
-        let (ys,zs) := span p xs' in (x::ys,zs)
-      else
-        (nil,xs)
-  end.
-
-Fixpoint group_by A (e : A -> A -> bool) (xs : list A) : list (list A) :=
-  match xs with
-  | nil => nil
-  | x::xs' => let (ys,zs) := span (e x) xs' in (x::ys) :: group_by e zs
-  end.
-Error: Cannot guess decreasing argument of fix. *)
-
-(* What I ended up writing for group_by *)
-Require Import Omega.
-Require Import Recdef.
-
-Definition span' X (p : X -> bool) : forall (xs : list X),
-    {x : list X * list X | le (length (snd x)) (length xs)}.
-  refine(
-    fix span xs :=
-      match xs
-      return {x : list X * list X | le (length (snd x)) (length xs)}
-      with
-        | nil => exist _ (nil,nil) _
-        | x :: xs' =>
-            if p x then
-              exist _ (x :: fst (proj1_sig (span xs')),
-                       snd (proj1_sig (span xs'))) _
-            else
-              exist _ (nil,x::xs') _
-      end).
-  simpl. omega.
-  simpl in *. destruct (span xs'). simpl. omega.
-  simpl. omega.
-Defined.
-
-Function group_by (A : Type) (e : A -> A -> bool)
-                  (xs : list A) {measure length xs}
-  : list (list A) :=
-  match xs with
-  | nil => nil
-  | x::xs' => (x :: fst (proj1_sig (span' (e x) xs')))
-              :: group_by e (snd (proj1_sig (span' (e x) xs')))
-  end.
-intros. destruct (span' (e x) xs'). simpl. omega.
-Defined.
-
-(*
-Eval compute in group_by beq_nat (1 :: 2 :: 2 :: 3 :: 3 :: 3 :: nil).
-*)
-
-Fixpoint zip_with_keep_rests (A B C : Type) (f : A -> B -> C)
-    (xs : list A) (ys : list B) : (list C * (list A * list B)) :=
-  match xs, ys with
-  | x::xs', y::ys' =>
-      let (zs, rest) := zip_with_keep_rests f xs' ys' in
-        (f x y :: zs, rest)
-  | nil, _ => (nil, (nil, ys))
-  | _, nil => (nil, (xs, nil))
-  end.
-
-(*
-Eval compute in zip_with_keep_rests plus (1 :: 2 :: 3 :: nil)
-                                         (1 :: 1 :: nil).
-
-Eval compute in zip_with_keep_rests plus (1 :: 1 :: nil)
-                                         (1 :: 2 :: 3 :: nil).
-*)
-
-Definition zip_with (A B C : Type) (f : A -> B -> C)
-    (xs : list A) (ys : list B) : list C :=
-  fst (zip_with_keep_rests f xs ys).
-
-Fixpoint consecutive_with (A B : Type) (f : A -> A -> B) (xs : list A)
-    : list B :=
-  match xs with
-  | nil => nil
-  | x1 :: xs' =>
-    match xs' with
-    | nil => nil
-    | x2 :: xs'' => f x1 x2 :: consecutive_with f xs'
-    end
-  end.
-
-Definition consecutive (A : Type) := consecutive_with (@pair A A).
-
-(*
-Eval compute in consecutive (1 :: 2 :: 3 :: 4 :: 5 :: nil).
-*)
-
-Fixpoint last_with (A B : Type) (f : A -> B) (l : list A) (d : B) : B :=
-  match l with
-  | nil => d
-  | a :: nil => f a
-  | a :: l => last_with f l d
-  end.
-
-Definition last_opt (A : Type) xs := last_with (@Some A) xs None.
-
-(*
-Eval compute in last_opt (1 :: 2 :: 3 :: nil).
-Eval compute in last_opt (@nil nat).
-*)
-
-Fixpoint snoc (A : Type) (xs : list A) (y : A) : list A :=
-  match xs with
-  | nil => y :: nil
-  | x :: xs' => x :: (snoc xs' y)
-  end.
-
-Fixpoint init (X : Type) (xs : list X) : list X :=
-  match xs with
-  | nil => nil
-  | x1 :: xs' =>
-    match xs' with
-    | nil => nil
-    | x2 :: xs'' => x1 :: (init xs')
-    end
-  end.
-
-(*
-Eval compute in init (1 :: 2 :: 3 :: nil).
-Eval compute in init (1 :: nil).
-Eval compute in init (@nil nat).
-*)
-(** * Finite and infinite traces *)
-
-CoInductive trace (A : Type) : Type :=
-  | TNil : trace A
-  | TCons : A -> trace A -> trace A.
-
-Implicit Arguments TNil [A].
-
-Fixpoint list_to_trace (A : Type) (xs : list A) : trace A :=
-  match xs with
-  | nil => TNil
-  | x :: xs' => TCons x (list_to_trace xs')
-  end.
-
-CoFixpoint map_trace (A B: Type) (f: A -> B) (t: trace A) : trace B :=
-  match t with
-    | TNil => TNil
-    | TCons a ta => TCons (f a) (map_trace f ta)
-  end.
-
-Definition frob A (t : trace A) : trace A :=
-  match t with
-    | TCons h t' => TCons h t'
-    | TNil => TNil
-  end.
-
-Theorem frob_eq : forall A (t : trace A), t = frob t.
-  destruct t; reflexivity.
-Qed.
-
-Lemma nth_error_nil : forall A pc,
-  nth_error nil pc = @None A .
-Proof.
-  induction pc; auto.
-Qed.
 
 Definition index_list_Z A i (xs: list A) : option A :=
   if Z.ltb i 0 then
@@ -547,7 +375,7 @@ Proof.
   unfold index_list_Z. intros.
   destruct (i <? 0)%Z eqn:?. inv H.
   pose proof (nth_error_Some H). clear H.
-  rewrite Z.ltb_nlt in Heqb.
+  rewrite -> Z.ltb_nlt in Heqb.
   zify. rewrite Z2Nat.id in H0; omega.
 Qed.
 
@@ -581,7 +409,6 @@ Definition update_list_Z A i y (xs: list A) : option (list A) :=
   else
     update_list (Z.to_nat i) y xs.
 
-
 Lemma update_Z_some_not_nil : forall A (v:A) l i l',
   update_list_Z i v l = Some l' ->
   l' = nil ->
@@ -590,7 +417,6 @@ Proof.
   intros. unfold update_list_Z in *.  destruct (i <? 0)%Z. congruence.
   eapply update_some_not_nil; eauto.
 Qed.
-
 
 Lemma update_list_Z_nat (A: Type) (v:A) l i l':
   update_list_Z i v l = Some l' ->
@@ -607,7 +433,7 @@ Proof.
   induction l ; intros.
   destruct a ; simpl in *; inv H.
   destruct a0 ; simpl in *; inv H; auto.
-  case_eq (update_list a0 v l) ; intros ; rewrite H in * ; inv H1.
+  case_eq (update_list a0 v l) ; intros ; rewrite -> H in * ; inv H1.
   auto.
 Qed.
 
@@ -691,16 +517,6 @@ Proof.
         edestruct IHl as [l' Hl']; eauto.
         rewrite Hl'. eauto.
 Qed.
-
-Definition swap T n (l : list T) : option (list T) :=
-  match l with
-    | nil => None
-    | y :: l' =>
-      match nth_error (y :: l') n with
-        | Some x => update_list n y (x :: l')
-        | None => None
-      end
-  end.
 
 Lemma filter_cons_inv_strong :
   forall X (l1 : list X) x2 l2
@@ -825,12 +641,6 @@ Fixpoint just_somes {X Y} (l : list (X * option Y)) :=
   | (x, Some y) :: l' => (x,y) :: just_somes l'
   end.
 
-Fixpoint replicate T (a: T) n : list T :=
-  match n with
-    | O => nil
-    | S n => a::(replicate a n)
-  end.
-
 Lemma nth_error_In :
   forall T n (l : list T) (x : T),
     nth_error l n = Some x ->
@@ -860,26 +670,6 @@ Proof.
     intros []; eauto.
 Qed.
 
-Lemma swap_In :
-  forall T n (l l' : list T) x
-         (SWAP : swap n l = Some l')
-         (IN : In x l'),
-    In x l.
-Proof.
-  unfold swap.
-  intros.
-  destruct l as [|y l]; try congruence.
-  destruct n as [|n]; simpl in *.
-  - inv SWAP. eauto.
-  - destruct (nth_error l n) as [x'|] eqn:IDX; try congruence.
-    destruct (update_list n y l) as [l''|] eqn:UPD; try congruence.
-    inv SWAP.
-    destruct IN as [H | H]; subst; eauto.
-    clear - UPD H.
-    exploit update_list_In; eauto.
-    intros []; auto.
-Qed.
-
 Lemma index_list_app :
   forall T n (l1 l2 : list T) x,
     nth_error l1 n = Some x ->
@@ -902,115 +692,12 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma swap_app :
-  forall T n (l1 l1' l2 : list T)
-         (SWAP : swap n l1 = Some l1'),
-    swap n (l1 ++ l2) = Some (l1' ++ l2).
-Proof.
-  unfold swap.
-  intros.
-  destruct l1 as [|y l1]; simpl; try congruence.
-  destruct (nth_error (y :: l1) n) as [x|] eqn:SWAP'; allinv.
-  eapply index_list_app in SWAP'.
-  simpl in SWAP'.
-  rewrite SWAP'.
-  eapply update_list_app in SWAP.
-  simpl in *.
-  eauto.
-Qed.
-
-Lemma swap_forall :
-  forall T (P : T -> Prop) n l l'
-         (SWAP : swap n l = Some l')
-         (FORALL : forall x, In x l -> P x),
-    forall x, In x l' -> P x.
-Proof.
-  unfold swap.
-  intros.
-  destruct l as [|y l]; try congruence.
-  destruct (nth_error (y :: l) n) as [x'|] eqn:IDX; try congruence.
-  destruct n as [|n]; simpl in *; allinv; simpl in *; eauto.
-  match goal with
-    | H : (match ?UP with _ => _ end) = _ |- _ =>
-      destruct UP as [l''|] eqn:?; simpl in *; try congruence
-  end.
-  allinv.
-  destruct H.
-  - subst. eauto.
-  - exploit update_list_In; eauto.
-    intros [? | ?]; subst; eauto.
-Qed.
-
-Fixpoint drop {X:Type} (n:nat) (xs:list X) : list X :=
-match n with
-| O => xs
-| S n' => match xs with
-          | nil => nil
-          | (x::xs') => drop n' xs'
-          end
-end.
-
-Definition dropZ {X:Type} (z:Z) (xs:list X) : list X :=
-  if (z <? 0)%Z then
-    xs
-  else drop (Z.to_nat z) xs.
-
-
-Lemma length_drop : forall {X:Type} n (xs:list X),
-           length (drop n xs) = ((length xs) -  n)%nat.
-Proof.
-  intros X n. induction n; intros xs.
-    simpl. omega.
-    destruct xs. simpl.
-       auto.
-       simpl. auto.
-Qed.
-
-Lemma drop_cons : forall {X:Type} p (l : list X),
-    (p < length l)%nat ->
-    exists x,
-      drop p l = x :: drop (S p) l.
-Proof.
-  induction p; intros [|x l] H; simpl in *; try omega; eauto.
-  apply IHp.
-  omega.
-Qed.
-
-Import ListNotations.
-
-Lemma dropZ_all: forall {X:Type} (xs:list X),
-  (dropZ (Z.of_nat (length xs)) xs = []).
-Proof.
-  intros.
-  destruct (dropZ (Z.of_nat (length xs)) xs) eqn:E. auto.
-  exfalso.
-  unfold dropZ in E.  destruct (Z.of_nat (length xs) <? 0)%Z eqn:M.
-    apply Z.ltb_lt in M.  omega.
-    rewrite Nat2Z.id in E.
-    assert (length (drop (length xs) xs) = length (x::l)). rewrite E; auto.
-    rewrite length_drop in H. simpl in H. replace (length xs - length xs)%nat with O in H by omega. inv H.
-Qed.
-
-Inductive match_options {A B} (R : A -> B -> Prop) : option A -> option B -> Prop :=
-| mo_none : match_options R None None
-| mo_some : forall a b, R a b -> match_options R (Some a) (Some b).
-
 Lemma Forall2_length :
   forall A B (R : A -> B -> Prop) l1 l2,
     Forall2 R l1 l2 -> length l1 = length l2.
 Proof.
   induction 1; eauto; simpl; congruence.
 Qed.
-
-Fixpoint take {T} (n : nat) (l : list T) : list T :=
-  match n with
-    | O => []
-    | S n' =>
-      match l with
-        | [] => []
-        | x :: l' => x :: take n' l'
-      end
-  end.
 
 Lemma nth_error_app' X : forall (l1 l2 : list X) (x : X),
                             nth_error (l1 ++ x :: l2) (length l1) = Some x.
@@ -1069,28 +756,12 @@ Notation "'do!' 'guard?' ocond ; rest" :=
 
 End DoNotation.
 
-Definition error {A} : option A := None.
-
-Fixpoint ble_nat (m n:nat) : bool :=
-  match m,n with
-    | O,_ => true
-    | _,O => false
-    | S m',S n' => ble_nat m' n'
-  end.
-
-(*
-Require Import Relations.
-
-Notation "R *" := (clos_refl_trans_1n R)
-  (at level 8, left associativity):relation_scope.
-*)
-
-Fixpoint assoc_list_lookup {T1 T2 : Type} (xys : list (T1*T2))
+Fixpoint assoc_list_lookup {T1 T2 : Type} (xys : seq (T1 * T2)%type)
     (select : T1 -> bool) : option T2 :=
   match xys with
-  | [] => None
+  | [::] => None
   | (x,y) :: xys' => if select x then Some y
-                      else assoc_list_lookup xys' select
+                     else assoc_list_lookup xys' select
   end.
 
 Theorem assoc_list_lookup_some : forall {T1 T2 : Type} (xys : list (T1 * T2))
@@ -1132,7 +803,7 @@ Proof.
       intros IN; specialize (IN (x,y) (or_introl eq_refl)); simpl in *;
         congruence.
     + split.
-      * intros ASSOC; rewrite IHxys in ASSOC.
+      * intros ASSOC; rewrite -> IHxys in ASSOC.
         intros [x' y'] [<- | IN]; simpl; [|apply ASSOC in IN]; assumption.
       * intros ALL; apply IHxys; auto.
 Qed.
@@ -1170,14 +841,7 @@ Section In2.
 Variable A : Type.
 
 Variable x y : A.
-(*
-Function In2 (zs : list A) {measure length zs} : Prop :=
-  match zs with
-  | z1 :: z2 :: zs' => (z1 = x /\ z2 = y) \/ (In2 (z2 :: zs'))
-  | _ => False
-  end.
-Proof. intros. simpl. omega. Defined.
-*)
+
 Fixpoint In2 (l : list A) {struct l} : Prop :=
   match l with
       | nil => False
@@ -1187,7 +851,6 @@ Fixpoint In2 (l : list A) {struct l} : Prop :=
           | b :: l'' => (a = x /\ b = y) \/ (In2 l')
         end
   end.
-
 
 Lemma in2_strengthen :
   forall zs ys,
@@ -1220,8 +883,8 @@ Proof.
 Qed.
 
 Lemma in2_reverse : forall xs i j,
-  In2 (xs ++ [i;j]) ->
-  In2 (xs ++ [i]) \/ i = x /\ j = y.
+  In2 (xs ++ [:: i;j]) ->
+  In2 (xs ++ [:: i]) \/ i = x /\ j = y.
 Proof.
   intros xs i j IN2.
   induction xs.
@@ -1241,12 +904,12 @@ Qed.
 
 Lemma In2_inv xs xmid xs' :
   In2 (xs ++ xmid :: xs') ->
-  In2 (xs ++ [xmid]) \/
+  In2 (xs ++ [:: xmid]) \/
   In2 (xmid :: xs').
 Proof.
   intros IN2.
   induction xs.
-  - rewrite app_nil_l in IN2.
+  - rewrite -> app_nil_l in IN2.
     right; trivial.
   - destruct xs.
     + destruct IN2 as [[E1 E2] | IN2].
@@ -1387,7 +1050,7 @@ Hint Constructors zero_one.
 
 (* Capture steps from s to s' (with s') *)
 Inductive interm : list A -> A -> A -> Prop :=
-  | interm_single : forall (x y : A), R x y -> interm [x;y] x y
+  | interm_single : forall (x y : A), R x y -> interm [:: x;y] x y
   | interm_multi : forall (x y z : A) (xs : list A),
                     R x y ->
                     interm xs y z ->
@@ -1395,15 +1058,15 @@ Inductive interm : list A -> A -> A -> Prop :=
 Hint Constructors interm.
 
 Inductive interm_reverse : list A -> A -> A -> Prop :=
-  | intermrev_single : forall (x y : A), R x y -> interm_reverse [x;y] x y
+  | intermrev_single : forall (x y : A), R x y -> interm_reverse [:: x;y] x y
   | intermrev_multi : forall (x y z : A) (xs : list A),
                       R y z ->
                       interm_reverse xs x y ->
-                      interm_reverse (xs ++ [z]) x z.
+                      interm_reverse (xs ++ [:: z]) x z.
 Hint Constructors interm_reverse.
 
 Inductive intermr : list A -> A -> A -> Prop :=
-  | intermr_refl : forall x, intermr [x] x x
+  | intermr_refl : forall x, intermr [:: x] x x
   | intermr_multi : forall (x y z : A) (xs : list A),
                     R x y ->
                     intermr xs y z ->
@@ -1419,7 +1082,7 @@ Proof.
 Qed.
 
 Lemma interm_last_step : forall xs (si s s' : A),
-                           interm (xs ++ [si]) s s' ->
+                           interm (xs ++ [:: si]) s s' ->
                            si = s'.
 Proof.
   intros xs si s s' INTERM.
@@ -1475,7 +1138,7 @@ Proof.
     destruct H1 as [zs H2].
     left. eexists. eapply interm_multi; eauto.
     subst.
-    left. exists [x;y]. constructor. auto.
+    left. exists [:: x;y]. constructor. auto.
 Qed.
 
 Lemma interm_step_upto_strong : forall xs (s s' si : A),
@@ -1496,7 +1159,7 @@ Proof.
     - destruct (IHINTERM si IN) as [[? [IHINT IHIN]] | IHEQ].
       * left. eexists. split; eauto.
         intros sj INJ. destruct INJ as [|INJ]; subst; simpl; auto.
-      * subst. left. exists [s;s'']. split.
+      * subst. left. exists [:: s;s'']. split.
         constructor. assumption.
         intros sj INJ. destruct INJ as [|INJ]; subst; simpl; auto.
         destruct INJ as [|INJ]; subst; simpl; auto.
@@ -1514,7 +1177,7 @@ Qed.
 Lemma interm_backwards : forall xs s s' s'',
   R s' s'' ->
   interm xs s s' ->
-  interm (xs ++ [s'']) s s''.
+  interm (xs ++ [:: s'']) s s''.
 Proof.
   intros xs s s' s'' STEP INTERM.
   induction INTERM.
@@ -1525,11 +1188,11 @@ Qed.
 
 Lemma interm_destruct_last : forall xs s s',
   interm xs s s' ->
-  exists ys, interm (ys ++ [s']) s s'.
+  exists ys, interm (ys ++ [:: s']) s s'.
 Proof.
   intros xs s s' INTERM.
   induction INTERM.
-  - exists [x]; constructor(assumption).
+  - exists [:: x]; constructor(assumption).
   - destruct (IHINTERM) as [ys INTERM'].
     exists (x::ys). eapply interm_multi; eauto.
 Qed.
@@ -1552,7 +1215,7 @@ Proof.
 Qed.
 
 Lemma list_app_eq : forall {X:Type} xs ys (x y:X),
-  xs ++ [x] = ys ++ [y] ->
+  xs ++ [:: x] = ys ++ [:: y] ->
   xs = ys /\ x = y.
 Proof app_inj_tail.
 
@@ -1566,7 +1229,7 @@ Proof.
   - intros s s' s'' CONTRA ?. inversion CONTRA; subst. destruct xs; inversion H0.
   - intros.
     inversion H; subst.
-    + assert (REW : [s;s';s''] = [s;s'] ++ [s'']) by reflexivity. rewrite REW.
+    + assert (REW : [:: s;s';s''] = [:: s;s'] ++ [:: s'']) by reflexivity. rewrite REW.
       eapply intermrev_multi; eauto.
     + apply list_app_eq in H1. destruct H1; subst.
       apply IHxs with (s := s) in H3.
@@ -1662,9 +1325,9 @@ Proof.
           assumption.
           destruct H as [[EQ1 EQ2] | CONTRA]; subst. simpl; auto.
           destruct CONTRA.
-          assert (H' : In2 x' y' [s'] \/ In2 x' y' xs') by auto.
+          assert (H' : In2 x' y' [:: s'] \/ In2 x' y' xs') by auto.
           apply INH in H'.
-          assert (H0: (s :: zs) = [s] ++ zs) by reflexivity. rewrite H0.
+          assert (H0: (s :: zs) = [:: s] ++ zs) by reflexivity. rewrite H0.
           apply in2_strengthen; assumption.
          }
         { (*In*)
@@ -1683,7 +1346,7 @@ Proof.
       intros x' y'. split.
       { (*In2*)
         intros H.
-        assert (EQ : s :: zs = [s] ++ zs) by reflexivity.
+        assert (EQ : s :: zs = [:: s] ++ zs) by reflexivity.
         destruct H as [H | H].
       - destruct H as [[EQ1 EQ2] | H]; subst.
         * inversion INTERMR''; subst; simpl; auto.
@@ -1725,12 +1388,12 @@ Proof.
   * destruct IHINTERMR as [[zs INTERM] | EQ]; subst.
     + left. assert (interm (x::zs) x z) by eauto.
       eexists; eassumption.
-    + left. exists [x;z]. constructor. assumption.
+    + left. exists [:: x;z]. constructor. assumption.
 Qed.
 
 Lemma intermr_implies_interm : forall (s s' : A) xs,
   intermr xs s s' ->
-  interm xs s s' \/ (s = s' /\ xs = [s]).
+  interm xs s s' \/ (s = s' /\ xs = [:: s]).
 Proof.
   intros s s' xs INTERM.
   inversion INTERM; subst.
@@ -1851,10 +1514,10 @@ Fixpoint stepn {A} (step : A -> option A) (max_steps : nat) (st : A) : option A 
 Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : list A :=
   st ::
   match max_steps with
-  | O => []
+  | O => [::]
   | S max_steps' =>
     match step st with
-    | None => []
+    | None => [::]
     | Some st' => runn step max_steps' st'
     end
   end.

@@ -5,7 +5,7 @@ TODO: write better testing support -- e.g. comparing final states
 Require Import List. Import ListNotations.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
-Require Import ssreflect ssrfun eqtype ssrnat ssrbool.
+Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq.
 Require Import lib.utils lib.partial_maps common.common.
 Require Import lib.FiniteMaps lib.ordered.
 Require Import concrete.concrete.
@@ -49,9 +49,9 @@ Definition ruser2 : reg t := Word.repr 21.
 Definition ruser3 : reg t := Word.repr 22.
 Definition ruser4 : reg t := Word.repr 23.
 Definition user_registers :=
-  [ra; syscall_ret; syscall_arg1; syscall_arg2; syscall_arg3; ruser1;
-   ruser2; ruser3; ruser4].
-Definition user_reg_max := last user_registers (Word.repr 0).
+  [:: ra; syscall_ret; syscall_arg1; syscall_arg2; syscall_arg3; ruser1;
+      ruser2; ruser3; ruser4].
+Definition user_reg_max := last (Word.repr 0) user_registers.
 
 Definition kernel_data {X} l : @relocatable_segment t X w :=
  (length l, fun _ _ => l).

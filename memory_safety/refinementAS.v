@@ -1245,7 +1245,7 @@ by solve_pc rpci.
 (* Syscall *)
 
 (* Malloc *)
-  move: b Heqo E0 E3 => bi Heqo E0 E3.
+  move: b Heqo E0 E2 => bi Heqo E0 E2.
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ bi _).
   have: bi \in [seq x <- info
@@ -1268,8 +1268,8 @@ by solve_pc rpci.
     by rewrite /mi' /mi_malloc PartMaps.get_set_eq.
 
   move/(refine_registers_malloc (Sym.block_base bi) fresh_color malloc): rregs => rregs.
-  eapply (refine_registers_upd rregs rnewb) in E3.
-  destruct E3 as (? & ? & ?).
+  eapply (refine_registers_upd rregs rnewb) in E2.
+  destruct E2 as (? & ? & ?).
 
   eexists; exists (mi_malloc mi newb (Sym.block_base bi) color); split.
   eapply Abstract.step_malloc.
@@ -1279,16 +1279,16 @@ by solve_pc rpci.
   by eauto.
 
   move/ltb_lt: E => E.
-  move/ltb_lt: E2 => E2.
+  move/ltb_lt: E1 => E1.
   move/leb_le: lt_val => lt_val.
-  move: (lt__le _ _ E2) => /word_unsigned_le nneg_val.
+  move: (lt__le _ _ E1) => /word_unsigned_le nneg_val.
   rewrite Word.unsigned_zero in nneg_val.
 
   split; try eassumption.
   exact: (refine_memory_malloc rmem nneg_val rist malloc).
   exact: (refine_val_malloc _ fresh_color malloc).
   have in_bounds: 0 < Word.unsigned val <= Word.unsigned (Sym.block_size bi).
-    split; first by move/word_unsigned_lt: E2; rewrite Word.unsigned_zero.
+    split; first by move/word_unsigned_lt: E1; rewrite Word.unsigned_zero.
     exact/word_unsigned_le.
 
   exact: (refine_internal_state_malloc in_bounds malloc).

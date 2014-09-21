@@ -107,8 +107,6 @@ Ltac undo1 hyp var :=
   match type of hyp with
     | (do! _ <- ?GET; _) ?= _ =>
       destruct GET as [var|] eqn:def_var
-    | (do! guard ?COND; _) ?= _ =>
-      destruct COND eqn:var
     | match ?OCOND with _ => _ end ?= _ =>
       destruct OCOND as [[|]|] eqn:var
   end; simpl in hyp; try discriminate.

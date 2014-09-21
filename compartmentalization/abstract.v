@@ -1471,7 +1471,7 @@ Proof.
       repeat match type of CALL with
         | (do! _ <- ?GET; _) ?= _ =>
           destruct GET; simpl in CALL; [|discriminate]
-        | (do! guard ?COND; _) ?= _ =>
+        | (if ?COND then _ else _) ?= _ =>
           destruct COND; simpl in CALL; [|discriminate]
         | match ?c with <<_,_,_>> => _ end ?= _ =>
           destruct c; simpl in CALL
