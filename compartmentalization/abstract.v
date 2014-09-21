@@ -1,6 +1,6 @@
 Require Import List Arith Sorted Bool.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop fintype finset.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
 
 Require Import lib.Integers lib.utils lib.partial_maps lib.ordered common.common.
 Require Import lib.list_utils lib.ssr_list_utils lib.ssr_set_utils.
@@ -63,13 +63,43 @@ Definition compartment_eqMixin := EqMixin compartment_eqP.
 Canonical compartment_eqType :=
   Eval hnf in EqType compartment compartment_eqMixin.
 
-Definition disjoint_comp : rel compartment :=
-  [rel c1 c2 | ((address_space c1 != set0) ||
-                (address_space c2 != set0)) &&
-               [disjoint address_space c1 & address_space c2]].
+Definition prod_of_compartment (c : compartment) : {set value} * {set value} * {set value} :=
+  (address_space c, jump_targets c, store_targets c).
 
-Definition non_overlapping : list compartment -> bool :=
-  all_tail_pairs_b disjoint_comp.
+Definition compartment_of_prod (c : {set value} * {set value} * {set value}) : compartment :=
+  let: (aS, jT, sT) := c in Compartment aS jT sT.
+
+Lemma prod_of_compartmentK : cancel prod_of_compartment compartment_of_prod.
+Proof. by case. Qed.
+
+Definition compartment_choiceMixin := CanChoiceMixin prod_of_compartmentK.
+Canonical compartment_choiceType := Eval hnf in ChoiceType compartment compartment_choiceMixin.
+Definition compartment_countMixin := CanCountMixin prod_of_compartmentK.
+Canonical compartment_countType := Eval hnf in CountType compartment compartment_countMixin.
+Definition compartment_finMixin := CanFinMixin prod_of_compartmentK.
+Canonical compartment_finType := Eval hnf in FinType compartment compartment_finMixin.
+
+Definition non_overlapping (C : seq compartment) : bool :=
+  [forall c1 in C,
+     [forall c2 in C,
+        ~~ [disjoint address_space c1 & address_space c2] ==>
+           (c1 == c2)]].
+
+Lemma non_overlappingP C :
+  reflect (forall c1 c2,
+             c1 \in C -> c2 \in C ->
+             ~~ [disjoint address_space c1 & address_space c2] ->
+             c1 = c2)
+          (non_overlapping C).
+Proof.
+  apply/(iffP idP)=> H.
+  - move=> c1 c2 Hc1 Hc2 Hdis.
+    by move/forall_inP/(_ c1 Hc1)/forall_inP/(_ c2 Hc2)/implyP/(_ Hdis)/eqP: H.
+  - apply/forall_inP=> c1 /H {H} H.
+    apply/forall_inP=> c2 /H {H} H.
+    apply/implyP=> Hdis.
+    by apply/eqP; auto.
+Qed.
 
 (* BCP: Do we need this?  Can we get away with just having all user memory
    inside a compartment at all times?  [TODO] *)
@@ -382,37 +412,6 @@ Proof.
   - auto.
 Qed.
 
-(*** Proofs for `disjoint_comp' ***)
-
-Lemma disjoint_comp_irrefl c :
-  ~~ disjoint_comp c c.
-Proof.
-  by rewrite /disjoint_comp /= orb_diag -setI_eq0 setIid andb_comm andb_negb_r.
-Qed.
-(*Global*) Hint Resolve disjoint_comp_irrefl.
-
-Lemma disjoint_comp_sym c1 c2 :
-  disjoint_comp c1 c2 = disjoint_comp c2 c1.
-Proof. by rewrite /disjoint_comp /= disjoint_sym orb_comm. Qed.
-(*Global*) Hint Resolve disjoint_comp_sym.
-
-Lemma common_not_disjoint_comp a c1 c2 :
-  a \in address_space c1 -> a \in address_space c2 ->
-  ~~ disjoint_comp c1 c2.
-Proof.
-  move=> IN_A1 IN_A2.
-  by rewrite /disjoint_comp /= negb_and (common_not_disjoint a) // orbT.
-Qed.
-(*Global*) Hint Resolve common_not_disjoint_comp.
-Arguments common_not_disjoint_comp a [c1 c2] _ _.
-
-Lemma common_not_disjoint_comp_decomposed a A1 J1 S1 A2 J2 S2 :
-  a \in A1 -> a \in A2 ->
-  ~~ disjoint_comp <<A1,J1,S1>> <<A2,J2,S2>>.
-Proof. by move=> *; rewrite (common_not_disjoint_comp a). Qed.
-(*Global*) Hint Resolve common_not_disjoint_comp_decomposed.
-Arguments common_not_disjoint_comp_decomposed a [A1 J1 S1 A2 J2 S2] _ _.
-
 (*** Proofs for `good_compartments' ***)
 
 Local Ltac good_compartments_trivial :=
@@ -432,70 +431,32 @@ Lemma good_compartments__contained_compartments : forall C,
 Proof. good_compartments_trivial. Qed.
 (*Global*) Hint Resolve good_compartments__contained_compartments.
 
-Theorem good_no_duplicates : forall C,
-  good_compartments C -> uniq C.
-Proof.
-  move=> C /andP [NOL CC].
-  rewrite /non_overlapping -all_pairs_in2_comm in NOL; last done.
-  apply all_pairs_distinct_nodup in NOL.
-  + by apply/uniqP.
-  + by move=> ?; apply negbTE, disjoint_comp_irrefl.
-Qed.
-(*Global*) Hint Resolve good_no_duplicates.
-
 (*** Proofs for `non_overlapping' ***)
 
-Theorem non_overlapping_subset : forall C1 C2,
-  uniq C1 ->
-  subpred (ssrbool.mem C1) (ssrbool.mem C2) ->
+Theorem non_overlapping_subset (C1 C2 : seq compartment) :
+  {subset C1 <= C2} ->
   non_overlapping C2 ->
   non_overlapping C1.
 Proof.
-  rewrite /non_overlapping; move=> C1 C2 SUBSET ND NOL.
-  apply all_pairs__all_tail_pairs; rewrite -all_pairs_in2_comm in NOL; last done.
-  rewrite /subpred /= in ND.
-  apply all_pairs_subset with C2.
-  - by move=> c /inP IN; apply/inP; apply ND.
-  - by apply/uniqP.
-  - by [].
+  move=> Hsubset /non_overlappingP Hno.
+  by apply/non_overlappingP=> c1 c2 /Hsubset Hc1 /Hsubset Hc2; eauto.
 Qed.
 (*Global*) Hint Resolve non_overlapping_subset.
 
-Theorem non_overlapping_tail : forall c C,
+Theorem non_overlapping_tail c C :
   non_overlapping (c :: C) -> non_overlapping C.
 Proof.
-  move=> c C.
-  by rewrite /non_overlapping all_tail_pairs_tail; move=> /andP[].
+  apply non_overlapping_subset => c' Hc'.
+  by rewrite in_cons Hc' orbT.
 Qed.
 (*Global*) Hint Resolve non_overlapping_tail.
 
-Theorem non_overlapping_spec : forall C,
-  non_overlapping C <->
-  (forall c1 c2,
-     In2 c1 c2 C ->
-     disjoint_comp c1 c2).
-Proof.
-  move=> C; rewrite /non_overlapping.
-  by rewrite -all_pairs_in2_comm // /is_true all_pairs_spec.
-Qed.
-
-Corollary good_compartments__in2_disjoint : forall C c1 c2,
-  good_compartments C ->
-  In2 c1 c2 C ->
-  disjoint_comp c1 c2.
-Proof.
-  move=> C c1 c2 /andP [NOL _].
-  by move/non_overlapping_spec in NOL; apply NOL.
-Qed.
-(*Global*) Hint Resolve good_compartments__in2_disjoint.
-
-Theorem non_overlapping_rem : forall c C,
+Theorem non_overlapping_rem c C :
   non_overlapping C ->
   non_overlapping (rem_all c C).
 Proof.
-  move=> c C; rewrite !non_overlapping_spec.
-  move=> NOL c1 c2 IN2; apply NOL.
-  by move: IN2; rewrite rem_all_is_delete; apply in2_delete.
+  apply non_overlapping_subset => c'.
+  by rewrite in_rem_all => /andP [].
 Qed.
 (*Global*) Hint Resolve non_overlapping_rem.
 
@@ -505,65 +466,51 @@ Corollary non_overlapping_rem' : forall c C,
 Proof. auto. Qed.
 (*Global*) Hint Resolve non_overlapping_rem'.
 
-Lemma non_overlapping_replace : forall c c' C,
-  non_overlapping C ->
-  non_overlapping (c' :: rem_all c C) =
-  all (disjoint_comp c') (rem_all c C).
+Theorem non_overlapping_cons c C :
+  non_overlapping (c :: C) =
+  all [pred c' | ~~ [disjoint address_space c & address_space c'] ==>
+                    (c == c')] C &&
+  non_overlapping C.
 Proof.
-  move=> c c' C NOL;
-    rewrite /non_overlapping all_tail_pairs_tail;
-    fold (non_overlapping (rem c C));
-    replace @forallb with @all by reflexivity.
-  case (all _ (rem_all _ _)) => //=.
-  by apply non_overlapping_rem.
+  apply/(sameP idP)/(iffP idP).
+  - move/andP=> [/allP Hc /non_overlappingP Hnol].
+    apply/non_overlappingP=> c1 c2.
+    rewrite !in_cons => /orP [/eqP ?|c1_in_C] /orP [/eqP ?|c2_in_C] Hdis;
+    try subst c1; try subst c2; try done; try auto.
+    + move: (Hc _ c2_in_C) => /=.
+      by rewrite Hdis /= => /eqP.
+    + move: (Hc _ c1_in_C) => /=.
+      by rewrite disjoint_sym Hdis /= => /eqP.
+  - move=> Hnol.
+    apply/andP.
+    split; last by eauto.
+    apply/allP=> c' c'_in_C.
+    apply/implyP=> Hdis.
+    by move/non_overlappingP: Hnol => /(_ c c') -> //=;
+    rewrite in_cons ?eqxx ?c'_in_C ?orbT.
 Qed.
-(*Global*) Hint Resolve non_overlapping_replace.
 
-Lemma non_overlapping_replace' : forall c c' C,
-  good_compartments C ->
-  non_overlapping (c' :: rem_all c C) =
-  all (disjoint_comp c') (rem_all c C).
-Proof. auto. Qed.
-(*Global*) Hint Resolve non_overlapping_replace'.
+Lemma non_overlapping_replace c c' C :
+  c \in C ->
+  non_overlapping C ->
+  address_space c' \subset address_space c ->
+  all [pred c'' | ~~ [disjoint address_space c' & address_space c''] ==> (c' == c'')]
+      (rem_all c C).
+Proof.
+  move=> c_in_C Hnol /subsetP Hsub.
+  apply/allP=> c''.
+  rewrite in_rem_all /= -setI_eq0 => /andP [Hneq c''_in_C].
+  apply/implyP.
+  case/set0Pn=> [p].
+  rewrite in_setI=> /andP [/Hsub p_in_c p_in_c''].
+  move/non_overlappingP: Hnol => /(_ _ _ c''_in_C c_in_C) H_c''_c.
+  suff: c'' == c by rewrite (negbTE Hneq).
+  apply/eqP/H_c''_c.
+  rewrite -setI_eq0.
+  apply/set0Pn. exists p. by rewrite in_setI p_in_c'' p_in_c.
+Qed.
 
 (*** Proofs for `in_compartment' and `in_compartment_opt' ***)
-
-(* Ltac *)
-
-(*
-Ltac destruct_set_elem_xX_as_by x X Hy Hn t :=
-  let H := fresh in
-  destruct (set_elem x X) eqn:H;
-    [ rename H into Hy; rewrite ->set_elem_true  in Hy by t
-    | rename H into Hn; rewrite ->set_elem_false in Hn by t ].
-
-(* If not re-implemented, the placeholders don't work *)
-Ltac destruct_set_elem_as_by Hy Hn t :=
-  let H := fresh in
-  destruct (set_elem _ _) eqn:H;
-    [ rename H into Hy; rewrite ->set_elem_true  in Hy by t
-    | rename H into Hn; rewrite ->set_elem_false in Hn by t ].
-
-Tactic Notation "destruct" "set_elem" constr(x) constr(X)
-                "as" ident(Hy) "," ident(Hn)
-                "by" tactic(t) :=
-  destruct_set_elem_xX_as_by x X Hy Hn t.
-
-Tactic Notation "destruct" "set_elem"
-                "as" ident(Hy) "," ident(Hn)
-                "by" tactic(t) :=
-  (destruct_set_elem_as_by Hy Hn t).
-
-Tactic Notation "destruct" "set_elem" constr(x) constr(X) "by" tactic(t) :=
-  let Hy := fresh "Hy" in
-  let Hn := fresh "Hn" in
-  destruct set_elem x X as Hy , Hn by t.
-
-Tactic Notation "destruct" "set_elem" "by" tactic(t) :=
-  let Hy := fresh "Hy" in
-  let Hn := fresh "Hn" in
-  destruct set_elem as Hy , Hn by t.
-*)
 
 Theorem in_compartment_here : forall p C A J S,
   p \in A -> <<A,J,S>> :: C ⊢ p ∈ <<A,J,S>>.
@@ -628,17 +575,6 @@ Proof.
 Qed.
 (*Global*) Hint Resolve unique_must_be_here.
 
-Theorem in_same_compartment__overlapping C p c1 c2 :
-  C ⊢ p ∈ c1 ->
-  C ⊢ p ∈ c2 ->
-  ~~ disjoint_comp c1 c2.
-Proof.
-  move=> /in_compartment__in_address_space IC1
-         /in_compartment__in_address_space IC2.
-  by rewrite (common_not_disjoint_comp p).
-Qed.
-(*Global*) Hint Resolve in_same_compartment__overlapping.
-
 Theorem in_compartment_opt_correct : forall C p c,
   in_compartment_opt C p ?= c -> C ⊢ p ∈ c.
 Proof.
@@ -688,22 +624,22 @@ Proof.
 Qed.
 (*Global*) Hint Resolve in_compartment_opt_is_some.
 
-Theorem in_compartment_opt_sound : forall C p c,
+Theorem in_compartment_opt_sound C p c :
   non_overlapping C ->
   C ⊢ p ∈ c ->
   in_compartment_opt C p ?= c.
 Proof.
-  elim=> [// | /= c' C IH p c NOL /andP [IN_C IN_A]].
-  rewrite inE in IN_C.
-  case/orP: IN_C=> [/eqP<- | IN_C]; first by rewrite IN_A.
-  case IN_A': (p \in address_space c'); last rename IN_A' into NIN_A'.
-  - have NDJ : (~~ disjoint_comp c' c) by apply (common_not_disjoint_comp p).
-    have IN2 : In2 c' c (c' :: C) by apply In2_here_1; apply/inP.
-    apply non_overlapping_spec in IN2; last assumption.
-    by contradict IN2; apply/negP.
-  - apply IH.
-    + by apply non_overlapping_tail in NOL.
-    + by apply/andP.
+  elim: C => [| c' C IH Hnol /andP] //=.
+  rewrite in_cons; move=> [/orP [/eqP <- -> //|c_in_C] p_in_c].
+  have [p_in_c'|p_nin_c'] := boolP (p \in address_space c').
+  { apply f_equal.
+    move/non_overlappingP: Hnol.
+    apply; try rewrite in_cons ?eqxx ?c_in_C ?orbT //.
+    rewrite -setI_eq0.
+    apply/set0Pn.
+    exists p. by rewrite in_setI p_in_c p_in_c'. }
+  apply IH; first by eapply non_overlapping_tail; eauto.
+  by rewrite /in_compartment c_in_C p_in_c.
 Qed.
 (*Global*) Hint Resolve in_compartment_opt_sound.
 
@@ -748,31 +684,18 @@ Qed.
 
 (*** Proofs for/requiring `good_compartments' ***)
 
-Theorem good_in2_no_common_addresses C c1 c2 :
-  good_compartments C ->
-  In2 c1 c2 C ->
-  forall a, ~ (a \in address_space c1 /\ a \in address_space c2).
-Proof.
-  move=> GOOD IN2 a [IN_A1 IN_A2].
-  have [/inP IN_c1 /inP IN_c2] : In c1 C /\ In c2 C by auto.
-  apply good_compartments__in2_disjoint in IN2 => //.
-  by contradict IN2; apply/negP; apply (common_not_disjoint_comp a).
-Qed.
-(*Global*) Hint Resolve good_in2_no_common_addresses.
-
 Theorem in_unique_compartment C p c1 c2 :
   good_compartments C ->
   C ⊢ p ∈ c1 ->
   C ⊢ p ∈ c2 ->
   c1 = c2.
 Proof.
-  move=> /andP [/non_overlapping_spec NOL CC] IC1 IC2.
-  have OL : ~~ disjoint_comp c1 c2
-    by eapply in_same_compartment__overlapping; eassumption.
-  have [|/eqP neq_c1c2] := altP (c1 =P c2); first by [].
-  lapply (NOL c1 c2); first by move/negP in OL.
-  by apply in_neq_in2 => //;
-     apply/inP; eapply in_compartment_element; eassumption.
+  move=> /andP [/non_overlappingP NOL CC]
+         /andP [c1_in_C p_in_c1]
+         /andP [c2_in_C p_in_c2].
+  suff: ~~ [disjoint address_space c1 & address_space c2] by eauto.
+  rewrite -setI_eq0. apply/set0Pn. exists p.
+  by rewrite in_setI p_in_c1 p_in_c2.
 Qed.
 (*Global*) Hint Resolve in_unique_compartment.
 
@@ -917,10 +840,7 @@ Proof.
        repeat rewrite ->andb_true_iff in GOOD; andb_true_split; try tauto).
     move TEMP before GOOD; unfold good_compartments in TEMP;
     repeat rewrite ->andb_true_iff in TEMP; destruct TEMP as [NOL CC].
-  assert (IN : In c C) by
-    (rewrite /good_state /= in GOOD; repeat rewrite ->andb_true_iff in GOOD;
-     destruct (elem c C);
-     [assumption | repeat invh and; try discriminate; by apply/inP]).
+  have IN : c \in C by case/and4P: GOOD.
   assert (NONEMPTY_A_A' : (A :\: A') != set0). {
     move/eqP in SAME; subst c_next.
     rewrite <-(lock in_compartment_opt) in *; simpl in *.
@@ -933,12 +853,6 @@ Proof.
       apply in_compartment_opt_correct in def_c_next.
       move: def_c_next => /andP /= [] _.
       by rewrite in_set0.
-  }
-  assert (C'_DISJOINT :
-            forallb (fun c'' => disjoint_comp c c'') (delete c C) = true). {
-    move/non_overlapping_spec in NOL.
-    apply forallb_forall; intros ct IN_ct.
-    apply NOL. apply delete_in_iff in IN_ct; apply in_neq_in2; intuition.
   }
   assert (NONEMPTY_A : A != set0) by
     by apply/negP => /eqP EQ; rewrite EQ set0D in NONEMPTY_A_A';
@@ -965,7 +879,7 @@ Proof.
   assert (USER_c : user_address_space M c). {
     assert (SS : syscalls_separated M C = true) by
       (eapply good_state_decomposed__syscalls_separated; eassumption).
-    rewrite /syscalls_separated in SS; rewrite ->forallb_forall in SS.
+    rewrite /syscalls_separated in SS. move/allP in SS.
     specialize (SS c IN).
     move: SS => /orP [UAS | SAS'] //.
     by rewrite SAS' in NOT_SYSCALL_c.
@@ -974,49 +888,40 @@ Proof.
     intro; subst c_sys.
     by rewrite SAS in NOT_SYSCALL_c.
   }
-  rewrite /non_overlapping !all_tail_pairs_tail /=.
   andb_true_split; auto;
     try (eapply forallb_impl; [|apply C'_DISJOINT]; cbv beta;
          simpl; intros c''; rewrite andb_true_iff; intros []; intros GOOD'';
          apply disjoint_subset; auto; simpl).
-  - (* c_sys \in [:: c_upd, c' & delete c C] *)
+  - (* c_sys \in [:: c_upd, c' & rem_all c C] *)
     apply/inP; rewrite rem_all_is_delete.
     do 2 right; apply delete_in_iff; split; auto.
     assert (GC : good_compartments C) by
       (eapply good_state_decomposed__good_compartments; eassumption).
     by move: def_c_sys => /permitted_now_in_spec => /(_ GC) [] /andP [] /inP.
   - (* non_overlapping c_upd c' *)
-    rewrite /disjoint_comp; subst c c_upd c'; simpl in *.
-    rewrite -setI_eq0 setIDAC setDIl setDv setI0 eq_refl andbT.
-    by rewrite NONEMPTY_A_A'.
-  - eapply forallb_impl; last (rewrite rem_all_is_delete; exact C'_DISJOINT).
-    subst c c_upd => d.
-    rewrite /disjoint_comp /= NONEMPTY_A NONEMPTY_A_A' /= -!setI_eq0 setIDAC
-            => /eqP->.
-    by rewrite set0D eq_refl.
-  - eapply forallb_impl; last (rewrite rem_all_is_delete; exact C'_DISJOINT).
-    subst c c' => d.
-    rewrite /disjoint_comp /= NONEMPTY_A NONEMPTY_A' /= -!setI_eq0
-           => /eqP DJ.
-    apply setSI with (C := address_space d) in SUBSET_A'.
-    rewrite DJ subset0 in SUBSET_A'.
-    move: SUBSET_A' => /eqP->.
-    by rewrite eq_refl.
-  - by rewrite rem_all_is_delete; apply delete_preserves_all_tail_pairs.
+    by rewrite !non_overlapping_cons (non_overlapping_rem _ _ NOL) andbT /=
+               -setI_eq0 {1}setDE -setIA [_ :&: A']setIC setICr setI0 eqxx /=
+               (non_overlapping_replace c c_upd C IN) ?(non_overlapping_replace c c' C IN)
+               // def_AJS /c' /c_upd //= subsetDl.
   - unfold contained_compartments; subst c_upd c'; simpl.
-    assert (As_same :
+    have As_same :
               (A :\: A' :|: A' :|: \bigcup_(d <- rem_all c C) address_space d) =
-              \bigcup_(d <- C) address_space d). {
-      rewrite -subsetDU // (big_rem c (r := C)) def_AJS /=.
-      - do 2 f_equal.
-        by rewrite rem_filter //; eauto 3.
-      - by apply/inP; subst c.
+              \bigcup_(d <- C) address_space d. {
+      rewrite big_filter /= (bigID (pred1 c) predT) /= -subsetDU //.
+      apply f_equal2=> //.
+      have Heq : [seq i <- C | i == c] =i [<<A,J,S>>].
+        rewrite def_AJS=> c'.
+        rewrite in_cons mem_filter orbF.
+        have [{c'} ->/=|//] := c' =P <<A,J,S>>.
+        by rewrite -def_AJS.
+      rewrite -big_filter (eq_big_idem _ _ _ Heq) /= ?big_seq1 // => x.
+      by apply setUid.
     }
     apply/subsetP => a /=.
     rewrite !big_cons /= !setUA As_same !inE.
     let fix_sub SS := move/subsetP/(_ a) in SS; rewrite ?inE in SS
     in fix_sub SUBSET_A'; fix_sub SUBSET_J'; fix_sub SUBSET_S'.
-    move/inP in IN; move/contained_compartments_spec in CC;
+    move/contained_compartments_spec in CC;
       move: (CC) => /(_ c a IN) CC_c; subst c; simpl in *.
     (* a \in J/S *)
     let solve_in_orig  := apply/CC_c; by [left | right] in
@@ -1082,19 +987,17 @@ Qed.
 Lemma good_compartments_preserved_for_add_to_compartment_component :
   forall c c' C,
     good_compartments C ->
-    In c C ->
+    c \in C ->
     address_space c = address_space c' ->
     jump_targets c' \subset address_space c :|: jump_targets c ->
     store_targets c' \subset address_space c :|: store_targets c ->
     good_compartments (c' :: rem_all c C).
 Proof.
-  move=> c c' C GOOD /inP IN ADDR SUBSET_J SUBSET_S.
+  move=> c c' C GOOD IN ADDR SUBSET_J SUBSET_S.
   unfold good_compartments; repeat (andb_true_split; simpl); auto.
-  - rewrite ->non_overlapping_replace', forallb_forall by assumption.
-    move=> c'' /inP; rewrite in_rem_all => /andP [/eqP NEQ IN'].
-    rewrite /disjoint_comp /= -!ADDR.
-    have /non_overlapping_spec NOL : non_overlapping C by auto.
-    by apply/NOL/in_neq_in2; (apply nesym || apply/inP).
+  - case/andP: GOOD => Hnol _.
+    rewrite non_overlapping_cons non_overlapping_replace ?ADDR ?subxx //=.
+    by apply non_overlapping_rem.
   - apply/contained_compartments_spec => /= d a IN_d IN_a.
     have /contained_compartments_spec CC : contained_compartments C by auto.
     let sub SS := move/subsetP/(_ a) in SS; rewrite inE in SS
@@ -1166,8 +1069,7 @@ Proof.
     by rewrite orbT.
   - destruct c as [A J S]; simpl in *.
     rewrite inE in ELEM.
-    by apply good_compartments_preserved_for_add_to_compartment_component;
-       try (by try apply/inP);
+    by apply good_compartments_preserved_for_add_to_compartment_component=> //;
        apply/subsetP => a; rewrite inE /=;
        [move: (eqJ) => eqX | move: (eqS) => eqX];
        case: (eqX (p |: rd <<A,J,S>>) <<A,J,S>>) => /= [-> | [-> eqRd]];
@@ -1602,21 +1504,16 @@ Module Hints.
 (* Start globalized hint section *)
   Hint Resolve good_compartments__non_overlapping.
   Hint Resolve good_compartments__contained_compartments.
-  Hint Resolve disjoint_comp_sym.
-  Hint Resolve good_no_duplicates.
   Hint Resolve non_overlapping_subset.
   Hint Resolve non_overlapping_tail.
-  Hint Resolve good_compartments__in2_disjoint.
   Hint Resolve non_overlapping_rem.
   Hint Resolve non_overlapping_rem'.
   Hint Resolve non_overlapping_replace.
-  Hint Resolve non_overlapping_replace'.
   Hint Resolve in_compartment_element.
   Hint Resolve in_compartment__in_address_space.
   Hint Resolve in_same_compartment.
   Hint Resolve unique_here_not_there.
   Hint Resolve unique_must_be_here.
-  Hint Resolve in_same_compartment__overlapping.
   Hint Resolve in_compartment_opt_correct.
   Hint Resolve in_compartment_opt_missing_correct.
   Hint Resolve in_compartment_opt_present.
@@ -1625,7 +1522,6 @@ Module Hints.
   Hint Resolve in_compartment_opt_sound'.
   Hint Resolve in_compartment_opt_sound_is_some.
   Hint Resolve in_compartment_opt_sound_is_some'.
-  Hint Resolve good_in2_no_common_addresses.
   Hint Resolve in_unique_compartment.
   Hint Resolve good_state__previous_is_compartment.
   Hint Resolve good_state_decomposed__previous_is_compartment.

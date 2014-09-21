@@ -1963,15 +1963,12 @@ Proof.
     move=> c; rewrite in_rem_all => /andP [NEQ IN] a.
     apply TSAI_s0_sS'.
     have DJ' : [disjoint Aprev & Abs.address_space c]. {
-      replace Aprev with (Abs.address_space <<Aprev,Jprev,Sprev>>)
-        by reflexivity.
-      have IN2 : list_utils.In2 <<Aprev,Jprev,Sprev>> c AC. {
-        apply list_utils.in_neq_in2; try by apply/inP.
-        by apply/eqP; rewrite eq_sym NEQ.
-      }
-      apply Abs.good_compartments__in2_disjoint in IN2.
-      - by move: IN2; rewrite /Abs.disjoint_comp /= => /andP[].
-      - eapply Abs.good_state_decomposed__good_compartments; eassumption.
+      move: NEQ.
+      apply/contraR.
+      rewrite eq_sym=> Hdis.
+      apply/eqP.
+      move/Abs.non_overlappingP: ANOL.
+      by apply.
     }
     eapply disjoint_trans; [|exact DJ'].
     exact SUBSET_A'.
