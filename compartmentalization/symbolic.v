@@ -1,5 +1,3 @@
-Require Import List. Import ListNotations.
-
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
 Require Import lib.hlist lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
@@ -430,9 +428,9 @@ Definition add_to_store_targets (s : Symbolic.state t)
 
 Definition syscalls : list (Symbolic.syscall t) :=
   let dummy := DATA Word.zero set0 set0 in
-  [Symbolic.Syscall isolate_addr              dummy isolate;
-   Symbolic.Syscall add_to_jump_targets_addr  dummy add_to_jump_targets;
-   Symbolic.Syscall add_to_store_targets_addr dummy add_to_store_targets].
+  [:: Symbolic.Syscall isolate_addr              dummy isolate;
+      Symbolic.Syscall add_to_jump_targets_addr  dummy add_to_jump_targets;
+      Symbolic.Syscall add_to_store_targets_addr dummy add_to_store_targets].
 
 Definition step := Symbolic.step syscalls.
 

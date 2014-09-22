@@ -1,5 +1,3 @@
-Require Import List. Import ListNotations.
-
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
 Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
@@ -1838,7 +1836,7 @@ Proof.
 
   have NIN_any : forall a, get AM a = None -> a \notin A'. {
     move=> a ANGET; apply/negP; move=> IN.
-    move: ASS => /forallb_forall/(_ _ (elimT (inP _ _ _) AIN))/orP [UAS | SAS].
+    move: ASS => /allP/(_ _ AIN)/orP [UAS | SAS].
     - have IN' : a \in Aprev by move/subsetP in SUBSET_A'; apply SUBSET_A'.
       move/forall_inP/(_ _ IN') in UAS.
       by rewrite ANGET in UAS.
@@ -2006,8 +2004,8 @@ Proof.
   }
 
   have USER_prev : Abs.user_address_space AM <<Aprev,Jprev,Sprev>>. {
-    move/forallb_forall in ASS.
-    by move: (ASS _ (elimT (inP _ _ _) AIN)) => /orP [UAS | SAS].
+    move/allP in ASS.
+    by move: (ASS _ AIN) => /orP [UAS | SAS].
   }
 
   have NOT_USER_c_sys : ~ Abs.user_address_space AM c_sys. {
@@ -2018,8 +2016,8 @@ Proof.
   }
 
   have SYSCALL_c_sys : Abs.syscall_address_space AM c_sys. {
-    move/forallb_forall in ASS.
-    by move: (ASS _ (elimT (inP _ _ _) c_sys_in_AC)) => /orP [UAS | SAS].
+    move/allP in ASS.
+    by move: (ASS _ c_sys_in_AC) => /orP [UAS | SAS].
   }
 
   have DIFF_prev_c_sys : <<Aprev,Jprev,Sprev>> <> c_sys
