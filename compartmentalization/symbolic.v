@@ -307,6 +307,19 @@ Definition fresh (si : compartmentalization_internal)
   then None
   else Some (next, Internal (next+1)%w iT ajtT asmT).
 
+Definition fresh' (si : compartmentalization_internal)
+                  : option (word t) :=
+  if next_id si == max_word t
+  then None
+  else Some (next_id si).
+
+Definition bump_next_id (si : compartmentalization_internal)
+                        : compartmentalization_internal :=
+  Internal (next_id si + 1)%w
+           (isolate_tag si)
+           (add_to_jump_targets_tag si)
+           (add_to_store_targets_tag si).
+
 Definition retag_one (ok : word t -> word t -> {set word t} -> {set word t} -> bool)
                      (retag : word t -> word t -> {set word t} -> {set word t} -> data_tag)
                      (s : Symbolic.state t)
@@ -337,11 +350,60 @@ Proof.
 Qed.
 
 Definition retag_set (ok : word t -> word t -> {set (word t)} -> {set (word t)} -> bool)
-                   (retag : word t -> word t -> {set (word t)} -> {set (word t)}-> data_tag)
-                   (ps : list (word t))
-                   (s : Symbolic.state t)
-                   : option (Symbolic.state t) :=
+                     (retag : word t -> word t -> {set (word t)} -> {set (word t)}-> data_tag)
+                     (ps : list (word t))
+                     (s : Symbolic.state t)
+                     : option (Symbolic.state t) :=
   ofoldl (retag_one ok retag) s ps.
+
+Definition do_ok (cur : word t)
+                 (A J S : {set word t})
+                 (p : word t)
+                 (cid : word t) (I W : {set word t})
+                 : bool :=
+  [&& (p \in A) ==> (cid == cur),
+      (p \in J) ==> (cid == cur) || (cur \in I) &
+      (p \in S) ==> (cid == cur) || (cur \in W) ].
+
+Definition do_retag (cur new : word t)
+                    (A J S : {set word t})
+                    (p : word t)
+                    (cid : word t) (I W : {set word t})
+                    : data_tag :=
+  let cid' := if p \in A then new      else cid in
+  let I'   := if p \in J then new |: I else I   in
+  let W'   := if p \in W then new |: W else W   in
+  DATA cid' I' W'.
+
+Definition isolate' (s : Symbolic.state t) : option (Symbolic.state t) :=
+  match s with
+  | Symbolic.State M R (pc @ (PC F c)) si =>
+    do! LI    <- sget s pc;
+    do! c_sys <- can_execute (PC F c) LI;
+
+    do! c'    <- fresh' si;
+
+    do! pA @ _ <- get R syscall_arg1;
+    do! pJ @ _ <- get R syscall_arg2;
+    do! pS @ _ <- get R syscall_arg3;
+
+    do! A' <- isolate_create_set (@val _ _) M pA;
+    do! guard A' != set0;
+    do! J' : {set word t} <- isolate_create_set (@val _ _) M pJ;
+    do! S' : {set word t} <- isolate_create_set (@val _ _) M pS;
+
+    do! s' <- retag_set (do_ok c A' J' S')
+                        (do_retag c c' A' J' S')
+                        (enum (A' :|: J' :|: S')) s;
+
+    do! pc' @ _              <- get  R  ra;
+    do! DATA c_next I_next _ <- sget s' pc';
+    do! guard c == c_next;
+    do! guard c_sys \in I_next;
+
+    let: Symbolic.State M' R' _ si' := s' in
+    Some (Symbolic.State M' R' (pc' @ (PC JUMPED c_sys)) (bump_next_id si'))
+  end.
 
 Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
   match s with
@@ -430,7 +492,7 @@ Definition add_to_store_targets (s : Symbolic.state t)
 
 Definition syscalls : list (Symbolic.syscall t) :=
   let dummy := DATA Word.zero set0 set0 in
-  [:: Symbolic.Syscall isolate_addr              dummy isolate;
+  [:: Symbolic.Syscall isolate_addr              dummy isolate';
       Symbolic.Syscall add_to_jump_targets_addr  dummy add_to_jump_targets;
       Symbolic.Syscall add_to_store_targets_addr dummy add_to_store_targets].
 
