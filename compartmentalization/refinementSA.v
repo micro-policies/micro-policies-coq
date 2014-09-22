@@ -1340,7 +1340,7 @@ Proof.
     case GET1: (Sym.sget sst p) => [[cid1 I1 W1]|] //=.
     case: (ok p cid1 I1 W1) => //.
     move: (Hretag p cid1 I1 W1).
-    case: (retag _ _ _ _) => [cid1' I1' W1'] //= [E].
+    case: (retag _ _ _ _) => [cid1' I1' W1'] //= E.
     subst cid1'.
     case UPD1: (Sym.supd sst p (Sym.DATA cid I1' W1')) => [sst''|] //=.
     eexists; eauto.
@@ -1364,7 +1364,7 @@ Proof.
   case GET: (Sym.sget sst p) => [[ cid' I' W']|] //=.
   case: (ok p cid' I' W') => //.
   move: (Hretag p cid' I' W').
-  case: (retag _ _ _ _) => [cid'' I'' W''] //= [E].
+  case: (retag _ _ _ _) => [cid'' I'' W''] //= E.
   subst cid''.
   case UPD: (Sym.supd _ _ _) => [sst''|] //= Hretag_set Hcid.
   rewrite set_cons setUA (setUC _ [set p]) -set_cons.
@@ -1532,7 +1532,7 @@ Proof.
     rewrite (mem_enum (mem J')) IN => /(_ erefl) /= [c' [I' [W' [SGET /orP [/orP [/eqP? | /eqP?] | ELEM]]]]];
       [subst c'; left | subst c'; left | right].
    - have := Sym.retag_set_in _ _ _ _ _ (enum_uniq (mem J')) def_sJ a.
-     rewrite (mem_enum (mem J')) IN => /(_ erefl) [? [? [? [/esym EQ NOW]]]]; move: EQ => [] *; subst.
+     rewrite (mem_enum (mem J')) IN => /(_ erefl) [? [? [? [/esym EQ NOW]]]]; subst.
      rewrite SGET in def_sA'; move: def_sA' => [OLD | NEW].
      + apply/(get_compartment_id_in_compartment COMPSWD IDSWD IDSU AIN).
        rewrite /Sym.sget in OLD *.
