@@ -307,6 +307,19 @@ Definition fresh (si : compartmentalization_internal)
   then None
   else Some (next, Internal (next+1)%w iT ajtT asmT).
 
+Definition fresh' (si : compartmentalization_internal)
+                  : option (word t) :=
+  if next_id si == max_word t
+  then None
+  else Some (next_id si).
+
+Definition bump_next_id (si : compartmentalization_internal)
+                        : compartmentalization_internal :=
+  Internal (next_id si + 1)%w
+           (isolate_tag si)
+           (add_to_jump_targets_tag si)
+           (add_to_store_targets_tag si).
+
 Definition retag_one (ok : word t -> word t -> {set word t} -> {set word t} -> bool)
                      (retag : word t -> word t -> {set word t} -> {set word t} -> data_tag)
                      (s : Symbolic.state t)
@@ -314,8 +327,7 @@ Definition retag_one (ok : word t -> word t -> {set word t} -> {set word t} -> b
                      : option (Symbolic.state t) :=
   do!  DATA c I W <- sget s p;
   do!  guard (ok p c I W);
-  let: DATA c' I' W' := retag p c I W in
-  supd s p (DATA c' I' W').
+  supd s p (retag p c I W).
 
 Fixpoint ofoldl {T S} (f : S -> T -> option S) (s : S) (ts : seq T) : option S :=
   match ts with
@@ -337,49 +349,59 @@ Proof.
 Qed.
 
 Definition retag_set (ok : word t -> word t -> {set (word t)} -> {set (word t)} -> bool)
-                   (retag : word t -> word t -> {set (word t)} -> {set (word t)}-> data_tag)
-                   (ps : list (word t))
-                   (s : Symbolic.state t)
-                   : option (Symbolic.state t) :=
+                     (retag : word t -> word t -> {set (word t)} -> {set (word t)}-> data_tag)
+                     (ps : list (word t))
+                     (s : Symbolic.state t)
+                     : option (Symbolic.state t) :=
   ofoldl (retag_one ok retag) s ps.
+
+Definition do_ok (cur : word t)
+                 (A J S : {set word t})
+                 (p : word t)
+                 (cid : word t) (I W : {set word t})
+                 : bool :=
+  [&& (p \in A) ==> (cid == cur),
+      (p \in J) ==> (cid == cur) || (cur \in I) &
+      (p \in S) ==> (cid == cur) || (cur \in W) ].
+
+Definition do_retag (cur new : word t)
+                    (A J S : {set word t})
+                    (p : word t)
+                    (cid : word t) (I W : {set word t})
+                    : data_tag :=
+  let cid' := if p \in A then new      else cid in
+  let I'   := if p \in J then new |: I else I   in
+  let W'   := if p \in S then new |: W else W   in
+  DATA cid' I' W'.
 
 Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
   match s with
-    | Symbolic.State M R (pc @ (PC F c)) si =>
-      do! LI    <- sget s pc;
-      do! c_sys <- can_execute (PC F c) LI;
+  | Symbolic.State M R (pc @ (PC F c)) si =>
+    do! LI    <- sget s pc;
+    do! c_sys <- can_execute (PC F c) LI;
 
-      do! (c',si') <- fresh si;
-      let s' := Symbolic.State M R (pc @ (PC F c)) si' in
+    do! c'    <- fresh' si;
 
-      do! pA @ _ <- get R syscall_arg1;
-      do! pJ @ _ <- get R syscall_arg2;
-      do! pS @ _ <- get R syscall_arg3;
+    do! pA @ _ <- get R syscall_arg1;
+    do! pJ @ _ <- get R syscall_arg2;
+    do! pS @ _ <- get R syscall_arg3;
 
-      do! A' <- isolate_create_set (@val _ _) M pA;
-      do! guard A' != set0;
-      do! sA <- retag_set (fun _ c'' _ _ => c == c'')
-                          (fun _ _   I W => DATA c' I W)
-                          (enum A') s';
+    do! A' <- isolate_create_set (@val _ _) M pA;
+    do! guard A' != set0;
+    do! J' : {set word t} <- isolate_create_set (@val _ _) M pJ;
+    do! S' : {set word t} <- isolate_create_set (@val _ _) M pS;
 
-      do! J' : {set word t} <- isolate_create_set (@val _ _) M pJ;
-      do! sJ <- retag_set (fun _ c'' I _ => (c == c'') || (c' == c'') || (c \in I))
-                          (fun _ c'' I W => DATA c'' ((c' : word t) |: I) W)
-                          (enum J') sA;
+    do! s' <- retag_set (do_ok c A' J' S')
+                        (do_retag c c' A' J' S')
+                        (enum (A' :|: J' :|: S')) s;
 
-      do! S' : {set word t} <- isolate_create_set (@val _ _) M pS;
-      do! sS <- retag_set (fun _ c'' _ W => (c == c'') || (c' == c'') ||
-                                          (c \in W))
-                          (fun _ c'' I W => DATA c'' I ((c' : word t) |: W))
-                          (enum S') sJ;
+    do! pc' @ _              <- get  R  ra;
+    do! DATA c_next I_next _ <- sget s' pc';
+    do! guard c == c_next;
+    do! guard c_sys \in I_next;
 
-      do! pc' @ _                    <- get  R  ra;
-      do! DATA c_next I_next _ <- sget sS pc';
-      do! guard c == c_next;
-      do! guard c_sys \in I_next;
-
-      let: Symbolic.State M_next R_next _ si_next := sS in
-      Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
+    let: Symbolic.State M' R' _ si' := s' in
+    Some (Symbolic.State M' R' (pc' @ (PC JUMPED c_sys)) (bump_next_id si'))
   end.
 
 Definition add_to_jump_targets (s : Symbolic.state t)
@@ -436,18 +458,22 @@ Definition syscalls : list (Symbolic.syscall t) :=
 
 Definition step := Symbolic.step syscalls.
 
+Definition bounded_by (s : Symbolic.state t) id : Prop :=
+  forall p cid I W,
+    sget s p = Some (DATA cid I W) ->
+    forall cid',
+      cid' \in cid |: I :|: W ->
+      cid' <? id.
+
+Definition isolated_syscalls (s : Symbolic.state t) : Prop :=
+  forall p sc_addr,
+    sc_addr \in syscall_addrs ->
+    omap data_tag_compartment (sget s p) =
+    omap data_tag_compartment (sget s sc_addr) ->
+    p = sc_addr.
+
 Definition good_internal (s : Symbolic.state t) : Prop :=
-  let: Internal next iT aJT aST := Symbolic.internal s in
-  match iT , aJT , aST with
-    | DATA iC iI iW , DATA aJC aJI aJW , DATA aST aSI aSW =>
-      uniq [:: iC; aJC; aST] /\
-      all  (fun c => c <? next) [:: iC; aJC; aST] /\
-      [forall c in iI :|: iW :|: aJI :|: aJW :|: aSI :|: aSW, c <? next] /\
-      forall p x c I W,
-        get (Symbolic.mem s) p ?= x@(DATA c I W) ->
-        [/\ c <? next, c \notin [:: iC; aJC; aST] &
-            forall c', c' \in I :|: W -> c' <? next]
-  end.
+  bounded_by s (next_id (Symbolic.internal s)) /\ isolated_syscalls s.
 
 Definition good_pc_tag (s : Symbolic.state t)
                        (pc : atom (word t) pc_tag) : Prop :=
@@ -627,81 +653,35 @@ Proof.
 Qed.
 Hint Resolve succ_trans.
 
-Lemma sget_lt_next : forall s p c I W,
+Lemma sget_lt_next s p c I W :
   good_internal s ->
   sget s p ?= DATA c I W ->
   c <? next_id (Symbolic.internal s).
 Proof.
-  move=> [mem reg pc [next Li LaJ LaS]] /= p c I W GOOD SGET.
-  rewrite /good_internal /= in GOOD;
-    destruct Li  as [ci  Ii  Wi];  try done;
-    destruct LaJ as [caJ IaJ WaJ]; try done;
-    destruct LaS as [caS IaS WaS]; try done.
-  case: GOOD => NEQ [/and4P [? ? ? ?] [GOOD1 GOOD2]].
-  rewrite /sget in SGET.
-  destruct (get mem p) as [[? ?]|] eqn:GET; rewrite GET in SGET.
-  - move: SGET => [SGET].
-    rewrite SGET in GET.
-    by case:(GOOD2 _ _ c _ _ GET).
-  - destruct (p == isolate_addr);              [by inversion SGET; subst|].
-    destruct (p == add_to_jump_targets_addr);  [by inversion SGET; subst|].
-    destruct (p == add_to_store_targets_addr); [by inversion SGET; subst|].
-    discriminate.
+  move=> [Hbounds Hisolated] /Hbounds/(_ c).
+  by rewrite in_setU in_setU1 eqxx /= => /(_ erefl).
 Qed.
 
-Lemma sget_IW_lt_next : forall s p c I W c',
+Lemma sget_lt_next_I s p c I W c' :
   good_internal s ->
   sget s p ?= DATA c I W ->
-  c' \in I :|: W ->
+  c' \in I ->
   c' <? next_id (Symbolic.internal s).
 Proof.
-  move=> [mem reg pc [next Li LaJ LaS]] /= p c I W c' GOOD SGET IN.
-  rewrite /good_internal /= in GOOD;
-    destruct Li  as [ci  Ii  Wi];  try done;
-    destruct LaJ as [caJ IaJ WaJ]; try done;
-    destruct LaS as [caS IaS WaS]; try done.
-  case: GOOD => NEQ [/and4P [? ? ? ?] [GOOD1 GOOD2]].
-  rewrite /sget in SGET.
-  destruct (get mem p) as [[? ?]|] eqn:GET; rewrite GET in SGET.
-  - move: SGET => [] *; subst.
-    apply GOOD2 in GET.
-    case: GET => [_ _ IF_IN].
-    by apply IF_IN.
-  - move: SGET => /=.
-    by repeat (case: (p == _);
-               first by move=> [] *; subst;
-                        move/forall_inP in GOOD1; apply GOOD1;
-                        rewrite !inE; rewrite inE in IN;
-                        case/orP: IN => IN; rewrite IN ?orbT).
+  move=> [Hbounds Hisolated] /Hbounds/(_ c') H c'_in_I.
+  apply: H.
+  by rewrite !in_setU c'_in_I orbT.
 Qed.
 
-Lemma fresh_preserves_good : forall mem reg pc si si' fid,
-  fresh si ?= (fid,si') ->
-  good_internal (Symbolic.State mem reg pc si) ->
-  good_internal (Symbolic.State mem reg pc si').
+Lemma sget_lt_next_W s p c I W c' :
+  good_internal s ->
+  sget s p ?= DATA c I W ->
+  c' \in W ->
+  c' <? next_id (Symbolic.internal s).
 Proof.
-  move=> mem reg pc [next iT aJT aST] /= si' fid FRESH.
-  destruct (next == max_word t) eqn:EQ;
-    [discriminate | simpl in FRESH; move/eqP in EQ].
-  inversion FRESH; subst; clear FRESH.
-  rewrite /good_internal /=.
-  destruct iT  as [ci Ii Wi],
-           aJT as [caJ IaJ WaJ],
-           aST as [caS IaS WaS];
-    auto.
-  move=> [NEQ [/and4P [? ? ? _] [GOOD1 GOOD2]]].
-    do 2 (split; eauto 2).
-    by apply/and4P; split; eauto 2.
-  split.
-  - apply/forall_inP => c Hc.
-    apply succ_trans; eauto.
-    move/forall_inP: GOOD1.
-    by apply.
-  - intros p x c I W GET; specialize (GOOD2 p x c I W GET).
-    case: GOOD2 => H1 H2 H3.
-    split; eauto 2.
-    move=> c' /H3 Hc'.
-    by apply succ_trans.
+  move=> [Hbounds Hisolated] /Hbounds/(_ c') H c'_in_W.
+  apply: H.
+  by rewrite !in_setU c'_in_W orbT.
 Qed.
 
 Lemma retag_one_preserves_definedness ok retag s p s' :
@@ -990,300 +970,133 @@ Proof.
     apply supd_preserves_next_id in def_s2; apply IHps in RETAG_SET; congruence.
 Qed.
 
-Lemma good_internal_equiv : forall s s',
-  (forall p,
-     match sget s p , sget s' p with
-       | Some (DATA c _ _) , Some (DATA c' _ _) => c = c'
-       | None              , None               => True
-       | _                 , _                  => False
-     end) ->
-  next_id (Symbolic.internal s) = next_id (Symbolic.internal s') ->
-  ~~ isSome (get (Symbolic.mem s) isolate_addr) ->
-  ~~ isSome (get (Symbolic.mem s) add_to_jump_targets_addr) ->
-  ~~ isSome (get (Symbolic.mem s) add_to_store_targets_addr) ->
-  ~~ isSome (get (Symbolic.mem s') isolate_addr) ->
-  ~~ isSome (get (Symbolic.mem s') add_to_jump_targets_addr) ->
-  ~~ isSome (get (Symbolic.mem s') add_to_store_targets_addr) ->
-  isolate_addr != add_to_jump_targets_addr ->
-  isolate_addr != add_to_store_targets_addr ->
-  add_to_jump_targets_addr != add_to_store_targets_addr ->
-  good_internal s ->
-  (forall p,
-     match sget s' p with
-       | Some (DATA _ In W) =>
-         forall cid,
-           cid \in In :|: W ->
-           cid <? next_id (Symbolic.internal s')
-       | None => True
-     end) ->
-  good_internal s'.
+Lemma retag_set_preserves_bounded_by ok retag ps cnew s s' :
+  cnew <> max_word t ->
+  bounded_by s cnew ->
+  retag_set ok retag ps s ?= s' ->
+  (forall p cid I W, data_tag_compartment (retag p cid I W) \in [:: cid; cnew]) ->
+  (forall p cid I W, data_tag_incoming (retag p cid I W) :|:
+                     data_tag_writers  (retag p cid I W) \subset
+                     cnew |: I :|: W) ->
+  bounded_by s' (cnew+1)%w.
 Proof.
-  move=> s s'
-                  TAGS NEXT
-                  NOT_SOME_I NOT_SOME_aJ NOT_SOME_aS
-                  NOT_SOME_I' NOT_SOME_aJ' NOT_SOME_aS'
-                  DIFF_I_aJ DIFF_I_aS DIFF_aJ_aS.
-
-  assert (INONE : get (Symbolic.mem s) isolate_addr = None)
-    by by destruct (get (Symbolic.mem s) isolate_addr).
-  assert (AJNONE : get (Symbolic.mem s) add_to_jump_targets_addr = None)
-    by by destruct (get (Symbolic.mem s) add_to_jump_targets_addr).
-  assert (ASNONE : get (Symbolic.mem s) add_to_store_targets_addr = None)
-    by by destruct (get (Symbolic.mem s) add_to_store_targets_addr).
-
-  assert (INONE' : get (Symbolic.mem s') isolate_addr = None)
-    by by destruct (get (Symbolic.mem s') isolate_addr).
-  assert (AJNONE' : get (Symbolic.mem s') add_to_jump_targets_addr = None)
-    by by destruct (get (Symbolic.mem s') add_to_jump_targets_addr).
-  assert (ASNONE' : get (Symbolic.mem s') add_to_store_targets_addr = None)
-    by by destruct (get (Symbolic.mem s') add_to_store_targets_addr).
-
-  assert (FALSE_aJ_I : (add_to_jump_targets_addr == isolate_addr) = false)
-   by by rewrite eq_sym in DIFF_I_aJ; move/Bool.negb_true_iff in DIFF_I_aJ.
-  assert (FALSE_aS_I : (add_to_store_targets_addr == isolate_addr) = false)
-   by by rewrite eq_sym in DIFF_I_aS; move/Bool.negb_true_iff in DIFF_I_aS.
-  assert (FALSE_aS_aJ: (add_to_store_targets_addr ==
-                        add_to_jump_targets_addr) = false)
-   by by rewrite eq_sym in DIFF_aJ_aS; move/Bool.negb_true_iff in DIFF_aJ_aS.
-
-  destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
-           s' as [mem' reg' pc' [next' iT' aJT' aST']];
-    simpl in *; subst next'.
-
-  assert (SGET_I :
-            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
-                 isolate_addr ?= iT).
-    by by rewrite /sget INONE eq_refl.
-  assert (SGET_aJ :
-            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
-                 add_to_jump_targets_addr ?= aJT)
-    by by rewrite /sget AJNONE FALSE_aJ_I eq_refl.
-  assert (SGET_aS :
-            sget (Symbolic.State mem reg pc (Internal next iT aJT aST))
-                 add_to_store_targets_addr ?= aST)
-    by by rewrite /sget ASNONE FALSE_aS_I FALSE_aS_aJ eq_refl.
-
-  assert (SGET_I' :
-            sget (Symbolic.State mem' reg' pc' (Internal next iT' aJT' aST'))
-                 isolate_addr ?= iT')
-    by by rewrite /sget INONE' eq_refl.
-  assert (SGET_aJ' :
-            sget (Symbolic.State mem' reg' pc' (Internal next iT' aJT' aST'))
-                 add_to_jump_targets_addr ?= aJT')
-    by by rewrite /sget AJNONE' FALSE_aJ_I eq_refl.
-  assert (SGET_aS' :
-            sget (Symbolic.State mem' reg' pc' (Internal next iT' aJT' aST'))
-                 add_to_store_targets_addr ?= aST')
-    by by rewrite /sget ASNONE' FALSE_aS_I FALSE_aS_aJ eq_refl.
-
-  rewrite /good_internal /=; move=> GOOD BOUNDS.
-  generalize (TAGS isolate_addr) => TAGS_I;
-    rewrite SGET_I SGET_I' in TAGS_I;
-    destruct iT as [ci Wi Ii], iT' as [ci' Wi' Ii']; try done;
-    subst ci'.
-  generalize (TAGS add_to_jump_targets_addr) => TAGS_aJ;
-    rewrite SGET_aJ SGET_aJ' in TAGS_aJ;
-    destruct aJT as [caJ WaJ IaJ], aJT' as [caJ' WaJ' IaJ']; try done;
-    subst caJ'.
-  generalize (TAGS add_to_store_targets_addr) => TAGS_aS;
-    rewrite SGET_aS SGET_aS' in TAGS_aS;
-    destruct aST as [caS WaS IaS], aST' as [caS' WaS' IaS']; try done;
-    subst caS'.
-  case: GOOD=> ? [? [GOOD1 GOOD2]].
-  repeat (split; [assumption|]).
-  split.
-  - apply/forall_inP => c Hc.
-    rewrite -(setUA _ _ IaS') in_setU -(setUA _ _ IaJ') in_setU -orbA in Hc.
-    case/or3P: Hc => [Hc | Hc | Hc].
-    + generalize (BOUNDS isolate_addr). rewrite SGET_I'. by apply.
-    + generalize (BOUNDS add_to_jump_targets_addr). rewrite SGET_aJ'. by apply.
-    + generalize (BOUNDS add_to_store_targets_addr). rewrite SGET_aS'. by apply.
-  - intros p x c I W GET'.
-    move/id in TAGS; specialize TAGS with p.
-    rewrite /sget GET' in TAGS.
-    destruct (get mem p) as [[y [cy Iy Wy]]|] eqn:GET;
-     try done; subst.
-    + apply GOOD2 in GET.
-      case: GET => G1 G2 G3.
-      constructor=> //.
-      move/(_ p): BOUNDS => /=.
-      by rewrite /sget /= GET'.
-    + by destruct (p == isolate_addr) eqn:EQ_I;
-           move/eqP in EQ_I;
-           [|destruct (p == add_to_jump_targets_addr) eqn:EQ_aJ;
-             move/eqP in EQ_aJ;
-               [|destruct (p == add_to_store_targets_addr) eqn:EQ_aS;
-                 move/eqP in EQ_aS]];
-         subst; try congruence.
+  move=> Hnot_max Hbounds Hretag Hnew_cid Hnew_targets.
+  have {Hbounds} Hbounds : bounded_by s (cnew+1)%w.
+  { move=> p cid I W /Hbounds {Hbounds} H cid' /H {H}.
+    by apply: succ_trans. }
+  have Hsucc : cnew <? (cnew + 1)%w.
+  { apply: lebw_succ; first exact: max_word t.
+    apply/ltb_lt.
+    move/leb_le: (lew_max cnew).
+    rewrite leb_is_ltb_or_eq.
+    case/orP => [//|].
+    case: (SetoidDec.equiv_dec _ _) => //=. }
+  elim: ps s Hbounds Hretag
+        => [ s Hbounds [<-] //
+           | p ps IH s Hbounds ].
+  rewrite /retag_set /retag_one /=.
+  case Hsget: (sget _ _) => [[cid I W]|] //=.
+  case: (ok _ _ _ _) => //.
+  case Hsupd: (supd _ _ _) => [s''|] //=.
+  apply: IH => p' cid' I' W'.
+  rewrite (sget_supd _ _ _ _ Hsupd).
+  have [/= _ {p'} [Hretag] cid''|_] := p' =P p; last by apply: Hbounds.
+  rewrite -setUA in_setU1=> /orP [/eqP -> {cid''}| Hcid''].
+  - move: (Hnew_cid p cid I W).
+    rewrite Hretag {Hretag} /= !inE=> /orP [/eqP -> | /eqP -> //] {cid'}.
+    apply: {Hbounds} (Hbounds _ _ _ _ Hsget cid).
+    by rewrite in_setU in_setU1 eqxx.
+  - move: (Hnew_targets p cid I W).
+    rewrite Hretag /= => /subsetP/(_ _ Hcid'') {Hcid''}.
+    rewrite -setUA in_setU1.
+    case/orP=> [/eqP -> {cid''} //|cid''_in].
+    apply: (Hbounds _ _ _ _ Hsget cid'').
+    by rewrite -setUA in_setU1 cid''_in orbT.
 Qed.
 
-Lemma retag_set_updating_preserves_good_internal : forall ok cnew ps s s',
-  cnew <> max_word t ->
-  next_id (Symbolic.internal s) = (cnew+1)%w ->
-  ~~ isSome (get (Symbolic.mem s) isolate_addr) ->
-  ~~ isSome (get (Symbolic.mem s) add_to_jump_targets_addr) ->
-  ~~ isSome (get (Symbolic.mem s) add_to_store_targets_addr) ->
-  isolate_addr != add_to_jump_targets_addr ->
-  isolate_addr != add_to_store_targets_addr ->
-  add_to_jump_targets_addr != add_to_store_targets_addr ->
-  isolate_addr \notin ps ->
-  add_to_jump_targets_addr \notin ps ->
-  add_to_store_targets_addr \notin ps ->
-  uniq ps ->
-  retag_set ok (fun _ _ I W => DATA cnew I W) ps s ?= s' ->
-  good_internal (Symbolic.State
-                   (Symbolic.mem s) (Symbolic.regs s) (Symbolic.pc s)
-                   (Internal
-                      cnew
-                      (isolate_tag              (Symbolic.internal s))
-                      (add_to_jump_targets_tag  (Symbolic.internal s))
-                      (add_to_store_targets_tag (Symbolic.internal s)))) ->
-  good_internal s'.
+Lemma retag_set_preserves_isolated_syscalls ok retag ps s s' cnew :
+  bounded_by s cnew ->
+  isolated_syscalls s ->
+  retag_set ok retag ps s ?= s' ->
+  (forall sc cid I W,
+     sc \in syscall_addrs ->
+     data_tag_compartment (retag sc cid I W) = cid) ->
+  (forall p cid I W, data_tag_compartment (retag p cid I W) \in [:: cid; cnew]) ->
+  isolated_syscalls s'.
 Proof.
-  move=> ok cnew ps s s'
-                  NMAX NEXT
-                  NOT_SOME_i NOT_SOME_aJ NOT_SOME_aS
-                  DIFF_i_aJ DIFF_i_aS DIFF_aJ_aS
-                  NIN_i NIN_aJ NIN_aS
-                  NODUP RETAG_SET.
+  move=> Hbounds Hisolated Hretag Hsc_cid Hnew_cid.
+  have {Hbounds} Hpreserved :
+    forall sc cid I W,
+      sc \in syscall_addrs ->
+      sget s sc = Some (DATA cid I W) ->
+      cid != cnew.
+  { move=> sc cid I W sc_is_sc Hsget.
+    apply/negP=> /eqP ?. subst cid.
+    move: (Hbounds sc cnew I W Hsget cnew).
+    by rewrite -setUA in_setU1 eqxx /= ltb_irrefl => /(_ erefl). }
+  elim: ps s Hpreserved Hisolated Hretag
+        => [ s _ _ [<-] //
+           | p ps IH ] s Hpreserved Hisolated.
+  rewrite /retag_set /retag_one /=.
+  case Hsget: (sget _ _) => [[cid I W]|] //=.
+  case: (ok _ _ _ _) => //.
+  case Hsupd: (supd _ _ _) => [s''|] //= Hretag.
+  apply: (IH s'') => //.
+  - move=> sc cid' I' W'.
+    rewrite (sget_supd _ _ _ _ Hsupd).
+    have [-> {sc} /=|_] := sc =P p.
+    + move=> p_in_scs [Hretag_p].
+      move: Hretag_p (Hsc_cid p cid I W p_in_scs) => -> /= -> {cid'}.
+      by apply: (Hpreserved p cid I W).
+    + by apply: Hpreserved.
+  - move=> p' sc.
+    rewrite !(sget_supd _ _ _ _ Hsupd).
+    have [/= {p'} ->|_] := p' =P p;
+    have [/= {sc} -> //|_] := sc =P p.
+    + move=> sc_is_sc.
+      move: (Hnew_cid p cid I W).
+      rewrite !inE=> /orP [/eqP E' E | /eqP ->].
+      * apply (Hisolated p sc sc_is_sc).
+        by rewrite -E Hsget E'.
+      * case Hsget': (sget _ _) => [[cid' I' W']|] //= [?].
+        subst cid'.
+        move: (Hpreserved sc cnew I' W' sc_is_sc Hsget').
+        by rewrite eqxx.
+    + move=> sc_is_sc.
+      rewrite (Hsc_cid p cid I W sc_is_sc)=> E.
+      apply (Hisolated p' p sc_is_sc).
+      by rewrite Hsget.
+    + by apply Hisolated.
+Qed.
 
-  assert (GETS : forall p, isSome (get (Symbolic.mem s) p) =
-                           isSome (get (Symbolic.mem s') p)).
-    by (eapply retag_set_preserves_get_definedness; eassumption).
-
-  assert (INONE : get (Symbolic.mem s) isolate_addr = None)
-    by by destruct (get (Symbolic.mem s) isolate_addr).
-  assert (AJNONE : get (Symbolic.mem s) add_to_jump_targets_addr = None)
-    by by destruct (get (Symbolic.mem s) add_to_jump_targets_addr) eqn:H.
-  assert (ASNONE : get (Symbolic.mem s) add_to_store_targets_addr = None)
-    by by destruct (get (Symbolic.mem s) add_to_store_targets_addr) eqn:H.
-
-  assert (NOT_SOME_i' : ~~ isSome (get (Symbolic.mem s') isolate_addr)). {
-    apply/negP; move=> SOME; rewrite -GETS in SOME.
-    simpl in SOME; move/negP in NOT_SOME_i.
-    contradiction.
-  }
-
-  assert (NOT_SOME_aJ' : ~~ isSome (get (Symbolic.mem s')
-                                         add_to_jump_targets_addr)). {
-    apply/negP; move=> SOME; rewrite -GETS in SOME.
-    simpl in SOME; move/negP in NOT_SOME_aJ.
-    contradiction.
-  }
-
-  assert (NOT_SOME_aS' : ~~ isSome (get (Symbolic.mem s')
-                                         add_to_store_targets_addr)). {
-    apply/negP; move=> SOME; rewrite -GETS in SOME.
-    simpl in SOME; move/negP in NOT_SOME_aS.
-    contradiction.
-  }
-
-  assert (INONE' : get (Symbolic.mem s') isolate_addr = None)
-    by by destruct (get (Symbolic.mem s') isolate_addr).
-  assert (AJNONE' : get (Symbolic.mem s') add_to_jump_targets_addr = None)
-    by by destruct (get (Symbolic.mem s') add_to_jump_targets_addr).
-  assert (ASNONE' : get (Symbolic.mem s') add_to_store_targets_addr = None)
-    by by destruct (get (Symbolic.mem s') add_to_store_targets_addr).
-
-  assert (FALSE_aJ_i : (add_to_jump_targets_addr == isolate_addr) = false)
-   by by rewrite eq_sym in DIFF_i_aJ; move/Bool.negb_true_iff in DIFF_i_aJ.
-  assert (FALSE_aS_i : (add_to_store_targets_addr == isolate_addr) = false)
-   by by rewrite eq_sym in DIFF_i_aS; move/Bool.negb_true_iff in DIFF_i_aS.
-  assert (FALSE_aS_aJ: (add_to_store_targets_addr ==
-                        add_to_jump_targets_addr) = false)
-   by by rewrite eq_sym in DIFF_aJ_aS; move/Bool.negb_true_iff in DIFF_aJ_aS.
-
-  destruct s  as [mem  reg  pc  [next  iT  aJT  aST]],
-           s' as [mem' reg' pc' [next' iT' aJT' aST']];
-    simpl in *.
-
-  assert (SGET_i : sget (Symbolic.State mem reg pc
-                                        (Internal next iT aJT aST))
-                        isolate_addr ?= iT)
-    by by rewrite /sget INONE eq_refl.
-  assert (SGET_aJ : sget (Symbolic.State mem reg pc
-                                         (Internal next iT aJT aST))
-                         add_to_jump_targets_addr ?= aJT)
-    by by rewrite /sget AJNONE FALSE_aJ_i eq_refl.
-  assert (SGET_aS : sget (Symbolic.State mem reg pc
-                                         (Internal next iT aJT aST))
-                         add_to_store_targets_addr ?= aST)
-    by by rewrite /sget ASNONE FALSE_aS_i FALSE_aS_aJ eq_refl.
-
-  assert (SGET_i' : sget (Symbolic.State mem' reg' pc'
-                                         (Internal next' iT' aJT' aST'))
-                         isolate_addr ?= iT')
-    by by rewrite /sget INONE' eq_refl.
-  assert (SGET_aJ' : sget (Symbolic.State mem' reg' pc'
-                                           (Internal next' iT' aJT' aST'))
-                          add_to_jump_targets_addr ?= aJT')
-    by by rewrite /sget AJNONE' FALSE_aJ_i eq_refl.
-  assert (SGET_aS' : sget (Symbolic.State mem' reg' pc'
-                                          (Internal next' iT' aJT' aST'))
-                          add_to_store_targets_addr ?= aST')
-    by by rewrite /sget ASNONE' FALSE_aS_i FALSE_aS_aJ eq_refl.
-
-  rewrite /good_internal /=; move => GOOD;
-    destruct iT  as [ci  Ii  Wi];  try done;
-    destruct aJT as [caJ IaJ WaJ]; try done;
-    destruct aST as [caS IaS WaS]; try done.
-
-  assert (def_iT' : iT' = DATA ci Ii Wi). {
-    apply retag_set_not_in with (p := isolate_addr) in RETAG_SET; auto.
-    rewrite SGET_i SGET_i' in RETAG_SET.
-    by inversion RETAG_SET; subst.
-  }
-
-  assert (def_aJT' : aJT' = DATA caJ IaJ WaJ). {
-    apply retag_set_not_in with (p := add_to_jump_targets_addr) in RETAG_SET;
-      auto.
-    rewrite SGET_aJ SGET_aJ' in RETAG_SET.
-    by inversion RETAG_SET; subst.
-  }
-
-  assert (def_aST' : aST' = DATA caS IaS WaS). {
-    apply retag_set_not_in with (p := add_to_store_targets_addr) in RETAG_SET;
-      auto.
-    rewrite SGET_aS SGET_aS' in RETAG_SET.
-    by inversion RETAG_SET; subst.
-  }
-
-  assert (NEXTS : next = next')
-    by by apply retag_set_preserves_next_id in RETAG_SET.
-  subst iT' aJT' aST' next' next.
-
-  move: GOOD => [NEQ [LT [GOOD IF_GET]]].
-  split; first solve [eauto 2].
-  split; first by case/and4P: LT => *; apply/and4P; split; eauto 2.
+Lemma retag_set_preserves_good_internal ok retag ps s s' pc' :
+  good_internal s ->
+  retag_set ok retag ps s ?= s' ->
+  let cnew := next_id (Symbolic.internal s) in
+  cnew <> max_word t ->
+  (forall sc cid I W,
+     sc \in syscall_addrs ->
+     data_tag_compartment (retag sc cid I W) = cid) ->
+  (forall p cid I W, data_tag_compartment (retag p cid I W) \in [:: cid; cnew]) ->
+  (forall p cid I W, data_tag_incoming (retag p cid I W) :|:
+                     data_tag_writers  (retag p cid I W) \subset
+                     cnew |: I :|: W) ->
+  good_internal (Symbolic.State (Symbolic.mem s')
+                                (Symbolic.regs s')
+                                pc'
+                                (bump_next_id (Symbolic.internal s'))).
+Proof.
+  move=> [Hbounded Hisolated] Hretag /= Hnot_max Hsc_cid Hnew_cid Hnew_targets.
   split.
-  { apply/forall_inP => c Hc.
-    move/forall_inP in GOOD.
-    apply succ_trans; eauto. }
-  intros p x c I W GET'.
-
-  apply retag_set_or with (p := p) in RETAG_SET; auto.
-  destruct (get mem p) as [[y Ly]|] eqn:GET;
-    [|by specialize GETS with p; rewrite GET GET' /= in GETS].
-  move: RETAG_SET => [OLD | [c' [I' [W' [THEN NOW]]]]].
-  - rewrite /sget GET' GET in OLD.
-    inversion OLD; subst.
-    apply IF_GET in GET.
-    case: GET => G1 G2 G3.
-    constructor;
-    repeat invh and; repeat split; eauto 2.
-    move=> c' Hc'.
-    by apply succ_trans; eauto.
-  - rewrite /sget GET  in THEN.
-    rewrite /sget GET' in NOW.
-    inversion THEN; subst; inversion NOW; subst.
-    repeat split.
-    + generalize (lew_max cnew) => /le_iff_lt_or_eq [LTmax | ?]; [|by subst].
-      eapply lebw_succ; eassumption.
-    + apply/negP.
-      by case/or4P => // [/eqP ?|/eqP ?|/eqP ?]; subst cnew;
-      rewrite ltb_irrefl /= ?andbF in LT.
-    + case: (IF_GET p _ _ _ _ GET) => G1 G2 G3 c'' Hc''.
-      by apply succ_trans; eauto.
+  - move: (retag_set_preserves_bounded_by _ _ _ _ _ _
+                                          Hnot_max Hbounded Hretag Hnew_cid Hnew_targets).
+    rewrite (retag_set_preserves_next_id _ _ _ _ _ Hretag) {Hretag}.
+    by case: s' => mem regs pc [id ? ? ?] /= {Hbounded} Hbounded p cid I W /Hbounded.
+  - move: (retag_set_preserves_isolated_syscalls
+             _ _ _ _ _ _
+             Hbounded Hisolated Hretag Hsc_cid Hnew_cid) => {Hretag}.
+    case: s' => mem regs pc [id ? ? ?] /= {Hisolated} Hisolated p sc sc_is_sc /= /Hisolated.
+    by apply.
 Qed.
 
 End WithClasses.

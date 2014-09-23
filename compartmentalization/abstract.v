@@ -224,7 +224,7 @@ Definition user_address_space (M : memory) (c : compartment) : bool :=
 Arguments user_address_space M !c /.
 
 Definition syscall_address_space (M : memory) (c : compartment) : bool :=
-  [exists sc, [&& ~~ get M sc, sc \in List.map address table &
+  [exists sc, [&& ~~ get M sc, sc \in syscall_addrs &
                   address_space c == set1 sc] ].
 
 Arguments syscall_address_space : simpl never.
@@ -234,7 +234,7 @@ Definition syscalls_separated (M : memory) : list compartment -> bool :=
 Arguments syscalls_separated M C /.
 
 Definition syscalls_present (C : list compartment) : bool :=
-  all (isSome ∘ in_compartment_opt C) [seq address sc | sc <- table].
+  all (isSome ∘ in_compartment_opt C) syscall_addrs.
 
 Definition good_state (MM : state) : bool :=
   [&& previous MM \in compartments MM,
