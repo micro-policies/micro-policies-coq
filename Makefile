@@ -30,7 +30,7 @@ bc:
 
 dist: clean
 	rm -f rm ../micropolicies.tar.gz
-	tar czvf ../micropolicies.tar.gz . --transform 's/^\./micropolicies/' --exclude=notes --exclude=old --exclude=testing --exclude=.gitignore --exclude=cfi/review.org --exclude=compartmentalization/global-hint.el
+	tar czvf ../micropolicies.tar.gz . --transform 's/^\./micropolicies/' --exclude=testing --exclude=.gitignore --exclude=cfi/review.org --exclude=compartmentalization/global-hint.el
 
 coqide:
 	coqide -R . MicroPolicies
