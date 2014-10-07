@@ -19,6 +19,8 @@ common/printing.v
 concrete/concrete.v
 concrete/exec.v
 concrete/int_32.v
+concrete/eval.v
+concrete/evaltest.v
 
 symbolic/symbolic.v
 symbolic/fault_handler.v
