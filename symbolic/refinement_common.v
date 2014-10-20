@@ -773,9 +773,6 @@ Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) :=
 
 Import DoNotation.
 
-Definition visible cst cst' :=
-  in_user cst && in_user cst'.
-
 (* Returns true iff our machine is at the beginning of a system call
 and the cache says it is allowed to execute. To simplify this
 definition, we assume that system calls are only allowed to begin with
