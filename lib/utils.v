@@ -1478,11 +1478,21 @@ Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : list A :=
 
 Definition run {A} (step: A -> option A) (st : A) := runn step 10000 st.
 
-
-
 Instance eqType_EqDec (A : eqType) : EqDec (eq_setoid A).
 Proof.
 move=> x y.
 have [->|neq_xy] := altP (x =P y); first by left.
 by right=> eq_xy; move: neq_xy; rewrite eq_xy eqxx.
+Qed.
+
+Lemma pair2_inj (T : eqType) (S : T -> Type) (x : T) : injective (existT S x).
+Proof.
+  move=> y1 y2 H.
+  have [p {H} H] := match H in _ = P
+                    return let: existT x' y2' := P in
+                           { p : x' = x & y1 = eq_rect x' S y2' x p }
+                    with
+                    | erefl => existT _ erefl erefl
+                    end.
+  by rewrite H eq_axiomK.
 Qed.
