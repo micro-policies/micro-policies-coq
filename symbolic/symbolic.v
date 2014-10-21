@@ -78,6 +78,12 @@ Record IVec : Type := mkIVec {
   ts  : hlist tag_type (vinputs op)
 }.
 
+Lemma ivec_eq_inv op op' tpc tpc' ti ti' ts ts'
+                  (p : mkIVec op tpc ti ts = mkIVec op' tpc' ti' ts') :
+  [/\ op = op', tpc = tpc', ti = ti' &
+      existT (hlist tag_type \o vinputs) op ts = existT _ op' ts'].
+Proof. inversion p. by constructor. Qed.
+
 Definition type_of_result (o : option tag_kind) :=
   odflt [eqType of unit] (option_map tag_type o).
 
