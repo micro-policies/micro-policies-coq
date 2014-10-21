@@ -66,11 +66,11 @@ Definition cache_correct cache cmem :=
   forall cmvec crvec,
     Concrete.cache_lookup cache masks cmvec = Some crvec ->
     is_user (@decode _ _ (e Symbolic.P) (Concrete.ctpc cmvec) cmem) ->
-    exists uivec uovec,
-      [/\ decode_uivec e cmvec cmem = Some uivec,
-          decode_uovec e (Symbolic.op uivec) crvec cmem = Some uovec,
-          Symbolic.transfer uivec = Some uovec &
-          ~~ privileged_op (Symbolic.op uivec) ].
+    exists ivec ovec,
+      [/\ decode_ivec e cmvec cmem = Some ivec,
+          decode_ovec e (Symbolic.op ivec) crvec cmem = Some ovec,
+          Symbolic.transfer ivec = Some ovec &
+          ~~ privileged_op (Symbolic.op ivec) ].
 
 Definition in_mvec addr := In addr (Concrete.mvec_fields mt).
 
@@ -489,65 +489,42 @@ Qed.
 Definition user_step cst cst' :=
   hit_step cst cst' \/ user_kernel_user_step cst cst'.
 
-(*
-Lemma analyze_cache cache cmvec crvec op :
-  cache_correct cache ->
+Lemma analyze_cache cache cmem cmvec crvec op :
+  cache_correct cache cmem ->
   Concrete.cache_lookup cache masks cmvec = Some crvec ->
-  @word_lift _ _ (e Symbolic.P) (fun t => is_user t) (Concrete.ctpc cmvec) ->
+  is_user (@decode _ _ (e Symbolic.P) (Concrete.ctpc cmvec) cmem) ->
   Concrete.cop cmvec = op_to_word op ->
   if privileged_op op then False else
-  exists tpc : Symbolic.ttypes Symbolic.P, Concrete.ctpc cmvec = encode (USER tpc) /\
+  exists tpc : Symbolic.ttypes Symbolic.P, decode (Concrete.ctpc cmvec) cmem = USER tpc /\
   ((exists (ti : Symbolic.ttypes Symbolic.M)
            (ts : hlist Symbolic.ttypes (Symbolic.inputs op))
            (rtpc : Symbolic.ttypes Symbolic.P)
            (rt : Symbolic.type_of_result Symbolic.ttypes (Symbolic.outputs op)),
     let ovec := Symbolic.mkOVec rtpc rt in
-    Concrete.cti cmvec = encode (USER ti) /\
-    crvec = encode_ovec e (ovec_of_uovec ovec) /\
+    decode (Concrete.cti cmvec) cmem = USER ti /\
+    decode_ovec e op crvec cmem = Some ovec /\
     Symbolic.transfer (Symbolic.mkIVec op tpc ti ts) = Some ovec /\
-    match Symbolic.inputs op as os return hlist Symbolic.ttypes os -> Prop with
-    | []   => fun ts => ts = tt
-    | [k1] => fun ts => exists t1,
-                          ts = (t1, tt) /\
-                          Concrete.ct1 cmvec = encode (USER t1)
-    | [k1; k2] => fun ts => exists t1 t2,
-                              ts = (t1, (t2, tt)) /\
-                              Concrete.ct1 cmvec = encode (USER t1) /\
-                              Concrete.ct2 cmvec = encode (USER t2)
-    | [k1; k2; k3] => fun ts => exists t1 t2 t3,
-                                  ts = (t1, (t2, (t3, tt))) /\
-                                  Concrete.ct1 cmvec = encode (USER t1) /\
-                                  Concrete.ct2 cmvec = encode (USER t2) /\
-                                  Concrete.ct3 cmvec = encode (USER t3)
-    | _ => fun _ => False
-    end ts) \/
+    decode_fields e _ (Concrete.ct1 cmvec, Concrete.ct2 cmvec, Concrete.ct3 cmvec) cmem =
+    Some (hmap (fun k x => USER x) ts)) \/
    exists t : Symbolic.ttypes Symbolic.M,
      op = NOP /\
-     Concrete.cti cmvec = encode (ENTRY t) /\
-     crvec = Concrete.mkRVec Concrete.TKernel Concrete.TKernel).
+     decode (Concrete.cti cmvec) cmem = ENTRY t /\
+     Concrete.ctrpc crvec = Concrete.TKernel).
 Proof.
-  intros CACHE LOOKUP INUSER EQ.
-  destruct cmvec as [op' tpc ti t1 t2 t3].
-  destruct (CACHE _ crvec INUSER LOOKUP) as ([op'' tpc' ti' ts] & [rtpc rt] & E1 & E2 & E3 & E4).
-  subst. simpl in E4, LOOKUP, EQ.
-  subst op'. simpl in *. rewrite /encode_ivec in E1.
-  destruct op''; simpl in *;
-  match goal with
-  | H : Concrete.mkMVec ?op1 _ _ _ _ _ =
-        Concrete.mkMVec ?op2 _ _ _ _ _ |- _ =>
-    let H' := fresh "H'" in
-    assert (H' : op1 = op2) by congruence;
-    apply op_to_word_inj in H'; inv H
-  end; simpl; try discriminate E4;
-  eexists; split; try reflexivity;
-  repeat match goal with
-  | t : prod _ _ |- _ => destruct t
-  | t : unit |- _ => destruct t
-  end;
-  solve [ left; do 4 eexists; repeat (split; eauto); eauto 7
-        | right; eauto ].
+  case: cmvec => op' tpc ti t1 t2 t3 /= CACHE LOOKUP INUSER EQ. subst op'.
+  case: (CACHE _ crvec LOOKUP INUSER) =>
+        [[op' tpc' ti' ts] /= [ovec /= [/decode_ivec_inv /= [E1|E1] E2 E3 E4]]];
+  rewrite op_to_wordK in E1; last first.
+    case: E1 => [[?] ? -> ->] {E4}. subst op op'.
+    move: E2 => /=.
+    have [-> _| //] := (Concrete.ctrpc _ =P _).
+    by eauto 11.
+  case: E1 => op'' [? [?] -> ->]. subst op' op'' => ->.
+  move: E4 E2 => /= /negbTE ->.
+  case: ovec E3 => trpc tr E3.
+  case: (decode _ cmem) => [trpc'| |?] //= DEC.
+  by eauto 11.
 Qed.
-*)
 
 Lemma miss_state_not_user st st' mvec :
   Concrete.miss_state st mvec = Some st' ->

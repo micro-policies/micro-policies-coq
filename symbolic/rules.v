@@ -80,7 +80,7 @@ Definition is_entry_tag (t : tag) : bool :=
   end.
 
 (* Returns true iff an opcode can only be executed by the kernel *)
-Definition privileged_op (op : opcode) : bool :=
+Definition privileged_op (op : vopcode) : bool :=
   match op with
   | JUMPEPC
   | ADDRULE
