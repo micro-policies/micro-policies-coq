@@ -67,10 +67,10 @@ Definition cache_correct cache cmem :=
     Concrete.cache_lookup cache masks cmvec = Some crvec ->
     is_user (@decode _ _ (e Symbolic.P) (Concrete.ctpc cmvec) cmem) ->
     exists uivec uovec,
-      decode_uivec e cmvec cmem = Some uivec /\
-      decode_uovec e (Symbolic.op uivec) crvec cmem = Some uovec /\
-      Symbolic.transfer uivec = Some uovec /\
-      ~~ privileged_op (Symbolic.op uivec).
+      [/\ decode_uivec e cmvec cmem = Some uivec,
+          decode_uovec e (Symbolic.op uivec) crvec cmem = Some uovec,
+          Symbolic.transfer uivec = Some uovec &
+          ~~ privileged_op (Symbolic.op uivec) ].
 
 Definition in_mvec addr := In addr (Concrete.mvec_fields mt).
 
