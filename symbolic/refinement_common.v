@@ -64,8 +64,8 @@ Hint Unfold in_user.
 
 Definition cache_correct cache cmem :=
   forall cmvec crvec,
-    is_user (@decode _ _ (e Symbolic.P) (Concrete.ctpc cmvec) cmem) ->
     Concrete.cache_lookup cache masks cmvec = Some crvec ->
+    is_user (@decode _ _ (e Symbolic.P) (Concrete.ctpc cmvec) cmem) ->
     exists uivec uovec,
       decode_uivec e cmvec cmem = Some uivec /\
       decode_uovec e (Symbolic.op uivec) crvec cmem = Some uovec /\
