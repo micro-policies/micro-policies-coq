@@ -143,7 +143,6 @@ Definition format_opcode (o : opcode) :=
    | GETTAG => ss "GETTAG"
    | PUTTAG => ss "PUTTAG"
    | HALT => ss "HALT"
-   | SERVICE => ss "SERVICE"
   end.
 
 Class printing (t : machine_types) := {

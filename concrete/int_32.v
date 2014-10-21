@@ -91,7 +91,6 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     | PUTTAG => let: [r1; r2; r3; _]%wu := unpack [4; 4; 4; 11] rest in
                 Some (@PutTag t r1 r2 r3)
     | HALT => Some (Halt t)
-    | SERVICE => None (* Not a real instruction *)
     end;
 
   ra := repr 0

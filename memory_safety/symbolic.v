@@ -174,18 +174,21 @@ Definition rules_normal (op : opcode) (c : color)
   | _, _, _, _ => None
   end.
 
-Definition rules (ivec : IVec ms_tags) : option (OVec ms_tags (op ivec)) :=
-  match ivec return option (OVec ms_tags (op ivec)) with
+Definition rules (ivec : IVec ms_tags) : option (VOVec ms_tags (op ivec)) :=
+  match ivec return option (VOVec ms_tags (op ivec)) with
   | mkIVec op tpc ti ts =>
     match tpc, ti with
     | V(DATA), _ =>
-      match op return option (OVec ms_tags op) with
-      | SERVICE => Some (@mkOVec ms_tags SERVICE V(DATA) tt)
+      match op return option (VOVec ms_tags op) with
+      | SERVICE => Some tt
       | _ => None
       end
     | V(PTR b), M(b', DATA) =>
       if b == b' then
-        rules_normal b ts
+        match op return hlist _ (vinputs op) -> option (VOVec ms_tags op) with
+        | SERVICE => fun _ => None
+        | OP op => rules_normal b
+        end ts
       else None
     | _, _ => None
     end
