@@ -156,7 +156,7 @@ Variable ki : kernel_invariant.
 
 (*
 Lemma is_user_pc_tag_is_kernel_tag tg :
-  @word_lift _ _ (e Symbolic.P) (fun x => is_user x) tg = true -> Concrete.is_kernel_tag tg = false.
+  @word_lift _ _ (e Symbolic.P) (fun x => is_user x) tg -> Concrete.is_kernel_tag tg.
 Proof.
   unfold word_lift, is_user, Concrete.is_kernel_tag.
   destruct (decode tg) as [[ut| |]|] eqn:E; try discriminate.
@@ -200,7 +200,7 @@ Definition wf_entry_points (cmem : Concrete.memory mt) :=
     match PartMaps.get cmem addr with
     | Some i@it => is_nop i && (decode it cmem == ENTRY t)
     | None => false
-    end = true.
+    end.
 
 Lemma wf_entry_points_if cmem addr sc :
   wf_entry_points cmem ->
@@ -455,25 +455,25 @@ Qed.
 *)
 
 Inductive hit_step cst cst' : Prop :=
-| hs_intro (USER : in_user cst = true)
-           (USER' : in_user cst' = true)
+| hs_intro (USER : in_user cst)
+           (USER' : in_user cst')
            (STEP : Concrete.step _ masks cst cst').
 
 Definition kernel_exec kst kst' :=
   restricted_exec (Concrete.step _ masks)
-                  (fun s => in_kernel s = true)
+                  (fun s => in_kernel s)
                   kst kst'.
 Hint Unfold kernel_exec.
 
 Definition kernel_user_exec kst st : Prop :=
   exec_until (Concrete.step _ masks)
-             (fun s => in_kernel s = true)
-             (fun s => in_kernel s = false)
+             (fun s => in_kernel s)
+             (fun s => in_kernel s)
              kst st.
 
 Inductive user_kernel_user_step cst cst' : Prop :=
 | ukus_intro kst
-             (USER : in_user cst = true)
+             (USER : in_user cst)
              (STEP : Concrete.step _ masks cst kst)
              (EXEC : kernel_user_exec kst cst').
 
@@ -493,7 +493,7 @@ Definition user_step cst cst' :=
 Lemma analyze_cache cache cmvec crvec op :
   cache_correct cache ->
   Concrete.cache_lookup cache masks cmvec = Some crvec ->
-  @word_lift _ _ (e Symbolic.P) (fun t => is_user t) (Concrete.ctpc cmvec) = true ->
+  @word_lift _ _ (e Symbolic.P) (fun t => is_user t) (Concrete.ctpc cmvec) ->
   Concrete.cop cmvec = op_to_word op ->
   if privileged_op op then False else
   exists tpc : Symbolic.ttypes Symbolic.P, Concrete.ctpc cmvec = encode (USER tpc) /\
@@ -551,7 +551,7 @@ Qed.
 
 Lemma miss_state_not_user st st' mvec :
   Concrete.miss_state st mvec = Some st' ->
-  in_user st' = true ->
+  in_user st' ->
   False.
 Proof.
   intros MISS INUSER.
@@ -562,12 +562,13 @@ Proof.
 Qed.
 
 (*
+(* Need to double-check that is_true is not affecting the match below *)
 Ltac analyze_cache :=
   match goal with
   | LOOKUP : Concrete.cache_lookup ?cache _ ?mvec = Some ?rvec,
     PC     : PartMaps.get _ ?pc = Some ?i@_,
     INST   : decode_instr ?i = Some _,
-    INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
+    INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _),
     CACHE  : cache_correct ?cache |- _ =>
     unfold in_user in INUSER; simpl in INUSER;
     assert (CACHEHIT := analyze_cache mvec CACHE LOOKUP INUSER (erefl _));
@@ -584,15 +585,15 @@ Ltac analyze_cache :=
       rewrite decodeK in H; simpl in *; subst
     end
   | MISS   : Concrete.miss_state _ _ = Some ?st',
-    INUSER : in_user ?st' = true |- _ =>
+    INUSER : in_user ?st' |- _ =>
     destruct (miss_state_not_user _ _ MISS INUSER)
   end.
 *)
 
 Lemma valid_initial_user_instr_tags cst cst' v ti :
   cache_correct (Concrete.cache cst) (Concrete.mem cst) ->
-  in_user cst = true ->
-  in_user cst' = true ->
+  in_user cst ->
+  in_user cst' ->
   Concrete.step _ masks cst cst' ->
   PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) = Some v@ti ->
   is_user (@decode _ _ (e Symbolic.M) ti (Concrete.mem cst)).
@@ -630,7 +631,7 @@ Qed.
 Lemma valid_pcs st st' :
   Concrete.step _ masks st st' ->
   cache_correct (Concrete.cache st) (Concrete.mem st) ->
-  in_user st = true ->
+  in_user st ->
   match @decode _ _ (e Symbolic.P) (common.tag (Concrete.pc st')) (Concrete.mem st') with
   | USER _ => true
   | KERNEL => true
@@ -887,7 +888,7 @@ Class kernel_code_correctness : Prop := {
     decode_uivec e cmvec mem = Some uivec ->
     (* then if we start the concrete machine in kernel mode and let it
        run, it will never reach a user-mode state. *)
-    in_kernel st' = false ->
+    ~~ in_kernel st' ->
     ~ exec (Concrete.step _ masks)
       (Concrete.mkState mem' reg cache
                         (Concrete.fault_handler_start _)@Concrete.TKernel
