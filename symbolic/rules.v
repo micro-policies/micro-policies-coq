@@ -159,15 +159,15 @@ Context (t : machine_types).
 (* TODO: Define the operations below in terms of a concrete encoding
    for tags. *)
 
-Class encodable ut := {
-  decode : word_map t (atom (word t) (word t)) -> word t -> tag ut;
-  decode_monotonic : forall mem mem' addr x y ct st ct' st',
+Class encodable (ut : Symbolic.tag_kind -> eqType) := {
+  decode : forall tk, word_map t (atom (word t) (word t)) -> word t -> tag (ut tk);
+  decode_monotonic : forall mem mem' addr x y ct st ct' st' tk,
                        PartMaps.get mem addr = Some x@ct ->
-                       decode mem ct = USER st ->
+                       decode Symbolic.M mem ct = USER st ->
                        PartMaps.upd mem addr y@ct' = Some mem' ->
-                       decode mem ct' = USER st' ->
-                       decode mem' =1 decode mem;
-  decode_kernel_tag : forall m, decode m Concrete.TKernel = KERNEL
+                       decode Symbolic.M mem ct' = USER st' ->
+                       decode tk mem' =1 decode tk mem;
+  decode_kernel_tag : forall tk m, decode tk m Concrete.TKernel = KERNEL
 }.
 
 End encoding.
@@ -176,7 +176,7 @@ Section tag_encoding.
 
 Context (t : machine_types)
         (tty : Symbolic.tag_kind -> eqType)
-        (et : forall tk, encodable t (tty tk)).
+        (et : encodable t tty).
 
 Local Notation wrapped_tag := (fun tk => [eqType of tag (tty tk)]).
 
@@ -189,15 +189,15 @@ Definition decode_fields (fs : list Symbolic.tag_kind)
   match fs return option (hlist wrapped_tag fs) with
   | [] => Some tt
   | k1 :: fs' =>
-    let t1 := decode m (fst (fst ts)) in
+    let t1 := decode k1 m (fst (fst ts)) in
     match fs' return option (hlist wrapped_tag (k1 :: fs')) with
     | [] => Some (t1, tt)
     | k2 :: fs'' =>
-      let t2 := decode m (snd (fst ts)) in
+      let t2 := decode k2 m (snd (fst ts)) in
       match fs'' return option (hlist wrapped_tag (k1 :: k2 :: fs'')) with
       | [] => Some (t1, (t2, tt))
       | k3 :: fs''' =>
-        let t3 := decode m (snd ts) in
+        let t3 := decode k3 m (snd ts) in
         match fs''' return option (hlist wrapped_tag (k1 :: k2 :: k3 :: fs''')) with
         | [] => Some (t1, (t2, (t3, tt)))
         | _ :: _ => None
@@ -229,9 +229,9 @@ Definition decode_ivec (m : word_map t (atom (word t) (word t)))
                        (mvec : Concrete.MVec (word t))
                        : option (Symbolic.IVec tty) :=
   do! op  <- word_to_op (Concrete.cop mvec);
-  match decode m (Concrete.ctpc mvec) with
+  match decode Symbolic.P m (Concrete.ctpc mvec) with
   | USER tpc =>
-    match decode m (Concrete.cti mvec) with
+    match decode Symbolic.M m (Concrete.cti mvec) with
     | USER ti =>
       do! ts  <- decode_fields (Symbolic.vinputs (OP op)) m
                                (Concrete.ct1 mvec,
@@ -254,14 +254,14 @@ Definition decode_ovec op (m : word_map t (atom (word t) (word t)))
                        : option (Symbolic.VOVec tty op) :=
   match op return option (Symbolic.VOVec tty op) with
   | OP op =>
-    do! trpc <- match decode m (Concrete.ctrpc rvec) with
+    do! trpc <- match decode Symbolic.P m (Concrete.ctrpc rvec) with
                 | USER trpc => Some trpc
                 | _ => None
                 end;
     do! tr <- match Symbolic.outputs op as o
                                         return option (Symbolic.type_of_result tty o)
               with
-              | Some o => match decode m (Concrete.ctr rvec) with
+              | Some o => match decode o m (Concrete.ctr rvec) with
                           | USER t => Some t
                           | _ => None
                           end
@@ -310,20 +310,20 @@ Lemma decode_ivec_inv mvec m ivec :
   (exists op,
     [/\ Symbolic.op ivec = OP op,
         word_to_op (Concrete.cop mvec) = Some op,
-        decode m (Concrete.ctpc mvec) = USER (Symbolic.tpc ivec),
-        decode m (Concrete.cti mvec) = USER (Symbolic.ti ivec) &
+        decode Symbolic.P m (Concrete.ctpc mvec) = USER (Symbolic.tpc ivec),
+        decode Symbolic.M m (Concrete.cti mvec) = USER (Symbolic.ti ivec) &
         decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
         Some (hmap (fun k x => USER x) (Symbolic.ts ivec)) ]) \/
   [/\ word_to_op (Concrete.cop mvec) = Some NOP ,
       Symbolic.op ivec = SERVICE ,
-      decode m (Concrete.ctpc mvec) = USER (Symbolic.tpc ivec) &
-      decode m (Concrete.cti mvec) = ENTRY (Symbolic.ti ivec) ].
+      decode Symbolic.P m (Concrete.ctpc mvec) = USER (Symbolic.tpc ivec) &
+      decode Symbolic.M m (Concrete.cti mvec) = ENTRY (Symbolic.ti ivec) ].
 Proof.
   case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts] /=.
   rewrite /decode_ivec /=.
   case: (word_to_op cop) => [op'|] //=.
-  case: (decode m ctpc) => [tpc'| |?] //=.
-  case: (decode m cti) => [ti'| |ti'] //=; last first.
+  case: (decode _ m ctpc) => [tpc'| |?] //=.
+  case: (decode _ m cti) => [ti'| |ti'] //=; last first.
     case: op' => //= [] [? ? ?]. subst op tpc' ti'. right.
     constructor; eauto.
   case DEC: (decode_fields _ m _) => [ts'|] //=.
