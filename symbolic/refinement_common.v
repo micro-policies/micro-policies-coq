@@ -13,6 +13,8 @@ Require Import symbolic.rules.
 Open Scope nat_scope.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Import ListNotations.
 
@@ -30,26 +32,26 @@ Context {mt : machine_types}
 
 Definition refine_memory (amem : Symbolic.memory mt _) (cmem : Concrete.memory mt) :=
   (forall w x ctg atg,
-     decode ctg cmem = USER atg ->
+     decode cmem ctg = USER atg ->
      PartMaps.get cmem w = Some x@ctg ->
      PartMaps.get amem w = Some x@atg) /\
   (forall w x atg,
      PartMaps.get amem w = Some x@atg ->
      exists2 ctg,
-       decode ctg cmem = USER atg &
+       decode cmem ctg = USER atg &
        PartMaps.get cmem w = Some x@ctg).
 
 Definition refine_registers (areg : Symbolic.registers mt _)
                             (creg : Concrete.registers mt)
                             (cmem : Concrete.memory mt) :=
   (forall w x ctg atg,
-     decode ctg cmem = USER atg ->
+     decode cmem ctg = USER atg ->
      PartMaps.get creg w = Some x@ctg ->
      PartMaps.get areg w = Some x@atg) /\
   (forall w x atg,
      PartMaps.get areg w = Some x@atg ->
      exists2 ctg,
-       decode ctg cmem = USER atg &
+       decode cmem ctg = USER atg &
        PartMaps.get creg w = Some x@ctg).
 
 Definition in_kernel (st : Concrete.state mt) :=
@@ -59,16 +61,16 @@ Hint Unfold in_kernel.
 
 Definition in_user st :=
   let pct := common.tag (Concrete.pc st) in
-  is_user (@decode _ _ (e Symbolic.P) pct (Concrete.mem st)).
+  is_user (@decode _ _ (e Symbolic.P) (Concrete.mem st) pct).
 Hint Unfold in_user.
 
 Definition cache_correct cache cmem :=
   forall cmvec crvec,
     Concrete.cache_lookup cache masks cmvec = Some crvec ->
-    is_user (@decode _ _ (e Symbolic.P) (Concrete.ctpc cmvec) cmem) ->
+    is_user (@decode _ _ (e Symbolic.P) cmem (Concrete.ctpc cmvec)) ->
     exists ivec ovec,
-      [/\ decode_ivec e cmvec cmem = Some ivec,
-          decode_ovec e (Symbolic.op ivec) crvec cmem = Some ovec,
+      [/\ decode_ivec e cmem cmvec = Some ivec,
+          decode_ovec e (Symbolic.op ivec) cmem crvec = Some ovec,
           Symbolic.transfer ivec = Some ovec &
           ~~ privileged_op (Symbolic.op ivec) ].
 
@@ -128,7 +130,7 @@ Record kernel_invariant : Type := {
     forall regs mem1 mem2 cache addr w1 ct ut w2 int
            (KINV : kernel_invariant_statement mem1 regs cache int)
            (GET : PartMaps.get mem1 addr = Some w1@ct)
-           (DEC : @decode _ _ (e Symbolic.M) ct mem1 = USER ut)
+           (DEC : @decode _ _ (e Symbolic.M) mem1 ct = USER ut)
            (UPD : PartMaps.upd mem1 addr w2 = Some mem2),
       kernel_invariant_statement mem2 regs cache int;
 
@@ -136,9 +138,9 @@ Record kernel_invariant : Type := {
     forall mem regs1 regs2 cache r w1 ct1 ut1 w2 ct2 ut2 int
            (KINV : kernel_invariant_statement mem regs1 cache int)
            (GET : PartMaps.get regs1 r = Some w1@ct1)
-           (DEC1 : @decode _ _ (e Symbolic.R) ct1 mem = USER ut1)
-           (DEC2 : @decode _ _ (e Symbolic.R) ct2 mem = USER ut2)
-           (UPD : PartMaps.upd regs1 r w2@ct2 = Some regs2),
+           (DEC1 : @decode _ _ (e Symbolic.R) mem ct1 = USER ut1)
+           (UPD : PartMaps.upd regs1 r w2@ct2 = Some regs2)
+           (DEC2 : @decode _ _ (e Symbolic.R) mem ct2 = USER ut2),
       kernel_invariant_statement mem regs2 cache int;
 
   kernel_invariant_store_mvec :
@@ -198,7 +200,7 @@ Definition wf_entry_points (cmem : Concrete.memory mt) :=
     (exists sc, Symbolic.get_syscall table addr = Some sc /\
                 Symbolic.entry_tag sc = t) <->
     match PartMaps.get cmem addr with
-    | Some i@it => is_nop i && (decode it cmem == ENTRY t)
+    | Some i@it => is_nop i && (decode cmem it == ENTRY t)
     | None => false
     end.
 
@@ -207,7 +209,7 @@ Lemma wf_entry_points_if cmem addr sc :
   Symbolic.get_syscall table addr = Some sc ->
   exists i it,
   [/\ PartMaps.get cmem addr = Some i@it,
-      decode it cmem = ENTRY (Symbolic.entry_tag sc) &
+      decode cmem it = ENTRY (Symbolic.entry_tag sc) &
       is_nop i ].
 Proof.
   move => WFENTRYPOINTS GETCALL.
@@ -223,7 +225,7 @@ Qed.
 Lemma wf_entry_points_only_if cmem addr i it t :
   wf_entry_points cmem ->
   PartMaps.get cmem addr = Some i@it ->
-  decode it cmem = ENTRY t ->
+  decode cmem it = ENTRY t ->
   is_nop i ->
   exists sc,
     Symbolic.get_syscall table addr = Some sc /\
@@ -237,7 +239,7 @@ Qed.
 Lemma entry_point_undefined cmem smem addr v it t :
   refine_memory smem cmem ->
   PartMaps.get cmem addr = Some v@it ->
-  @decode _ _ (e Symbolic.M) it cmem = ENTRY t ->
+  @decode _ _ (e Symbolic.M) cmem it = ENTRY t ->
   PartMaps.get smem addr = None.
 Proof.
   move => REFM GET DEC.
@@ -253,7 +255,7 @@ Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Pro
            pc ctpc atpc
            (ES : sst = Symbolic.State smem sregs pc@atpc int)
            (EC : cst = Concrete.mkState cmem cregs cache pc@ctpc epc)
-           (DEC : decode ctpc cmem = USER atpc)
+           (DEC : decode cmem ctpc = USER atpc)
            (REFM : refine_memory smem cmem)
            (REFR : refine_registers sregs cregs cmem)
            (CACHE : cache_correct cache cmem)
@@ -273,9 +275,9 @@ Qed.
 Lemma refine_memory_upd amem cmem cmem' addr v v' ct t ct' t' :
   refine_memory amem cmem ->
   PartMaps.get cmem addr = Some v@ct ->
-  @decode _ _ (e Symbolic.M) ct cmem = USER t ->
+  @decode _ _ (e Symbolic.M) cmem ct = USER t ->
   PartMaps.upd cmem addr v'@ct' = Some cmem' ->
-  @decode _ _ (e Symbolic.M) ct' cmem = USER t' ->
+  @decode _ _ (e Symbolic.M) cmem ct' = USER t' ->
   exists2 amem',
     PartMaps.upd amem addr v'@t' = Some amem' &
     refine_memory amem' cmem'.
@@ -302,9 +304,9 @@ Qed.
 Lemma wf_entry_points_user_upd cmem cmem' addr v v' ct t ct' t' :
   wf_entry_points cmem ->
   PartMaps.get cmem addr = Some v@ct ->
-  @decode _ _ (e Symbolic.M) ct cmem = USER t ->
+  @decode _ _ (e Symbolic.M) cmem ct = USER t ->
   PartMaps.upd cmem addr v'@ct' = Some cmem' ->
-  @decode _ _ (e Symbolic.M) ct' cmem = USER t' ->
+  @decode _ _ (e Symbolic.M) cmem ct' = USER t' ->
   wf_entry_points cmem'.
 Proof.
   unfold wf_entry_points.
@@ -332,9 +334,9 @@ Qed.
 Lemma mvec_in_kernel_user_upd cmem cmem' addr v v' ct t ct' t' :
   mvec_in_kernel cmem ->
   PartMaps.get cmem addr = Some v@ct ->
-  @decode _ _ (e Symbolic.M) ct cmem = USER t ->
+  @decode _ _ (e Symbolic.M) cmem ct = USER t ->
   PartMaps.upd cmem addr v'@ct' = Some cmem' ->
-  @decode _ _ (e Symbolic.M) ct' cmem = USER t' ->
+  @decode _ _ (e Symbolic.M) cmem ct' = USER t' ->
   mvec_in_kernel cmem'.
 Proof.
   intros MVEC GET DEC UPD DEC'.
@@ -363,7 +365,7 @@ Qed.
 Lemma refine_memory_upd' amem amem' cmem addr v ct t :
   refine_memory amem cmem ->
   PartMaps.upd amem addr v@t = Some amem' ->
-  decode ct cmem = USER t ->
+  decode cmem ct = USER t ->
   exists cmem',
     PartMaps.upd cmem addr v@ct = Some cmem' /\
     refine_memory amem' cmem'.
@@ -394,9 +396,9 @@ Qed.
 Lemma refine_registers_upd areg creg creg' cmem r v v' ct t ct' t' :
   refine_registers areg creg cmem ->
   PartMaps.get creg r = Some v@ct ->
-  @decode _ _ (e Symbolic.R) ct cmem = USER t ->
+  @decode _ _ (e Symbolic.R) cmem ct = USER t ->
   PartMaps.upd creg r v'@ct' = Some creg' ->
-  @decode _ _ (e Symbolic.R) ct' cmem = USER t' ->
+  @decode _ _ (e Symbolic.R) cmem ct' = USER t' ->
   exists areg',
     PartMaps.upd areg r v'@t' = Some areg' /\
     refine_registers areg' creg' cmem.
@@ -426,7 +428,7 @@ Qed.
 Lemma refine_registers_upd' areg areg' creg cmem r v ct t :
   refine_registers areg creg cmem ->
   PartMaps.upd areg r v@t = Some areg' ->
-  decode ct cmem = USER t ->
+  decode cmem ct = USER t ->
   exists2 creg',
     PartMaps.upd creg r v@ct = Some creg' &
     refine_registers areg' creg' cmem.
@@ -492,24 +494,24 @@ Definition user_step cst cst' :=
 Lemma analyze_cache cache cmem cmvec crvec op :
   cache_correct cache cmem ->
   Concrete.cache_lookup cache masks cmvec = Some crvec ->
-  is_user (@decode _ _ (e Symbolic.P) (Concrete.ctpc cmvec) cmem) ->
+  is_user (@decode _ _ (e Symbolic.P) cmem (Concrete.ctpc cmvec)) ->
   Concrete.cop cmvec = op_to_word op ->
   if privileged_op op then False else
-  exists tpc : Symbolic.ttypes Symbolic.P, decode (Concrete.ctpc cmvec) cmem = USER tpc /\
+  exists tpc : Symbolic.ttypes Symbolic.P, decode cmem (Concrete.ctpc cmvec) = USER tpc /\
   ((exists (ti : Symbolic.ttypes Symbolic.M)
            (ts : hlist Symbolic.ttypes (Symbolic.inputs op))
            (rtpc : Symbolic.ttypes Symbolic.P)
            (rt : Symbolic.type_of_result Symbolic.ttypes (Symbolic.outputs op)),
     let ovec := Symbolic.mkOVec rtpc rt in
-    decode (Concrete.cti cmvec) cmem = USER ti /\
-    decode_ovec e op crvec cmem = Some ovec /\
-    Symbolic.transfer (Symbolic.mkIVec op tpc ti ts) = Some ovec /\
-    decode_fields e _ (Concrete.ct1 cmvec, Concrete.ct2 cmvec, Concrete.ct3 cmvec) cmem =
-    Some (hmap (fun k x => USER x) ts)) \/
+    [/\ decode cmem (Concrete.cti cmvec) = USER ti ,
+        decode_ovec e op cmem crvec = Some ovec ,
+        Symbolic.transfer (Symbolic.mkIVec op tpc ti ts) = Some ovec &
+        decode_fields e _ cmem (Concrete.ct1 cmvec, Concrete.ct2 cmvec, Concrete.ct3 cmvec) =
+        Some (hmap (fun k x => USER x) ts) ]) \/
    exists t : Symbolic.ttypes Symbolic.M,
-     op = NOP /\
-     decode (Concrete.cti cmvec) cmem = ENTRY t /\
-     Concrete.ctrpc crvec = Concrete.TKernel).
+     [/\ op = NOP ,
+         decode cmem (Concrete.cti cmvec) = ENTRY t &
+         Concrete.ctrpc crvec = Concrete.TKernel ]).
 Proof.
   case: cmvec => op' tpc ti t1 t2 t3 /= CACHE LOOKUP INUSER EQ. subst op'.
   case: (CACHE _ crvec LOOKUP INUSER) =>
@@ -518,12 +520,12 @@ Proof.
     case: E1 => [[?] ? -> ->] {E4}. subst op op'.
     move: E2 => /=.
     have [-> _| //] := (Concrete.ctrpc _ =P _).
-    by eauto 11.
+    by eauto 11 using And3.
   case: E1 => op'' [? [?] -> ->]. subst op' op'' => ->.
   move: E4 E2 => /= /negbTE ->.
   case: ovec E3 => trpc tr E3.
-  case: (decode _ cmem) => [trpc'| |?] //= DEC.
-  by eauto 11.
+  case: (decode cmem _) => [trpc'| |?] //= DEC.
+  by eauto 11 using And4.
 Qed.
 
 Lemma miss_state_not_user st st' mvec :
@@ -573,7 +575,7 @@ Lemma valid_initial_user_instr_tags cst cst' v ti :
   in_user cst' ->
   Concrete.step _ masks cst cst' ->
   PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) = Some v@ti ->
-  is_user (@decode _ _ (e Symbolic.M) ti (Concrete.mem cst)).
+  is_user (@decode _ _ (e Symbolic.M) (Concrete.mem cst) ti).
 Proof.
   admit.
 Qed.
@@ -609,7 +611,7 @@ Lemma valid_pcs st st' :
   Concrete.step _ masks st st' ->
   cache_correct (Concrete.cache st) (Concrete.mem st) ->
   in_user st ->
-  match @decode _ _ (e Symbolic.P) (common.tag (Concrete.pc st')) (Concrete.mem st') with
+  match @decode _ _ (e Symbolic.P) (Concrete.mem st') (common.tag (Concrete.pc st')) with
   | USER _ => true
   | KERNEL => true
   | _ => false
@@ -639,7 +641,7 @@ Lemma refine_ivec sst cst ivec :
   build_ivec table sst = Some ivec ->
   exists2 cmvec,
     build_cmvec mt cst = Some cmvec &
-    decode_uivec e cmvec (Concrete.mem cst) = Some ivec.
+    decode_ivec e (Concrete.mem cst) cmvec = Some ivec.
 Proof.
   admit.
 Qed.
@@ -720,7 +722,7 @@ Proof.
   | t : hlist _ _ |- _ => simpl in t
   | t : unit |- _ => destruct t
   | t : prod _ _ |- _ => destruct t
-  | H : context[uivec_of_ivec] |- _ => unfold uivec_of_ivec in H; simpl in H
+  | H : context[ivec_of_ivec] |- _ => unfold ivec_of_ivec in H; simpl in H
   | H : context[decode_fields] |- _ => unfold decode_fields in H; simpl in H
   end;
   unfold omap, obind, oapp in *;
@@ -771,13 +773,13 @@ Hint Unfold Symbolic.next_state_reg.
 Definition user_mem_unchanged (cmem cmem' : Concrete.memory mt) :=
   forall addr (w : word mt) ct t,
     (PartMaps.get cmem addr = Some w@ct /\
-     @decode _ _ (e Symbolic.M) ct cmem = USER t) <->
+     @decode _ _ (e Symbolic.M) cmem ct = USER t) <->
     (PartMaps.get cmem' addr = Some w@ct /\
-     @decode _ _ (e Symbolic.M) ct cmem' = USER t).
+     @decode _ _ (e Symbolic.M) cmem' ct = USER t).
 
 Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) cmem :=
   forall r (w : word mt) ct t,
-    @decode _ _ (e Symbolic.M) ct cmem = USER t ->
+    @decode _ _ (e Symbolic.M) cmem ct = USER t ->
     (PartMaps.get cregs r = Some w@ct <->
      PartMaps.get cregs' r = Some w@ct).
 
@@ -811,12 +813,12 @@ Class kernel_code_correctness : Prop := {
 
 (* BCP: Added some comments -- please check! *)
   handler_correct_allowed_case :
-  forall mem mem' cmvec uivec uovec reg cache old_pc int,
+  forall mem mem' cmvec ivec ovec reg cache old_pc int,
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
     (* and calling the handler on the current m-vector succeeds and returns rvec... *)
-    decode_uivec e cmvec mem = Some uivec ->
-    Symbolic.transfer uivec = Some uovec ->
+    decode_ivec e mem cmvec = Some ivec ->
+    Symbolic.transfer ivec = Some ovec ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
     Concrete.store_mvec mem cmvec = Some mem' ->
     (* and the concrete rule cache is correct (in the sense that every
@@ -839,7 +841,7 @@ Class kernel_code_correctness : Prop := {
       cache_correct (Concrete.cache st') (Concrete.mem st') /\
       (* and the new cache now contains a rule mapping mvec to rvec... *)
       Concrete.cache_lookup (Concrete.cache st') masks cmvec = Some crvec /\
-      decode_uovec e (Symbolic.op uivec) crvec (Concrete.mem st') = Some uovec /\
+      decode_ovec e (Symbolic.op ivec) (Concrete.mem st') crvec = Some ovec /\
       (* and the mvec has been tagged as kernel data (BCP: why is this important??) *)
       mvec_in_kernel (Concrete.mem st') /\
       (* and we've arrived at the return address that was in epc with
@@ -855,14 +857,14 @@ Class kernel_code_correctness : Prop := {
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
   handler_correct_disallowed_case :
-  forall mem mem' cmvec uivec reg cache old_pc int st',
+  forall mem mem' cmvec ivec reg cache old_pc int st',
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
     (* and calling the handler on mvec FAILS... *)
-    Symbolic.transfer uivec = None ->
+    Symbolic.transfer ivec = None ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
     Concrete.store_mvec mem cmvec = Some mem' ->
-    decode_uivec e cmvec mem = Some uivec ->
+    decode_ivec e mem cmvec = Some ivec ->
     (* then if we start the concrete machine in kernel mode and let it
        run, it will never reach a user-mode state. *)
     ~~ in_kernel st' ->
@@ -897,7 +899,7 @@ Class kernel_code_correctness : Prop := {
     (* and running sc on the current abstract machine state reaches a
        new state with primes on everything... *)
     Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) = Some (Symbolic.State amem' areg' apc'@atpc' int') ->
-    decode ctpc cmem = USER atpc ->
+    decode cmem ctpc = USER atpc ->
     let cst := Concrete.mkState cmem
                                 creg
                                 cache
@@ -936,7 +938,7 @@ Class kernel_code_correctness : Prop := {
     wf_entry_points cmem ->
     Symbolic.get_syscall table apc = Some sc ->
     Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) = None ->
-    decode ctpc cmem = USER atpc ->
+    decode cmem ctpc = USER atpc ->
     let cst := Concrete.mkState cmem
                                 creg
                                 cache
