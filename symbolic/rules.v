@@ -29,7 +29,8 @@ Require Import List Arith Bool ZArith. Import ListNotations.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.hlist lib.Coqlib lib.Integers lib.utils common.common concrete.concrete symbolic.symbolic.
+Require Import lib.partial_maps lib.hlist lib.Coqlib lib.Integers lib.utils.
+Require Import common.common concrete.concrete symbolic.symbolic.
 Import DoNotation.
 Import Concrete.
 
@@ -159,8 +160,14 @@ Context (t : machine_types).
    for tags. *)
 
 Class encodable ut := {
-  decode : word t -> word_map t (atom (word t) (word t)) -> tag ut;
-  decode_kernel_tag : forall m, decode Concrete.TKernel m = KERNEL
+  decode : word_map t (atom (word t) (word t)) -> word t -> tag ut;
+  decode_monotonic : forall mem mem' addr x y ct st ct' st',
+                       PartMaps.get mem addr = Some x@ct ->
+                       decode mem ct = USER st ->
+                       PartMaps.upd mem addr y@ct' = Some mem' ->
+                       decode mem ct' = USER st' ->
+                       decode mem' =1 decode mem;
+  decode_kernel_tag : forall m, decode m Concrete.TKernel = KERNEL
 }.
 
 End encoding.
@@ -175,21 +182,22 @@ Local Notation wrapped_tag := (fun tk => [eqType of tag (tty tk)]).
 
 Variable transfer : forall ivec : Symbolic.IVec tty, option (Symbolic.VOVec tty (Symbolic.op ivec)).
 
-Definition decode_fields (fs : list Symbolic.tag_kind) (ts : word t * word t * word t)
+Definition decode_fields (fs : list Symbolic.tag_kind)
                          (m : word_map t (atom (word t) (word t)))
+                         (ts : word t * word t * word t)
                          : option (hlist wrapped_tag fs) :=
   match fs return option (hlist wrapped_tag fs) with
   | [] => Some tt
   | k1 :: fs' =>
-    let t1 := decode (fst (fst ts)) m in
+    let t1 := decode m (fst (fst ts)) in
     match fs' return option (hlist wrapped_tag (k1 :: fs')) with
     | [] => Some (t1, tt)
     | k2 :: fs'' =>
-      let t2 := decode (snd (fst ts)) m in
+      let t2 := decode m (snd (fst ts)) in
       match fs'' return option (hlist wrapped_tag (k1 :: k2 :: fs'')) with
       | [] => Some (t1, (t2, tt))
       | k3 :: fs''' =>
-        let t3 := decode (snd ts) m in
+        let t3 := decode m (snd ts) in
         match fs''' return option (hlist wrapped_tag (k1 :: k2 :: k3 :: fs''')) with
         | [] => Some (t1, (t2, (t3, tt)))
         | _ :: _ => None
@@ -217,18 +225,18 @@ Proof.
   by rewrite IH; congruence.
 Qed.
 
-Definition decode_ivec (mvec : Concrete.MVec (word t))
-                       (m : word_map t (atom (word t) (word t)))
+Definition decode_ivec (m : word_map t (atom (word t) (word t)))
+                       (mvec : Concrete.MVec (word t))
                        : option (Symbolic.IVec tty) :=
   do! op  <- word_to_op (Concrete.cop mvec);
-  match decode (Concrete.ctpc mvec) m with
+  match decode m (Concrete.ctpc mvec) with
   | USER tpc =>
-    match decode (Concrete.cti mvec) m with
+    match decode m (Concrete.cti mvec) with
     | USER ti =>
-      do! ts  <- decode_fields (Symbolic.vinputs (OP op))
+      do! ts  <- decode_fields (Symbolic.vinputs (OP op)) m
                                (Concrete.ct1 mvec,
                                 Concrete.ct2 mvec,
-                                Concrete.ct3 mvec) m;
+                                Concrete.ct3 mvec);
       do! ts <- ensure_all_user ts;
       Some (Symbolic.mkIVec (OP op) tpc ti ts)
     | ENTRY ti =>
@@ -241,19 +249,19 @@ Definition decode_ivec (mvec : Concrete.MVec (word t))
   | _ => None
   end.
 
-Definition decode_ovec op (rvec : Concrete.RVec (word t))
-                       (m : word_map t (atom (word t) (word t)))
+Definition decode_ovec op (m : word_map t (atom (word t) (word t)))
+                       (rvec : Concrete.RVec (word t))
                        : option (Symbolic.VOVec tty op) :=
   match op return option (Symbolic.VOVec tty op) with
   | OP op =>
-    do! trpc <- match decode (Concrete.ctrpc rvec) m with
+    do! trpc <- match decode m (Concrete.ctrpc rvec) with
                 | USER trpc => Some trpc
                 | _ => None
                 end;
     do! tr <- match Symbolic.outputs op as o
                                         return option (Symbolic.type_of_result tty o)
               with
-              | Some o => match decode (Concrete.ctr rvec) m with
+              | Some o => match decode m (Concrete.ctr rvec) with
                           | USER t => Some t
                           | _ => None
                           end
@@ -298,27 +306,27 @@ Definition ground_rules : Concrete.rules (word t) :=
   ].
 
 Lemma decode_ivec_inv mvec m ivec :
-  decode_ivec mvec m = Some ivec ->
+  decode_ivec m mvec = Some ivec ->
   (exists op,
     [/\ Symbolic.op ivec = OP op,
         word_to_op (Concrete.cop mvec) = Some op,
-        decode (Concrete.ctpc mvec) m = USER (Symbolic.tpc ivec),
-        decode (Concrete.cti mvec) m = USER (Symbolic.ti ivec) &
-        decode_fields _ (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) m =
+        decode m (Concrete.ctpc mvec) = USER (Symbolic.tpc ivec),
+        decode m (Concrete.cti mvec) = USER (Symbolic.ti ivec) &
+        decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
         Some (hmap (fun k x => USER x) (Symbolic.ts ivec)) ]) \/
   [/\ word_to_op (Concrete.cop mvec) = Some NOP ,
       Symbolic.op ivec = SERVICE ,
-      decode (Concrete.ctpc mvec) m = USER (Symbolic.tpc ivec) &
-      decode (Concrete.cti mvec) m = ENTRY (Symbolic.ti ivec) ].
+      decode m (Concrete.ctpc mvec) = USER (Symbolic.tpc ivec) &
+      decode m (Concrete.cti mvec) = ENTRY (Symbolic.ti ivec) ].
 Proof.
   case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts] /=.
   rewrite /decode_ivec /=.
   case: (word_to_op cop) => [op'|] //=.
-  case: (decode ctpc m) => [tpc'| |?] //=.
-  case: (decode cti m) => [ti'| |ti'] //=; last first.
+  case: (decode m ctpc) => [tpc'| |?] //=.
+  case: (decode m cti) => [ti'| |ti'] //=; last first.
     case: op' => //= [] [? ? ?]. subst op tpc' ti'. right.
     constructor; eauto.
-  case DEC: (decode_fields _ _ m) => [ts'|] //=.
+  case DEC: (decode_fields _ m _) => [ts'|] //=.
   case ENSURE: (ensure_all_user _) => [ts''|] //=.
   move/ensure_all_user_inv in ENSURE. subst ts'.
   case: op ts => [op|] //= ts.
