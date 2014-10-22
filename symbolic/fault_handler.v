@@ -156,7 +156,7 @@ Definition handler : code :=
            ([Const (Word.repr (op_to_Z NOP)) ri4] ++
             [Binop EQ ri4 rop ri4] ++
             if_ ri4 [] [Halt _] ++
-            [Const (Word.repr (op_to_Z SERVICE)) rop] ++
+            [Const (Word.repr (vop_to_Z SERVICE)) rop] ++
             policy_handler ++
             load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
@@ -193,15 +193,16 @@ Section invariant.
 
 Context {s : machine_ops_spec ops}
         {sp : Symbolic.params}
-        {e : forall tk, encodable mt (Symbolic.ttypes tk)}.
+        {e : encodable mt Symbolic.ttypes}.
 
 Record policy_invariant : Type := {
   policy_invariant_statement :> Concrete.memory mt -> Symbolic.internal_state -> Prop;
 
   policy_invariant_upd_mem :
-    forall mem mem' addr w1 ut w2 int
+    forall mem mem' addr w1 ct ut w2 int
            (PINV : policy_invariant_statement mem int)
-           (GET : PartMaps.get mem addr = Some w1@(@encode _ _ (e Symbolic.M) (USER ut)))
+           (GET : PartMaps.get mem addr = Some w1@ct)
+           (DEC : decode Symbolic.M mem ct = USER ut)
            (UPD : PartMaps.upd mem addr w2 = Some mem'),
       policy_invariant_statement mem' int;
 
@@ -243,9 +244,10 @@ Let invariant (mem : Concrete.memory mt)
   pinv mem int.
 
 Lemma invariant_upd_mem :
-  forall regs mem1 mem2 cache addr w1 ut w2 int
+  forall regs mem1 mem2 cache addr w1 ct ut w2 int
          (KINV : invariant mem1 regs cache int)
-         (GET : PartMaps.get mem1 addr = Some w1@(@encode _ _ (e Symbolic.M) (USER ut)))
+         (GET : PartMaps.get mem1 addr = Some w1@ct)
+         (DEC : decode Symbolic.M mem1 ct = USER ut)
          (UPD : PartMaps.upd mem1 addr w2 = Some mem2),
     invariant mem2 regs cache int.
 Proof.
@@ -256,9 +258,8 @@ Proof.
     + subst addr'.
       apply RVEC in IN. destruct IN as [w1' IN].
       rewrite IN in GET.
-      assert (EQ : Concrete.TKernel = encode (USER ut)) by congruence.
-      erewrite encode_kernel_tag in EQ.
-      apply encode_inj in EQ. discriminate.
+      assert (EQ : Concrete.TKernel = ct) by congruence. subst ct.
+      by rewrite decode_kernel_tag in DEC.
     + rewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
   - intros addr' i GET'.
@@ -266,19 +267,20 @@ Proof.
     + subst addr.
       specialize (@PROG _ _ GET').
       rewrite PROG in GET.
-      move: GET => [_ CONTRA].
-      rewrite (@encode_kernel_tag _ _ (e Symbolic.M)) in CONTRA.
-      apply encode_inj in CONTRA. discriminate.
+      move: GET => [_ CONTRA]. subst ct.
+      by rewrite decode_kernel_tag in DEC.
     + rewrite (PartMaps.get_upd_neq E UPD).
       now eauto.
   - by eapply policy_invariant_upd_mem; eauto.
 Qed.
 
 Lemma invariant_upd_reg :
-  forall mem regs regs' cache r w1 ut1 w2 ut2 int
+  forall mem regs regs' cache r w1 ct1 ut1 w2 ct2 ut2 int
          (KINV : invariant mem regs cache int)
-         (GET : PartMaps.get regs r = Some w1@(@encode _ _ (e Symbolic.R) (USER ut1)))
-         (UPD : PartMaps.upd regs r w2@(@encode _ _ (e Symbolic.R) (USER ut2)) = Some regs'),
+         (GET : PartMaps.get regs r = Some w1@ct1)
+         (DEC : decode Symbolic.R mem ct1 = USER ut1)
+         (UPD : PartMaps.upd regs r w2@ct2 = Some regs')
+         (DEC' : decode Symbolic.R mem ct2 = USER ut2),
     invariant mem regs' cache int.
 Proof.
   intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
@@ -286,9 +288,9 @@ Proof.
   intros r' IN.
   case E: (r' == r); move/eqP: E => E.
   - subst r'.
-    apply REGS in IN.
-    erewrite GET, (@encode_kernel_tag _ _ (e Symbolic.R)) in IN. simpl in IN.
-    by move: IN => [x [_ /(@encode_inj _ _ _ _ _) E]].
+    move: IN => /REGS [x GET'].
+    have ? : ct1 = Concrete.TKernel by congruence. subst ct1.
+    by rewrite decode_kernel_tag in DEC.
   - rewrite (PartMaps.get_upd_neq E UPD); eauto.
 Qed.
 

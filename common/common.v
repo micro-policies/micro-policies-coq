@@ -547,7 +547,7 @@ Definition op_to_Z (o : opcode) : Z :=
   | HALT       => 24
   end.
 
-Definition max_opcode := 25.
+Definition max_opcode := 24.
 
 Lemma max_opcodeP o : 0 <= op_to_Z o <= max_opcode.
 Proof. by move: o; do! case; split; apply/Z.leb_le. Qed.
@@ -563,6 +563,12 @@ Proof.
     destruct x; simpl; try reflexivity
   end.
 Qed.
+
+Definition vop_to_Z (vo : vopcode) : Z :=
+  match vo with
+  | OP op => op_to_Z op
+  | SERVICE => max_opcode + 1
+  end.
 
 Definition word_to_op (w : word t) : option opcode :=
   Z_to_op (Word.unsigned w).
