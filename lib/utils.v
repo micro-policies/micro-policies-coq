@@ -1434,8 +1434,8 @@ Definition caseS A n (T : Vector.t A (S n) -> Type)
 
 End vectors.
 
-Ltac match_inv :=
-  repeat match goal with
+Ltac single_match_inv :=
+  match goal with
   | H : ssrfun.obind (fun x : _ => _) _ = Some _ |- _ =>
     apply obind_inv in H;
     let x := fresh x in
@@ -1452,6 +1452,8 @@ Ltac match_inv :=
   | H : ?O = Some _ |- context[ssrfun.obind _ ?O] => rewrite H; simpl
   | H : True |- _ => clear H
   end.
+
+Ltac match_inv := repeat single_match_inv.
 
 Fixpoint stepn {A} (step : A -> option A) (max_steps : nat) (st : A) : option A :=
   match max_steps with

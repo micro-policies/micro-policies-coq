@@ -750,7 +750,7 @@ Proof.
     eexists cmem'.
     subst cst.
     split; first by [].
-    eapply initial_handler_state'; try eassumption.
+    eapply initial_handler_state; try eassumption.
     by rewrite /in_user /rules.word_lift /= rules.decodeK.
 Qed.
 

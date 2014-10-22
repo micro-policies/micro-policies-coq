@@ -249,4 +249,19 @@ Proof.
   solve [ reflexivity | congruence ].
 Qed.
 
+Lemma build_cmvec_cop_cti cst cmvec :
+  build_cmvec cst = Some cmvec ->
+  exists i instr,
+    [/\ PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) =
+        Some i@(Concrete.cti cmvec),
+        decode_instr i = Some instr &
+        op_to_word (opcode_of instr) = Concrete.cop cmvec].
+Proof.
+  case: cst => mem regs cache [pc tpc] epc /=.
+  case: (get mem pc) => [[i ti]|] //= MVEC. exists i. move: MVEC.
+  case: (decode_instr i) => [instr|] //= MVEC. exists instr.
+  destruct instr; match_inv; simpl; eauto using And3.
+  discriminate.
+Qed.
+
 End Masks.

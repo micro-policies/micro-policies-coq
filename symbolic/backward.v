@@ -181,7 +181,7 @@ Ltac simpl_word_lift :=
     simpl in H
   end.
 
-Lemma initial_handler_state' cst kst cmvec cmem' :
+Lemma initial_handler_state cst kst cmvec cmem' :
   forall (ISUSER : in_user cst = true)
          (CMVEC : build_cmvec _ cst = Some cmvec)
          (MEM : Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem')
@@ -213,50 +213,6 @@ Proof.
   ].
 Qed.
 
-(* TODO: This is less generic than the above version. Should be removed eventually. *)
-
-Lemma initial_handler_state cst kst :
-  forall (ISUSER : in_user cst = true)
-         (WFENTRYPOINTS : wf_entry_points table (Concrete.mem cst))
-         (NCALL : ~~ cache_allows_syscall table cst)
-         (NUSER : @word_lift _ _ (e Symbolic.P) (fun t => is_user t)
-                            (common.tag (Concrete.pc kst)) = false)
-         (CACHE : cache_correct (Concrete.cache cst))
-         (STEP : Concrete.step _ masks cst kst),
-    exists cmem' mvec,
-      Concrete.store_mvec (Concrete.mem cst) mvec = Some cmem' /\
-      kst = Concrete.mkState cmem'
-                             (Concrete.regs cst)
-                             (Concrete.cache cst)
-                             (Concrete.fault_handler_start mt)@Concrete.TKernel
-                             (Concrete.pc cst).
-Proof.
-  intros.
-  inv STEP;
-  unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
-         Concrete.next_state_pc, Concrete.next_state,
-         Concrete.miss_state in *;
-  match_inv;
-  try analyze_cache;
-  simpl in *;
-  try solve [repeat simpl_word_lift; simpl in *; discriminate | eauto |
-             rewrite /cache_allows_syscall PC /word_lift decodeK // in NCALL ].
-  (* Syscall case *)
-  rewrite /cache_allows_syscall /= in NCALL.
-  match goal with
-  | H : Concrete.cache_lookup _ _ {| Concrete.cti := encode (ENTRY ?ti) |} = _ |- _ =>
-    move: H => LOOKUP;
-    have [sc [GETCALL ENTRYTAG]]: exists sc, Symbolic.get_syscall table pc = Some sc /\
-                                             Symbolic.entry_tag sc = ti
-  end.
-  { apply WFENTRYPOINTS. rewrite PC.
-    rewrite eqxx andb_true_r.
-    apply/eqP.
-    symmetry. by rewrite /is_nop INST. }
-  rewrite GETCALL {GETCALL} ENTRYTAG {ENTRYTAG} in NCALL.
-  by rewrite LOOKUP in NCALL.
-Qed.
-
 Lemma kernel_user_exec_determ k s1 s2 :
   kernel_user_exec k s1 ->
   kernel_user_exec k s2 ->
@@ -282,6 +238,88 @@ Qed.
 
 Import Vector.VectorNotations.
 
+Lemma build_cmvec_cache_lookup_pc cst cst' cmvec crvec :
+  Concrete.step _ masks cst cst' ->
+  build_cmvec _ cst = Some cmvec ->
+  Concrete.cache_lookup (Concrete.cache cst) masks cmvec = Some crvec ->
+  common.tag (Concrete.pc cst') = Concrete.ctrpc crvec.
+Proof.
+  move/stepP.
+  case: cst => mem regs cache [pc tpc] epc /= STEP BUILD LOOKUP.
+  move: BUILD STEP.
+  case: (PartMaps.get mem pc) => [[w ti]|] //=.
+  case: (decode_instr w) => [i|] //=.
+  destruct i => BUILD STEP; repeat match_inv;
+  unfold Concrete.next_state_pc, Concrete.next_state_reg,
+         Concrete.next_state_reg_and_pc, Concrete.next_state in *;
+  simpl in *;
+  repeat match goal with
+  | E1 : ?x = ?y1, E2 : ?x = ?y2 |- _ =>
+   rewrite E1 in E2; inv E2
+  end;
+  try match goal with
+  | LOOKUP : Concrete.cache_lookup _ _ _ = Some _,
+    STEP : context[Concrete.cache_lookup _ _ _] |- _ =>
+    rewrite LOOKUP in STEP
+  end;
+  match_inv; simpl; trivial.
+  discriminate.
+Qed.
+
+Lemma kernel_cache_lookup_fail (cst cst' : Concrete.state mt) cmvec :
+  in_user cst ->
+  in_kernel cst' ->
+  Concrete.step _ masks cst cst' ->
+  ~~ cache_allows_syscall table cst ->
+  wf_entry_points table (Concrete.mem cst) ->
+  cache_correct (Concrete.cache cst) ->
+  build_cmvec _ cst = Some cmvec ->
+  Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None.
+Proof.
+  case: cst => mem regs cache [pc tpc] epc.
+  move=> INUSER INKERNEL STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT BUILD.
+  move: NOTALLOWED.
+  rewrite /cache_allows_syscall /=.
+  case GETSC: (Symbolic.get_syscall table pc) => [sc|] //=.
+    case LOOKUP: (Concrete.cache_lookup cache masks _) => [res|] //= _.
+    rewrite <- LOOKUP. apply f_equal.
+    move: BUILD.
+    rewrite /build_cmvec.
+    have [i [-> /is_nopP -> //=]] := wf_entry_points_if _ WFENTRYPOINTS GETSC.
+    congruence.
+  case LOOKUP: (Concrete.cache_lookup cache masks _) => [crvec|] //= _.
+  have E: Concrete.ctrpc crvec = Concrete.TKernel.
+    move: INKERNEL.
+    rewrite -(build_cmvec_cache_lookup_pc STEP BUILD LOOKUP)
+             /in_kernel /Concrete.is_kernel_tag.
+    by move/eqP.
+  move/(_ cmvec crvec): CACHECORRECT. move: INUSER.
+  rewrite (build_cmvec_ctpc _ _ _ BUILD) /= /in_user /=
+          => INUSER /(_ INUSER LOOKUP) {INUSER} [ivec [ovec [? [? _]]]].
+  subst cmvec crvec.
+  suff: false by done.
+  move: E.
+  rewrite /encode_ovec /ovec_of_uovec /=.
+  have [E _|NE /=] := Symbolic.op ivec =P SERVICE; last first.
+    rewrite (@encode_kernel_tag _ (Symbolic.ttypes Symbolic.P) _).
+    by move=> /encode_inj.
+  move=> {LOOKUP}.
+  have [//= i [instr [Hi Hinstr /op_to_word_inj Hinstr']]] := build_cmvec_cop_cti _ _ _ BUILD.
+  have [ISNOP [t Ht]] : opcode_of instr = NOP /\ exists t, Symbolic.ti (ivec_of_uivec ivec) = ENTRY t.
+    rewrite {}Hinstr'.
+    move: E {BUILD Hi ovec}.
+    case: ivec => op tpc' ti ts /= H.
+    move: ts.
+    by rewrite {}H=> _ /=; eauto.
+  rewrite {}Ht in Hi.
+  move: ISNOP {Hinstr'} Hinstr.
+  case: instr => //= _ Hinstr.
+  move: (WFENTRYPOINTS pc t) => /=.
+  rewrite Hi eqxx /is_nop Hinstr /= => {E} E.
+  move/E: (erefl true) => [? [? ?]].
+  congruence.
+Qed.
+
 Lemma cache_miss_simulation sst cst cst' :
   refine_state ki table sst cst ->
   ~~ cache_allows_syscall table cst ->
@@ -298,17 +336,20 @@ Proof.
   { destruct (@word_lift _ _ (e Symbolic.P) (fun t => is_user t) (common.tag (Concrete.pc kst))) eqn:EQ; trivial.
     rewrite /in_kernel in KER.
     apply is_user_pc_tag_is_kernel_tag in EQ; auto. congruence. }
-  destruct (initial_handler_state ISUSER WFENTRYPOINTS NOTALLOWED NUSER CACHECORRECT STEP)
-    as (cmem' & mvec & STORE & ?). subst. simpl in *.
-  case HANDLER: (handler _ (fun m => Symbolic.transfer m) mvec) => [rvec|].
-  - destruct (handler_correct_allowed_case cmem mvec cregs pc@(encode (USER tpc)) int
-                                           KINV HANDLER STORE CACHECORRECT)
-      as (cst'' & KEXEC' & CACHE' & LOOKUP & MVEC' &
+  have [cmvec Hcmvec] := step_build_cmvec _ _ _ _ STEP.
+  have [cmem' Hcmem'] := mvec_in_kernel_store_mvec cmvec MVEC.
+  have LOOKUP := kernel_cache_lookup_fail ISUSER KER STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT Hcmvec.
+  have H := initial_handler_state ISUSER Hcmvec Hcmem' LOOKUP STEP.
+  subst. simpl in *.
+  case HANDLER: (handler _ (fun m => Symbolic.transfer m) cmvec) => [rvec|].
+  - destruct (handler_correct_allowed_case cmem cmvec cregs pc@(encode (USER tpc)) int
+                                           KINV HANDLER Hcmem' CACHECORRECT)
+      as (cst'' & KEXEC' & CACHE' & LOOKUP' & MVEC' &
           HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
     assert (EQ := kernel_user_exec_determ KEXEC' KEXEC). subst cst''.
     destruct cst' as [cmem'' cregs'' cache' ? ?]. simpl in *. subst.
     econstructor; eauto.
-    + clear - ISUSER MVEC STORE REFM HMEM.
+    + clear - ISUSER MVEC Hcmem' REFM HMEM.
       intros addr w t. unfold user_mem_unchanged in *.
       rewrite <- HMEM. apply REFM.
     + clear - REFR HREGS.
@@ -324,7 +365,7 @@ Proof.
     assert (ISUSER' : in_kernel cst' = false).
     { destruct KEXEC. eauto. }
     apply EXEC in KEXEC.
-    destruct (handler_correct_disallowed_case cmem mvec int KINV HANDLER STORE ISUSER' KEXEC).
+    destruct (handler_correct_disallowed_case cmem cmvec int KINV HANDLER Hcmem' ISUSER' KEXEC).
 Qed.
 
 Lemma syscall_simulation sst cst cst' :
