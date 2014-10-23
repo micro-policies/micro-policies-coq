@@ -272,20 +272,23 @@ Proof.
   by rewrite /in_user DEC.
 Qed.
 
-Lemma refine_memory_upd amem cmem cmem' addr v v' ct t ct' t' :
+Lemma refine_memory_upd cache aregs cregs amem cmem cmem' addr v v' ct t ct' t' :
+  cache_correct cache cmem ->
+  refine_registers aregs cregs cmem ->
   refine_memory amem cmem ->
   PartMaps.get cmem addr = Some v@ct ->
   decode Symbolic.M cmem ct = USER t ->
   PartMaps.upd cmem addr v'@ct' = Some cmem' ->
   decode Symbolic.M cmem ct' = USER t' ->
-  exists2 amem',
-    PartMaps.upd amem addr v'@t' = Some amem' &
-    refine_memory amem' cmem'.
+  exists amem',
+    [/\ PartMaps.upd amem addr v'@t' = Some amem',
+        cache_correct cache cmem',
+        refine_registers aregs cregs cmem' &
+        refine_memory amem' cmem'].
 Proof.
-  intros MEM GET DEC UPD DEC'.
+  intros CACHE REGS MEM GET DEC UPD DEC'.
   assert (GET' := proj1 MEM _ _ _ _ DEC GET).
   destruct (PartMaps.upd_defined v'@t' GET') as [amem' UPD'].
-  eexists; eauto.
   admit.
 (*
   - apply MEM in GET.

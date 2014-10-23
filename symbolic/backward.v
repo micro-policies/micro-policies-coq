@@ -2,7 +2,7 @@ Require Import List NPeano Arith Bool.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils lib.partial_maps lib.Coqlib.
+Require Import lib.utils lib.partial_maps lib.Coqlib lib.hlist.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.exec.
@@ -13,6 +13,8 @@ Require Import symbolic.refinement_common.
 Open Scope nat_scope.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Import ListNotations.
 
@@ -26,7 +28,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
-        {e : forall k, encodable mt (Symbolic.ttypes k)}
+        {e : encodable mt Symbolic.ttypes}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
@@ -40,26 +42,27 @@ Hint Resolve kernel_invariant_upd_mem.
 Hint Resolve kernel_invariant_upd_reg.
 Hint Resolve kernel_invariant_store_mvec.
 
-Let miss_state_not_user st st' mvec :
-  Concrete.miss_state st mvec = Some st' ->
-  in_user st' = true ->
-  False.
-Proof.
-  intros MISS INUSER.
-  apply in_user_in_kernel in INUSER; eauto.
-  unfold Concrete.miss_state in MISS.
-  unfold in_kernel, Concrete.is_kernel_tag in INUSER.
-  match_inv. simpl in *.
-  rewrite eqxx in INUSER; try apply eq_wordP.
-  simpl in INUSER. discriminate.
-Qed.
+Ltac check_conv t1 t2 :=
+  let e := constr:(erefl t1 : t1 = t2) in idtac.
 
-Ltac simpl_encode :=
+Ltac failwith m :=
+  let op := current_instr_opcode in
+  fail 1000 m op.
+
+Ltac contradict_in_user :=
   match goal with
-  | H : context[decode (encode _)] |- _ =>
-    rewrite decodeK in H; simpl in *; subst
-  | H : encode _ = encode _ |- _ =>
-    apply encode_inj in H; simpl in H; try inv H; subst
+  | INUSER : is_true (in_user ?st),
+    ISKERNEL : ?t = Concrete.TKernel |- _ =>
+    check_conv (common.tag (Concrete.pc st)) t;
+    first [ rewrite ISKERNEL /in_user /= decode_kernel_tag in INUSER; done |
+            failwith "contradict_in_user" ]
+  end.
+
+Ltac destruct_hlist :=
+  repeat match goal with
+  | x : hlist _ _ |- _ => simpl in x
+  | x : unit |- _ => destruct x
+  | x : prod _ _ |- _ => destruct x
   end.
 
 Ltac analyze_cache :=
@@ -67,26 +70,118 @@ Ltac analyze_cache :=
   | LOOKUP : Concrete.cache_lookup ?cache _ ?mvec = Some ?rvec,
     PC     : PartMaps.get _ ?pc = Some ?i@_,
     INST   : decode_instr ?i = Some _,
-    INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
-    CACHE  : cache_correct ?cache |- _ =>
-    unfold in_user in INUSER; simpl in INUSER;
-    assert (CACHEHIT := analyze_cache mvec CACHE LOOKUP INUSER (erefl _));
+    INUSER : is_true (in_user (Concrete.mkState _ _ _ ?pc@_ _)),
+    CACHE  : cache_correct ?cache ?cmem |- _ =>
+    assert (CACHEHIT := analyze_cache CACHE LOOKUP INUSER (erefl _));
     simpl in CACHEHIT;
     repeat match type of CACHEHIT with
     | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
     | _ /\ _ => destruct CACHEHIT as [? CACHEHIT]
     | _ \/ _ => destruct CACHEHIT as [CACHEHIT | CACHEHIT]
+    | and3 _ _ _ => destruct CACHEHIT
+    | and4 _ _ _ _ => destruct CACHEHIT
     | False => destruct CACHEHIT
     end;
-    try subst mvec; simpl in *; subst;
-    try match goal with
-    | H : context[decode (encode _)] |- _ =>
-      rewrite decodeK in H; simpl in *; subst
-    end
+    try contradict_in_user; match_inv; destruct_hlist; simpl in *
   | MISS   : Concrete.miss_state _ _ = Some ?st',
-    INUSER : in_user ?st' = true |- _ =>
-    destruct (miss_state_not_user _ _ MISS INUSER)
+    INUSER : is_true (in_user ?st') |- _ =>
+    destruct (miss_state_not_user MISS INUSER)
   end.
+
+Ltac relate_register_get :=
+  match goal with
+  | REFR : refine_registers ?areg ?creg ?cmem,
+    GET : PartMaps.get ?creg ?r = Some _@?t,
+    DEC : decode _ ?cmem ?t = USER _ |- _ =>
+    match goal with
+    | GET' : PartMaps.get areg r = Some _ |- _ => fail 1
+    | |- _ => first [ pose proof (proj1 REFR _ _ _ _ DEC GET) |
+                      failwith "relate_register_get" ]
+    end
+  end.
+
+Ltac relate_memory_get :=
+  match goal with
+  | MEM : PartMaps.get ?cmem ?addr = Some _@?t,
+    REFM : refine_memory ?smem ?cmem,
+    DEC : decode _ ?cmem ?t = USER _ |- _ =>
+    match goal with
+    | _ : PartMaps.get smem addr = Some _ |- _ => fail 1
+    | |- _ => idtac
+    end;
+    first [ pose proof (proj1 REFM _ _ _ _ DEC MEM) |
+            failwith "relate_memory_get" ]
+  end.
+
+Ltac relate_register_upd :=
+  match goal with
+  | GET : PartMaps.get ?reg ?r = Some _@?t,
+    DEC : decode _ ?cmem ?t = USER _,
+    UPD : PartMaps.upd ?reg ?r ?v@?t' = Some ?reg',
+    DEC' : decode _ ?cmem ?t' = USER _,
+    REFR : refine_registers _ ?reg ?cmem,
+    KINV : kernel_invariant_statement ?ki ?cmem _ _ _ |- _ =>
+    (destruct (refine_registers_upd REFR GET DEC UPD DEC') as (? & ? & ?);
+     pose proof (kernel_invariant_upd_reg KINV GET DEC UPD DEC'))
+    || let op := current_instr_opcode in fail 3 op reg
+  end.
+
+Ltac relate_memory_upd :=
+  match goal with
+  | GET : PartMaps.get ?cmem ?addr = Some _@?t,
+    DEC : decode _ ?cmem ?t = USER _,
+    UPD : PartMaps.upd ?cmem ?addr _@?t' = Some _,
+    DEC' : decode _ ?cmem ?t' = USER _,
+    CACHE : cache_correct _ ?cmem,
+    REFR : refine_registers _ _ ?cmem,
+    REFM : refine_memory _ ?cmem,
+    WFENTRYPOINTS : wf_entry_points _ ?cmem,
+    MVEC : mvec_in_kernel ?cmem |- _ =>
+    (destruct (refine_memory_upd CACHE REFR REFM GET DEC UPD DEC') as [? [? ? ?]];
+     pose proof (wf_entry_points_user_upd WFENTRYPOINTS GET DEC UPD DEC');
+     pose proof (mvec_in_kernel_user_upd MVEC GET DEC UPD DEC'))
+    || let op := current_instr_opcode in fail 3 op
+  end.
+
+Ltac update_decodings :=
+  match goal with
+  | DEC : decode ?k ?cmem ?ct = USER ?ut,
+    UPD : PartMaps.upd ?cmem _ _ = Some ?cmem' |-
+    decode ?k ?cmem' ?ct = USER ?ut =>
+    first [ solve [ rewrite -DEC; eapply decode_monotonic; eauto ] |
+            failwith "update_decodings" ]
+  end.
+
+Ltac find_and_rewrite :=
+  match goal with
+  | H : ?x = _ |- context[?x] =>
+    rewrite H; clear H
+  end.
+
+Ltac simplify_eqs :=
+  match goal with
+  | E1 : ?x = ?y1,
+    E2 : ?x = ?y2 |- _ =>
+    rewrite E1 in E2;
+    inversion E2; subst; clear E2
+  end.
+
+Ltac solve_step :=
+  solve [
+      econstructor (
+          solve [eauto;
+                 repeat autounfold;
+                 repeat destruct_hlist;
+                 repeat simplify_eqs;
+                 repeat (find_and_rewrite; simpl);
+                 reflexivity]
+        )
+    | failwith "solve_step"
+  ].
+
+Ltac solve_refine_state :=
+  solve [ econstructor; eauto; try update_decodings
+        | failwith "solve_refine_state" ].
 
 Lemma cache_hit_simulation sst cst cst' :
   refine_state ki table sst cst ->
@@ -95,7 +190,7 @@ Lemma cache_hit_simulation sst cst cst' :
     Symbolic.step table sst sst' /\
     refine_state ki table sst' cst'.
 Proof.
-  move => [smem sregs int ? ? ? ? pc tpc ? ? REFM REFR ? MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
+  move => [smem sregs int ? ? ? ? pc ctpc atpc ? ? DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
   subst sst cst.
   inv STEP; subst mvec;
   try match goal with
@@ -108,81 +203,27 @@ Proof.
 
   match_inv;
 
-  analyze_cache; simpl in *;
+  analyze_cache;
 
-  try solve [rewrite /in_user /word_lift /= (@encode_kernel_tag _ _ (e Symbolic.P)) decodeK //= in INUSER'];
+  repeat relate_register_get;
 
-  repeat match goal with
-  | H : encode _ = encode _ |- _ =>
-    apply encode_inj in H;
-    move: H => [H]; subst
-  end;
+  repeat relate_memory_get;
 
-  repeat match goal with
-  | MEM : PartMaps.get ?cmem ?addr = Some _,
-    REFM : refine_memory ?smem ?cmem |- _ =>
-    match goal with
-    | _ : PartMaps.get smem addr = Some _ |- _ => fail 1
-    | |- _ => idtac
-    end;
-    pose proof (proj1 (REFM _ _ _) MEM)
-  end;
+  try relate_register_upd;
 
-  try match goal with
-  | GET : PartMaps.get ?reg ?r = Some _,
-    UPD : PartMaps.upd ?reg ?r ?v@(encode (USER ?t)) = Some ?reg',
-    REFR : refine_registers _ ?reg |- _ =>
-    (destruct (refine_registers_upd _ v _ t REFR OLD UPD) as (? & ? & ?);
-     pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ v t _ KINV OLD UPD))
-    || let op := current_instr_opcode in fail 3 op reg
-  end;
-
-  try match goal with
-  | GET : PartMaps.get ?cmem ?addr = Some _,
-    UPD : PartMaps.upd ?cmem ?addr _ = Some _,
-    REFM : refine_memory _ ?cmem  |- _ =>
-    (destruct (refine_memory_upd _ _ _ _ REFM GET UPD) as (? & ? & ?);
-     pose proof (wf_entry_points_user_upd _ _ _ _ WFENTRYPOINTS GET UPD);
-     pose proof (mvec_in_kernel_user_upd _ _ _ _ MVEC GET UPD))
-    || let op := current_instr_opcode in fail 3 op
-  end;
-
-  repeat match goal with
-  | REFR : refine_registers _ ?creg,
-    H : PartMaps.get ?creg ?r = _ |- _ =>
-    apply REFR in H
-  end;
+  try relate_memory_upd;
 
   try match goal with
   | INST : decode_instr _ = Some (Jal _ _) |- _ =>
     pose proof (in_user_no_system_call _ _ INUSER' (erefl _) WFENTRYPOINTS)
   end;
 
-  solve [
-        eexists; split;
-        [ econstructor (
-              solve [eauto;
-                     repeat autounfold;
-                     repeat match goal with
-                     | H : ?x = _ |- context[?x] =>
-                       rewrite H; simpl; clear H
-                     end; reflexivity]
-            )
-        | econstructor; eauto; now rewrite decodeK ]
-  ].
+  eexists; (split; [ solve_step | solve_refine_state ]).
 
 Qed.
 
-Ltac simpl_word_lift :=
-  match goal with
-  | H : context[word_lift _ (encode _)] |- _ =>
-    unfold word_lift in H;
-    rewrite decodeK in H;
-    simpl in H
-  end.
-
 Lemma initial_handler_state cst kst cmvec cmem' :
-  forall (ISUSER : in_user cst = true)
+  forall (ISUSER : in_user cst)
          (CMVEC : build_cmvec _ cst = Some cmvec)
          (MEM : Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem')
          (MISS : Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None)
