@@ -473,7 +473,7 @@ Hint Unfold kernel_exec.
 Definition kernel_user_exec kst st : Prop :=
   exec_until (Concrete.step _ masks)
              (fun s => in_kernel s)
-             (fun s => in_kernel s)
+             (fun s => ~~ in_kernel s)
              kst st.
 
 Inductive user_kernel_user_step cst cst' : Prop :=
