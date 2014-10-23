@@ -614,11 +614,9 @@ Lemma valid_pcs st st' :
   Concrete.step _ masks st st' ->
   cache_correct (Concrete.cache st) (Concrete.mem st) ->
   in_user st ->
-  match decode Symbolic.P (Concrete.mem st') (common.tag (Concrete.pc st')) with
-  | Some (USER _) => true
-  | Some KERNEL => true
-  | _ => false
-  end.
+  (exists t,
+     decode Symbolic.P (Concrete.mem st') (common.tag (Concrete.pc st')) = Some (USER t)) \/
+  common.tag (Concrete.pc st') = Concrete.TKernel.
 Proof.
   admit.
 Qed.
@@ -643,7 +641,7 @@ Lemma refine_ivec sst cst ivec :
   refine_state sst cst ->
   build_ivec table sst = Some ivec ->
   exists2 cmvec,
-    build_cmvec mt cst = Some cmvec &
+    build_cmvec cst = Some cmvec &
     decode_ivec e (Concrete.mem cst) cmvec = Some ivec.
 Proof.
   admit.
@@ -780,11 +778,12 @@ Definition user_mem_unchanged (cmem cmem' : Concrete.memory mt) :=
     (PartMaps.get cmem' addr = Some w@ct /\
      decode Symbolic.M cmem' ct = Some (USER t)).
 
-Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) cmem :=
+Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) cmem cmem' :=
   forall r (w : word mt) ct t,
-    decode Symbolic.M cmem ct = Some (USER t) ->
-    (PartMaps.get cregs r = Some w@ct <->
-     PartMaps.get cregs' r = Some w@ct).
+    (PartMaps.get cregs r = Some w@ct /\
+     decode Symbolic.R cmem ct = Some (USER t) <->
+     PartMaps.get cregs' r = Some w@ct /\
+     decode Symbolic.R cmem' ct = Some (USER t)).
 
 Import DoNotation.
 
@@ -797,16 +796,8 @@ Definition cache_allows_syscall (cst : Concrete.state mt) : bool :=
   let pc := common.val (Concrete.pc cst) in
   match Symbolic.get_syscall table pc with
   | Some _ =>
-    match PartMaps.get (Concrete.mem cst) pc with
-    | Some _@ti =>
-      (* and the cache allows the system call to be executed *)
-      let cmvec := Concrete.mkMVec (op_to_word NOP)
-                                   (common.tag (Concrete.pc cst)) ti
-                                   Concrete.TNone Concrete.TNone Concrete.TNone in
-      match Concrete.cache_lookup (Concrete.cache cst) masks cmvec with
-      | Some _ => true
-      | None => false
-      end
+    match build_cmvec cst with
+    | Some cmvec => Concrete.cache_lookup (Concrete.cache cst) masks cmvec
     | None => false
     end
   | None => false
@@ -850,7 +841,7 @@ Class kernel_code_correctness : Prop := {
       (* and we've arrived at the return address that was in epc with
          unchanged user memory and registers... *)
       user_mem_unchanged mem (Concrete.mem st') /\
-      user_regs_unchanged reg (Concrete.regs st') (Concrete.mem st') /\
+      user_regs_unchanged reg (Concrete.regs st') mem (Concrete.mem st') /\
       Concrete.pc st' = old_pc /\
       (* and the system call entry points are all tagged ENTRY (BCP:
          Why do we care, and if we do then why isn't this part of the
@@ -860,14 +851,16 @@ Class kernel_code_correctness : Prop := {
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
   handler_correct_disallowed_case :
-  forall mem mem' cmvec ivec reg cache old_pc int st',
+  forall mem mem' cmvec reg cache old_pc int st',
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
     (* and calling the handler on mvec FAILS... *)
-    Symbolic.transfer ivec = None ->
+    match decode_ivec e mem cmvec with
+    | Some ivec => ~~ Symbolic.transfer ivec
+    | None => true
+    end ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
     Concrete.store_mvec mem cmvec = Some mem' ->
-    decode_ivec e mem cmvec = Some ivec ->
     (* then if we start the concrete machine in kernel mode and let it
        run, it will never reach a user-mode state. *)
     ~~ in_kernel st' ->

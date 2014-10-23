@@ -8,6 +8,10 @@ Require Import List.
 Import ListNotations.
 Import Concrete. Import DoNotation.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Open Scope Z_scope.
 
 Section Masks.
@@ -218,18 +222,42 @@ Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
     | None => None
   end.
 
+Lemma step_lookup_success_or_fault cst cst' :
+  Concrete.step _ masks cst cst' ->
+  exists cmvec,
+    build_cmvec cst = Some cmvec /\
+    match cache_lookup (cache cst) masks cmvec with
+    | Some crvec => common.tag (pc cst') = ctrpc crvec
+    | None =>
+      match store_mvec (mem cst) cmvec with
+      | Some cmem' =>
+        cst' = mkState cmem'
+                       (regs cst)
+                       (cache cst)
+                       (fault_handler_start mt)@TKernel
+                       (pc cst)
+      | None => False
+      end
+    end.
+Proof.
+  move => STEP.
+  rewrite /build_cmvec.
+  inv STEP; subst;
+  repeat match goal with
+  | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
+  end;
+  eexists; (split; first by reflexivity);
+  subst mvec;
+  unfold next_state_reg, next_state_pc,
+         next_state_reg_and_pc, next_state, miss_state in *;
+  simpl in *; match_inv; reflexivity.
+Qed.
+
 Lemma step_build_cmvec cst cst' :
   Concrete.step _ masks cst cst' ->
   exists cmvec, build_cmvec cst = Some cmvec.
 Proof.
-  intros STEP.
-  inv STEP; try subst mvec;
-  unfold next_state_pc, next_state_reg_and_pc, next_state, miss_state in *;
-  match_inv; simpl in *;
-  repeat match goal with
-  | H : ?X = _ |- context[?X] => rewrite H; simpl
-  end;
-  solve [eauto].
+  by move=> /step_lookup_success_or_fault [cmvec [? _]]; eauto.
 Qed.
 
 Lemma build_cmvec_ctpc cst cmvec :
