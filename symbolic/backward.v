@@ -333,13 +333,13 @@ Proof.
     move=> /(_ _ kcc). by rewrite DECivec TRANS => /(_ erefl).
   destruct (handler_correct_allowed_case pc@ctpc KINV DECivec TRANS Hcmem' CACHECORRECT)
       as (cst'' & rvec & KEXEC' & CACHE' & LOOKUP' & DECovec & MVEC' &
-          HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
+          HPCT & HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
   have EQ := kernel_user_exec_determ KEXEC' KEXEC. subst cst''.
   case: cst' {KEXEC KEXEC' EXEC LOOKUP' DECovec} HPC CACHE'
-             ISUSER' MVEC' HMEM HREGS WFENTRYPOINTS' KINV' =>
-        cmem'' cregs'' cache' pc' ? /= -> {pc'} CACHE' ISUSER' MVEC' HMEM HREGS WFENTRYPOINTS' KINV'.
+             ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' KINV' =>
+        cmem'' cregs'' cache' pc' ? /= -> {pc'} CACHE' ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' KINV'.
   econstructor; eauto.
-  - admit.
+  - by apply/HPCT.
   - split.
     + move=> w x ctg atg {DECivec DEC} DEC GET.
       move: (HMEM w x ctg atg) => [_ /(_ (conj GET DEC)) {GET DEC} [GET DEC]].
@@ -375,7 +375,7 @@ Proof.
     => [[smem' sregs' [pc' tpc'] int']|].
   - exploit syscalls_correct_allowed_case; eauto.
     intros (cmem' & creg' & cache' & ctpc' & epc' & EXEC' &
-            REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
+            HPCT & REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
     generalize (user_kernel_user_step_determ STEP EXEC'). intros ?. subst.
     { exists (Symbolic.State smem' sregs' pc'@tpc' int'). split.
       - eapply Symbolic.step_syscall; eauto.
@@ -386,8 +386,7 @@ Proof.
         rewrite GETPC in GET'.
         move: GET' => [? H]. subst i ti.
         by rewrite DEC in DECti.
-      - econstructor; eauto.
-        admit. }
+      - econstructor; eauto. }
   - destruct (syscalls_correct_disallowed_case KINV REFM REFR CACHE MVEC
                                                WFENTRYPOINTS GETCALL SCEXEC DEC ALLOWED STEP).
 Qed.

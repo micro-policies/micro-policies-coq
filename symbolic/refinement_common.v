@@ -771,6 +771,11 @@ Hint Unfold Symbolic.next_state_reg_and_pc.
 Hint Unfold Symbolic.next_state_pc.
 Hint Unfold Symbolic.next_state_reg.
 
+Definition user_pc_tag_unchanged cmem cmem' :=
+  forall ctg atg,
+    decode Symbolic.P cmem ctg = Some (USER atg) <->
+    decode Symbolic.P cmem' ctg = Some (USER atg).
+
 Definition user_mem_unchanged (cmem cmem' : Concrete.memory mt) :=
   forall addr (w : word mt) ct t,
     (PartMaps.get cmem addr = Some w@ct /\
@@ -840,6 +845,7 @@ Class kernel_code_correctness : Prop := {
       mvec_in_kernel (Concrete.mem st') /\
       (* and we've arrived at the return address that was in epc with
          unchanged user memory and registers... *)
+      user_pc_tag_unchanged mem (Concrete.mem st') /\
       user_mem_unchanged mem (Concrete.mem st') /\
       user_regs_unchanged reg (Concrete.regs st') mem (Concrete.mem st') /\
       Concrete.pc st' = old_pc /\
@@ -915,6 +921,7 @@ Class kernel_code_correctness : Prop := {
       (* then the new concrete state is in the same relation as before
          with the new abstract state and the same invariants
          hold (BCP: Plus one more about ra!). *)
+      decode Symbolic.P cmem' ctpc' = Some (USER atpc') /\
       refine_memory amem' cmem' /\
       refine_registers areg' creg' cmem' /\
       cache_correct cache' cmem' /\
