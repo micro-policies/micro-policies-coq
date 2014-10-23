@@ -62,13 +62,11 @@ Definition no_violation (sst : Symbolic.state t) :=
        tpc = INSTR (Some src) ->
        exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ cfg src dst).
 
-Inductive atom_equiv : atom (word t) (@cfi_tag t ids) -> atom (word t) (@cfi_tag t ids)
-                       -> Prop :=
-  | data_equiv : forall a a',
-                   tag a = DATA ->
+Inductive atom_equiv (a : atom (word t) (@cfi_tag t ids)) (a' : atom (word t) (@cfi_tag t ids)) : Prop :=
+  | data_equiv :   tag a = DATA ->
                    tag a' = DATA ->
                    atom_equiv a a'
-  | instr_equiv : forall a a' id id',
+  | instr_equiv : forall id id',
                     tag a = INSTR id ->
                     tag a' = INSTR id' ->
                     a = a' ->
@@ -830,7 +828,7 @@ Proof.
     simpl.
     destruct (get mem pc) as [[i ti]|] eqn:GET.
     { destruct (get mem' pc) as[[i' ti']|] eqn:GET'.
-      - inversion MEQUIV as [? ? EQ1 EQ2 EQ3 EQ4|? ? ? ? EQ1 EQ2 EQ3]; subst.
+      - destruct MEQUIV as [EQ1 EQ2 EQ3 EQ4|? ? EQ1 EQ2 EQ3]; subst.
         + simpl in EQ1, EQ2. subst. by reflexivity.
         + inv EQ3. by reflexivity.
       - by destruct MEQUIV.

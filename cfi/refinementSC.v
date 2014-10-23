@@ -28,7 +28,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {ids : @classes.cfi_id mt}
-        {e : @rules.encodable mt rules.cfi_tag_eqType}.
+        {e : rules.fencodable mt rules.cfi_tags}.
 
 Variable cfg : id -> id -> bool.
 
@@ -78,17 +78,17 @@ Hypothesis syscall_preserves_jal_tags :
     Sym.jals_tagged (Symbolic.mem st').
 
 Definition refine_state_no_inv (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sp (fun _ => e) ki stable sst cst.
+  @refine_state_weak mt ops sp _ ki stable sst cst.
 
 Definition refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sp (fun _ => e) ki stable sst cst /\
+  @refine_state_weak mt ops sp _ ki stable sst cst /\
   Sym.invariants stable sst.
 
-Definition is_user (x : atom (word mt) (word mt)) :=
-  rules.word_lift (fun t => rules.is_user t) (common.tag x).
+Definition is_user k (x : atom (word mt) (word mt)) :=
+  oapp (fun t => rules.is_user t) false (@rules.fdecode _ _ e k (common.tag x)).
 
-Definition coerce (x : atom (word mt) (word mt)) : atom (word mt) (cfi_tag) :=
-  match rules.decode (common.tag x) with
+Definition coerce k (x : atom (word mt) (word mt)) : atom (word mt) (cfi_tag) :=
+  match rules.fdecode k (common.tag x) with
     | Some (rules.USER tg) => (common.val x)@tg
     | _ => (common.val x)@DATA (*this is unreachable in our case, dummy value*)
   end.
@@ -102,36 +102,20 @@ Lemma mem_refinement_equiv :
     Sym.equiv smem smem'.
 Proof.
   intros smem cmem cmem' REF EQUIV.
-  exists (PartMaps.map coerce (filter is_user cmem')).
+  exists (PartMaps.map (coerce Symbolic.M) (filter (is_user Symbolic.M) cmem')).
   split.
   { (*refinement proof*)
-    intros addr v tg.
     split.
-    { intro CGET.
+    { move=> addr v ct t /= DEC CGET.
       rewrite PartMaps.map_correctness. rewrite filter_correctness.
-      rewrite CGET. simpl.
-      destruct (is_user v@(rules.encode (rules.USER (user_tag:=cfi_tags Symbolic.M) tg))) eqn:USER.
-      + simpl. unfold coerce. simpl. rewrite rules.decodeK. reflexivity.
-      + unfold is_user in USER. simpl in USER.
-        unfold rules.word_lift in USER.
-        rewrite rules.decodeK in USER. simpl in USER. discriminate. }
-    { intro SGET.
-      rewrite PartMaps.map_correctness filter_correctness in SGET.
-      destruct (get cmem' addr) eqn:CGET.
-      - destruct a as [cv ctg].
-        simpl in SGET.
-        unfold is_user, rules.word_lift in SGET.
-        destruct (rules.decode ctg) eqn:CTG.
-        + destruct t; rewrite CTG in SGET; simpl in *.
-          * unfold coerce in SGET. rewrite CTG in SGET.
-            simpl in SGET. inv SGET.
-            simpl. apply rules.encodeK in CTG. rewrite CTG. reflexivity.
-          * discriminate.
-          * discriminate.
-        + rewrite CTG in SGET. simpl in SGET; discriminate.
-      - simpl in SGET. discriminate.
-    }
-  }
+      by rewrite CGET /is_user /= DEC /= /coerce DEC. }
+    { move=> addr v t /=.
+      rewrite PartMaps.map_correctness filter_correctness.
+      case CGET: (get cmem' addr) => [[cv ctg]|] //=.
+      rewrite /is_user /=.
+      case DEC: (rules.fdecode _ _) => [[t'| |]|] //=.
+      rewrite /coerce /= DEC. move=> [? ?]. subst cv t'.
+      eauto. } }
   { (*equiv proof*)
     unfold Sym.equiv, pointwise.
     intro addr.
@@ -140,56 +124,35 @@ Proof.
     destruct (get smem addr) eqn:SGET; simpl in SGET; rewrite SGET.
     - destruct a as [v utg].
       unfold refinement_common.refine_memory in REF.
-      specialize (REF addr v utg).
-      destruct REF as [REFCS REFSC].
-      assert (CGET := REFSC SGET).
+      have [ctg DEC CGET] := proj2 REF addr v utg SGET.
       rewrite CGET in EQUIV.
       destruct (get cmem' addr) eqn:CGET'.
       + destruct a as [v' ctg'].
-        inversion EQUIV
-          as [a a' v0 v'' ut ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
-        * rewrite PartMaps.map_correctness filter_correctness.
-          rewrite CGET'.
-          unfold is_user. unfold rules.word_lift.
-          simpl. inversion EQ1; inversion EQ2; subst.
-          rewrite rules.decodeK.
-          simpl. unfold coerce.
-          simpl. rewrite rules.decodeK.
-          apply rules.encode_inj in H1.
-          inversion H1; subst.
-          assumption.
-        * simpl in NEQ.
-          assert (CONTRA: (exists ut : cfi_tag,
-           rules.encode (rules.USER (user_tag:=cfi_tag_eqType) utg) =
-           rules.encode (rules.USER (user_tag:=cfi_tag_eqType) ut)))
-             by (eexists; eauto).
-          apply NEQ in CONTRA. destruct CONTRA.
-      + destruct EQUIV.
+        destruct EQUIV
+          as [v0 v'' ct ut ct' ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
+        * inv EQ1. inv EQ2.
+          rewrite PartMaps.map_correctness filter_correctness CGET' /=
+                  /is_user /= DEC2 /= /coerce /= DEC2.
+          rewrite /= DEC1 in DEC.
+          move: DEC => [?]. by subst.
+        * inv EQ. simpl in NEQ.
+          suff: False by [].
+          apply: NEQ.
+          rewrite /= in DEC. rewrite DEC.
+          by eauto.
+      + by destruct EQUIV.
     - destruct (get cmem addr) eqn:CGET.
       + destruct a as [v ctg]. unfold refinement_common.refine_memory in REF.
         rewrite PartMaps.map_correctness filter_correctness.
-        unfold is_user. unfold rules.word_lift.
-        destruct (get cmem' addr) eqn:CGET'.
-        * destruct a as [v' ctg'].
-          simpl.
-          destruct (rules.decode ctg') eqn:DECODE.
-          - destruct (rules.is_user t) eqn:USER.
-            + simpl.
-              unfold rules.is_user in USER.
-              destruct t; try discriminate.
-              apply rules.encodeK in DECODE.
-              rewrite <- DECODE in EQUIV.
-              inversion EQUIV
-                as [a a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
-               { inversion EQ1; subst.
-                 apply REF in CGET. rewrite SGET in CGET; discriminate. }
-               { simpl in NEQ.
-                 inv EQ.
-                 apply NEQ. eexists; eauto.
-               }
-            + simpl. constructor.
-          - simpl. constructor.
-        * destruct EQUIV.
+        case CGET': (get cmem' addr) EQUIV => [a|] //= EQUIV.
+        rewrite /is_user /=.
+        destruct EQUIV
+          as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst; simpl.
+        { inv EQ1.
+          by rewrite (proj1 REF _ _ _ _ DEC1 CGET) in SGET. }
+        { case DEC: (rules.fdecode _ _) => [[ut| |]|] //=.
+          apply: NEQ => /=.
+          by rewrite DEC; eauto. }
      + destruct (get cmem' addr) eqn:CGET'.
        * destruct EQUIV.
        * rewrite PartMaps.map_correctness filter_correctness.
@@ -198,50 +161,33 @@ Proof.
 Qed.
 
 Definition creg_to_sreg x :=
-  match is_user x with
-    | true => Some (coerce x)
+  match is_user Symbolic.R x with
+    | true => Some (coerce Symbolic.R x)
     | false => None
   end.
 
 Lemma reg_refinement_equiv :
-  forall (sregs : Symbolic.registers mt sp) cregs cregs',
-    refinement_common.refine_registers sregs cregs ->
+  forall (sregs : Symbolic.registers mt sp) cregs cregs' cmem,
+    refinement_common.refine_registers sregs cregs cmem ->
     Conc.reg_equiv cregs cregs' ->
     exists (sregs' : Symbolic.registers mt sp),
-    refinement_common.refine_registers sregs' cregs' /\
+    refinement_common.refine_registers sregs' cregs' cmem /\
     Sym.equiv sregs sregs'.
 Proof.
-  intros sreg creg creg' REF EQUIV.
+  intros sreg creg creg' cmem REF EQUIV.
   exists (PartMaps.map_filter creg_to_sreg creg').
   split.
   { (*Refinement proof*)
-    intros n v tg.
     split.
-    { intros CGET'.
+    { move=> n v ctg tg /= DEC CGET'.
+      by rewrite PartMaps.map_filter_correctness
+                 CGET' /= /creg_to_sreg /is_user /= DEC /= /coerce /= DEC. }
+    { move=> n v tg.
       rewrite PartMaps.map_filter_correctness.
-      rewrite CGET'. simpl.
-      unfold creg_to_sreg.
-      destruct (is_user v@(rules.encode (rules.USER (user_tag:=cfi_tags Symbolic.R) tg))) eqn:USER.
-      + simpl. unfold coerce. simpl. rewrite rules.decodeK. reflexivity.
-      + unfold is_user in USER. simpl in USER.
-        unfold rules.word_lift in USER.
-        rewrite rules.decodeK in USER. simpl in USER. discriminate. }
-    { intro SGET'.
-      rewrite PartMaps.map_filter_correctness in SGET'.
-      destruct (PartMaps.get creg' n) as [[v' t']|] eqn:CGET'; last by [].
-      simpl in SGET'.
-      unfold creg_to_sreg in SGET'.
-      unfold is_user, rules.word_lift in SGET'.
-      simpl in SGET'.
-      destruct (rules.decode t') eqn:CTG.
-      + unfold rules.is_user, coerce in SGET'. destruct t; simpl in CTG.
-        * rewrite CTG in SGET'.
-          simpl in SGET'. inv SGET'.
-          simpl. apply rules.encodeK in CTG. rewrite CTG. reflexivity.
-        * discriminate.
-        * discriminate.
-      + discriminate.
-    }
+      case CGET': (get creg' n)=> [[v' t']|] //=.
+      rewrite /creg_to_sreg /is_user /= /coerce /=.
+      case CTG: (rules.fdecode _ _) => [[ut| |?]|] //= [? ?]. subst v' ut.
+      eauto. }
   }
   { (*equiv proof*)
     unfold Sym.equiv, pointwise.
@@ -251,44 +197,30 @@ Proof.
     destruct EQUIV as ([v1 t1] & [v2 t2] & E1 & E2 & EQUIV).
     destruct (get sreg n) eqn:SGET; simpl in SGET; rewrite SGET.
     - destruct a as [v utg].
-      specialize (REF n v utg).
-      destruct REF as [REFCS REFSC].
-      assert (CGET := REFSC SGET).
+      move: (proj2 REF n v utg SGET) => [ctg DEC CGET].
       rewrite CGET in E1. inversion E1; subst v1 t1; clear E1.
       rewrite PartMaps.map_filter_correctness.
-      inversion EQUIV
-        as [a a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
-      * inv EQ2.
-        unfold creg_to_sreg, is_user, rules.word_lift, coerce, rules.is_user.
-        simpl. rewrite E2. simpl. rewrite rules.decodeK.
-        inv EQ1.
-        apply rules.encode_inj in H1. inv H1.
-        assumption.
+      destruct EQUIV
+        as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
+      * inv EQ1. inv EQ2. rewrite /= DEC1 in DEC. inv DEC.
+        unfold creg_to_sreg, is_user, coerce, rules.is_user.
+        by rewrite /= E2 /= DEC2 /=.
       * inv EQ. simpl in NEQ.
-        assert (CONTRA: (exists ut : cfi_tag,
-           rules.encode (rules.USER (user_tag:=cfi_tag_eqType) utg) =
-           rules.encode (rules.USER (user_tag:=cfi_tag_eqType) ut)))
-          by (eexists; eauto).
-        apply NEQ in CONTRA. destruct CONTRA.
+        suff: False by [].
+        by apply: NEQ; eexists; eauto.
     - rewrite PartMaps.map_filter_correctness.
       rewrite E2. simpl.
-      inversion EQUIV
-        as [a a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| a a' NEQ EQ]; subst.
+      destruct EQUIV
+        as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
        + inv EQ1.
-         apply REF in E1.
-         rewrite E1 in SGET. discriminate.
+         rewrite /creg_to_sreg /is_user /coerce /=.
+         case DEC: (rules.fdecode _ _) => [[?| |?]|] //=.
+         by rewrite (proj1 REF _ _ _ _ DEC1 E1) in SGET.
        + inv EQ.
-         unfold creg_to_sreg, is_user, rules.word_lift, coerce.
-         simpl.
-         destruct (rules.decode t2) eqn:DECODE.
-         { destruct t.
-           - apply rules.encodeK in DECODE.
-             simpl in NEQ.
-             exfalso. apply NEQ. eexists; eauto.
-           - unfold rules.is_user. constructor.
-           - unfold rules.is_user. constructor.
-         }
-         { constructor. }
+         rewrite /creg_to_sreg /is_user /coerce /=.
+         case DEC: (rules.fdecode _ t2) => [[?| |?]|] //=.
+         apply: NEQ.
+         by rewrite DEC; eauto.
   }
 Qed.
 
@@ -309,12 +241,10 @@ Proof.
   specialize (MEQUIV addr).
   rewrite GET in MEQUIV.
   destruct (get mem' addr) eqn:GET'.
-  - inversion MEQUIV
-      as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
-    + inversion EQ1; subst.
-      rewrite rules.encode_kernel_tag in H1.
-      apply rules.encode_inj in H1.
-      discriminate.
+  - destruct MEQUIV
+      as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
+    + inversion EQ1; subst. eauto.
+      by rewrite rules.fdecode_kernel_tag in DEC1.
     + eexists; reflexivity.
   - destruct MEQUIV.
 Qed.
@@ -334,25 +264,21 @@ Proof.
     apply INV in SCALL.
     case: (get mem addr) INV MEQUIV SCALL => [[v ctg]|] INV MEQUIV SCALL; last by [].
     case: (get mem' addr) MEQUIV => [[v' ctg']|] MEQUIV; last by [].
-    inversion MEQUIV
-          as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
-    - inv EQ1.
-      apply andb_true_iff in SCALL.
-      destruct SCALL as [? SCALL].
-      move/eqP/rules.encode_inj: SCALL => CONTRA.
-      inversion CONTRA.
+    destruct MEQUIV
+          as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
+    - inv EQ1. inv EQ2.
+      by rewrite /= DEC1 andbF in SCALL.
     - simpl in *. inv EQ. assumption.
   }
   { intro CALL.
     case: (get mem' addr) INV MEQUIV CALL => [[v' ctg']|] //= INV MEQUIV CALL.
     case: (get mem addr) INV MEQUIV => [[v ctg]|] //= INV MEQUIV.
     inversion MEQUIV
-          as [? a' v0 v'' ? ut' EQ1 EQ2 SEQUIV| ? a' NEQ EQ]; subst.
-    + inv EQ2.
+          as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV| NEQ EQ]; subst.
+    + inv EQ1. inv EQ2.
       apply andb_true_iff in CALL.
       destruct CALL as [? CALL].
-      move/eqP/rules.encode_inj: CALL => CONTRA.
-      inversion CONTRA.
+      by rewrite /= DEC2 in CALL.
     + simpl in *. inv EQ. apply INV in CALL.
       assumption.
   }
@@ -382,26 +308,21 @@ Proof.
   unfold refine_state in REF.
   destruct REF as [REF | CONTRA].
   move: tpc INUSER REF STEP => tpc' INUSER REF STEP.
-  - destruct REF as [smem sreg int cmem cregs cache' epc' pc' tpc
-                     ? ? REFM REFR ? ? WFENTRY ?].
+  - destruct REF as [smem sreg int cmem cregs cache' epc' pc' ctpc tpc
+                     ? ? ? REFM REFR ? ? WFENTRY ?].
     subst sst.
     symmetry in EC. inv EC.
     destruct (mem_refinement_equiv REFM MEQUIV) as [smem' [REFM' SMEQUIV]].
     destruct (reg_refinement_equiv REFR REQUIV) as [sreg' [REFR' SREQUIV]].
     eexists; split; [idtac | left]; econstructor; eauto.
-  - destruct CONTRA as [? [? [? [? CONTRA]]]].
+  - case: CONTRA => [? [? [? [? CONTRA]]]].
     clear REQUIV MEQUIV.
     unfold refinement_common.kernel_exec in CONTRA.
     apply restricted_exec_snd in CONTRA.
-    unfold refinement_common.in_kernel in CONTRA.
-    simpl in CONTRA. unfold Concrete.is_kernel_tag in CONTRA.
-    unfold rules.word_lift in INUSER.
-    move/eqP: CONTRA => CONTRA.
-    rewrite CONTRA in INUSER.
-    rewrite rules.encode_kernel_tag in INUSER.
-    rewrite rules.decodeK in INUSER.
-    unfold rules.is_user in INUSER.
-    congruence.
+    rewrite /refinement_common.in_kernel
+            /= /Concrete.is_kernel_tag in CONTRA.
+    move/eqP in CONTRA. subst tpc.
+    by rewrite rules.fdecode_kernel_tag in INUSER.
 Qed.
 
 Theorem backwards_simulation_attacker sst cst cst' :
@@ -464,12 +385,12 @@ Proof.
       - (*user to not user step*)
         left.
         unfold refine_state. split.
-        right. exists cst; exists cst'.
-        repeat (split; auto).
-        unfold kernel_exec.
-        destruct (user_into_kernel UREF STEP NUSER).
-        eapply re_refl; eauto.
-        eauto using Sym.invariants_preserved_by_step.
+        + right. exists cst; exists cst'.
+          repeat (split; auto).
+          unfold kernel_exec.
+          move: (user_into_kernel UREF STEP (negbT NUSER)) => ?.
+          by eapply re_refl; eauto.
+        + eauto using Sym.invariants_preserved_by_step.
     }
   - (*starting from a kernel state*)
     split.
@@ -482,12 +403,11 @@ Proof.
       unfold kernel_exec in KEXEC.
       apply restricted_exec_snd in KEXEC.
       apply @in_user_in_kernel in VIS.
-      rewrite VIS in KEXEC.
-      discriminate.
+      by rewrite KEXEC in VIS.
     }
     { (*and taking an invisible step*)
       intro VIS.
-      assert (REFW : @refine_state_weak mt ops sp (fun _ => e) ki stable ast cst)
+      assert (REFW : @refine_state_weak mt ops sp _ ki stable ast cst)
         by (right; auto).
       destruct (backwards_simulation REFW STEP) as [REFW' | [ast' [STEP' REF']]].
       - left. split; auto.
@@ -602,15 +522,14 @@ Proof.
   by discriminate.
 Qed.
 
-Definition khandler := rules.handler (fun _ => e) (@Symbolic.transfer sp).
 Definition uhandler := @Symbolic.transfer sp.
 
 (*XXX: Move these to refinement_common*)
-Lemma get_reg_no_user sreg reg r v ctg t :
-  @refinement_common.refine_registers mt sp (fun _ => e) sreg reg ->
+Lemma get_reg_no_user sreg reg m r v ctg t :
+  @refinement_common.refine_registers mt sp _ sreg reg m ->
   get sreg r = None ->
   PartMaps.get reg r = Some v@ctg ->
-  rules.decode ctg = Some t ->
+  rules.fdecode Symbolic.R ctg = Some t ->
   t = rules.KERNEL \/ (exists ut, t = rules.ENTRY ut).
 Proof.
   intros REF SGET GET DEC.

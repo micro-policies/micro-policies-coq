@@ -170,6 +170,18 @@ Class encodable (ut : Symbolic.tag_kind -> eqType) := {
   decode_kernel_tag : forall tk m, decode tk m Concrete.TKernel = Some KERNEL
 }.
 
+(* Special case where encoding doesn't depend on memory *)
+Class fencodable (ut : Symbolic.tag_kind -> eqType) := {
+  fdecode : forall tk, word t -> option (tag (ut tk));
+  fdecode_kernel_tag : forall tk, fdecode tk Concrete.TKernel = Some KERNEL
+}.
+
+Global Instance encodable_of_fencodable ut (e : fencodable ut) : encodable ut := {
+  decode tk m w := fdecode tk w;
+  decode_monotonic mem mem' add x y ct st ct' st' tk H1 H2 H4 H4 w := erefl;
+  decode_kernel_tag tk m := fdecode_kernel_tag tk
+}.
+
 End encoding.
 
 Section tag_encoding.
