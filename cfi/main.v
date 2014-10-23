@@ -157,15 +157,8 @@ Qed.
 
 Import DoNotation.
 
-Instance encodable_tag : @encodable t cfi_tag_eqType := {|
-  encode t :=
-    match t with
-    | USER ut => Word.pack [29; 1] [encode_cfi_tag ut; Word.one]%wp
-    | ENTRY ut => Word.pack [29; 1] [encode_cfi_tag ut; Word.repr 2]%wp
-    | KERNEL => Word.pack [29; 1] [Word.zero; Word.zero]%wp
-    end;
-
-  decode w :=
+Instance encodable_tag : encodable t cfi_tags := {|
+  decode k m w :=
     let: [ut; w']%wu := Word.unpack [29; 1] w in
     if w' == Word.zero then
       if ut == Word.zero then Some KERNEL
@@ -176,27 +169,11 @@ Instance encodable_tag : @encodable t cfi_tag_eqType := {|
     else if w' == Word.repr 2 then
       do! ut <- decode_cfi_tag ut;
       Some (@ENTRY cfi_tag_eqType ut)
-    else None;
-
-  encode_kernel_tag := erefl
+    else None
 |}.
 Proof.
-  - case => [ut| |ut];
-    by rewrite Word.packK /= ?encode_cfi_tagK.
-  - intros t w.
-    case E: (Word.unpack [29; 1] w) => [ut [w' []]].
-    move: (Word.unpackK [29; 1] w). rewrite E.
-    have [?|?] := altP (w' =P Word.zero); try subst w'.
-    { have [?|?] := altP (ut =P Word.zero); try subst ut; last by [].
-      by move => H [<-]. }
-    have [?|?] := altP (w' =P Word.one); try subst w'.
-    { case DEC: (decode_cfi_tag ut) => [ut'|] //=.
-      apply decode_cfi_tagK in DEC. subst ut.
-      by move => H [<-]. }
-    have [?|?] := altP (w' =P Word.repr 2); try subst w'; last by [].
-    case DEC: (decode_cfi_tag ut) => [ut'|] //=.
-    apply decode_cfi_tagK in DEC. subst ut.
-    by move => H [<-].
+  - by eauto.
+  - by [].
 Qed.
 
 Section Refinement.
