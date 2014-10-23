@@ -26,11 +26,6 @@ Context {t : machine_types}
         {e : rules.encodable t [eqType of cfi_tag]}.
 
 Import PartMaps.
-Context {word_map : Type -> Type}
-        {sw : partial_map word_map (word t)}
-        {smems : axioms sw}
-        {reg_map : Type -> Type}
-        {sr : partial_map reg_map (reg t)}.
 
 Variable cfg : id -> id -> bool.
 
