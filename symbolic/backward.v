@@ -92,7 +92,7 @@ Ltac relate_register_get :=
   match goal with
   | REFR : refine_registers ?areg ?creg ?cmem,
     GET : PartMaps.get ?creg ?r = Some _@?t,
-    DEC : decode _ ?cmem ?t = USER _ |- _ =>
+    DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
     match goal with
     | GET' : PartMaps.get areg r = Some _ |- _ => fail 1
     | |- _ => first [ pose proof (proj1 REFR _ _ _ _ DEC GET) |
@@ -104,7 +104,7 @@ Ltac relate_memory_get :=
   match goal with
   | MEM : PartMaps.get ?cmem ?addr = Some _@?t,
     REFM : refine_memory ?smem ?cmem,
-    DEC : decode _ ?cmem ?t = USER _ |- _ =>
+    DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
     match goal with
     | _ : PartMaps.get smem addr = Some _ |- _ => fail 1
     | |- _ => idtac
@@ -116,9 +116,9 @@ Ltac relate_memory_get :=
 Ltac relate_register_upd :=
   match goal with
   | GET : PartMaps.get ?reg ?r = Some _@?t,
-    DEC : decode _ ?cmem ?t = USER _,
+    DEC : decode _ ?cmem ?t = Some (USER _),
     UPD : PartMaps.upd ?reg ?r ?v@?t' = Some ?reg',
-    DEC' : decode _ ?cmem ?t' = USER _,
+    DEC' : decode _ ?cmem ?t' = Some (USER _),
     REFR : refine_registers _ ?reg ?cmem,
     KINV : kernel_invariant_statement ?ki ?cmem _ _ _ |- _ =>
     (destruct (refine_registers_upd REFR GET DEC UPD DEC') as (? & ? & ?);
@@ -129,9 +129,9 @@ Ltac relate_register_upd :=
 Ltac relate_memory_upd :=
   match goal with
   | GET : PartMaps.get ?cmem ?addr = Some _@?t,
-    DEC : decode _ ?cmem ?t = USER _,
+    DEC : decode _ ?cmem ?t = Some (USER _),
     UPD : PartMaps.upd ?cmem ?addr _@?t' = Some _,
-    DEC' : decode _ ?cmem ?t' = USER _,
+    DEC' : decode _ ?cmem ?t' = Some (USER _),
     CACHE : cache_correct _ ?cmem,
     REFR : refine_registers _ _ ?cmem,
     REFM : refine_memory _ ?cmem,
@@ -145,9 +145,9 @@ Ltac relate_memory_upd :=
 
 Ltac update_decodings :=
   match goal with
-  | DEC : decode ?k ?cmem ?ct = USER ?ut,
+  | DEC : decode ?k ?cmem ?ct = Some (USER ?ut),
     UPD : PartMaps.upd ?cmem _ _ = Some ?cmem' |-
-    decode ?k ?cmem' ?ct = USER ?ut =>
+    decode ?k ?cmem' ?ct = Some (USER ?ut) =>
     first [ solve [ rewrite -DEC; eapply decode_monotonic; eauto ] |
             failwith "update_decodings" ]
   end.
@@ -240,8 +240,10 @@ Proof.
   unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
          Concrete.next_state_pc, Concrete.next_state,
          Concrete.miss_state in *;
-  match_inv; simpl in *;
-  try analyze_cache; simpl in *;
+  match_inv; simpl in *.
+
+  analyze_cache.
+  try analyze_cache; simpl in *.
 
   solve [
     repeat simpl_word_lift; simpl in *; discriminate |

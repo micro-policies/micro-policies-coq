@@ -202,7 +202,7 @@ Record policy_invariant : Type := {
     forall mem mem' addr w1 ct ut w2 int
            (PINV : policy_invariant_statement mem int)
            (GET : PartMaps.get mem addr = Some w1@ct)
-           (DEC : decode Symbolic.M mem ct = USER ut)
+           (DEC : decode Symbolic.M mem ct = Some (USER ut))
            (UPD : PartMaps.upd mem addr w2 = Some mem'),
       policy_invariant_statement mem' int;
 
@@ -247,7 +247,7 @@ Lemma invariant_upd_mem :
   forall regs mem1 mem2 cache addr w1 ct ut w2 int
          (KINV : invariant mem1 regs cache int)
          (GET : PartMaps.get mem1 addr = Some w1@ct)
-         (DEC : decode Symbolic.M mem1 ct = USER ut)
+         (DEC : decode Symbolic.M mem1 ct = Some (USER ut))
          (UPD : PartMaps.upd mem1 addr w2 = Some mem2),
     invariant mem2 regs cache int.
 Proof.
@@ -278,9 +278,9 @@ Lemma invariant_upd_reg :
   forall mem regs regs' cache r w1 ct1 ut1 w2 ct2 ut2 int
          (KINV : invariant mem regs cache int)
          (GET : PartMaps.get regs r = Some w1@ct1)
-         (DEC : decode Symbolic.R mem ct1 = USER ut1)
+         (DEC : decode Symbolic.R mem ct1 = Some (USER ut1))
          (UPD : PartMaps.upd regs r w2@ct2 = Some regs')
-         (DEC' : decode Symbolic.R mem ct2 = USER ut2),
+         (DEC' : decode Symbolic.R mem ct2 = Some (USER ut2)),
     invariant mem regs' cache int.
 Proof.
   intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
