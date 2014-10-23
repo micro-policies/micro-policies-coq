@@ -213,11 +213,6 @@ Proof.
 
   try relate_memory_upd;
 
-  try match goal with
-  | INST : decode_instr _ = Some (Jal _ _) |- _ =>
-    pose proof (in_user_no_system_call _ _ INUSER' (erefl _) WFENTRYPOINTS)
-  end;
-
   eexists; (split; [ solve_step | solve_refine_state ]).
 
 Qed.
