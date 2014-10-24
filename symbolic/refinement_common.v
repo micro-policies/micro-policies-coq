@@ -685,6 +685,15 @@ Qed.
 Qed.
 *)
 
+Lemma refine_ivec_inv sst cst cmvec ivec :
+  refine_state sst cst ->
+  build_cmvec cst = Some cmvec ->
+  decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
+  build_ivec table sst = Some ivec.
+Proof.
+  admit.
+Qed.
+
 (*
 Lemma handler_build_ivec sst cst cmvec crvec :
   refine_state sst cst ->
