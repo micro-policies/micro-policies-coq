@@ -92,9 +92,9 @@ Lemma xxx : forall tpc ti,
     (tpc = DATA \/ tpc = INSTR None \/
      (exists src dst, tpc = INSTR (Some src) /\
                       ti = INSTR (Some dst) /\
-                      cfg src dst = true)) <->
+                      cfg src dst)) <->
     (forall src, tpc = INSTR (Some src) ->
-       exists dst, ti = INSTR (Some dst) /\ cfg src dst = true).
+       exists dst, ti = INSTR (Some dst) /\ cfg src dst).
 Proof.
   split.
   - intro H.
@@ -116,12 +116,12 @@ Qed.
 Lemma yyy : forall tpc ti,
    match tpc with
    | INSTR (Some src) =>
-     exists dst, ti = INSTR (Some dst) /\ cfg src dst = true
+     exists dst, ti = INSTR (Some dst) /\ cfg src dst
    | _ => True
    end
     <->
     (forall src, tpc = INSTR (Some src) ->
-       exists dst, ti = INSTR (Some dst) /\ cfg src dst = true).
+       exists dst, ti = INSTR (Some dst) /\ cfg src dst).
 Proof.
   intros tpc ti.
   split.
@@ -148,12 +148,12 @@ Definition refine_state (ast : Abs.state t)
   refine_pc apc (spc@tpc) /\
   (forall i ti,
     get smem spc = Some i@ti ->
-    (cont = true <->
+    (cont <->
     (forall src, tpc = INSTR (Some src) ->
-       exists dst, ti = INSTR (Some dst) /\ cfg src dst = true))) /\
+       exists dst, ti = INSTR (Some dst) /\ cfg src dst))) /\
   (forall sc, get smem spc = None ->
    Symbolic.get_syscall stable spc = Some sc ->
-   (cont = true <->
+   (cont <->
     (forall src,
        tpc = INSTR (Some src) ->
        exists dst,
@@ -416,7 +416,7 @@ Proof.
   intros REF SSTEP;
   destruct ast as [imem dmem aregs apc b];
   destruct b.
-  { (*1st case*) 
+  { (*1st case*)
     inversion SSTEP; subst;
     destruct REF
       as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG [ETG [RTG [JUTG JATG]]]]]]]]]]];
@@ -435,6 +435,10 @@ Proof.
           | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
         end); match_inv;
+    repeat match goal with
+    | H : ?b = true |- _ =>
+      change (b = true) with (is_true b) in H
+    end;
  (* switch memory updates to abstract*)
     repeat (
         match goal with
@@ -451,7 +455,7 @@ Proof.
             assert (exists id, get Mem Pc = Some I@(INSTR id))
               by (eexists;eauto)
         end;
-    (* prove that all register reads have DATA tag*)    
+    (* prove that all register reads have DATA tag*)
     repeat match goal with
         | [H1: Sym.registers_tagged ?Reg, H: get ?Reg ?R = Some ?V@?TG |- _] =>
           assert (TMP: TG = DATA)
@@ -471,7 +475,7 @@ Proof.
                                            H2: upd _ ?R ?V'@_ = Some _ |- _] =>
              try (unfold default_rtag in H2; simpl in H2);
                destruct (refine_registers_upd R V' H H1 H2) as [aregs' [? ?]]
-           end;                                                    
+           end;
     (*do refinements*)
     repeat match goal with
              | [H1: refine_imemory _ ?Mem,
@@ -560,7 +564,7 @@ Proof.
              | [H: INSTR _ = INSTR _ |- _ ] => inv H
            end;
     try match goal with
-          | [H: Abs.valid_jmp _ _ _ = _ |- _] =>
+          | [H: is_true (Abs.valid_jmp _ _ _) |- _] =>
             destruct (VTG _ _ H) as [[? ?] [[? ?] | [? [? [? ?]]]]]
         end;
     repeat match goal with
@@ -573,7 +577,7 @@ Proof.
                rewrite H in H1; inv H1
            end;
      try match goal with
-          | [H: Abs.valid_jmp _ _ _ = _ |- _] =>
+          | [H: is_true (Abs.valid_jmp _ _ _) |- _] =>
             destruct (valid_jmp_true _ _ _ H) as [? [? [? ?]]]
         end;
     repeat match goal with
@@ -583,10 +587,10 @@ Proof.
                rewrite H
              | [H: word_to_id ?W = _ |- context[word_to_id ?W]] =>
                rewrite H
-             | [H: Abs.valid_jmp _ _ _ = _ |- _] =>
+             | [H: is_true (Abs.valid_jmp _ _ _) |- _] =>
                unfold Abs.valid_jmp, valid_jmp in H
-             | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
-               rewrite H1 in H
+             | [H: context[?Expr], H1: ?Expr = _ |- _] =>
+               rewrite H1 in H; simpl in H
            end;
     try discriminate; (*do not initialize existential when it's contradiction*)
     try match goal with
@@ -597,7 +601,7 @@ Proof.
              | [H: forall _, INSTR _ = INSTR _ -> _ |- _] =>
                destruct (H _ erefl) as [? [? ?]]; clear H; subst
              | [H: get ?Mem ?W = Some _, H1: get ?Mem ?Pc = Some _ |-
-                Abs.valid_jmp _ ?Pc ?W = _] =>
+                is_true (Abs.valid_jmp _ ?Pc ?W)] =>
                apply ITG in H; apply ITG in H1;
                unfold Abs.valid_jmp, valid_jmp;
                rewrite H H1;
@@ -607,16 +611,16 @@ Proof.
     repeat match goal with
           | [H: get ?Mem ?W = None, H1: Symbolic.get_syscall _ ?W = Some ?Sc,
              H2: Symbolic.entry_tag ?Sc = _
-             |- Abs.valid_jmp _ _ _ = _] =>
+             |- is_true (Abs.valid_jmp _ _ _)] =>
               assert (ETAG := ETG _ _ _ H H1 H2)
-          | [H1: get ?Mem ?Pc = Some _ |- Abs.valid_jmp _ _ _ = _] =>
+          | [H1: get ?Mem ?Pc = Some _ |- is_true (Abs.valid_jmp _ _ _)] =>
             apply ITG in H1;
             unfold Abs.valid_jmp, valid_jmp
-          | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
+          | [H: ?Expr = _ |- is_true match ?Expr with _ => _ end] =>
             rewrite H
           | [H: is_true (cfg ?A ?B) |- cfg ?A ?B = true] => by assumption
         end;
-    (*re-establishing invariants*) 
+    (*re-establishing invariants*)
    repeat match goal with
              | [|- Sym.invariants _ ?St'] =>
                unfold Sym.invariants
@@ -659,9 +663,13 @@ Proof.
           | [H: Symbolic.run_syscall _ _ = Some _ |- _] =>
             unfold Symbolic.run_syscall in H;
             unfold Symbolic.transfer in H; simpl in H
-        end); match_inv; subst; assert (false = true);
+        end); match_inv; subst;
+    repeat match goal with
+    | H : ?b = true |- _ =>
+      change (b = true) with (is_true b) in H
+    end; assert (false);
     try match goal with
-          | [H: _ -> false = true |- false = true] => apply H
+          | [H: _ -> is_true false |- is_true false] => apply H
         end; try discriminate;
     repeat match goal with
              | [|- forall _, _] => intros
@@ -676,7 +684,7 @@ Definition untag_atom (a : atom (word t) cfi_tag) := common.val a.
 
 Lemma reg_refinement_preserved_by_equiv :
   forall areg reg reg',
-    Sym.registers_tagged reg -> 
+    Sym.registers_tagged reg ->
     refine_registers areg reg ->
     Sym.equiv reg reg' ->
     refine_registers (PartMaps.map untag_atom reg') reg'.
@@ -731,7 +739,7 @@ Proof.
     assert (EQUIV' := EQUIV addr); clear EQUIV.
     destruct (get mem addr) eqn:GET'.
     + destruct (get mem' addr) eqn:GET''.
-      * destruct EQUIV' as [? ? TG TG' | a' a'' id' id'' TG TG' EQ].
+      * destruct EQUIV' as [TG TG' | id' id'' TG TG' EQ].
         { unfold refine_imemory in REF. apply REF in GET.
           destruct GET as [id GET].
           rewrite GET' in GET. destruct a as [v' tg]; subst.
@@ -825,10 +833,10 @@ Proof.
     - destruct a as [v tg], a0 as [v0 tg0].
       destruct tg, tg0.
       + reflexivity.
-      + destruct EQUIVK as [a a' TG TG' | a a' id id' TG TG' EQ].
+      + destruct EQUIVK as [TG TG' | id id' TG TG' EQ].
         { unfold is_data. rewrite TG TG'. reflexivity. }
         { inversion EQ; auto. }
-      + destruct EQUIVK as [a a' TG TG' | a a' id id' TG TG' EQ].
+      + destruct EQUIVK as [TG TG' | id id' TG TG' EQ].
         { unfold is_data. rewrite TG TG'. reflexivity. }
         { inversion EQ; auto. }
       + reflexivity.
@@ -900,7 +908,7 @@ Proof.
       rewrite AGET' in GET'. congruence.
     - constructor.
   }
-Qed. 
+Qed.
 
 Theorem backwards_simulation_attacker ast sst sst' :
   refine_state ast sst ->
@@ -934,7 +942,7 @@ Proof.
         assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
         destruct (get mem pc).
         { destruct (get mem' pc).
-          + destruct MEQUIV' as [a a' TG1 TG2 | a a0 id' id'' TG TG' EQ].
+          + destruct MEQUIV' as [TG1 TG2 | id' id'' TG TG' EQ].
             - destruct a as [av atg].
               destruct (CORRECTNESS av atg erefl) as [CORRECT ?].
               subst tpc.
@@ -942,7 +950,7 @@ Proof.
               by move: (CORRECT CONT _ erefl) => [? [ ]] //=.
             - subst. destruct a0 as [a0_v a0_t].
               move: CORRECTNESS => /(_ _ _ erefl) CORRECTNESS.
-              move/CORRECTNESS: (erefl true) => {CORRECTNESS} /(_ _ erefl).
+              move/CORRECTNESS: CONT => {CORRECTNESS} /(_ _ erefl).
               simpl in TG, TG'. subst.
               by move: H => [[H ->]].
           + destruct MEQUIV'.
@@ -955,7 +963,7 @@ Proof.
         assert (MEQUIV' := MEQUIV pc); clear MEQUIV.
         destruct (get mem pc) eqn:GET.
         { rewrite H in MEQUIV'.
-          + inversion MEQUIV' as [? ? TG1 TG2 | ? a0 id' id'' TG TG' EQ]; subst.
+          + inversion MEQUIV' as [TG1 TG2 | id' id'' TG TG' EQ]; subst.
             - destruct a as [av atg].
               simpl in TG1. rewrite TG1 in GET.
               simpl in TG2.
@@ -1008,7 +1016,7 @@ Lemma refine_registers_upd_fwd reg reg' sreg r v' :
   exists sreg',
     upd sreg r v'@DATA = Some sreg' /\
     refine_registers reg' sreg'.
-Proof. 
+Proof.
   intros REFR UPD.
   destruct (PartMaps.upd_inv UPD) as [v GET].
   apply REFR in GET.
@@ -1034,7 +1042,7 @@ Lemma refine_memory_upd_fwd dmem dmem' smem addr v' :
   exists smem',
     upd smem addr v'@DATA = Some smem' /\
     refine_dmemory dmem' smem'.
-Proof. 
+Proof.
   intros REFM UPD.
   destruct (PartMaps.upd_inv UPD) as [v GET].
   apply REFM in GET.
@@ -1081,19 +1089,19 @@ Theorem forward_simulation ast ast' sst :
   exists sst',
     Symbolic.step stable sst sst' /\
     refine_state ast' sst'.
-Proof. 
+Proof.
   intros REF ASTEP;
   assert (REF2 : refine_state ast sst) by assumption;
   destruct ast as [imem dmem reg pc ok];
   destruct sst as [smem sreg [spc tpc] int];
-  destruct REF 
-    as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG [ETG 
+  destruct REF
+    as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG [ETG
                                                           [RTG [JUTG JATG]]]]]]]]]]];
   destruct ok; [idtac | inversion ASTEP];
   unfold refine_pc in REFPC;
-  inv ASTEP; 
+  inv ASTEP;
   repeat match goal with
-      | [H: get imem _ = Some _ |- _ ] => 
+      | [H: get imem _ = Some _ |- _ ] =>
         apply REFI in H; destruct H as [? ?]
       | [H: upd _ ?R ?V = _ |- _] =>
         first [destruct (refine_registers_upd_fwd R V REFR H) as [? [? ?]]
@@ -1105,7 +1113,7 @@ Proof.
       | [H: get _ _ = _ \/ get _ _ = _ |- _] =>
         destruct H
       | [H: get dmem _ = Some _ |- _] =>
-        apply REFD in H 
+        apply REFD in H
       | [H1: get dmem _ = None,
              H2: get imem _ = None |- _] =>
         assert (SMEM := refine_memory_none _ REFI REFD H2 H1)
@@ -1186,7 +1194,7 @@ Proof.
       | [|- bind _ _ = _] => unfold bind
   end; auto;
   repeat (match goal with
-      | [H: get smem _ = Some _, 
+      | [H: get smem _ = Some _,
             H': forall _ _, get smem ?PC = Some _ -> _ |- _] =>
         apply H' in H; destruct H as [? ?]
       | [H: true = true -> _  |- _] =>
@@ -1200,7 +1208,7 @@ Proof.
       | [H: cfg _ _ = _ |- context[cfg _ _]] => rewrite H
       end; auto;
     try match goal with
-        | [H: upd _ _ _ = _|- context[upd _ _ _]] => 
+        | [H: upd _ _ _ = _|- context[upd _ _ _]] =>
            simpl;
            rewrite H
         | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
@@ -1232,7 +1240,7 @@ Proof.
     | [H: get smem _ = None, H1: Symbolic.get_syscall _ _ = _,
        H2: Symbolic.entry_tag _ = _ |- _] =>
       assert (TI' := ETG _ _ _ H H1 H2)
-    | [|- Abs.valid_jmp _ _ _ = true] => 
+    | [|- Abs.valid_jmp _ _ _ = true] =>
       unfold Abs.valid_jmp, valid_jmp
     | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
       rewrite H
@@ -1272,10 +1280,10 @@ Proof.
             unfold Abs.valid_jmp, valid_jmp in H
       end;
     repeat match goal with
-             | [H: exists _, _ = _ |- _] => 
+             | [H: exists _, _ = _ |- _] =>
                destruct H; simpl in H
-             | [H: exists _, _ |- _] => 
-               destruct H; simpl in H                         
+             | [H: exists _, _ |- _] =>
+               destruct H; simpl in H
              | [H: _ \/ _ |- _] => destruct H
              | [H: get smem ?W = _, H2: get smem ?W = _ |- _] =>
                rewrite H in H2; inv H2
@@ -1292,12 +1300,12 @@ Proof.
         | [|- exists _, _ /\ _] =>
           eexists;
             eauto
-      end; 
+      end;
   (*UGLY - need to fix ltac match*)
   try (inv H3; eauto).
 Qed.
 *)
-    
+
 
 End Refinement.
 

@@ -161,7 +161,7 @@ Definition succ (st : state) (st' : state) : bool :=
   end.
 
 Definition initial (s : state) :=
-  cont s = true.
+  cont s.
 
 Definition all_attacker (xs : list state) : Prop :=
   forall x1 x2, In2 x1 x2 xs -> step_a x1 x2.
@@ -184,9 +184,9 @@ Program Instance abstract_cfi_machine : cfi_machine := {|
  |}.
 
 Lemma step_succ_violation ast ast' :
-   succ ast ast' = false ->
+   ~~ succ ast ast' ->
    step ast ast' ->
-   cont ast = true /\ cont ast' = false.
+   cont ast /\ ~~ cont ast'.
 Proof.
   intros SUCC STEP.
   inversion STEP; subst; simpl in SUCC; rewrite FETCH in SUCC;
@@ -253,8 +253,8 @@ Qed.
 
 Lemma stuck_states_preserved_by_a asi tl :
   all_attacker (asi :: tl) ->
-  cont asi = false ->
-  forall asj, In asj tl -> cont asj = false.
+  ~~ cont asi ->
+  forall asj, In asj tl -> ~~ cont asj.
 Proof.
   intros ALLATTACKER CONT asj IN.
   gdep asi.
@@ -278,7 +278,7 @@ Qed.
 
 Lemma stuck_trace s s' xs s'' :
   interm (cfi_step abstract_cfi_machine) (s :: xs) s s'' ->
-  cont s = false ->
+  ~~ cont s ->
   In s' (s :: xs) ->
   ~ exists s''', step s' s'''.
 Proof.
@@ -310,13 +310,14 @@ Proof.
     destruct STEP as [STEPA | STEPN].
     + left. unfold trace_has_cfi.
       intros si sj INTRACE STEP.
-      destruct (succ si sj) eqn:SUCC; first assumption.
+      have [SUCC//|SUCC] := boolP (succ si sj).
       destruct (step_succ_violation SUCC STEP) as [CONT1 CONT2].
       assert (CONTRA := step_a_violation STEPA).
-      destruct INTRACE as [[? ?]|INTRACE];
-        [subst; by congruence | by (inv INTRACE)].
+      destruct INTRACE as [[? ?]|INTRACE]; subst.
+      * by rewrite -CONTRA CONT1 in CONT2.
+      * by (inv INTRACE).
     + unfold trace_has_cfi.
-      destruct (succ s s') eqn:SUCC.
+      have [SUCC|SUCC] := boolP (succ s s').
       * left. intros.
         destruct INTRACE as [[? ?]|INTRACE];
         [subst; by assumption | by (inv INTRACE)].
@@ -333,14 +334,15 @@ Proof.
       destruct STEP as [STEPA | STEPN].
       - left. unfold trace_has_cfi.
         intros si sj INTRACE STEP.
-        destruct (succ si sj) eqn:SUCC; first assumption.
+        have [SUCC|SUCC] := boolP (succ si sj); first assumption.
         destruct (step_succ_violation SUCC STEP) as [CONT1 CONT2];
         assert (CONTRA := step_a_violation STEPA);
         destruct xs; first (by inv INTRACE);
         apply interm_first_step in INTERM; subst;
-        destruct INTRACE as [[? ?]|INTRACE];
-          [subst; by congruence | auto].
-      - destruct (succ s s') eqn:SUCC.
+        destruct INTRACE as [[? ?]|INTRACE]; subst.
+        + by rewrite -CONTRA CONT1 in CONT2.
+        + by auto.
+      - have [SUCC|SUCC] := boolP (succ s s').
         + left. intros ? ? INTRACE STEP.
           destruct xs; first (by inv INTRACE).
           apply interm_first_step in INTERM; subst.
@@ -378,11 +380,11 @@ Proof.
       destruct hs.
       - destruct IN2 as [[? ?]|CONTRA];
         [subst | destruct CONTRA].
-        destruct (succ si sj) eqn:SUCC'; first (by assumption).
+        have [SUCC'|SUCC'] := boolP (succ si sj); first (by assumption).
         destruct (step_succ_violation SUCC' STEPN) as [CONT1 CONT2].
         inv STEPV; by discriminate.
       - destruct IN2 as [[? ?]|IN2]; subst.
-        + destruct (succ si sj) eqn:SUCC'; first (by assumption).
+        + have [SUCC'|SUCC'] := boolP (succ si sj); first (by assumption).
           destruct (step_succ_violation SUCC' STEPN) as [CONT1 CONT2].
           exfalso.
           simpl in INTERM.

@@ -54,7 +54,7 @@ Definition no_violation (sst : Symbolic.state t) :=
     get mem pc = Some i@ti ->
     tpc = INSTR (Some src) ->
     exists dst,
-        ti = INSTR (Some dst) /\ cfg src dst = true) /\
+        ti = INSTR (Some dst) /\ cfg src dst) /\
   (forall sc,
      get mem pc = None ->
      Symbolic.get_syscall table pc = Some sc ->
@@ -163,7 +163,7 @@ Definition entry_points_tagged (mem : memory) :=
 
 Definition valid_jmp_tagged (mem : memory) :=
   forall src dst,
-    valid_jmp src dst = true ->
+    valid_jmp src dst ->
     (exists i, get mem src = Some i@(INSTR (word_to_id src))) /\
     ((exists i', get mem dst = Some i'@(INSTR (word_to_id dst))) \/
      get mem dst = None /\
@@ -803,7 +803,7 @@ Definition violation sst :=
         | INSTR (Some src) =>
           match ti with
             | INSTR (Some dst) =>
-              cfg src dst = false
+              ~~ cfg src dst
             | _ => true
           end
         | _ => match ti with
@@ -864,11 +864,11 @@ Qed.
 
 Lemma succ_false_implies_violation sst sst' :
   invariants sst -> (*invariants were not used after changing to ids*)
-  ssucc sst sst' = false ->
+  ~~ ssucc sst sst' ->
   step sst sst' ->
   False \/ violation sst'.
 Proof.
-  intros INV SUCC STEP.
+  move=> INV /negbTE SUCC STEP.
   destruct INV as [ITG [VTG ETG]].
   unfold ssucc in SUCC.
   inv STEP; simpl in *;
@@ -900,7 +900,7 @@ Proof.
   repeat match goal with
         |[H: ?Expr = _ |- context[match ?Expr with _ => _ end]] =>
          rewrite H
-      end; by auto.
+      end; auto using negbT.
 Qed.
 
 Lemma is_violation_implies_stop sst umvec :
@@ -915,14 +915,13 @@ Proof.
   simpl in UMVEC, VIO.
   unfold get_ti in VIO. simpl in VIO.
   destruct (get mem pc) as [[i itg]|] eqn:GET.
-  - rewrite GET in VIO UMVEC.
+  - rewrite GET /= in VIO UMVEC.
     destruct tpc as [[src|]|], itg as [[dst|]|];
       try (by inversion VIO);
       simpl in UMVEC;
       unfold obind, oapp in UMVEC;
       repeat match goal with
-               | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
-             rewrite H1 in H
+               | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] => rewrite H1 in H
                | [H: match ?Expr with _ => _ end = _ |- _ ] =>
                  destruct Expr eqn:?
                | [H: match ?Expr with _ => _ end _ = _ |- _ ] =>
@@ -930,7 +929,7 @@ Proof.
          end;
       inv UMVEC; try reflexivity;
       unfold Symbolic.transfer; simpl; unfold cfi_handler;
-      try rewrite VIO; try reflexivity.
+      try rewrite (negbTE VIO); try reflexivity.
     destruct (tag a1); by reflexivity.
   -  (*get mem pc = None*)
     rewrite GET in VIO UMVEC.
@@ -939,7 +938,7 @@ Proof.
       try (by inversion VIO);
       inv UMVEC; try reflexivity.
       unfold Symbolic.transfer; simpl; unfold cfi_handler;
-      try rewrite VIO; by reflexivity.
+      try rewrite (negbTE VIO); by reflexivity.
     + by discriminate.
 Qed.
 

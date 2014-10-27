@@ -41,13 +41,13 @@ Definition no_violation (cst : Concrete.state t) :=
     @fdecode _ _ e Symbolic.M cti = Some (USER ti) ->
     @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
     exists dst,
-        ti = INSTR (Some dst) /\ cfg src dst = true) /\
+        ti = INSTR (Some dst) /\ cfg src dst) /\
   (forall i cti ti src,
      get mem pc = Some i@cti ->
      @fdecode _ _ e Symbolic.M cti = Some (ENTRY ti) ->
      @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
      exists dst,
-       ti = INSTR (Some dst) /\ cfg src dst = true).
+       ti = INSTR (Some dst) /\ cfg src dst).
 
 (*Defined in terms of atom_equiv for symbolic tags*)
 (* TODO: as a sanity check, please prove reflexivity for this and

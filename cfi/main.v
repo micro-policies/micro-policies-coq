@@ -264,7 +264,7 @@ Qed.
 Lemma backwards_refinement (ast : Abs.state t) (cst cst' : Concrete.state t) :
   refine_state ast cst ->
   exec (Concrete.step _ masks) cst cst' ->
-  in_user cst' = true ->
+  in_user cst' ->
   exists ast',
     exec (fun ast ast' => Abs.step atable cfg ast ast') ast ast' /\
     refine_state ast' cst'.

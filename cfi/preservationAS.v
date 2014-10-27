@@ -174,9 +174,9 @@ Theorem cfg_true_equiv (asi asj : Abs.state t) ssi ssj :
   RefinementAS.refine_state stable asi ssi ->
   RefinementAS.refine_state stable asj ssj ->
   Abs.step atable cfg asi asj ->
-  Abs.succ atable cfg asi asj = true ->
+  Abs.succ atable cfg asi asj ->
   Symbolic.step stable ssi ssj ->
-  Sym.ssucc stable ssi ssj = true.
+  Sym.ssucc stable ssi ssj.
 Proof.
   intros REF REF' ASTEP ASUCC SSTEP.
   destruct asi as [imem dmem aregs apc b],
@@ -209,12 +209,12 @@ Proof.
         | [H: ?Expr = _, H1: context[match ?Expr with _ => _ end] |- _] =>
            rewrite H in H1
         | [H: ?Expr = _ |-
-           match ?Expr with _ => _ end = _] =>
+           is_true match ?Expr with _ => _ end] =>
           rewrite H
-        | [H: match ?Expr with _ => _ end = _ |-
-           match ?Expr with _ => _ end = _] =>
+        | [H: is_true match ?Expr with _ => _ end |-
+           is_true match ?Expr with _ => _ end] =>
           destruct Expr
-      end; try discriminate; auto.
+      end; try discriminate; by auto.
     - by discriminate.
   + destruct (Abs.get_syscall atable spc) eqn:GETCALL.
     - destruct (get mem spc) eqn:GET'.
@@ -245,9 +245,9 @@ Qed.
 Theorem cfg_false_equiv asi asj ssi ssj :
   RefinementAS.refine_state stable asi ssi ->
   RefinementAS.refine_state stable asj ssj ->
-  Abs.succ atable cfg asi asj = false ->
+  ~~ Abs.succ atable cfg asi asj ->
   Symbolic.step stable ssi ssj ->
-  Sym.ssucc stable ssi ssj = false.
+  ~~ Sym.ssucc stable ssi ssj.
 Proof.
   intros REF REF' ASUCC SSTEP.
   unfold Abs.succ in ASUCC.
@@ -272,13 +272,15 @@ Proof.
       destruct (get mem pc') as [[v [[id|]|]]|] eqn:GET';
       rewrite GET';
       try match goal with
-        | [|- match Symbolic.get_syscall _ _ with _ => _ end = _] =>
+        | [|- is_true (~~ match Symbolic.get_syscall _ _ with _ => _ end)] =>
           destruct (Symbolic.get_syscall stable pc') eqn:?
       end;
       repeat match goal with
-               | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
+               | [H: ?Expr = _ |- context[?Expr]] =>
+                 rewrite H; simpl
+               | [H: is_true ?Expr |- context[?Expr] ] =>
                  rewrite H
-               | [|- match Symbolic.entry_tag ?S with _ => _ end = _] =>
+               | [|- is_true (~~ match Symbolic.entry_tag ?S with _ => _ end)] =>
                  destruct (Symbolic.entry_tag S) as [[?|]|] eqn:?
              end;
       repeat match goal with
@@ -288,7 +290,7 @@ Proof.
                   H1: Symbolic.get_syscall _ ?Addr = Some _,
                   H2: Symbolic.entry_tag _ = INSTR (Some _) |- _] =>
                  apply (ETG _ _ _ H H1) in H2
-               | [H: match ?Expr with _ => _ end = _, H1: ?Expr = _ |- _] =>
+               | [H: context[?Expr], H1: ?Expr = _ |- _] =>
                  rewrite H1 in H
              end; by auto.
     }
@@ -327,8 +329,8 @@ Program Instance cfi_refinementAS  :
 Next Obligation.
   split;
   [intros;
-    destruct (backwards_simulation syscall_preserves_register_tags 
-                                   syscall_preserves_jump_tags 
+    destruct (backwards_simulation syscall_preserves_register_tags
+                                   syscall_preserves_jump_tags
                                    syscall_preserves_jal_tags _ REF STEP)
     as [? [? ?]];
    eexists; split; eauto | discriminate].
@@ -360,15 +362,15 @@ Next Obligation. (*initial state*)
     congruence.
 Qed.
 Next Obligation.
-  destruct (Abs.succ atable cfg asi asj) eqn:?.
-  - eauto using cfg_true_equiv.
-  - eauto using cfg_false_equiv.
+  apply (introTF idP).
+  have [?|?] := boolP (Abs.succ atable cfg asi asj).
+  - by eauto using cfg_true_equiv.
+  - apply/negP. by eauto using cfg_false_equiv.
 Qed.
 Next Obligation.
   destruct (Abs.step_succ_violation H0 H1) as [H2 H3].
   intro CONTRA. assert (CONT := Abs.step_a_violation CONTRA).
-  rewrite CONT in H2.
-  congruence.
+  by rewrite -CONT H2 in H3.
 Qed.
 Next Obligation.
   unfold Abs.stopping in H4.

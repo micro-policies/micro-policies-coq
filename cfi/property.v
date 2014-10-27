@@ -6,8 +6,8 @@ Set Implicit Arguments.
 
 Import ListNotations.
 
-Section CFI.  
-  
+Section CFI.
+
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 
@@ -16,7 +16,7 @@ Local Notation word := (word t).
 Class cfi_machine := {
   state : Type;
   initial : state -> Prop;
-  
+
   step : state -> state -> Prop;
   step_a : state -> state -> Prop;
 
@@ -36,28 +36,28 @@ Definition intermrstep := intermr cfi_step.
 Definition zero_one_step := zero_one cfi_step.
 
 (* Old definition of CFI (Abadi)
-Definition trace_has_cfi' (trace : list state) := 
+Definition trace_has_cfi' (trace : list state) :=
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
-             (step_a si sj /\ get_pc si = get_pc sj) 
-          \/ succ si sj = true.
+             (step_a si sj /\ get_pc si = get_pc sj)
+          \/ succ si sj.
 *)
 
 (* Our new CFI definition *)
-Definition trace_has_cfi (trace : list state) := 
+Definition trace_has_cfi (trace : list state) :=
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
-           step si sj -> succ si sj = true.
+           step si sj -> succ si sj.
 
 Definition trace_has_at_most_one_violation (trace : list state) :=
   trace_has_cfi trace \/
   exists si sj hs tl, trace = hs ++ si :: sj :: tl
-                         /\ (step si sj /\ succ si sj = false)
+                         /\ (step si sj /\ ~~ succ si sj)
                          /\ trace_has_cfi (hs ++ [si])
                          /\ trace_has_cfi (sj :: tl)
                          /\ stopping(sj :: tl).
 
-Definition cfi := 
+Definition cfi :=
   forall s s' xs
     (INIT : initial s)
     (INTERM : intermstep xs s s'),
