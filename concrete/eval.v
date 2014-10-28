@@ -370,108 +370,44 @@ Context {ops: machine_ops mt}.
 Require Import concrete.exec.
 
 
-(* parametric evaluation stays in kernel mode *)
-
-(*
-XXXX need to figure out how to rephrase all this. -- if it is needed at all : HOPEFULLY NO
+ (* tstate is in kernel mode if all possible pstates are *)
 Fixpoint kernel_tstate (ts: tstate mt) : Prop :=
   match ts with
-  | Halted => False (* ?? *)
-  | St ps => tag (ppc mt ps) = TKernel 
+  | Halted => True
+  | St ps => known _ (tag (ppc mt ps)) = Some TKernel
   | Ch _ ts1 ts2 => kernel_tstate ts1 /\ kernel_tstate ts2
   end.
 
-Fixpoint normal_tstate (ts: tstate mt) : Prop :=
-  match ts with
-  | St _ => True
-  | Ch _ ts1 ts2 => normal_tstate ts1 /\ normal_tstate ts2
-  | _ => False
-  end.
-
-
+(* 
+(* following is false: parametric evaluation stays in kernel mode *)
 Lemma kernel_pstep: forall ps ts,
-  tag (ppc mt ps) = TKernel  -> 
-  Some ts = pstep mt masks ps -> normal_tstate ts -> 
+  known _ (tag (ppc mt ps)) = Some TKernel  -> 
+  Some ts = pstep mt masks ps -> 
   kernel_tstate ts.
 Proof.
   intros. unfold pstep in H0.  
-  destruct ps.  simpl in H. subst. destruct ppc0. undo. 
+  destruct ps.  simpl in H. destruct ppc0. simpl in H. undo. 
   destruct i; 
-  undo; 
+  undo;
   try unfold next_pstate_pc in *;
   try unfold next_pstate_reg in *;
   try unfold next_pstate_reg_and_pc in *; 
   try unfold next_pstate in *; 
-  try unfold next_tpc_tr in *; 
+  try unfold next_rvec in *; 
   undo; simpl in *; undo;
   try match goal with 
       H: word_to_op (op_to_word ?X) = Some _ |- _ => rewrite op_to_wordK in H; inv H
   end; undo; auto.
 
-  try unfold next_pstate_pc' in *. undo. 
-  destruct (known mt (common.val a0)) eqn:?; undo; 
-  destruct (is_kernel_tag w0) eqn:?; undo.
-  try unfold next_pstate_pc in *;
-  try unfold next_pstate_reg in *;
-  try unfold next_pstate_reg_and_pc in *; 
-  try unfold next_pstate in *; 
-  try unfold next_tpc_tr in *; 
-  undo; simpl in *; undo;
-  try match goal with 
-      H: word_to_op (op_to_word ?X) = Some _ |- _ => rewrite op_to_wordK in H; inv H
-  end; undo; auto.
-  unfold is_kernel_tag in Heqb. simpl. 
-  have [eq|neq] := altP (w0 =P TKernel).  auto.
-  apply negb_true_iff in neq. rewrite neq in Heqb; discriminate.
-  inv H1. 
+(* remaining cases expose falsity for Jmp, Jal, JumpEPC *)
+*)
 
-  try unfold next_pstate_reg_and_pc' in *. undo. 
-  destruct (known mt (common.val a0)) eqn:?; undo; 
-  destruct (is_kernel_tag w0) eqn:?; undo.
-  try unfold next_pstate_pc in *;
-  try unfold next_pstate_reg in *;
-  try unfold next_pstate_reg_and_pc in *; 
-  try unfold next_pstate in *; 
-  try unfold next_tpc_tr in *; 
-  undo; simpl in *; undo;
-  try match goal with 
-      H: word_to_op (op_to_word ?X) = Some _ |- _ => rewrite op_to_wordK in H; inv H
-  end; undo; auto.
-  unfold is_kernel_tag in Heqb. simpl.
-  have [eq|neq] := altP (w0 =P TKernel).  auto.
-  apply negb_true_iff in neq. rewrite neq in Heqb; discriminate.
-  inv H1. 
-
-  try unfold next_pstate_pc' in *. undo. 
-  destruct (known mt (common.val pepc0)) eqn:?; undo; 
-  destruct (is_kernel_tag w0) eqn:?; undo.
-  try unfold next_pstate_pc in *;
-  try unfold next_pstate_reg in *;
-  try unfold next_pstate_reg_and_pc in *; 
-  try unfold next_pstate in *; 
-  try unfold next_tpc_tr in *; 
-  undo; simpl in *; undo;
-  try match goal with 
-      H: word_to_op (op_to_word ?X) = Some _ |- _ => rewrite op_to_wordK in H; inv H
-  end; undo; auto.
-  unfold is_kernel_tag in Heqb. simpl. 
-  have [eq|neq] := altP (w0 =P TKernel).  auto.
-  apply negb_true_iff in neq. rewrite neq in Heqb; discriminate.
-  inv H1. 
-Qed.
+(* Also false, obviously:
 
 Lemma kernel_tstep: forall ts ts',
   kernel_tstate ts -> 
-  Some ts' = tstep mt masks ts -> normal_tstate ts' -> 
+  Some ts' = tstep mt masks ts -> 
   kernel_tstate ts'. 
-Proof.
-  induction ts; intros.   
-  inv H0. inv H1. 
-  inv H0. inv H1.
-  simpl in *. eapply kernel_pstep; eauto.
-  simpl in *. inv H. undo. inv H1. 
-  simpl; split; eauto.  
-Qed.
 
 *)
 
@@ -894,7 +830,12 @@ Proof.
     inv H1. 
 *)
 
-(*Lemma sound_eval : forall env fuel ts ts' s, 
+(* Should try to fill in some facts about more tstep and teval, but
+   not clear that there is anything useful to say in general, since
+   properties break as soon as we leave kernel mode.
+
+Here's a very old sample of the kind of thing we might want:
+Lemma sound_eval : forall env fuel ts ts' s, 
   kernel_tstate ts -> 
   Some ts' = teval mt masks fuel ts -> 
   kernel_tstate ts' -> 
