@@ -190,12 +190,10 @@ Lemma cache_hit_simulation sst cst cst' :
     Symbolic.step table sst sst' /\
     refine_state ki table sst' cst'.
 Proof.
-  move => [smem sregs int ? ? ? ? pc ctpc atpc ? ? DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
-  subst sst cst.
+  case: sst => smem sregs [pc atpc] int.
+  move => [/= ? DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
+  subst pc.
   inv STEP; subst mvec;
-  try match goal with
-  | EQ : Concrete.mkState _ _ _ _ _ = Concrete.mkState _ _ _ _ _ |- _ => inv EQ
-  end;
   unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
          Concrete.next_state_pc, Concrete.next_state in *;
   simpl in *;
@@ -309,12 +307,13 @@ Lemma cache_miss_simulation sst cst cst' :
   user_kernel_user_step cst cst' ->
   refine_state ki table sst cst'.
 Proof.
+  case: sst => smem sregs [pc tpc] int.
+  case: cst => cmem cregs cache [pc' ctpc] epc.
   move => REF NOTALLOWED [kst ISUSER STEP KEXEC].
   have KER : in_kernel kst = true.
   { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
-  destruct REF as [smem sregs int cmem cregs cache epc pc ctpc tpc
-                   ? ? DEC REFM REFR CACHECORRECT MVEC WFENTRYPOINTS KINV].
-  subst sst cst.
+  case: REF=> [//= ? DEC REFM REFR CACHECORRECT MVEC WFENTRYPOINTS KINV].
+  subst pc'.
   have ISUSER' : ~~ in_kernel cst' by case: KEXEC.
   have [cmvec Hcmvec] := step_build_cmvec STEP.
   have [cmem' Hcmem'] := mvec_in_kernel_store_mvec cmvec MVEC.
@@ -363,10 +362,11 @@ Lemma syscall_simulation sst cst cst' :
   exists sst', Symbolic.step table sst sst' /\
                refine_state ki table sst' cst'.
 Proof.
+  case: sst=> smem sregs [pc tpc] int.
+  case: cst=> cmem cregs cache [pc' ctpc] epc.
   intros REF ALLOWED STEP.
-  destruct REF as [smem sregs int cmem cregs cache epc pc ctpc tpc
-                   ? ? DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
-  subst sst cst.
+  case: REF=> [//=? DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
+  subst pc'.
   have [sc GETCALL]: (exists sc, Symbolic.get_syscall table pc = Some sc).
   { rewrite /cache_allows_syscall in ALLOWED.
     case GETCALL: (Symbolic.get_syscall table pc) ALLOWED => [sc|//] ALLOWED.
@@ -399,7 +399,7 @@ Lemma user_into_kernel sst cst cst' :
 Proof.
   move=> REF STEP NUSER.
   move: (refine_state_in_user REF) => INUSER.
-  case: REF => [? ? ? ? ? ? ? ? ? ? ? ? ? ? ? CACHE ? ? ?]. subst.
+  case: REF => [? ? ? ? CACHE ? ? ?]. subst.
   move : (valid_pcs STEP CACHE INUSER) NUSER.
   rewrite /in_kernel /Concrete.is_kernel_tag /in_user.
   move => [[t ->]|->] //=.

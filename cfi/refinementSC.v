@@ -305,15 +305,14 @@ Lemma backwards_simulation_attacker_aux sst cst cst' :
     Sym.step_a sst sst' /\
     refine_state_no_inv sst' cst'.
 Proof.
+  case: sst => smem sregs [pc tpc] int.
+  case: cst => cmem cregs cache [pc' ctpc] epc.
   intros REF STEP.
   inversion STEP; subst.
   unfold refine_state in REF.
   destruct REF as [REF | CONTRA].
   move: tpc INUSER REF STEP => tpc' INUSER REF STEP.
-  - destruct REF as [smem sreg int cmem cregs cache' epc' pc' ctpc tpc
-                     ? ? ? REFM REFR ? ? WFENTRY ?].
-    subst sst.
-    symmetry in EC. inv EC.
+  - destruct REF as [? ? REFM REFR ? ? WFENTRY ?].
     destruct (mem_refinement_equiv REFM MEQUIV) as [smem' [REFM' SMEQUIV]].
     destruct (reg_refinement_equiv REFR REQUIV) as [sreg' [REFR' SREQUIV]].
     eexists; split; [idtac | left]; econstructor; eauto.
@@ -323,7 +322,7 @@ Proof.
     apply restricted_exec_snd in CONTRA.
     rewrite /refinement_common.in_kernel
             /= /Concrete.is_kernel_tag in CONTRA.
-    move/eqP in CONTRA. subst tpc.
+    move/eqP in CONTRA. subst ctpc.
     by rewrite rules.fdecode_kernel_tag in INUSER.
 Qed.
 
@@ -1063,20 +1062,18 @@ Proof.
     apply @in_user_in_kernel in USER''.
     destruct cst as [cmemt cregt cachet [cpct ctpct] epct].
     destruct sst as [smemt sregt [spct tpct] intt].
-    inversion ES. clear ES.
-    subst smemt sregt spct tpct intt.
-    inversion EC. clear EC.
-    subst cmemt cregt cachet cpct ctpct epct.
+    simpl in PC. subst cpct.
     have [cmem' STORE] := mvec_in_kernel_store_mvec cmvec MVEC.
     simpl in DEC.
     have := @handler_correct_disallowed_case mt ops sp _ ki
-                                             stable kcc cmem
-                                             cmem' cmvec cregs
-                                             cache (pc@ctpc) int cst''
+                                             stable kcc _
+                                             cmem' cmvec _
+                                             _ spct@ctpct _ cst''
                                              KINV _ STORE USER''.
     rewrite DEC UHANDLER => /(_ erefl).
     have LOOKUP := transfer_none_lookup_none CACHE DEC UHANDLER.
-    by rewrite -(initial_handler_state CMVEC STORE LOOKUP STEP) => /(_ EXEC).
+    have /= <- := initial_handler_state CMVEC STORE LOOKUP STEP.
+    by move=> /(_ EXEC).
   - (*refinement contradictory case*)
     destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
@@ -1109,11 +1106,11 @@ Proof.
     destruct REF. subst.
     have [cmem' STORE] := mvec_in_kernel_store_mvec cmvec MVEC.
     have := @handler_correct_disallowed_case mt ops sp _ ki
-                                             stable kcc cmem
-                                             cmem' cmvec cregs cache (pc@ctpc) int cst''
+                                             stable kcc _
+                                             cmem' cmvec _ _ (Concrete.pc cst) _ cst''
                                              KINV _ STORE (in_user_in_kernel USER'').
     rewrite DEC => /(_ erefl).
-    case LOOKUP: (Concrete.cache_lookup cache masks cmvec) => [crvec|].
+    case LOOKUP: (Concrete.cache_lookup (Concrete.cache cst) masks cmvec) => [crvec|].
       rewrite /in_user /= in USER.
       have := CACHE _ _ LOOKUP.
       rewrite (build_cmvec_ctpc CMVEC) /= => /(_ USER) [ivec [ovec [DEC' _ _ _]]].
@@ -1140,17 +1137,21 @@ Proof.
   - destruct H0 as [REF' INV'].
     destruct REF' as [UREFJ | KREFJ].
     + move: (refine_state_in_user UREFI) (refine_state_in_user UREFJ) => USERI USERJ.
-      destruct UREFI as [smemi sregi inti cmemi cregi cachei epci pci ctpci tpci
-                         ASI CSI DEC REFM REFR CACHE MVE WF KI],
-               UREFJ as [smemj sregj intj cmemj cregj cachej epcj pcj ctpcj tpcj
-                         ASJ CSJ DEC' REFM' REFR' C3 C5 C6 C7].
       assert (NKERNEL : in_kernel csi || in_kernel csj = false).
       { apply/norP.
         by rewrite (in_user_in_kernel USERI) (in_user_in_kernel USERJ). }
+      destruct ssi as [smemi sregi [pci tpci] inti].
+      destruct csi as [cmemi cregi cachei [pci' ctpci] epci].
+      destruct UREFI as [PCI DEC REFM REFR CACHE MVE WF KI].
+      simpl in PCI. subst pci'.
+      destruct ssj as [smemj sregj [pcj tpcj] intj].
+      destruct csj as [cmemj cregj cachej [pcj' ctpcj] epcj].
+      destruct UREFJ as [PCJ DEC' REFM' REFR' C3 C5 C6 C7].
+      simpl in PCJ. subst pcj'.
       unfold Conc.csucc.
-      rewrite NKERNEL CSI CSJ /=.
+      rewrite NKERNEL /=.
       unfold Sym.ssucc in H2.
-      rewrite ASI ASJ /= in H2.
+      rewrite /= in H2.
       destruct (get smemi pci) as [[v tg]|] eqn:GET.
       * rewrite GET in H2.
         have [ctg /= DECctg CGET] := proj2 REFM pci v tg GET.
@@ -1221,7 +1222,6 @@ Proof.
           have /WF: exists sc, Symbolic.get_syscall stable pci = Some sc /\
                                Symbolic.entry_tag sc = sct by eexists; eauto.
           case GET': (get cmemi  pci) => [[v ctg]|] //=.
-          subst csi csj.
           assert (CONTRA := fun CACHE GET' =>
                               valid_initial_user_instr_tags (v := v) (ti := ctg) CACHE USERI USERJ H3 GET').
           move: (CONTRA CACHE GET') => {CONTRA} /=.
@@ -1257,11 +1257,13 @@ Proof.
       unfold Conc.csucc. rewrite (negbTE USER) (negbTE USER').
       simpl.
       move: (refine_state_in_user REF) (refine_state_in_user REF') => USERT USERT'.
-      destruct REF as [smem sreg int cmem creg cache epc pc ctpc tpc
-                       ASI CSI DEC REFM REFR CACHE MVEC WF KI],
-               REF' as [smem' sreg' int' cmem' creg' cache' epc' pc' ctpc' tpc'
-                        ASJ CSJ DEC' REFM' REFR' C3 C5 C6 C7].
-      simpl. subst.
+      destruct ssi as [smem sreg [pc tpc] int],
+               csi as [cmem creg cache [pc2 ctpc] epc],
+               ssj as [smem' sreg' [pc' tpc'] int'],
+               csj as [cmem' creg' cache' [pc2' ctpc'] epc'],
+               REF as [PC DEC REFM REFR CACHE MVEC WF KI],
+               REF' as [PC' DEC' REFM' REFR' C3 C5 C6 C7].
+      simpl. simpl in PC, PC'. subst pc2 pc2'.
       unfold Sym.ssucc in H1.
       simpl in H1.
       destruct (get smem pc) eqn:GET.

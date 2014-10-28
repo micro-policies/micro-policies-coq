@@ -199,10 +199,10 @@ Definition wf_entry_points (cmem : Concrete.memory mt) :=
   forall addr t,
     (exists sc, Symbolic.get_syscall table addr = Some sc /\
                 Symbolic.entry_tag sc = t) <->
-    match PartMaps.get cmem addr with
-    | Some i@it => is_nop i && (decode Symbolic.M cmem it == Some (ENTRY t))
-    | None => false
-    end.
+    is_true match PartMaps.get cmem addr with
+            | Some i@it => is_nop i && (decode Symbolic.M cmem it == Some (ENTRY t))
+            | None => false
+            end.
 
 Lemma wf_entry_points_if cmem addr sc :
   wf_entry_points cmem ->
@@ -250,25 +250,23 @@ Qed.
 
 Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Prop :=
 | rs_intro :
-    forall smem sregs int
-           cmem cregs cache epc
-           pc ctpc atpc
-           (ES : sst = Symbolic.State smem sregs pc@atpc int)
-           (EC : cst = Concrete.mkState cmem cregs cache pc@ctpc epc)
-           (DEC : decode Symbolic.P cmem ctpc = Some (USER atpc))
-           (REFM : refine_memory smem cmem)
-           (REFR : refine_registers sregs cregs cmem)
-           (CACHE : cache_correct cache cmem)
-           (MVEC : mvec_in_kernel cmem)
-           (WFENTRYPOINTS : wf_entry_points cmem)
-           (KINV : ki cmem cregs cache int),
+    forall (PC : common.val (Symbolic.pc sst) = common.val (Concrete.pc cst))
+           (DEC : decode Symbolic.P (Concrete.mem cst) (common.tag (Concrete.pc cst)) =
+                  Some (USER (common.tag (Symbolic.pc sst))))
+           (REFM : refine_memory (Symbolic.mem sst) (Concrete.mem cst))
+           (REFR : refine_registers (Symbolic.regs sst) (Concrete.regs cst) (Concrete.mem cst))
+           (CACHE : cache_correct (Concrete.cache cst) (Concrete.mem cst))
+           (MVEC : mvec_in_kernel (Concrete.mem cst))
+           (WFENTRYPOINTS : wf_entry_points (Concrete.mem cst))
+           (KINV : ki (Concrete.mem cst) (Concrete.regs cst)
+                      (Concrete.cache cst) (Symbolic.internal sst)),
       refine_state sst cst.
 
 Lemma refine_state_in_user sst cst :
   refine_state sst cst ->
   in_user cst.
 Proof.
-  case=> ? ? ? ? ? ? ? ? ? ? ? ? DEC *. subst cst.
+  case=> ? DEC *.
   by rewrite /in_user DEC.
 Qed.
 
@@ -365,13 +363,17 @@ Proof.
     now apply MVEC.
 Qed.
 
-Lemma refine_memory_upd' amem amem' cmem addr v ct t :
+Lemma refine_memory_upd' cache aregs cregs amem amem' cmem addr v ct t :
+  cache_correct cache cmem ->
+  refine_registers aregs cregs cmem ->
   refine_memory amem cmem ->
   PartMaps.upd amem addr v@t = Some amem' ->
   decode Symbolic.M cmem ct = Some (USER t) ->
   exists cmem',
-    PartMaps.upd cmem addr v@ct = Some cmem' /\
-    refine_memory amem' cmem'.
+    [/\ PartMaps.upd cmem addr v@ct = Some cmem',
+        cache_correct cache cmem',
+        refine_registers aregs cregs cmem' &
+        refine_memory amem' cmem' ].
 Proof.
   admit.
 Qed.
