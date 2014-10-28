@@ -30,7 +30,7 @@ Definition step (st : state mt) : option (state mt) :=
   match instr with
   | Nop =>
     let mvec := mvec TNone TNone TNone in
-    next_state_pc masks st mvec (pc.+1)
+    next_state_pc masks st mvec (pc.+1) 
   | Const n r =>
     do! old <- PartMaps.get reg r;
     let mvec := mvec (tag old) TNone TNone in
@@ -148,6 +148,7 @@ Proof.
   apply (iffP eqP); by move => /stepP.
 Qed.
 
+
 Import PartMaps.
 
 Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
@@ -250,3 +251,5 @@ Proof.
 Qed.
 
 End Masks.
+
+

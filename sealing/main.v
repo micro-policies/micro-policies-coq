@@ -828,6 +828,150 @@ Symbolic Machine: Compute (run_sym 2000 hello_world5).
 
 Abstract Machine: Compute (run_abs 2000 hello_world5). *)
 
+
+(* Experiments with concrete evaluation...
+
+Section Stuff.
+
+Open Scope word_scope.
+
+Definition r0 : reg t := 0.
+Definition r1 : reg t := 1.
+Definition r2 : reg t := 2.
+Definition r3 : reg t := Word.repr 3. 
+
+Definition sample_code :=
+map (fun i => Atom i (@Concrete.TKernel t))
+(map encode_instr
+ [(* 0 *) Binop LEQ r2 r1 r3;
+  (* 1 *) Bnz r3 (Word.repr 4); 
+  (* 2 *) Mov r2 r3;
+
+  (* 3 *) Const 1 r0;
+  (* 4 *) Bnz r0 (Word.repr 2);
+  (* 5 *) Mov r1 r3;
+  (* 6 *) Nop _; 
+  (* 7 *) Nop _; 
+  (* 8 *) Nop _;
+  (* 9 *) Nop _;
+  (* 10 *) Nop _ ]
+).
+
+(* From symbolic/int_32.v *)
+Fixpoint insert_from {A : Type} (i : word t) (l : list A)
+                     (mem : word_map t A) : word_map t A :=
+  match l with
+    | []      => mem
+    | h :: l' => insert_from (Word.add i Word.one) l' (PartMaps.set mem i h)
+  end.
+
+
+
+Let memory := word_map t (common.atom (word t) (word t)). 
+
+Definition set_one_mem (m:memory) (i: word t) : memory := 
+  PartMaps.set m i (Atom Word.zero (@Concrete.TKernel t)). 
+
+(* Pseudo-code:
+
+Fixpoint initial_mem_from (i:Z) (m:memory) : memory :=
+   if zle i 0 then
+     set_one_mem m 0 
+   else
+     initial_mem_from (Z.pred i) (set_one_mem m (repr i))
+.
+*)
+
+Definition initial_mem_from (i : Z)  (m:memory) : memory :=
+  fst (
+  Z.iter i 
+         (fun (rrec:memory*Z -> memory*Z) (mi:memory*Z) => 
+            let (m,i) := mi in 
+            let (m',i') := rrec (m,Z.pred i) in
+            (set_one_mem m' (Word.repr i),i))
+         (fun mi => (set_one_mem m 0,Z.zero))
+         (m,i)).                                    
+     
+Definition max_mem_loc : Z := 3. 
+
+Definition initial_mem code := 
+  insert_from Word.zero code (initial_mem_from max_mem_loc PartMaps.empty).
+
+
+Fixpoint set_from {A : Type} (il: list (reg t * A))  
+                     (mem : reg_map t A) : reg_map t A :=
+  match il with
+   | [] => mem
+   | (i,v) ::il' => set_from il' (PartMaps.set mem i v)
+   end.
+
+Let regs := reg_map t (common.atom (word t) (word t)).
+
+Definition set_one_reg (r:regs) (i: reg t) : regs := 
+  PartMaps.set r i (Atom (Word.repr 42) (@Concrete.TKernel t)).  
+
+(* Pseudo-code:
+
+Fixpoint initial_regs_from (i:Z) (r:regs) : regs :=
+   if zle i 0 then
+     set_one_reg r 0 
+   else
+     initial_pregs_from (Z.pred i) (set_one_reg r (repr i))
+.
+*)
+Definition initial_regs_from (i : Z)  (r:regs) : regs :=
+  fst (
+  Z.iter i 
+         (fun (rrec:regs*Z -> regs*Z) (ri:regs*Z) => 
+            let (r,i) := ri in 
+            let (r',i') := rrec (r,Z.pred i) in
+            (set_one_reg r' (Word.repr i),i))
+         (fun ri => (set_one_reg r 0,Z.zero))
+         (r,i)).                                    
+
+Definition max_reg : Z := 4%Z.
+
+
+Definition initial_regs il :=
+  set_from il (initial_regs_from max_reg PartMaps.empty).
+
+Definition initial_state code il := 
+  Concrete.mkState  (initial_mem code) 
+            (initial_regs il)
+            (ground_rules _)
+            (Atom 0 Concrete.TKernel)
+            (Atom (Word.repr 5000) Concrete.TKernel).
+
+Definition my_initial_state := initial_state sample_code 
+                              [(r1,Atom (Word.repr 99) Concrete.TKernel);
+                               (r2,Atom (Word.repr 88) Concrete.TKernel)].
+
+Definition my_runn n :=
+  let tr := utils.runn (step masks t) n my_initial_state in
+   map (summarize_concrete_state 8 1) tr.
+
+(* Compute (my_runn 10). *)
+
+Lemma max_behavior: 
+  forall (a b:word t),
+  exists s', Some s' = utils.stepn (step masks t) 1
+                 (initial_state sample_code [(r1,Atom a Concrete.TKernel);
+                                             (r2,Atom b Concrete.TKernel)]) /\ 
+             PartMaps.get (Concrete.regs s') (Word.repr 3) = 
+                Some (Atom (Word.repr (Z.max (Word.signed a) (Word.signed b))) Concrete.TKernel). 
+
+Proof.
+intros. eexists. split.
+ match goal with |- ?A = ?B => set z := B end. 
+
+
+
+
+
+End Stuff.
+
+... *)
+
 Section Refinement.
 
 Instance sp : Symbolic.params := @Sym.sym_sealing sk_defs.

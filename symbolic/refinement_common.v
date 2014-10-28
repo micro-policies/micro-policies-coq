@@ -795,6 +795,7 @@ Definition cache_allows_syscall (cst : Concrete.state mt) : bool :=
   | None => false
   end.
 
+
 Class kernel_code_correctness : Prop := {
 
 (* BCP: Added some comments -- please check! *)
@@ -929,3 +930,126 @@ Class kernel_code_correctness : Prop := {
 }.
 
 End Refinement.
+
+Section Executable.
+
+Import Concrete.
+Import concrete.exec.
+Import DoNotation.
+
+Context {mt : machine_types}
+        {ops : machine_ops mt}.
+
+(* Define executable versions of needed mode patterns *)
+(* kernel-user-exec: 0 or more steps kernel->kernel, followed by one step from kernel->user *)
+
+Fixpoint kuer (max_steps:nat) (k:state mt -> option (state mt)) (st:state mt) : option (state mt) :=
+  if is_kernel_tag (common.tag (pc st)) then
+    match max_steps with
+    | O => None
+    | S max_steps' =>
+      do! st' <- exec.step masks mt st;
+      kuer max_steps' Some st'
+    end
+  else k st.
+
+Definition kue (max_steps:nat) (st:state mt) : option (state mt) :=
+  kuer max_steps (fun _ => None) st.
+
+Lemma kuer_in_kernel: forall n s s' k1 k2,
+  is_kernel_tag (common.tag (pc s)) = true -> 
+  kuer n k1 s = Some s' ->
+  kuer n k2 s = Some s'.
+Proof.
+  intros. destruct n; simpl in H0|-* ; rewrite H in H0|-*;auto.
+Qed.
+
+Lemma kuer_not_in_kernel: forall s n, 
+  is_kernel_tag (common.tag (pc s)) = false -> 
+  kuer n Some s = Some s.
+Proof.
+  intros. destruct n; simpl; rewrite H; auto. 
+Qed.
+
+Lemma kue_correct : forall s s', kernel_user_exec s s' <-> exists n, kue n s = Some s'. 
+Proof.
+  intros; split; intros.
+
+  (* -> *)
+  inv H. unfold kue. 
+  pose proof (restricted_exec_fst H0). unfold in_kernel in H.   
+  generalize dependent H0. induction 1. 
+  exists 1%nat.  simpl.  unfold in_kernel in *. rewrite H.  apply stepP in H2. rewrite H2. simpl. 
+      rewrite H1. auto. 
+
+  pose proof (restricted_exec_fst H4). unfold in_kernel in H5.
+  destruct (IHrestricted_exec  H2 H5) as [n P]. 
+  eexists (S n).  
+  simpl. unfold in_kernel in H0. rewrite H0.  
+    apply stepP in H3.  rewrite H3. simpl. erewrite kuer_in_kernel; eauto.
+
+  (* <- *)
+  destruct H as [n p]. unfold kue in p. 
+  generalize dependent s'.  generalize dependent s. generalize dependent n. induction n;  simpl; intros. 
+    destruct (is_kernel_tag (common.tag (pc s))); inv p. 
+
+    destruct (is_kernel_tag (common.tag (pc s))) eqn:?; inv p.
+    destruct (step masks mt s) eqn:?; simpl in H0. 2:inv H0. 
+    eapply stepP in Heqo. 
+    destruct (is_kernel_tag (common.tag (pc s0))) eqn:?. 
+    2: erewrite kuer_not_in_kernel in H0; eauto; inv H0;  econstructor; eauto.
+      eapply (kuer_in_kernel _ _ _ (fun _ => None)) in H0; eauto.  
+      pose proof (IHn s0 s' H0).  clear H0. inv H.
+      econstructor.  3: eauto. 2: auto.  eapply re_step.  apply Heqb.  apply Heqo. auto.
+Qed.
+
+(* Another alternative, easier to work with but doesn't match parametric situation as well... 
+Fixpoint kuer (max_steps:nat) (st:state mt) : option (state mt) :=
+  match max_steps with
+  | O => None
+  | S max_steps' =>
+      do! st' <- exec.step masks mt st;
+      if is_kernel_tag (common.tag (pc st')) then
+        kuer max_steps' st'
+      else
+        Some st'
+  end.
+Definition kue (max_steps:nat) (st: state mt) : option (state mt) :=
+  if is_kernel_tag (common.tag (pc st)) then
+    kuer max_steps st
+  else
+    None.
+
+Lemma kue_correct: forall s s', kernel_user_exec s s' <-> exists n, kue n s = Some s'.
+Proof.
+  intros; split; intros. 
+  (* -> *)
+  inv H. unfold kue. pose proof (restricted_exec_fst H0). unfold in_kernel in H.  rewrite H. 
+  generalize dependent H0. induction 1. 
+  exists 1%nat.  unfold in_kernel in *. simpl. apply stepP in H2. rewrite H2. simpl. 
+      rewrite H1. auto. 
+
+  pose proof (restricted_exec_fst H4). unfold in_kernel in H5.
+  destruct (IHrestricted_exec  H2 H5) as [n P]. 
+  eexists (S n).  
+  simpl. 
+    apply stepP in H3.  rewrite H3. simpl.
+    rewrite H5.  auto.
+
+  (* <- *)
+  destruct H as [n p]. unfold kue in p. 
+  destruct (is_kernel_tag (common.tag (pc s))) eqn:?. 2: inv p. 
+  generalize dependent s'.  generalize dependent s. generalize dependent n. induction n;  simpl; intros. 
+    inv p. 
+
+    destruct (step masks mt s) eqn:?; simpl in p. 2:inv p. 
+    destruct (is_kernel_tag (common.tag (pc s0))) eqn:?.
+    pose proof (IHn s0 Heqb0 _ p).  inv H. 
+    econstructor. eapply re_step.  apply Heqb. apply stepP in Heqo. apply Heqo. 
+    eauto. eauto. eauto.
+    inv p. econstructor. eapply re_refl. apply Heqb. apply Heqb0. apply stepP in Heqo.  apply Heqo. 
+Qed.
+
+*)
+
+End Executable.

@@ -10,6 +10,20 @@ Import Concrete. Import DoNotation.
 
 Open Scope Z_scope.
 
+Ltac inv H := (inversion H; subst; clear H).
+
+Ltac undo :=
+  repeat match goal with
+           | STEP : (do! x <- ?t; _) = Some _ |- _ =>
+               destruct t eqn:?; simpl in STEP; try discriminate
+           | STEP : Some _ = (do! x <- ?t; _) |- _ =>
+               destruct t eqn:?; simpl in STEP; try discriminate
+           | H : Some _ = Some _ |- _ =>
+               inv H
+           | H : Some _ = None |- _ =>  discriminate
+           | H : None = Some |- _ =>  discriminate
+         end.
+
 Section WithClasses.
 
 Context (mt : machine_types).
@@ -56,14 +70,13 @@ Record pstate := mkPState {
   pmem   : memory;
   pregs  : registers;
   pcache : rules;
-  ppc    : atom;
+  ppc    : patom;
   pepc   : patom
 }.
 
 
 Inductive tstate :=
 | Halted : tstate
-| UnknownUserSt : tstate 
 | St : pstate -> tstate
 | Ch : pvalue (* Zero? *) -> tstate -> tstate -> tstate.
 
@@ -100,49 +113,45 @@ Definition add_rule (cache : rules) (masks: Masks) (mem : memory) : option rules
 stepping from a state with pc tag = Kernel, and that its own 
 cache lookups behave like the ground rules. *)
 
-Definition next_tpc_tr (mvec : MVec pvalue) : option (word mt * pvalue) :=
+Definition next_rvec (mvec : MVec pvalue) : option (RVec pvalue) :=
   do! opw <- known (cop mvec);
   do! opcode <- word_to_op opw;
-  let f (tpcp:pvalue) (trp:pvalue) :=
-      do! tpc <- known tpcp;
-      Some (tpc,trp) in
   match opcode with
-    | NOP => f (ctpc mvec) (C TNone)
-    | CONST => f (ctpc mvec) (C TKernel)
-    | MOV => f (ctpc mvec) (ct1 mvec)
-    | BINOP _ => f (ctpc mvec) (C TKernel)
-    | LOAD =>  f (ctpc mvec) (ct2 mvec)
-    | STORE => f (ctpc mvec) (ct2 mvec)
-    | JUMP => f (ct1 mvec) (C TNone)
-    | BNZ => f (ctpc mvec) (C TNone)
-    | JAL => f (ct1 mvec) (ctpc mvec)
-    | JUMPEPC => f (ct1 mvec) (C TNone)
-    | ADDRULE => f (ctpc mvec) (C TNone)
-    | GETTAG => f (ctpc mvec) (C TKernel)
-    | PUTTAG => f (ctpc mvec) (C TNone)
+    | NOP => Some (mkRVec (ctpc mvec) (C TNone))
+    | CONST => Some (mkRVec (ctpc mvec) (C TKernel))
+    | MOV => Some (mkRVec (ctpc mvec) (ct1 mvec))
+    | BINOP _ => Some (mkRVec (ctpc mvec) (C TKernel))
+    | LOAD =>  Some (mkRVec (ctpc mvec) (ct2 mvec))
+    | STORE => Some (mkRVec (ctpc mvec) (ct2 mvec))
+    | JUMP => Some (mkRVec (ct1 mvec) (C TNone))
+    | BNZ => Some (mkRVec (ctpc mvec) (C TNone))
+    | JAL => Some (mkRVec (ct1 mvec) (ctpc mvec))
+    | JUMPEPC => Some (mkRVec (ct1 mvec) (C TNone))
+    | ADDRULE => Some (mkRVec (ctpc mvec) (C TNone))
+    | GETTAG => Some (mkRVec (ctpc mvec) (C TKernel))
+    | PUTTAG => Some (mkRVec (ctpc mvec) (C TNone))
     | HALT => None
     | SERVICE => None
   end.
 
 
 Definition next_pstate (mvec : MVec pvalue)
-                       (k : word mt  -> pvalue -> option pstate) : option pstate :=
-  do! tpc_tr : word mt*pvalue <- next_tpc_tr mvec;
-  let (tpc,tr) := tpc_tr in 
-  k tpc tr.
+                       (k : RVec pvalue -> option pstate) : option pstate :=
+  do! rv  <- next_rvec mvec;
+  k rv.
 
 Definition next_pstate_reg_and_pc (st : pstate) (mvec : MVec pvalue) r x pc' : option pstate :=
-  next_pstate mvec (fun trpc tr =>
-    do! reg' <- PartMaps.upd (pregs st) r x@tr;
-    Some (mkPState (pmem st) reg' (pcache st) pc'@trpc (pepc st))).
+  next_pstate mvec (fun rvec =>
+    do! reg' <- PartMaps.upd (pregs st) r x@(ctr rvec);
+    Some (mkPState (pmem st) reg' (pcache st) pc'@(ctrpc rvec) (pepc st))).
 
 Definition next_pstate_reg (st : pstate) (mvec : MVec pvalue) r x : option pstate :=
-  next_pstate_reg_and_pc st mvec r x (val (ppc st)).+1.
+  do! pc <- known (val(ppc st));
+  next_pstate_reg_and_pc st mvec r x (C (pc.+1)).
 
 Definition next_pstate_pc (st : pstate) (mvec : MVec pvalue) x : option pstate :=
-  next_pstate mvec (fun trpc _ =>
-    Some (mkPState (pmem st) (pregs st) (pcache st) x@trpc  (pepc st))).
-
+  next_pstate mvec (fun rvec =>
+    Some (mkPState (pmem st) (pregs st) (pcache st) x@(ctrpc rvec) (pepc st))).
 
 Section WithMasks.
 
@@ -151,41 +160,17 @@ Variable masks: Masks.
 (* Evaluation stepping can occur as long as we know
    the PC and the instruction it points to precisely,
    (and, for memory operations, the precise address involved) *)
-
-Definition next_pstate_pc' st mvec v :=
-    do! t <- known(tag v);
-    match known (val v),is_kernel_tag t with
-      Some p,true =>
-        do! st' <- next_pstate_pc st mvec p;
-        Some (St st')
-    | None,false => 
-        Some UnknownUserSt
-    | _,_ => None
-    end.
-
-
-Definition next_pstate_reg_and_pc' st mvec ra x v  :=
-    do! t <- known(tag v);
-    match known (val v),is_kernel_tag t with
-      Some p,true =>
-        do! st' <- next_pstate_reg_and_pc st mvec ra x p;
-        Some (St st')
-    | None,false => 
-        Some UnknownUserSt 
-    | _,_ => None
-    end.
-  
-
 Definition pstep (st : pstate) : option tstate :=
   let 'mkPState mem reg cache pc@tpc epc := st in
-  do! i : patom <- PartMaps.get mem pc;
+  do! pcw <- known pc;
+  do! i : patom <- PartMaps.get mem pcw;
   do! v : word mt <- known (val i);
   do! instr <- decode_instr v;
-  let mvec := mkMVec (C (op_to_word (opcode_of instr))) (C tpc) (tag i) in
+  let mvec := mkMVec (C (op_to_word (opcode_of instr))) tpc (tag i) in
   match instr with
   | Nop =>
     let mvec := mvec (C TNone) (C TNone) (C TNone) in
-    do! st' <- next_pstate_pc st mvec (pc.+1);
+    do! st' <- next_pstate_pc st mvec (C (pcw.+1));
     Some (St st')
   | Const n r =>
     do! old <- PartMaps.get reg r;
@@ -221,35 +206,38 @@ Definition pstep (st : pstate) : option tstate :=
     let mvec := mvec (tag v1) (tag v2) (tag v3) in
     do! st' <-
       next_pstate mvec
-      (fun trpc tr =>
-         do! mem' <- PartMaps.upd mem a (val v2)@tr;
-         Some (mkPState mem' reg cache (pc.+1)@trpc epc));
+      (fun rvec =>
+         do! mem' <- PartMaps.upd mem a (val v2)@(ctr rvec);
+         Some (mkPState mem' reg cache (C (pcw.+1))@(ctrpc rvec) epc));
     Some (St st')
   | Jump r =>
     do! v <- PartMaps.get reg r;
     let mvec := mvec (tag v) (C TNone) (C TNone) in
-    next_pstate_pc' st mvec v
+    do! st' <- next_pstate_pc st mvec (val v);
+    Some (St st')
   | Bnz r n =>
     do! v <- PartMaps.get reg r;
     let mvec := mvec (tag v) (C TNone) (C TNone) in
-    do! st1' <- next_pstate_pc st mvec (pc.+1);
-    do! stn' <- next_pstate_pc st mvec (pc + Word.casts n);
+    do! st1' <- next_pstate_pc st mvec (C(pcw.+1));
+    do! stn' <- next_pstate_pc st mvec (C(pcw + Word.casts n));
     Some (Ch (val v) (St st1') (St stn'))
   | Jal r =>
     do! v <- PartMaps.get reg r;
     do! old <- PartMaps.get reg ra;
     let mvec := mvec (tag v) (tag old) (C TNone) in
-    next_pstate_reg_and_pc' st mvec ra (C (pc.+1)) v
+    do! st' <- next_pstate_reg_and_pc st mvec ra (C (pcw.+1)) (val v);
+    Some (St st')
   | JumpEpc =>  
     let mvec := mvec (tag epc) (C TNone) (C TNone) in
-    next_pstate_pc' st mvec epc
+    do! st' <- next_pstate_pc st mvec (val epc);
+    Some (St st')
   | AddRule =>
     let mvec := mvec (C TNone) (C TNone) (C TNone) in
     do! st' <-
       next_pstate mvec
-      (fun trpc _ =>
+      (fun rvec =>
          do! cache' <- add_rule cache masks mem;
-         Some (mkPState mem reg cache' (pc.+1)@trpc epc));
+         Some (mkPState mem reg cache' (C (pcw.+1))@(ctrpc rvec) epc));
     Some (St st')
   | GetTag r1 r2 =>
     do! v1 <- PartMaps.get reg r1;
@@ -264,18 +252,18 @@ Definition pstep (st : pstate) : option tstate :=
     let mvec := mvec (tag v1) (tag v2) (tag old) in
     do! st' <-
       next_pstate mvec
-      (fun trpc _ =>
+      (fun rvec =>
          do! reg' <- PartMaps.upd reg r3 (val v1)@(val v2);
-         Some (mkPState mem reg' cache (pc.+1)@trpc epc));
+         Some (mkPState mem reg' cache (C (pcw.+1))@(ctrpc rvec) epc));
     Some (St st')
   | Halt => Some Halted
 end.
 
 
+(* A simple-minded stepper *)
 Fixpoint tstep (ts: tstate) : option tstate :=
   match ts with
   | Halted => Some Halted
-  | UnknownUserSt => Some UnknownUserSt
   | St s => pstep s
   | Ch z s1 s2 =>
       do! ts1 <- tstep s1;
@@ -283,13 +271,20 @@ Fixpoint tstep (ts: tstate) : option tstate :=
       Some (Ch z ts1 ts2)
   end.
 
-Fixpoint teval (fuel:nat) (ts: tstate) : option tstate :=
-  match fuel with
-  | O => Some ts
-  | S fuel' =>
-       do! ts' <- tstep ts;
-       teval fuel' ts'
-  end.
+Definition teval := stepn tstep. 
+
+(* Building block for more sophisticated steppers *)
+Fixpoint tdistr (f: pstate -> option tstate) (ts: tstate) : option tstate :=
+  match ts with
+  | Halted => Some Halted
+  | St s => f s
+  | Ch z s1 s2 =>
+      match tdistr f s1,tdistr f s2 with
+      | Some l,Some r => Some (Ch z l r)
+      | _,_ => None
+      end
+   end.
+
 
 End WithMasks.
 
@@ -344,14 +339,13 @@ Definition concretize_pstate (ps:pstate) : state mt :=
   mkState (PartMaps.map concretize_atom (pmem ps))
           (PartMaps.map concretize_atom (pregs ps))
           (map concretize_rule (pcache ps))
-          (ppc ps)
+          (concretize_atom (ppc ps))
           (concretize_atom (pepc ps)).
 
 
 Fixpoint concretize_tstate (ts:tstate) : option (state mt) :=
   match ts with
   | Halted => None
-  | UnknownUserSt => None
   | St ps => Some (concretize_pstate ps)
   | Ch z ts1 ts2 =>
         if concretize_pvalue z == Word.zero then
@@ -364,47 +358,25 @@ End WithEnvironment.
 
 End WithClasses.
 
-(* must think hard about initial memory, regs states! *)
+(* Relationship to concrete execution. *)
 
-Require Import concrete.exec.
-
-Section WithStuff.
+Section WithExec.
 
 Variable masks: Masks.
 
 Context (mt: machine_types).
 Context {ops: machine_ops mt}.
 
-Fixpoint eval (fuel:nat) (s:state mt) : option (state mt) :=
-  match fuel with
-  | O => Some s
-  | S fuel' =>
-       do! s' <- step masks mt s;
-       eval fuel' s'
-  end.
-
-
-Ltac inv H := (inversion H; subst; clear H).
-
-Ltac undo :=
-  repeat match goal with
-           | STEP : (do! x <- ?t; _) = Some _ |- _ =>
-               destruct t eqn:?; simpl in STEP; try discriminate
-           | STEP : Some _ = (do! x <- ?t; _) |- _ =>
-               destruct t eqn:?; simpl in STEP; try discriminate
-           | H : Some _ = Some _ |- _ =>
-               inv H
-           | H : Some _ = None |- _ =>  discriminate
-           | H : None = Some |- _ =>  discriminate
-         end.
+Require Import concrete.exec.
 
 
 (* parametric evaluation stays in kernel mode *)
 
+(*
+XXXX need to figure out how to rephrase all this. -- if it is needed at all : HOPEFULLY NO
 Fixpoint kernel_tstate (ts: tstate mt) : Prop :=
   match ts with
   | Halted => False (* ?? *)
-  | UnknownUserSt => False
   | St ps => tag (ppc mt ps) = TKernel 
   | Ch _ ts1 ts2 => kernel_tstate ts1 /\ kernel_tstate ts2
   end.
@@ -501,16 +473,23 @@ Proof.
   simpl; split; eauto.  
 Qed.
 
-(* parametric evaluation is sound in the three cases of interest *)
+*)
 
-Hypothesis sound_next_tpc_tr : forall env cache (mvec: MVec (pvalue mt)) (tpc:word mt) (tr:pvalue mt),
-  ctpc mvec = C mt TKernel ->
-  Some (tpc,tr) = next_tpc_tr mt mvec ->
-  Some (mkRVec tpc (concretize_pvalue mt env tr)) = cache_lookup cache masks (concretize_mvec mt env mvec).
+(* A heavy assumption that next_rvec correctly describes the behavior of the cache in kernel mode.
+   We could prove that this is true initially (i.e. that next_rvec corresponds to the ground rules)
+   but this assumption holds at all times, which would be much more work to show(I think). *)
+
+Hypothesis sound_next_rvec : forall env cache (mvec: MVec (pvalue mt)) (rvec: RVec (pvalue mt)),
+  known _ (ctpc mvec) = Some TKernel ->
+  Some rvec = next_rvec mt mvec ->
+  Some (mkRVec (concretize_pvalue mt env (ctrpc rvec))
+               (concretize_pvalue mt env (ctr rvec))) = cache_lookup cache masks (concretize_mvec mt env mvec).
 
 Lemma sound_next_pstate : forall env ps mvec k kk ps',
-  ctpc mvec = C mt TKernel ->
-  (forall tpc tr ps', Some ps' = k tpc  tr -> Some (concretize_pstate mt env ps') = kk (mkRVec tpc (concretize_pvalue mt env tr))) ->
+  known _ (ctpc mvec) = Some TKernel ->
+  (forall rvec ps', Some ps' = k rvec -> Some (concretize_pstate mt env ps') = 
+                               kk (mkRVec (concretize_pvalue mt env (ctrpc rvec))
+                                          (concretize_pvalue mt env (ctr rvec)))) ->
   Some ps' = next_pstate mt mvec k ->
   Some (concretize_pstate mt env ps') = next_state masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) kk.
 Proof.
@@ -518,8 +497,7 @@ Proof.
   unfold next_state.
   unfold next_pstate in H1.
   undo.
-  destruct p. 
-  erewrite <- sound_next_tpc_tr.
+  erewrite <- sound_next_rvec.
   3: rewrite Heqo; eauto.
   erewrite <- H0.
   eauto.
@@ -556,9 +534,11 @@ Proof.
 Qed.
 
 Lemma sound_next_pstate_reg_and_pc: forall env ps mvec r x pc' ps',
-  ctpc mvec = C mt TKernel -> 
+  known _ (ctpc mvec) = Some TKernel -> 
   Some ps' = next_pstate_reg_and_pc mt ps mvec r x pc' ->
-  Some (concretize_pstate mt env ps') = next_state_reg_and_pc masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) r (concretize_pvalue mt env x) pc'.
+  Some (concretize_pstate mt env ps') = 
+           next_state_reg_and_pc masks 
+           (concretize_pstate mt env ps) (concretize_mvec mt env mvec) r (concretize_pvalue mt env x) (concretize_pvalue mt env pc').
 Proof.
   intros.
   unfold next_state_reg_and_pc.
@@ -569,27 +549,33 @@ Proof.
   simpl in H1. undo.
   simpl.
   rename r0 into pregs'.
-  replace ((concretize_pvalue mt env x)@(concretize_pvalue mt env tr))
-          with (concretize_atom mt env (x@tr)) by auto.
+  change ((concretize_pvalue mt env x)@(concretize_pvalue mt env (ctr rvec)))
+          with (concretize_atom mt env (x@(ctr rvec))). 
   erewrite PartMaps.map_upd; eauto. simpl.
   auto.
 Qed.
 
 
 Lemma sound_next_pstate_reg: forall env ps mvec r x ps',
-  ctpc mvec = C mt TKernel ->
+  known _ (ctpc mvec) = Some TKernel ->
   Some ps' = next_pstate_reg mt ps mvec r x ->
   Some (concretize_pstate mt env ps') = next_state_reg masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) r (concretize_pvalue mt env x).
 Proof.
   intros.
+  unfold next_pstate_reg in H0. undo.
   unfold next_state_reg.
+  replace ((val (pc (concretize_pstate mt env ps))+1)%w)
+          with (concretize_pvalue mt env (C mt (w+1)%w)). 
   eapply sound_next_pstate_reg_and_pc; eauto.
+  change (val (pc (concretize_pstate mt env ps))) with
+       (concretize_pvalue mt env (val (ppc mt ps))).
+  rewrite (concretize_known _ env _ _ Heqo). auto.
 Qed.
 
 Lemma sound_next_pstate_pc : forall env ps mvec pc' ps',
-  ctpc mvec = C mt TKernel ->
+  known _ (ctpc mvec) = Some TKernel ->
   Some ps' = next_pstate_pc mt ps mvec pc' ->
-  Some (concretize_pstate mt env ps') = next_state_pc masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) pc'.
+  Some (concretize_pstate mt env ps') = next_state_pc masks (concretize_pstate mt env ps) (concretize_mvec mt env mvec) (concretize_pvalue mt env pc').
 Proof.
   intros.
   unfold next_state_pc.
@@ -598,153 +584,137 @@ Proof.
   auto.
 Qed.
 
-(* First case: a normal step *)
+
+(* One step evaluation is sound in the two cases of interest *)
+
+(* Normal steps *)
 
 Lemma sound_normal_step : forall env ps ts,
-  tag (ppc mt ps) = TKernel ->
-  forall NS: normal_tstate ts,
+  known _ (tag (ppc mt ps)) = Some TKernel -> 
+  forall NS: ts <> Halted _, 
   Some ts = pstep mt masks ps ->
   concretize_tstate mt env ts = step masks mt (concretize_pstate mt env ps).
 Proof.
   intros.
-  unfold step. (* unfold concretize_pstate.  *)
+  unfold step. 
   unfold pstep in H0.
   destruct ps. simpl.
   destruct ppc0.
-  simpl in H. subst tag.
+  simpl in H. 
   undo.
-  replace (PartMaps.get (PartMaps.map (concretize_atom mt env) pmem0) val)
-          with (option_map (concretize_atom mt env) (PartMaps.get pmem0 val))
+  simpl. 
+  rewrite (concretize_known _ env _ _ Heqo). 
+  replace (PartMaps.get (PartMaps.map (concretize_atom mt env) pmem0) w)
+          with (option_map (concretize_atom mt env) (PartMaps.get pmem0 w))
                  by (rewrite <- PartMaps.map_correctness; auto).
-  rewrite Heqo.  simpl.
-  rewrite (concretize_known _ env _ _ Heqo0).
-  rewrite Heqo1.  simpl.
+  rewrite Heqo0.  simpl.
+  rewrite (concretize_known _ env _ _ Heqo1).
+  rewrite Heqo2.  simpl.
   destruct i.
 
   (* Nop *)
   undo.
   simpl.
-  symmetry in Heqo2.
-  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo2); eauto.
+  symmetry in Heqo3.
+  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo3); eauto.
 
   (* Const *)
   undo.
-  rewrite PartMaps.map_correctness. rewrite Heqo2. simpl.
-  symmetry in Heqo3.
-  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo3); eauto.
+  rewrite PartMaps.map_correctness. rewrite Heqo3. simpl.
+  symmetry in Heqo4.
+  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo4); eauto.
 
   (* Mov *)
   undo.
-  repeat rewrite PartMaps.map_correctness. rewrite Heqo2. rewrite Heqo3. simpl.
-  symmetry in Heqo4.
-  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo4); eauto.
+  repeat rewrite PartMaps.map_correctness. rewrite Heqo3. rewrite Heqo4. simpl.
+  symmetry in Heqo5.
+  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo5); eauto.
 
   (* Binop *)
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. rewrite Heqo3. rewrite Heqo4. simpl.
-  symmetry in Heqo5.
-  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo5); eauto.
+  rewrite Heqo3. rewrite Heqo4. rewrite Heqo5. simpl.
+  symmetry in Heqo6.
+  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo6); eauto.
 
   (* Load *)
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. simpl. rewrite (concretize_known _ env _ _ Heqo3).
+  rewrite Heqo3. simpl. rewrite (concretize_known _ env _ _ Heqo4).
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo4. rewrite Heqo5. simpl.
-  symmetry in Heqo6.
-  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo6); eauto.
+  rewrite Heqo5. rewrite Heqo6. simpl.
+  symmetry in Heqo7.
+  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo7); eauto.
 
   (* Store *)
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. rewrite Heqo3. simpl.
-  rewrite (concretize_known _ env _ _ Heqo4).
-  rewrite PartMaps.map_correctness. rewrite Heqo5. simpl.
-  replace
+  rewrite Heqo3. rewrite Heqo4. simpl.
+  rewrite (concretize_known _ env _ _ Heqo5).
+  rewrite PartMaps.map_correctness. rewrite Heqo6. simpl.
+  change
    ({|
     cop := op_to_word STORE;
-    ctpc := TKernel;
-    cti := concretize_pvalue mt env (tag a);
-    ct1 := concretize_pvalue mt env (tag a0);
-    ct2 := concretize_pvalue mt env (tag a1);
-    ct3 := concretize_pvalue mt env (tag a2) |})
+    ctpc := concretize_pvalue mt env tag;
+    cti := concretize_pvalue mt env (common.tag a);
+    ct1 := concretize_pvalue mt env (common.tag a0);
+    ct2 := concretize_pvalue mt env (common.tag a1);
+    ct3 := concretize_pvalue mt env (common.tag a2) |})
    with
     (concretize_mvec mt env
        {|
          cop := (C mt (op_to_word STORE));
-         ctpc := (C mt TKernel);
-         cti := tag a;
-         ct1 := tag a0;
-         ct2 := tag a1;
-         ct3 := tag a2 |}) by auto.  (* why is this needed? *)
-  eapply sound_next_pstate; eauto.
-  intros. simpl in H. undo. simpl.
-  replace
-   ((concretize_pvalue mt env (common.val a1))@(concretize_pvalue mt env tr)) with
-  (concretize_atom mt env ((common.val a1)@tr)) by auto.
+         ctpc := tag;
+         cti := common.tag a;
+         ct1 := common.tag a0;
+         ct2 := common.tag a1;
+         ct3 := common.tag a2 |}).  (* why is this needed? *)
+  symmetry in Heqo7.
+  eapply sound_next_pstate; eauto. 
+  intros. simpl in H0. undo. simpl. 
+  change
+   ((concretize_pvalue mt env (common.val a1))@(concretize_pvalue mt env (ctr rvec))) with
+  (concretize_atom mt env ((common.val a1)@(ctr rvec))).
   erewrite PartMaps.map_upd; eauto.
-  simpl. auto.
+  simpl. eauto.
 
   (* Jump *)
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. simpl.
-  unfold next_pstate_pc' in H0. undo. 
-  destruct (known mt (common.val a0)) eqn:?;
-  destruct (is_kernel_tag w0) eqn:?; try discriminate. 
-  undo.
-  simpl. 
-  rewrite (concretize_known _ env _ _ Heqo4).
-  symmetry in Heqo5.
-  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo5); eauto.
-  undo.
-  inv NS. 
+  rewrite Heqo3. simpl.
+  symmetry in Heqo4.
+  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo4); eauto.
 
+  
   (* Bnz *)
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. simpl.
+  rewrite Heqo3. simpl.
   have [zer|nonzer] := altP (concretize_pvalue mt env (common.val a0) =P Word.zero).
-  symmetry in Heqo3.
-  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo3); eauto.
   symmetry in Heqo4.
   erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo4); eauto.
+  symmetry in Heqo5.
+  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo5); eauto.
 
   (* Jal *)
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. rewrite Heqo3. simpl.
-  unfold next_pstate_reg_and_pc' in H0.  undo. 
-  destruct (known mt (common.val a0)) eqn:?;
-  destruct (is_kernel_tag w0) eqn:?; try discriminate. 
-  undo.
-  simpl. 
-  rewrite (concretize_known _ env _ _ Heqo5).
-  symmetry in Heqo6.
-  erewrite (sound_next_pstate_reg_and_pc _ _ _ _ _ _ _ _ Heqo6); eauto.
-  undo. inv NS. 
-
+  rewrite Heqo3. rewrite Heqo4. simpl.
+  symmetry in Heqo5. 
+  erewrite (sound_next_pstate_reg_and_pc _ _ _ _ _ _ _ _ Heqo5); eauto.
 
   (* JumpEPC *)
-  unfold next_pstate_pc' in H0. undo.
-  destruct (known mt (common.val pepc0)) eqn:?;
-  destruct (is_kernel_tag w0) eqn:?; try discriminate. 
-  undo.
-  simpl.
-  rewrite (concretize_known _ env _ _ Heqo3). 
-  symmetry in Heqo4. 
-  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo4); eauto.
-  undo. inv NS. 
-
+  undo. simpl. 
+  symmetry in Heqo3. 
+  erewrite (sound_next_pstate_pc _ _ _ _ _ _ Heqo3); eauto.
 
   (* AddRule *)
   undo. simpl.
-  replace
+  change
    ({|
     cop := op_to_word ADDRULE;
-    ctpc := TKernel;
-    cti := concretize_pvalue mt env (tag a);
+    ctpc := concretize_pvalue mt env tag;
+    cti := concretize_pvalue mt env (common.tag a);
     ct1 := TNone;
     ct2 := TNone;
     ct3 := TNone |})
@@ -752,13 +722,13 @@ Proof.
     (concretize_mvec mt env
        {|
          cop := (C mt (op_to_word ADDRULE));
-         ctpc := (C mt TKernel);
-         cti := tag a;
+         ctpc := tag;
+         cti := common.tag a;
          ct1 := (C mt TNone);
          ct2 := (C mt TNone);
-         ct3 := (C mt TNone) |}) by auto.  (* why is this needed? *)
+         ct3 := (C mt TNone) |}).  (* why is this needed? *)
   eapply sound_next_pstate; eauto.
-  intros. simpl in H.
+  intros. simpl in H0.
   undo.
   erewrite sound_add_rule; eauto.
   simpl.  auto.
@@ -766,133 +736,62 @@ Proof.
   (* GetTag *)
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2.  rewrite Heqo3. simpl.
-  symmetry in Heqo4.
-  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo4); eauto.
+  rewrite Heqo3.  rewrite Heqo4. simpl.
+  symmetry in Heqo5.
+  erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo5); eauto.
 
   (* PutTag *)
   undo.
   repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2.  rewrite Heqo3. rewrite Heqo4. simpl.
-  symmetry in Heqo5.
-  replace
+  rewrite Heqo3.  rewrite Heqo4. rewrite Heqo5. simpl.
+  symmetry in Heqo6.
+  change
    ({|
     cop := op_to_word PUTTAG;
-    ctpc := TKernel;
-    cti := concretize_pvalue mt env (tag a);
-    ct1 := concretize_pvalue mt env (tag a0);
-    ct2 := concretize_pvalue mt env (tag a1);
-    ct3 := concretize_pvalue mt env (tag a2) |})
+    ctpc := concretize_pvalue mt env tag;
+    cti := concretize_pvalue mt env (common.tag a);
+    ct1 := concretize_pvalue mt env (common.tag a0);
+    ct2 := concretize_pvalue mt env (common.tag a1);
+    ct3 := concretize_pvalue mt env (common.tag a2) |})
    with
     (concretize_mvec mt env
        {|
          cop := (C mt (op_to_word PUTTAG));
-         ctpc := (C mt TKernel);
-         cti := tag a;
-         ct1 := tag a0;
-         ct2 := tag a1;
-         ct3 := tag a2 |}) by auto.  (* why is this needed? *)
+         ctpc := tag;
+         cti := common.tag a;
+         ct1 := common.tag a0;
+         ct2 := common.tag a1;
+         ct3 := common.tag a2 |}).  (* why is this needed? *)
   eapply sound_next_pstate; eauto.
-  intros. simpl in H.
+  intros. simpl in H0.
   undo.
-  replace
+  change
    ((concretize_pvalue mt env (common.val a0))@(concretize_pvalue mt env (common.val a1))) with
-  (concretize_atom mt env ((common.val a0)@(common.val a1))) by auto.
+  (concretize_atom mt env ((common.val a0)@(common.val a1))).  
   erewrite PartMaps.map_upd; eauto.
   auto.
 
   (* Halt *)
-  inv H0. inv NS.
+  inv H0. exfalso; apply NS; auto.
 
 
-  Grab Existential Variables. (* ??? !!! *)
+  Grab Existential Variables. 
 
-  reflexivity.
-  reflexivity.
-  reflexivity.
-  reflexivity.
-  reflexivity.
-  reflexivity.
-  reflexivity.
-  reflexivity.
-  reflexivity.
-  reflexivity. 
-  reflexivity. 
+  apply H. 
+  apply H. 
+  apply H. 
+  apply H. 
+  apply H. 
+  apply H. 
+  apply H. 
+  apply H. 
+  apply H. 
+  apply H. 
+  apply H. 
 Qed.
 
 
-(* Second case: a step back to user mode. 
-   There should be a matching step  *)
-
-Lemma sound_unknown_user_step : forall env ps,
-  tag (ppc mt ps) = TKernel ->
-  Some (UnknownUserSt mt) = pstep mt masks ps ->
-  exists (s:state mt),
-  Some s = step masks mt (concretize_pstate mt env ps)
-  /\ not (is_kernel_tag (tag (pc s))).
-
-Proof.
-  intros.
-  unfold step. (* unfold concretize_pstate.  *)
-  unfold pstep in H0.
-  destruct ps. simpl.
-  destruct ppc0.
-  simpl in H. subst tag.
-  undo.
-  replace (PartMaps.get (PartMaps.map (concretize_atom mt env) pmem0) val)
-          with (option_map (concretize_atom mt env) (PartMaps.get pmem0 val))
-                 by (rewrite <- PartMaps.map_correctness; auto).
-  rewrite Heqo.  simpl.
-  rewrite (concretize_known _ env _ _ Heqo0).
-  rewrite Heqo1.  simpl.
-  destruct i; undo.
-
-  (* Jump *)
-  undo.
-  repeat rewrite PartMaps.map_correctness.
-  rewrite Heqo2. simpl.
-  unfold next_pstate_pc' in H0. undo. 
-  destruct (known mt (common.val a0)) eqn:?;
-  destruct (is_kernel_tag w0) eqn:?; try discriminate. 
-  undo.
-  rewrite (concretize_known _ env _ _ Heqo3). 
-  eexists. 
-  split.
-  replace
-   ({|
-    cop := op_to_word JUMP;
-    ctpc := TKernel;
-    cti := concretize_pvalue mt env (tag a);
-    ct1 := w0;
-    ct2 := TNone;
-    ct3 := TNone |})
-   with
-    (concretize_mvec mt env
-       {|
-         cop := (C mt (op_to_word JUMP));
-         ctpc := (C mt TKernel);
-         cti := tag a;
-         ct1 := (C mt w0);
-         ct2 := (C mt TNone);
-         ct3 := (C mt TNone) |}) by auto.  (* why is this needed? *)
-  eapply sound_next_pstate_pc. 
-  auto.
-  unfold next_pstate_pc. simpl. 
-  unfold next_pstate. unfold next_tpc_tr. simpl. 
-  rewrite op_to_wordK. simpl.  eauto.
-  simpl. rewrite Heqb. auto. 
-
-  (* Jal *)
-  admit. (* similar *)
-
-  (* JumpEPC *)
-  admit. (* similar *)
-Qed.
-
-
-(* Third case: a step to Halted.
-   There should be no step at all. 
-   Could combine this statement with the normal case. *)
+(* Halting case.  *)
 
 Set Printing Depth 20.
 
@@ -901,67 +800,101 @@ Lemma sound_halt_step : forall env ps,
   None = step masks mt (concretize_pstate mt env ps).
 Proof.
   intros.
-  unfold step. (* unfold concretize_pstate.  *)
+  unfold step. 
   unfold pstep in H.
   destruct ps. simpl.
   destruct ppc0.
   undo.
-  replace (PartMaps.get (PartMaps.map (concretize_atom mt env) pmem0) val)
-          with (option_map (concretize_atom mt env) (PartMaps.get pmem0 val))
+  rewrite (concretize_known _ env _ _ Heqo). 
+  replace (PartMaps.get (PartMaps.map (concretize_atom mt env) pmem0) w)
+          with (option_map (concretize_atom mt env) (PartMaps.get pmem0 w))
                  by (rewrite <- PartMaps.map_correctness; auto).
-  rewrite Heqo.  simpl.
-  rewrite (concretize_known _ env _ _ Heqo0).
-  rewrite Heqo1.  simpl.
+  rewrite Heqo0.  simpl.
+  rewrite (concretize_known _ env _ _ Heqo1).
+  rewrite Heqo2.  simpl.
   destruct i; undo.
-
-  (* Jump *)
-  unfold next_pstate_pc' in H; undo.
-  destruct (known mt (common.val a0)) eqn:?;
-  destruct (is_kernel_tag w0) eqn:?; try discriminate. 
-  undo.
-  undo.
-
-  (* Jal *)
-  unfold next_pstate_reg_and_pc' in H;  undo. 
-  destruct (known mt (common.val a0)) eqn:?;
-  destruct (is_kernel_tag w0) eqn:?; try discriminate. 
-  undo.
-  undo.
-
-  (* JumpEpc *)
-  unfold next_pstate_pc' in H; undo.
-  destruct (known mt (common.val pepc0)) eqn:?;
-  destruct (is_kernel_tag w0) eqn:?; try discriminate. 
-  undo.
-  undo.
-  
-  (* Halt *)
   auto.
 Qed.
 
-(* Not sure if this particular form is still useful.. -- too weak *)
-Lemma sound_tstep: forall env ts ts' s,
-  kernel_tstate ts -> 
-  forall NS: normal_tstate ts',
-  Some ts' = tstep mt masks ts ->
-  Some s = concretize_tstate mt env ts -> 
-  concretize_tstate mt env ts' = step masks mt s.
+(* Somewhat generic facts about the somewhat generic tdistr funcion. *)
+Lemma sound_tdistr: forall pf f env
+  (SOUNDF: forall ps ts s,
+     Some ts = pf ps ->
+     Some s = concretize_tstate _ env ts -> 
+     Some s = f (concretize_pstate _ env ps)),
+  forall ts0 ts s0 s,
+  Some ts = tdistr mt pf ts0 ->
+  Some s0 = concretize_tstate _ env ts0 -> 
+  Some s = concretize_tstate _ env ts ->
+  Some s = f s0.
 Proof.
-  induction ts; intros. 
-    inv H. 
-    inv H. 
-    inv H. destruct (concretize_tstate mt env (St mt p)) eqn:?.
-      inv H1.  inv Heqo. eapply sound_normal_step; eauto. 
-      inv H1. 
-    inv H0. undo. simpl in H1. inv H. inv NS. 
-    simpl. 
-    generalize H1. 
-    have [zer|nonzer] := altP (concretize_pvalue mt env p =P Word.zero); eauto.
-Qed.    
+  intros until ts0. induction ts0; intros.  
+  inv H0. 
+  simpl in *. inv H0. eauto. 
+  inv H0.
+  destruct (concretize_pvalue mt env p == Word.zero) eqn:?;
+    inv H; destruct (tdistr mt pf ts0_1) eqn:?; destruct (tdistr mt pf ts0_2) eqn:?; 
+    inv H2; simpl in *; rewrite Heqb in H1; eauto.
+Qed.
 
-(* Not right...
+Lemma sound_tdistr_none: forall env f t ts, 
+       concretize_tstate mt env t = None -> 
+       Some ts = tdistr mt f t -> 
+       concretize_tstate mt env ts = None.
+Proof.
+  induction t; intros. 
+  inv H0. auto. 
+  inv H. 
+  simpl in H.  simpl in H0. 
+  destruct (concretize_pvalue mt env p == Word.zero) eqn:?; 
+    destruct (tdistr mt f t1) eqn:?; destruct (tdistr mt f t2) eqn:?;
+    inv H0; simpl; rewrite Heqb; eauto.
+Qed.
 
-Lemma sound_eval : forall env fuel ts ts' s, 
+
+(*  An older version of tdistr:
+
+Fixpoint tdistr (f: pstate mt -> option (tstate mt)) (ts: tstate mt) : option (tstate mt) :=
+  match ts with
+  | Halted => None
+  | St s => f s
+  | Ch z s1 s2 =>
+      match tdistr f s1,tdistr f s2 with
+      | Some l,Some r => Some (Ch _ z l r)
+      | Some l,None => Some l
+      | None,Some r => Some r
+      | None,None => None
+      end
+   end.
+
+Lemma sound_tdistr: forall pf f env
+  (SOUNDF: forall ps ts,
+     Some ts = pf ps ->
+     concretize_tstate _ env ts = f (concretize_pstate _ env ps)),
+  forall ts0 ts s0,
+  Some ts = tdistr pf ts0 ->
+  Some s0 = concretize_tstate _ env ts0 -> 
+  concretize_tstate _ env ts = f s0.
+Proof.
+  intros until ts0. induction ts0; intros.  
+  inv H. 
+  simpl in *. inv H0. auto.
+  inv H0.
+  destruct (concretize_pvalue mt env p == Word.zero) eqn:?. 
+    inv H; destruct (tdistr pf ts0_1) eqn:?; destruct (tdistr pf ts0_2) eqn:?.
+    inv H1. simpl. rewrite Heqb.  eauto.
+    inv H1. eauto.
+    inv H1. (* halted on left, but env sends us left.  we must also halt... *)  admit.
+    inv H1. 
+
+    inv H; destruct (tdistr pf ts0_1) eqn:?; destruct (tdistr pf ts0_2) eqn:?.
+    inv H1. simpl. rewrite Heqb.  eauto.
+    inv H1. admit.
+    inv H1. eauto.
+    inv H1. 
+*)
+
+(*Lemma sound_eval : forall env fuel ts ts' s, 
   kernel_tstate ts -> 
   Some ts' = teval mt masks fuel ts -> 
   kernel_tstate ts' -> 
@@ -978,4 +911,103 @@ Proof.
 Qed. 
 *)
 
-End WithStuff.
+
+End WithExec.
+
+(* Specific applications to refinement specs. *)
+
+Section WithRefinement.
+
+Context (mt : machine_types).
+Context {ops : machine_ops mt}.
+
+Require Import symbolic.rules.
+Require Import symbolic.refinement_common.
+
+(* Repeated from an earlier section, above *)
+Hypothesis sound_next_rvec : forall env cache (mvec: MVec (pvalue mt)) (rvec: RVec (pvalue mt)),
+  known _ (ctpc mvec) = Some TKernel ->
+  Some rvec = next_rvec mt mvec ->
+  Some (mkRVec (concretize_pvalue mt env (ctrpc rvec))
+               (concretize_pvalue mt env (ctr rvec))) = cache_lookup cache masks (concretize_mvec mt env mvec).
+
+(* Parametric equivalents of the kue functions. *)
+Fixpoint pkuer (max_steps:nat) (k:pstate mt -> option (tstate mt)) (ps:(pstate mt)) : option (tstate mt) :=
+  do! t <- known _ (common.tag (ppc mt ps));
+  if is_kernel_tag t then
+    match max_steps with
+    | O => None
+    | S max_steps' =>
+      do! ts <- pstep _ masks ps;
+      tdistr mt (pkuer max_steps' (fun ps => Some(St _ ps))) ts
+    end
+  else k ps.
+
+Definition pkue (max_steps:nat) (ps:pstate mt) : option (tstate mt) :=
+  pkuer max_steps (fun _ => None) ps.
+
+
+Lemma sound_pkuer : forall env n pk k,
+  (forall ps, match pk ps with
+              | None => k (concretize_pstate mt env ps) = None
+              | Some ps' => forall s', Some s' = concretize_tstate mt env ps' -> 
+                                       Some s' = k (concretize_pstate mt env ps)
+              end) -> 
+   forall ps ts s,
+   Some ts = pkuer n pk ps -> 
+   Some s = concretize_tstate mt env ts ->
+   Some s = kuer n k (concretize_pstate mt env ps).
+Proof.
+  induction n; intros.
+
+  simpl. simpl in H0. undo. rewrite (concretize_known _ env _ _ Heqo).
+   destruct (is_kernel_tag w); inv H0. 
+   pose proof (H ps).  rewrite <- H3 in H0.  eapply H0; eauto.
+
+  unfold kuer; fold kuer. 
+  simpl in H0. undo.
+  replace (common.tag (pc (concretize_pstate mt env ps))) with w. 
+  2: clear - Heqo; destruct ps; simpl in *; rewrite (concretize_known _ env _ _ Heqo); auto.
+  destruct (is_kernel_tag w) eqn:?. 
+  undo.  symmetry in Heqo0; eapply sound_normal_step with (env:=env) in Heqo0.
+  rewrite <- Heqo0. clear Heqo0. 
+  assert (forall ps : pstate mt,
+            match (fun ps : pstate mt => Some (St mt ps)) ps with
+            | Some ps' =>
+               forall s' : state mt,
+               Some s' = concretize_tstate mt env ps' ->
+               Some s' = Some (concretize_pstate mt env ps)
+           | None => Some (concretize_pstate mt env ps) = None
+           end).
+    clear. intros. simpl in H. inv H. auto. 
+  pose proof (sound_tdistr _ (pkuer n _) (kuer n _) env (IHn (fun ps : pstate mt => Some (St mt ps)) Some H2)).
+  destruct (concretize_tstate mt env t) eqn:?.
+    eapply H3; eauto.  
+    pose proof (sound_tdistr_none _ _ _ _ _ Heqo0 H0). rewrite H4 in H1. inv H1. 
+
+  apply sound_next_rvec. 
+
+  simpl. rewrite Heqo. unfold is_kernel_tag in Heqb. f_equal.  apply (eqP Heqb).
+
+  intro. subst t. inv H0.  inv H1. 
+  pose proof (H ps). rewrite <- H0 in H2. eauto.
+Qed.
+
+(* kue can fail if we don't match kernel pattern within n steps (by halting or wrong modes)
+   pkue can fail if 
+      (a) approximation fails on any path
+      (b) we don't match kernel pattern within n steps (by wrong modes)
+   concretize_tstate (pkue) can fail iff we halt on actual path
+*)
+Lemma sound_pkue : forall env n st ts s,
+  Some ts = pkue n st ->
+  Some s = concretize_tstate mt env ts ->
+  Some s = kue n (concretize_pstate mt env st).
+Proof.
+  unfold pkue, kue. intros. 
+  eapply sound_pkuer; eauto.
+  intros. reflexivity. 
+Qed.
+
+
+End WithRefinement.
