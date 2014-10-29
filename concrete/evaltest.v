@@ -140,7 +140,7 @@ Definition initial_tstate code :=
   St t (mkPState t (initial_pmem code)
                    initial_pregs
                    []
-                   (Atom 0 TKernel)
+                   (Atom (C t 0) (C t TKernel))
                    (Atom (C t 0) (C t TKernel))(* irrelevant *)).
 
 (* does something like this lemma already exist? *)
@@ -149,15 +149,19 @@ Proof.
   intros. rewrite <- H. rewrite Word.repr_signed. reflexivity.
 Qed.
 
+Set Printing Depth 20. 
+
+
 (* FIRST APPROACH: Use abstract environment.*)
 
 Definition arga : var t := RP t (r1).
 Definition argb : var t := RP t (r2). 
 
 Lemma max_behavior: forall env  masks,
-                    exists ts', Some ts' = teval t masks 8 (initial_tstate max_code) /\ 
                     forall (T:forall w, env (RT t w) = TKernel),
-                    PartMaps.get (Concrete.regs (concretize_tstate t env ts')) (Word.repr 3) = 
+                    exists ts', Some ts' = teval t masks 8 (initial_tstate max_code) /\ 
+                    exists s', Some s' = concretize_tstate t env ts' /\
+                    PartMaps.get (Concrete.regs s') (Word.repr 3) = 
                     Some (Atom (Word.repr (Z.max (Word.signed (env arga)) (Word.signed (env argb)))) TKernel). 
 
 Proof.
@@ -167,59 +171,74 @@ Proof.
   vm_compute in z;  reflexivity.
 
   (* things become distessingly slow here...*)
-  intro. unfold concretize_tstate, concretize_pvalue.
-
-  destruct (binop_denote LEQ (env argb) (env arga) == 0) eqn: D; rewrite D;  
-    rewrite PartMaps.map_correctness; 
-    match goal with |- ?A = ?B => set z := A end; vm_compute in z; subst z;
-    f_equal;
-    f_equal; 
-    auto;
-    apply repr_signed2;
-    unfold binop_denote, bool_to_word, Word.lt in D;
-    destruct (zlt (Word.signed (env argb)) (Word.signed (env arga))).
+  unfold concretize_tstate, concretize_pvalue.
+  destruct (binop_denote LEQ (env argb) (env arga) == 0) eqn: D; rewrite D;   
+  simpl; unfold concretize_pstate; simpl; 
+  eexists;
+  (split; [ reflexivity| 
+  (match goal with |- ?A = ?B => set z := A end; vm_compute in z; subst z;
+  f_equal;f_equal; auto;
+  apply repr_signed2;
+  unfold binop_denote, bool_to_word, Word.lt in D;
+  destruct (zlt (Word.signed (env argb)) (Word.signed (env arga))))]).
 
     inv D.
     (* idiocy *)
-    replace
+(*    rewrite - [RP _ _]/argb. *)
+    change
      (RP t
          (Word.mkint (reg_field_size_minus_one t) 
                      2
                      (Word.Z_mod_modulus_range' 4 2)))
-    with 
-     argb by auto.
-    zify; omega.
+    with argb. 
 
-    (* idiocy *)
-    replace
-     (RP t
-         (Word.mkint (reg_field_size_minus_one t) 
-                     1
-                     (Word.Z_mod_modulus_range' 4 1)))
-    with 
-     arga by auto.
-    zify; omega. 
+    (* !!! There is a problem here: now need to unfold word_size_minus_one 
+           to make omega happy. *)
+    simpl word_size_minus_one in *; zify; omega. 
 
-    (* Is there an easier way? *)
-    have [eq|neq] := altP ((env argb) =P (env arga)). 
-    {
-     rewrite eq. 
+(* or the long way: 
+    zify. subst.  destruct H; destruct H ; subst; try omega.    
+    assert (foo: forall (x y :Z) , x <= y ->  x >= y -> x = y) by (intros; omega). 
+    eapply foo; eauto.  (* !!! *)
+*)
+
+   inv D. 
      (* idiocy *)
-     replace
+     change
       (RP t
          (Word.mkint (reg_field_size_minus_one t) 
                      1
                      (Word.Z_mod_modulus_range' 4 1)))
      with 
-       arga by auto.
-     zify; omega. 
-    }
+       arga.
 
-    {
-      apply negb_true_iff in neq.
-      rewrite neq in D.
-      inv D.
-    }
+     (* !!! DITTO comment above. *)
+     simpl word_size_minus_one in *; zify; omega. 
+
+(* or: 
+     zify. subst. destruct H; destruct H; subst; try omega. 
+     assert (foo: forall (x y:Z), x < y -> y < x -> False) by (intros; omega).
+     exfalso; eapply foo; eauto. (* !!! *)
+*)
+
+    (* idiocy *)
+     change
+     (RP t
+         (Word.mkint (reg_field_size_minus_one t) 
+                     1
+                     (Word.Z_mod_modulus_range' 4 1)))
+    with 
+     arga.
+
+    (* Is there an easier way? *)
+    have [eq|neq] := altP (env argb =P env arga).  
+     rewrite eq. 
+     zify; omega. 
+
+(*       apply negb_true_iff in neq. *)
+(*      rewrite neq in D.*)
+      rewrite (negbTE neq) in D.
+      inv D. 
 Qed.
 
 
@@ -239,7 +258,8 @@ Definition env (a b: word t) (v:var t) : word t :=
 
 Lemma max_behavior': forall (a b:word t) masks,
                     exists ts', Some ts' = teval t masks 8 (initial_tstate max_code) /\ 
-                    PartMaps.get (Concrete.regs (concretize_tstate t (env a b) ts')) (Word.repr 3) = 
+                    exists s', Some s' = concretize_tstate t (env a b) ts' /\
+                    PartMaps.get (Concrete.regs s') (Word.repr 3) = 
                     Some (Atom (Word.repr (Z.max (Word.signed a) (Word.signed b))) TKernel). 
 
 Proof.
@@ -251,15 +271,94 @@ Proof.
   (* things become distessingly slow here...*)
   unfold concretize_tstate, concretize_pvalue, env.
 
+(* maybe:  case:ifP.   *)
   destruct ({| Word.intval := 1;
                Word.intrange := Word.Z_mod_modulus_range' 4 1 |} == 1) eqn:X;
-  [(rewrite X; clear X) | inv X].
+  [(rewrite X ; clear X) | inv X];
+  destruct ({| Word.intval := 2;
+               Word.intrange := Word.Z_mod_modulus_range' 4 2 |} == 1) eqn:X;
+  [ inv X | (rewrite X; clear X)];
+  destruct ({| Word.intval := 2;
+               Word.intrange := Word.Z_mod_modulus_range' 4 2 |} == 2) eqn:X;
+  [ (rewrite X;clear X ) | inv X];
+  destruct ({| Word.intval := 1;
+            Word.intrange := Word.Z_mod_modulus_range' 31 1 |} == 0) eqn:X;
+  [ inv X| (rewrite X;clear X)]. 
+
+  
+  destruct (binop_denote LEQ b a == 0) eqn: D; 
+  simpl; unfold concretize_pstate; simpl; 
+  eexists;
+  (split;[reflexivity| 
+  (rewrite PartMaps.map_correctness;
+   match goal with |- ?A = ?B => set z := A end; vm_compute in z; subst z;
+   f_equal;
+   f_equal;
+   apply repr_signed2;
+   unfold binop_denote, bool_to_word, Word.lt in D; 
+   destruct (zlt (Word.signed b) (Word.signed a)))]).
+
+    inv D. 
+
+    simpl word_size_minus_one in *; zify; omega. 
+
+    simpl word_size_minus_one in *; zify; omega. 
+
+    (* Is there an easier way? *)
+    have [eq|neq] := altP (b =P a). 
+      subst. zify; omega. 
+
+      apply negb_true_iff in neq.
+      rewrite neq in D.
+      inv D.
+Qed.
+
+
+(*
+(* THIRD  APPROACH : Use explicit initial conditions. *)
+
+Fixpoint set_from {A : Type} (il: list (reg t * A))  
+                     (mem : reg_map t A) : reg_map t A :=
+  match il with
+   | [] => mem
+   | (i,v) ::il' => set_from il' (PartMaps.set mem i v)
+   end.
+
+Definition initial_pregs' il :=
+  set_from il initial_pregs.
+
+Definition initial_tstate' code il := 
+  St t (mkPState t (initial_pmem code)
+                   (initial_pregs' il)
+                   []
+                   (Atom 0 TKernel)
+                   (Atom (C t 0) (C t TKernel))(* irrelevant *)).
+
+
+Lemma max_behavior'': forall a b env masks,
+                    exists ts', Some ts' = teval t masks 8 (initial_tstate' max_code [(r1,a);(r2,b)]) /\ 
+                    forall (T:forall w, env (RT t w) = TKernel),
+                    PartMaps.get (Concrete.regs (concretize_tstate t env ts')) (Word.repr 3) = 
+                    Some (Atom (Word.repr (Z.max (Word.signed (env arga)) (Word.signed (env argb)))) TKernel). 
+Proof.
+  intros. eexists.
+  split.
+  match goal with |- ?A = ?B => set z := B end. 
+  vm_compute in z;  reflexivity.
+
+  (* things become distessingly slow here...*)
+  unfold concretize_tstate. 
+
+(* maybe:  case:ifP.   *)
+  destruct ({| Word.intval := 1;
+               Word.intrange := Word.Z_mod_modulus_range' 4 1 |} == 1) eqn:X;
+  [(rewrite X ; clear X) | inv X].
   destruct ({| Word.intval := 2;
                Word.intrange := Word.Z_mod_modulus_range' 4 2 |} == 1) eqn:X;
   [ inv X | (rewrite X; clear X)].
   destruct ({| Word.intval := 2;
                Word.intrange := Word.Z_mod_modulus_range' 4 2 |} == 2) eqn:X;
-  [ (rewrite X;clear X) | inv X].
+  [ (rewrite X;clear X ) | inv X] .
   destruct ({| Word.intval := 1;
             Word.intrange := Word.Z_mod_modulus_range' 31 1 |} == 0) eqn:X;
   [ inv X| (rewrite X;clear X)]. 
@@ -287,8 +386,8 @@ Proof.
       apply negb_true_iff in neq.
       rewrite neq in D.
       inv D.
-Qed.
 
+*)
 
 
 End WithStuff.
