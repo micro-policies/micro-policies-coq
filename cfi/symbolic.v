@@ -933,6 +933,7 @@ Proof.
     destruct (tag a1); by reflexivity.
   -  (*get mem pc = None*)
     rewrite GET in VIO UMVEC.
+    unfold Symbolic.pcv in *. simpl in UMVEC.
     destruct (Symbolic.get_syscall table pc) as [sc|] eqn:GETCALL.
     + destruct tpc as [[src|]|], (Symbolic.entry_tag sc) as [[dst|]|];
       try (by inversion VIO);

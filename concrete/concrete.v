@@ -155,6 +155,9 @@ Record state := mkState {
   epc   : atom
 }.
 
+Definition pcv (s : state) := val (pc s).
+Definition pct (s : state) := tag (pc s).
+
 (* Need to do this masking both on lookup, and on rule add, right?
    This is optional; the software could do it *)
 Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rules :=

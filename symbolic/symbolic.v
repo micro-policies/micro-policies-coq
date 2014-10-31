@@ -138,6 +138,9 @@ Record state := State {
   internal : internal_state
 }.
 
+Definition pcv (s : state) := val (pc s).
+Definition pct (s : state) := tag (pc s).
+
 (* CH: TODO: should make the entry_tags part of the state
    (for compartmentalization they need to be mutable) *)
 Record syscall := Syscall {

@@ -53,7 +53,7 @@ Ltac contradict_in_user :=
   match goal with
   | INUSER : is_true (in_user ?st),
     ISKERNEL : ?t = Concrete.TKernel |- _ =>
-    check_conv (common.tag (Concrete.pc st)) t;
+    check_conv (Concrete.pct st) t;
     first [ rewrite ISKERNEL /in_user /= decode_kernel_tag in INUSER; done |
             failwith "contradict_in_user" ]
   end.
@@ -191,8 +191,8 @@ Lemma cache_hit_simulation sst cst cst' :
     refine_state ki table sst' cst'.
 Proof.
   case: sst => smem sregs [pc atpc] int.
-  move => [/= ? DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
-  subst pc.
+  move => [/= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
+  rewrite /Symbolic.pcv /= in PC. subst pc.
   inv STEP; subst mvec;
   unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
          Concrete.next_state_pc, Concrete.next_state in *;
@@ -288,7 +288,7 @@ Proof.
   case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.
   move: INKERNEL LOOKUP.
   rewrite /in_kernel /Concrete.is_kernel_tag => /eqP -> LOOKUP _.
-  rewrite /in_user -(build_cmvec_ctpc BUILD) in INUSER.
+  rewrite /in_user /Concrete.pct /= -(build_cmvec_ctpc BUILD) in INUSER.
   case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _ _]].
   case: DECi ovec DECo => [[op [E DEC _ _ _]]|[DECop E _ DECti]].
     by rewrite {}E {ivec} /decode_ovec /= decode_kernel_tag /= => ovec.
@@ -312,8 +312,8 @@ Proof.
   move => REF NOTALLOWED [kst ISUSER STEP KEXEC].
   have KER : in_kernel kst = true.
   { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
-  case: REF=> [//= ? DEC REFM REFR CACHECORRECT MVEC WFENTRYPOINTS KINV].
-  subst pc'.
+  case: REF=> [//= PC DEC REFM REFR CACHECORRECT MVEC WFENTRYPOINTS KINV].
+  rewrite /Concrete.pcv /= in PC. subst pc'.
   have ISUSER' : ~~ in_kernel cst' by case: KEXEC.
   have [cmvec Hcmvec] := step_build_cmvec STEP.
   have [cmem' Hcmem'] := mvec_in_kernel_store_mvec cmvec MVEC.
@@ -365,8 +365,8 @@ Proof.
   case: sst=> smem sregs [pc tpc] int.
   case: cst=> cmem cregs cache [pc' ctpc] epc.
   intros REF ALLOWED STEP.
-  case: REF=> [//=? DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
-  subst pc'.
+  case: REF=> [//= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
+  rewrite /Concrete.pcv /= in PC. subst pc'.
   have [sc GETCALL]: (exists sc, Symbolic.get_syscall table pc = Some sc).
   { rewrite /cache_allows_syscall in ALLOWED.
     case GETCALL: (Symbolic.get_syscall table pc) ALLOWED => [sc|//] ALLOWED.

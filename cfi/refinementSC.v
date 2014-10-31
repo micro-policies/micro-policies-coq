@@ -322,7 +322,7 @@ Proof.
     apply restricted_exec_snd in CONTRA.
     rewrite /refinement_common.in_kernel
             /= /Concrete.is_kernel_tag in CONTRA.
-    move/eqP in CONTRA. subst ctpc.
+    move/eqP in CONTRA. rewrite /Concrete.pct /= in CONTRA. subst ctpc.
     by rewrite rules.fdecode_kernel_tag in INUSER.
 Qed.
 
@@ -778,7 +778,8 @@ Proof.
   { (*attacker step - attacker not allowed in kernel mode*)
     inversion STEPA; subst.
     clear IHcxs RTRACE' RTRACE NSTEP CSTEPA MEQUIV REQUIV IN.
-    move/eqP: KERNEL INUSER => //= ->.
+    move/eqP: KERNEL INUSER.
+    rewrite /Concrete.pct /= => ->.
     by rewrite rules.fdecode_kernel_tag.
   }
 Qed.
@@ -1062,7 +1063,7 @@ Proof.
     apply @in_user_in_kernel in USER''.
     destruct cst as [cmemt cregt cachet [cpct ctpct] epct].
     destruct sst as [smemt sregt [spct tpct] intt].
-    simpl in rs_pc. subst cpct.
+    rewrite /Concrete.pcv /= in rs_pc. subst cpct.
     have [cmem' STORE] := mvec_in_kernel_store_mvec cmvec rs_mvec.
     simpl in DEC.
     have := @handler_correct_disallowed_case mt ops sp _ ki
@@ -1143,11 +1144,11 @@ Proof.
       destruct ssi as [smemi sregi [pci tpci] inti].
       destruct csi as [cmemi cregi cachei [pci' ctpci] epci].
       destruct UREFI as [PCI DEC REFM REFR CACHE MVE WF KI].
-      simpl in PCI. subst pci'.
+      rewrite /Concrete.pcv /= in PCI. subst pci'.
       destruct ssj as [smemj sregj [pcj tpcj] intj].
       destruct csj as [cmemj cregj cachej [pcj' ctpcj] epcj].
       destruct UREFJ as [PCJ DEC' REFM' REFR' C3 C5 C6 C7].
-      simpl in PCJ. subst pcj'.
+      rewrite /Concrete.pcv /= in PCJ. subst pcj'.
       unfold Conc.csucc.
       rewrite NKERNEL /=.
       unfold Sym.ssucc in H2.
@@ -1263,7 +1264,7 @@ Proof.
                csj as [cmem' creg' cache' [pc2' ctpc'] epc'],
                REF as [PC DEC REFM REFR CACHE MVEC WF KI],
                REF' as [PC' DEC' REFM' REFR' C3 C5 C6 C7].
-      simpl. simpl in PC, PC'. subst pc2 pc2'.
+      simpl. rewrite /Concrete.pcv /= in PC PC'. subst pc2 pc2'.
       unfold Sym.ssucc in H1.
       simpl in H1.
       destruct (get smem pc) eqn:GET.
@@ -1285,6 +1286,7 @@ Proof.
             * move/(proj2 REFM): SGET' => [/= ctg' DECctg' SGET'].
               by rewrite SGET' DECctg'.
             * rewrite SGET' in H1.
+              rewrite /Symbolic.pcv /=.
               destruct (get cmem pc') as [[cv' ctg']|] eqn:GET'.
               { simpl.
                 case DEC'': (rules.fdecode _ ctg') => [[ut| |ut]|] //=.
@@ -1322,6 +1324,7 @@ Proof.
             * move/(proj2 REFM): SGET' => [/= ctg' DECctg' SGET'].
               by rewrite SGET' DECctg'.
             * rewrite SGET' in H1.
+              rewrite /Symbolic.pcv /=.
               destruct (get cmem pc') as [[cv' ctg']|] eqn:GET'.
               { simpl.
                 case DEC'': (rules.fdecode _ ctg') => [[ut| |ut]|] //=.
@@ -1354,7 +1357,8 @@ Proof.
           case: GET=> ctg /= DEC'' GET.
           by rewrite /= GET DEC''.
       }
-      { simpl. destruct (get cmem pc) as [[v ctg]|] eqn:GET'; trivial. simpl.
+      { rewrite /Symbolic.pcv /=.
+        destruct (get cmem pc) as [[v ctg]|] eqn:GET'; trivial. simpl.
         case DECTG: (rules.fdecode _ _)=> [[t | | ]| ] //=.
         by rewrite (proj1 REFM _ _ _ _ DECTG GET') in GET. }
     + destruct CONTRA' as [? [? [? [? KEXEC]]]].

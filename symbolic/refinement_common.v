@@ -55,13 +55,11 @@ Definition refine_registers (areg : Symbolic.registers mt _)
        PartMaps.get creg w = Some x@ctg).
 
 Definition in_kernel (st : Concrete.state mt) :=
-  let pct := common.tag (Concrete.pc st) in
-  Concrete.is_kernel_tag pct.
+  Concrete.is_kernel_tag (Concrete.pct st).
 Hint Unfold in_kernel.
 
 Definition in_user st :=
-  let pct := common.tag (Concrete.pc st) in
-  oapp (fun x => is_user x) false (decode Symbolic.P (Concrete.mem st) pct).
+  oapp (fun x => is_user x) false (decode Symbolic.P (Concrete.mem st) (Concrete.pct st)).
 Hint Unfold in_user.
 
 Definition cache_correct cache cmem :=
@@ -249,9 +247,9 @@ Proof.
 Qed.
 
 Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Prop := RefineState {
-  rs_pc : common.val (Symbolic.pc sst) = common.val (Concrete.pc cst);
-  rs_pct : decode Symbolic.P (Concrete.mem cst) (common.tag (Concrete.pc cst)) =
-           Some (USER (common.tag (Symbolic.pc sst)));
+  rs_pc : Symbolic.pcv sst = Concrete.pcv cst;
+  rs_pct : decode Symbolic.P (Concrete.mem cst) (Concrete.pct cst) =
+           Some (USER (Symbolic.pct sst));
   rs_refm : refine_memory (Symbolic.mem sst) (Concrete.mem cst);
   rs_refr : refine_registers (Symbolic.regs sst) (Concrete.regs cst) (Concrete.mem cst);
   rs_cache : cache_correct (Concrete.cache cst) (Concrete.mem cst);
@@ -578,7 +576,7 @@ Lemma valid_initial_user_instr_tags cst cst' v ti :
   in_user cst ->
   in_user cst' ->
   Concrete.step _ masks cst cst' ->
-  PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) = Some v@ti ->
+  PartMaps.get (Concrete.mem cst) (Concrete.pcv cst) = Some v@ti ->
   oapp (fun x => is_user x) false (decode Symbolic.M (Concrete.mem cst) ti).
 Proof.
   admit.
@@ -616,8 +614,8 @@ Lemma valid_pcs st st' :
   cache_correct (Concrete.cache st) (Concrete.mem st) ->
   in_user st ->
   (exists t,
-     decode Symbolic.P (Concrete.mem st') (common.tag (Concrete.pc st')) = Some (USER t)) \/
-  common.tag (Concrete.pc st') = Concrete.TKernel.
+     decode Symbolic.P (Concrete.mem st') (Concrete.pct st') = Some (USER t)) \/
+  Concrete.pct st' = Concrete.TKernel.
 Proof.
   admit.
 Qed.
@@ -808,8 +806,7 @@ definition, we assume that system calls are only allowed to begin with
 Nop, which is consistent with how we've defined our symbolic handler
 in rules.v. *)
 Definition cache_allows_syscall (cst : Concrete.state mt) : bool :=
-  let pc := common.val (Concrete.pc cst) in
-  match Symbolic.get_syscall table pc with
+  match Symbolic.get_syscall table (Concrete.pcv cst) with
   | Some _ =>
     match build_cmvec cst with
     | Some cmvec => Concrete.cache_lookup (Concrete.cache cst) masks cmvec
