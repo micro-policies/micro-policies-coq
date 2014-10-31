@@ -248,19 +248,18 @@ Proof.
   rewrite GET. case=> it' H1 [? ?]. subst v' it'. congruence.
 Qed.
 
-Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Prop :=
-| rs_intro :
-    forall (PC : common.val (Symbolic.pc sst) = common.val (Concrete.pc cst))
-           (DEC : decode Symbolic.P (Concrete.mem cst) (common.tag (Concrete.pc cst)) =
-                  Some (USER (common.tag (Symbolic.pc sst))))
-           (REFM : refine_memory (Symbolic.mem sst) (Concrete.mem cst))
-           (REFR : refine_registers (Symbolic.regs sst) (Concrete.regs cst) (Concrete.mem cst))
-           (CACHE : cache_correct (Concrete.cache cst) (Concrete.mem cst))
-           (MVEC : mvec_in_kernel (Concrete.mem cst))
-           (WFENTRYPOINTS : wf_entry_points (Concrete.mem cst))
-           (KINV : ki (Concrete.mem cst) (Concrete.regs cst)
-                      (Concrete.cache cst) (Symbolic.internal sst)),
-      refine_state sst cst.
+Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Prop := RefineState {
+  rs_pc : common.val (Symbolic.pc sst) = common.val (Concrete.pc cst);
+  rs_pct : decode Symbolic.P (Concrete.mem cst) (common.tag (Concrete.pc cst)) =
+           Some (USER (common.tag (Symbolic.pc sst)));
+  rs_refm : refine_memory (Symbolic.mem sst) (Concrete.mem cst);
+  rs_refr : refine_registers (Symbolic.regs sst) (Concrete.regs cst) (Concrete.mem cst);
+  rs_cache : cache_correct (Concrete.cache cst) (Concrete.mem cst);
+  rs_mvec : mvec_in_kernel (Concrete.mem cst);
+  rs_entry_points : wf_entry_points (Concrete.mem cst);
+  rs_kinv : ki (Concrete.mem cst) (Concrete.regs cst)
+               (Concrete.cache cst) (Symbolic.internal sst)
+}.
 
 Lemma refine_state_in_user sst cst :
   refine_state sst cst ->

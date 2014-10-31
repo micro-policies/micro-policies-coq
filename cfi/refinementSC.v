@@ -1062,16 +1062,16 @@ Proof.
     apply @in_user_in_kernel in USER''.
     destruct cst as [cmemt cregt cachet [cpct ctpct] epct].
     destruct sst as [smemt sregt [spct tpct] intt].
-    simpl in PC. subst cpct.
-    have [cmem' STORE] := mvec_in_kernel_store_mvec cmvec MVEC.
+    simpl in rs_pc. subst cpct.
+    have [cmem' STORE] := mvec_in_kernel_store_mvec cmvec rs_mvec.
     simpl in DEC.
     have := @handler_correct_disallowed_case mt ops sp _ ki
                                              stable kcc _
                                              cmem' cmvec _
                                              _ spct@ctpct _ cst''
-                                             KINV _ STORE USER''.
+                                             rs_kinv _ STORE USER''.
     rewrite DEC UHANDLER => /(_ erefl).
-    have LOOKUP := transfer_none_lookup_none CACHE DEC UHANDLER.
+    have LOOKUP := transfer_none_lookup_none rs_cache DEC UHANDLER.
     have /= <- := initial_handler_state CMVEC STORE LOOKUP STEP.
     by move=> /(_ EXEC).
   - (*refinement contradictory case*)
@@ -1104,15 +1104,15 @@ Proof.
     case DEC: (rules.decode_ivec _ (Concrete.mem cst) cmvec) => [ivec|].
       by rewrite (refine_ivec_inv REF CMVEC DEC) in UMVEC.
     destruct REF. subst.
-    have [cmem' STORE] := mvec_in_kernel_store_mvec cmvec MVEC.
+    have [cmem' STORE] := mvec_in_kernel_store_mvec cmvec rs_mvec.
     have := @handler_correct_disallowed_case mt ops sp _ ki
                                              stable kcc _
                                              cmem' cmvec _ _ (Concrete.pc cst) _ cst''
-                                             KINV _ STORE (in_user_in_kernel USER'').
+                                             rs_kinv _ STORE (in_user_in_kernel USER'').
     rewrite DEC => /(_ erefl).
     case LOOKUP: (Concrete.cache_lookup (Concrete.cache cst) masks cmvec) => [crvec|].
       rewrite /in_user /= in USER.
-      have := CACHE _ _ LOOKUP.
+      have := rs_cache _ _ LOOKUP.
       rewrite (build_cmvec_ctpc CMVEC) /= => /(_ USER) [ivec [ovec [DEC' _ _ _]]].
       by rewrite DEC' in DEC.
     by rewrite -(initial_handler_state CMVEC STORE LOOKUP STEP) => /(_ EXEC).
