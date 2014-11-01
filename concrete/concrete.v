@@ -158,6 +158,14 @@ Record state := mkState {
 Definition pcv (s : state) := val (pc s).
 Definition pct (s : state) := tag (pc s).
 
+Lemma state_eta (cst : state) :
+  cst = mkState (mem cst)
+                (regs cst)
+                (cache cst)
+                (pcv cst)@(pct cst)
+                (epc cst).
+Proof. by case: cst=> ? ? ? [? ?] ?. Qed.
+
 (* Need to do this masking both on lookup, and on rule add, right?
    This is optional; the software could do it *)
 Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rules :=

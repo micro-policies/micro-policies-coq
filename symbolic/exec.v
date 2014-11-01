@@ -149,8 +149,7 @@ Proof.
 Qed.
 
 Definition build_ivec st : option (Symbolic.IVec Symbolic.ttypes)  :=
-  (*let '(Symbolic.State mem reg pc@tpc int) := st in*)
-  match get (Symbolic.mem st) (common.val (Symbolic.pc st)) with
+  match get (Symbolic.mem st) (Symbolic.pcv st) with
     | Some i =>
       match decode_instr (common.val i) with
         | Some op =>

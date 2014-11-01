@@ -141,6 +141,10 @@ Record state := State {
 Definition pcv (s : state) := val (pc s).
 Definition pct (s : state) := tag (pc s).
 
+Lemma state_eta st :
+  st = State (mem st) (regs st) (pcv st)@(pct st) (internal st).
+Proof. by case: st=> ? ? [? ?] ?. Qed.
+
 (* CH: TODO: should make the entry_tags part of the state
    (for compartmentalization they need to be mutable) *)
 Record syscall := Syscall {
