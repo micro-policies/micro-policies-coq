@@ -46,20 +46,18 @@ Open Scope nat_scope.
 
 Inductive tag : Type :=
 | USER (ut : user_tag)
-| KERNEL
 | ENTRY (sct : user_tag).
 
 Definition tag_eq u v :=
   match u, v with
     | USER ut1, USER ut2 => ut1 == ut2
-    | KERNEL, KERNEL => true
     | ENTRY sct1, ENTRY sct2 => sct1 == sct2
     | _, _ => false
   end.
 
 Lemma tag_eqP : Equality.axiom tag_eq.
 Proof.
-move=> [ut1| |sct1] [ut2| |sct2] /=;
+move=> [ut1|sct1] [ut2|sct2] /=;
 try (by apply: (iffP idP));
 apply: (iffP eqP) => [|[<-]] //;
 congruence.
@@ -93,7 +91,6 @@ Definition privileged_op (op : vopcode) : bool :=
 End tag.
 
 Arguments ENTRY {user_tag} _.
-Arguments KERNEL {user_tag}.
 
 (*
 Definition rule := (MVec tag * RVec tag)%type.
@@ -167,13 +164,13 @@ Class encodable (ut : Symbolic.tag_kind -> eqType) := {
                        PartMaps.upd mem addr y@ct' = Some mem' ->
                        decode Symbolic.M mem ct' = Some (USER st') ->
                        decode tk mem' =1 decode tk mem;
-  decode_kernel_tag : forall tk m, decode tk m Concrete.TKernel = Some KERNEL
+  decode_kernel_tag : forall tk m, decode tk m Concrete.TKernel = None
 }.
 
 (* Special case where encoding doesn't depend on memory *)
 Class fencodable (ut : Symbolic.tag_kind -> eqType) := {
   fdecode : forall tk, word t -> option (tag (ut tk));
-  fdecode_kernel_tag : forall tk, fdecode tk Concrete.TKernel = Some KERNEL
+  fdecode_kernel_tag : forall tk, fdecode tk Concrete.TKernel = None
 }.
 
 Global Instance encodable_of_fencodable ut (e : fencodable ut) : encodable ut := {
@@ -234,7 +231,7 @@ Lemma ensure_all_user_inv (ks : list Symbolic.tag_kind)
                           : ensure_all_user l = Some l' ->
                             l = hmap (fun k x => Some (USER x)) l'.
 Proof.
-  elim: ks l l' => [[] [] //|k ks IH /= [[[tg| |?]|] l] [tg' l'] //=].
+  elim: ks l l' => [[] [] //|k ks IH /= [[[tg|?]|] l] [tg' l'] //=].
   case: (ensure_all_user l) (IH l l') => [l''|] {IH} IH //= [-> ?].
   by rewrite IH; congruence.
 Qed.
@@ -258,7 +255,7 @@ Definition decode_ivec (m : word_map t (atom (word t) (word t)))
       | NOP => Some (Symbolic.mkIVec SERVICE tpc ti tt)
       | _ => None
       end
-    | Some KERNEL | None => None
+    | None => None
     end
   | _ => None
   end.
@@ -336,8 +333,8 @@ Proof.
   case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts] /=.
   rewrite /decode_ivec /=.
   case: (word_to_op cop) => [op'|] //=.
-  case: (decode _ m ctpc) => [[tpc'| |?]|] //=.
-  case: (decode _ m cti) => [[ti'| |ti']|] //=; last first.
+  case: (decode _ m ctpc) => [[tpc'|?]|] //=.
+  case: (decode _ m cti) => [[ti'|ti']|] //=; last first.
     case: op' => //= [] [? ? ?]. subst op tpc' ti'. right.
     constructor; eauto.
   case DEC: (decode_fields _ m _) => [ts'|] //=.

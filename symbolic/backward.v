@@ -121,9 +121,9 @@ Ltac relate_register_upd :=
     DEC' : decode _ ?cmem ?t' = Some (USER _),
     REFR : refine_registers _ ?reg ?cmem,
     KINV : kernel_invariant_statement ?ki ?cmem _ _ _ |- _ =>
-    (destruct (refine_registers_upd REFR GET DEC UPD DEC') as (? & ? & ?);
-     pose proof (kernel_invariant_upd_reg KINV GET DEC UPD DEC'))
-    || let op := current_instr_opcode in fail 3 op reg
+    first [ destruct (refine_registers_upd REFR GET DEC UPD DEC') as (? & ? & ?);
+            pose proof (kernel_invariant_upd_reg KINV GET DEC UPD DEC')
+          | failwith "relate_register_upd" ]
   end.
 
 Ltac relate_memory_upd :=
@@ -137,10 +137,10 @@ Ltac relate_memory_upd :=
     REFM : refine_memory _ ?cmem,
     WFENTRYPOINTS : wf_entry_points _ ?cmem,
     MVEC : mvec_in_kernel ?cmem |- _ =>
-    (destruct (refine_memory_upd CACHE REFR REFM GET DEC UPD DEC') as [? [? ? ?]];
-     pose proof (wf_entry_points_user_upd WFENTRYPOINTS GET DEC UPD DEC');
-     pose proof (mvec_in_kernel_user_upd MVEC GET DEC UPD DEC'))
-    || let op := current_instr_opcode in fail 3 op
+    first [ destruct (refine_memory_upd CACHE REFR REFM GET DEC UPD DEC') as [? [? ? ?]];
+            pose proof (wf_entry_points_user_upd WFENTRYPOINTS GET DEC UPD DEC');
+            pose proof (mvec_in_kernel_user_upd MVEC GET DEC UPD DEC')
+          | failwith "relate_memory_upd" ]
   end.
 
 Ltac update_decodings :=
@@ -340,18 +340,18 @@ Proof.
   econstructor; eauto.
   - by apply/HPCT.
   - split.
-    + move=> w x ctg atg {DECivec DEC} DEC GET.
-      move: (HMEM w x ctg atg) => [_ /(_ (conj GET DEC)) {GET DEC} [GET DEC]].
+    + move=> w x ctg atg {DECivec DEC} /HPCT DEC GET.
+      move: (HMEM w x ctg _ DEC) GET => H /H {H} ?.
       by eapply (proj1 REFM); eauto.
     + move=> w x atg /(proj2 REFM) {DEC} [ctg DEC GET].
-      move: (HMEM w x ctg atg) => [/(_ (conj GET DEC)) {GET DEC} [GET DEC] _].
+      move: DEC (HMEM w x ctg _ DEC) GET => /HPCT DEC H /H {H} ? /=.
       by eauto.
   - split.
-    + move=> r x ctg atg {DECivec DEC} DEC GET.
-      move: (HREGS r x ctg atg) => [_ /(_ (conj GET DEC)) {GET DEC} [GET DEC]].
+    + move=> r x ctg atg {DECivec DEC} /HPCT DEC GET.
+      move: (HREGS r x ctg _ DEC) GET => H /H {H} ?.
       by eapply (proj1 REFR); eauto.
     + move=> r x atg /(proj2 REFR) {DEC} [ctg DEC GET].
-      move: (HREGS r x ctg atg) => [/(_ (conj GET DEC)) {GET DEC} [GET DEC] _].
+      move: DEC (HREGS r x ctg _ DEC) GET => /HPCT DEC H /H {H} ? /=.
       by eauto.
 Qed.
 

@@ -526,7 +526,7 @@ Proof.
   case: E1 => op'' [? [?] -> ->]. subst op' op'' => ->.
   move: E4 E2 => /= /negbTE ->.
   case: ovec E3 => trpc tr E3.
-  case: (decode _ cmem _) => [[trpc'| |?]|] //= DEC.
+  case: (decode _ cmem _) => [[trpc'|?]|] //= DEC.
   by eauto 11 using And4.
 Qed.
 
@@ -779,24 +779,22 @@ Hint Unfold Symbolic.next_state_reg_and_pc.
 Hint Unfold Symbolic.next_state_pc.
 Hint Unfold Symbolic.next_state_reg.
 
-Definition user_pc_tag_unchanged cmem cmem' :=
-  forall ctg atg,
-    decode Symbolic.P cmem ctg = Some (USER atg) <->
-    decode Symbolic.P cmem' ctg = Some (USER atg).
+Definition user_tags_unchanged cmem cmem' :=
+  forall ctg tk stg,
+    decode tk cmem ctg = Some stg <->
+    decode tk cmem' ctg = Some stg.
 
 Definition user_mem_unchanged (cmem cmem' : Concrete.memory mt) :=
   forall addr (w : word mt) ct t,
-    (PartMaps.get cmem addr = Some w@ct /\
-     decode Symbolic.M cmem ct = Some (USER t)) <->
-    (PartMaps.get cmem' addr = Some w@ct /\
-     decode Symbolic.M cmem' ct = Some (USER t)).
+    decode Symbolic.M cmem ct = Some t ->
+    (PartMaps.get cmem addr = Some w@ct <->
+     PartMaps.get cmem' addr = Some w@ct).
 
-Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) cmem cmem' :=
+Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) cmem :=
   forall r (w : word mt) ct t,
-    (PartMaps.get cregs r = Some w@ct /\
-     decode Symbolic.R cmem ct = Some (USER t) <->
-     PartMaps.get cregs' r = Some w@ct /\
-     decode Symbolic.R cmem' ct = Some (USER t)).
+    decode Symbolic.R cmem ct = Some t ->
+    (PartMaps.get cregs r = Some w@ct <->
+     PartMaps.get cregs' r = Some w@ct).
 
 Import DoNotation.
 
@@ -852,9 +850,9 @@ Class kernel_code_correctness : Prop := {
       mvec_in_kernel (Concrete.mem st') /\
       (* and we've arrived at the return address that was in epc with
          unchanged user memory and registers... *)
-      user_pc_tag_unchanged mem (Concrete.mem st') /\
+      user_tags_unchanged mem (Concrete.mem st') /\
       user_mem_unchanged mem (Concrete.mem st') /\
-      user_regs_unchanged reg (Concrete.regs st') mem (Concrete.mem st') /\
+      user_regs_unchanged reg (Concrete.regs st') mem /\
       Concrete.pc st' = old_pc /\
       (* and the system call entry points are all tagged ENTRY (BCP:
          Why do we care, and if we do then why isn't this part of the

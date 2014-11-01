@@ -205,4 +205,22 @@ Definition build_ivec st : option (Symbolic.IVec Symbolic.ttypes)  :=
       end
   end.
 
+Lemma step_build_ivec st st' :
+  step table st st' ->
+  exists ivec ovec,
+    build_ivec st = Some ivec /\
+    transfer ivec = Some ovec.
+Proof.
+  move/stepP.
+  rewrite {1}(state_eta st) /= /build_ivec.
+  case: (get _ _) => [[i ti]|] //=; last first.
+    case: (get_syscall _ _) => [sc|] //=.
+    rewrite /run_syscall /=.
+    case TRANS: (transfer _) => [ovec|] //= _.
+    by eauto.
+  case: (decode_instr i) => [instr|] //=.
+  rewrite /next_state_pc /next_state_reg /next_state_reg_and_pc /next_state.
+  by destruct instr; move=> STEP; match_inv; first [ eauto | discriminate ].
+Qed.
+
 End WithClasses.

@@ -115,7 +115,7 @@ Proof.
       rewrite PartMaps.map_correctness filter_correctness.
       case CGET: (get cmem' addr) => [[cv ctg]|] //=.
       rewrite /is_user /=.
-      case DEC: (rules.fdecode _ _) => [[t'| |]|] //=.
+      case DEC: (rules.fdecode _ _) => [[t'|]|] //=.
       rewrite /coerce /= DEC. move=> [? ?]. subst cv t'.
       eauto. } }
   { (*equiv proof*)
@@ -152,7 +152,7 @@ Proof.
           as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst; simpl.
         { inv EQ1.
           by rewrite (proj1 REF _ _ _ _ DEC1 CGET) in SGET. }
-        { case DEC: (rules.fdecode _ _) => [[ut| |]|] //=.
+        { case DEC: (rules.fdecode _ _) => [[ut|]|] //=.
           apply: NEQ => /=.
           by rewrite DEC; eauto. }
      + destruct (get cmem' addr) eqn:CGET'.
@@ -188,7 +188,7 @@ Proof.
       rewrite PartMaps.map_filter_correctness.
       case CGET': (get creg' n)=> [[v' t']|] //=.
       rewrite /creg_to_sreg /is_user /= /coerce /=.
-      case CTG: (rules.fdecode _ _) => [[ut| |?]|] //= [? ?]. subst v' ut.
+      case CTG: (rules.fdecode _ _) => [[ut|?]|] //= [? ?]. subst v' ut.
       eauto. }
   }
   { (*equiv proof*)
@@ -216,11 +216,11 @@ Proof.
         as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
        + inv EQ1.
          rewrite /creg_to_sreg /is_user /coerce /=.
-         case DEC: (rules.fdecode _ _) => [[?| |?]|] //=.
+         case DEC: (rules.fdecode _ _) => [[?|?]|] //=.
          by rewrite (proj1 REF _ _ _ _ DEC1 E1) in SGET.
        + inv EQ.
          rewrite /creg_to_sreg /is_user /coerce /=.
-         case DEC: (rules.fdecode _ t2) => [[?| |?]|] //=.
+         case DEC: (rules.fdecode _ t2) => [[?|?]|] //=.
          apply: NEQ.
          by rewrite DEC; eauto.
   }
@@ -526,14 +526,13 @@ Lemma get_reg_no_user sreg reg m r v ctg t :
   get sreg r = None ->
   PartMaps.get reg r = Some v@ctg ->
   rules.fdecode Symbolic.R ctg = Some t ->
-  t = rules.KERNEL \/ (exists ut, t = rules.ENTRY ut).
+  exists ut, t = rules.ENTRY ut.
 Proof.
   intros REF SGET GET DEC.
   destruct t.
   - move: (proj1 REF r v ctg ut DEC GET).
     by rewrite SGET.
-  - by auto.
-  - right; eexists; reflexivity.
+  - eexists; reflexivity.
 Qed.
 
 Lemma get_mem_no_user smem mem addr v ctg t :
@@ -541,14 +540,13 @@ Lemma get_mem_no_user smem mem addr v ctg t :
   get smem addr = None ->
   get mem addr = Some v@ctg ->
   rules.fdecode Symbolic.M ctg = Some t ->
-  t = rules.KERNEL \/ (exists ut, t = rules.ENTRY ut).
+  exists ut, t = rules.ENTRY ut.
 Proof.
   intros REF SGET GET DEC.
   destruct t.
   - move: (proj1 REF addr v ctg ut DEC GET).
     by rewrite SGET.
-  - by auto.
-  - right; eexists; reflexivity.
+  - eexists; reflexivity.
 Qed.
 
 Lemma in_user_ctpc cst :
@@ -557,7 +555,7 @@ Lemma in_user_ctpc cst :
     rules.fdecode Symbolic.P (common.tag (Concrete.pc cst)) = Some (rules.USER ut).
 Proof.
   rewrite /in_user /=.
-  by case: (rules.fdecode _ _) => [[?| |?]|] //=; eauto.
+  by case: (rules.fdecode _ _) => [[?|?]|] //=; eauto.
 Qed.
 
 (*Case 1: umvec = Some & cmvec = Some*)
@@ -1226,7 +1224,7 @@ Proof.
           assert (CONTRA := fun CACHE GET' =>
                               valid_initial_user_instr_tags (v := v) (ti := ctg) CACHE USERI USERJ H3 GET').
           move: (CONTRA CACHE GET') => {CONTRA} /=.
-          case: (rules.fdecode _ ctg) => [[t | | ]|] //= _.
+          case: (rules.fdecode _ ctg) => [[t | ]|] //= _.
           by rewrite andbF. }
     + destruct KREFJ as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
@@ -1289,7 +1287,7 @@ Proof.
               rewrite /Symbolic.pcv /=.
               destruct (get cmem pc') as [[cv' ctg']|] eqn:GET'.
               { simpl.
-                case DEC'': (rules.fdecode _ ctg') => [[ut| |ut]|] //=.
+                case DEC'': (rules.fdecode _ ctg') => [[ut|ut]|] //=.
                 - by rewrite (proj1 REFM _ _ _ _ DEC'' GET') in SGET'.
                 - unfold wf_entry_points in WF.
                   destruct (Symbolic.get_syscall stable pc') eqn:GETCALL.
@@ -1327,7 +1325,7 @@ Proof.
               rewrite /Symbolic.pcv /=.
               destruct (get cmem pc') as [[cv' ctg']|] eqn:GET'.
               { simpl.
-                case DEC'': (rules.fdecode _ ctg') => [[ut| |ut]|] //=.
+                case DEC'': (rules.fdecode _ ctg') => [[ut|ut]|] //=.
                 - by rewrite (proj1 REFM _ _ _ _ DEC'' GET') in SGET'.
                 - unfold wf_entry_points in WF.
                   destruct (Symbolic.get_syscall stable pc') eqn:GETCALL.
@@ -1359,7 +1357,7 @@ Proof.
       }
       { rewrite /Symbolic.pcv /=.
         destruct (get cmem pc) as [[v ctg]|] eqn:GET'; trivial. simpl.
-        case DECTG: (rules.fdecode _ _)=> [[t | | ]| ] //=.
+        case DECTG: (rules.fdecode _ _)=> [[t| ]| ] //=.
         by rewrite (proj1 REFM _ _ _ _ DECTG GET') in GET. }
     + destruct CONTRA' as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.

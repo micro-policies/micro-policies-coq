@@ -148,9 +148,7 @@ Qed.
 Instance encodable_tag : @encodable t Sym.stags := {|
   decode k mem w :=
     let: [ut; w']%wu := Word.unpack [29; 1] w in
-    if w' == Word.zero then
-      if ut == Word.zero then Some KERNEL
-      else None
+    if w' == Word.zero then None
     else if w' == Word.one then
       do! ut <- decode_sealing_tag ut;
       Some (@USER Sym.stag_eqType ut)

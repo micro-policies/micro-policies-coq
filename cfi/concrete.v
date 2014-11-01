@@ -123,10 +123,10 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
             | None => false
             | _ => pc_s' == pc_s .+1
           end
+       (* this says that if cst,cst' is in user mode then it's
+          not sensible to point to kernel memory*)
         | Some (USER DATA)
-        | Some KERNEL             (* this says that if cst,cst' is in user mode then it's
-                                  not sensible to point to kernel memory*)
-        | Some (ENTRY _) => false
+        | Some (ENTRY _)
         | None => false
       end
     | None => false

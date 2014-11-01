@@ -187,9 +187,7 @@ Qed.
 Instance enc: encodable t Sym.ms_tags := {|
   decode k m w :=
     let: [ut; w']%wu := Word.unpack [29; 1] w in
-    if w' == Word.zero then
-      if ut == Word.zero then Some KERNEL
-      else None
+    if w' == Word.zero then None
     else if w' == Word.one then
       do! ut <- decode_mtag ut;
       Some (@USER Sym.tag_eqType ut)
