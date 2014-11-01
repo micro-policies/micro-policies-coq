@@ -236,10 +236,18 @@ Proof.
   congruence.
 Qed.
 
+Ltac find_and_rewrite :=
+  repeat match goal with
+  | H : ?x = _ |- context[?x] =>
+    rewrite H /=
+  end.
+
 Ltac solve_concrete_step :=
   match goal with
   | LOOKUP : Concrete.cache_lookup _ _ _ = _ |- _ =>
-    econstructor (solve [eauto; try solve [user_data_unchanged];
+    econstructor (solve [eauto;
+                         try solve [ eapply Concrete.state_eta
+                                   | user_data_unchanged ];
                          repeat autounfold; simpl;
                          simpl in LOOKUP; rewrite LOOKUP;
                          match goal with
@@ -248,63 +256,18 @@ Ltac solve_concrete_step :=
                          | |- _ => idtac
                          end;
                          simpl in *;
-                         repeat match goal with
-                         | H : ?X = _ |- context[?X] =>
-                           rewrite H; simpl
-                         end; match_inv; eauto])
+                         find_and_rewrite; match_inv; eauto])
   end.
 
-(*
-Lemma symbolic_handler_concrete_cache cache cmem umvec urvec rvec :
-  cache_correct cache cmem ->
-  Symbolic.transfer umvec = Some urvec ->
-  Concrete.cache_lookup cache masks (encode_ivec _ (ivec_of_uivec umvec)) = Some rvec ->
-  rvec = encode_ovec _ (ovec_of_uovec urvec).
-Proof.
-  intros CACHE HANDLER LOOKUP.
-  assert (INUSER : @word_lift _ _ (e Symbolic.P) (fun t => is_user t)
-                             (Concrete.ctpc (encode_ivec _ (ivec_of_uivec umvec))) = true).
-  { destruct umvec as [op tpc ti ts].
-    simpl.
-    unfold word_lift.
-    rewrite decodeK.
-    by destruct op. }
-  move: (CACHE _ _ INUSER LOOKUP) => [ivec' [ovec' [E1 [E2 [E3 E4]]]]]. subst.
-  apply encode_ivec_inj in E1.
-  apply ivec_of_uivec_inj in E1. subst.
-  congruence.
-Qed.
-*)
-
-(*
-Lemma symbolic_handler_concrete_handler mvec rvec :
-  Symbolic.transfer mvec = Some rvec ->
-  ~~ privileged_op (Symbolic.op mvec) ->
-  handler _ [eta Symbolic.transfer] (encode_ivec e (ivec_of_uivec mvec))
-  = Some (encode_ovec _ (ovec_of_uovec rvec)).
-Proof.
-  move: mvec rvec => [op tpc ti ts] rvec H PRIV.
-  by rewrite /handler decode_ivecK (lock ivec_of_uivec) /=
-             -(lock ivec_of_uivec) ivec_of_uivec_privileged
-             (negbTE PRIV) ivec_of_uivecK /= H /=.
-Qed.
-*)
-
-
-Ltac solve_refine_state := idtac. (*
-  unfold in_user in *; simpl in *;
-  repeat rewrite decodeK; simpl in *;
-  try match goal with
-  | USERREGS : user_regs_unchanged ?cregs _,
-    H : PartMaps.get ?cregs ?r = _ |- _ =>
-    simpl in USERREGS; rewrite -> (USERREGS r) in H
-  end;
-  econstructor;
-  eauto using user_mem_unchanged_refine_memory,
-              refine_registers_upd', user_regs_unchanged_refine_registers,
-              mvec_in_kernel_user_upd, wf_entry_points_user_upd,
-              no_syscall_no_entry_point.
-*)
+Ltac solve_refine_state :=
+  match goal with
+  | REF : refine_state _ _ _ _ |- _ =>
+    destruct REF; constructor; simpl in *;
+    eauto using user_mem_unchanged_refine_memory,
+                refine_registers_upd', user_regs_unchanged_refine_registers,
+                mvec_in_kernel_user_upd, wf_entry_points_user_upd,
+                no_syscall_no_entry_point
+  end.
 
 Ltac analyze_syscall :=
   match goal with
@@ -320,102 +283,219 @@ Ltac analyze_syscall :=
     [apply user_kernel_user_step_weaken; eassumption|solve_refine_state]
   end.
 
-Ltac analyze_cache_miss := idtac. (*
+Ltac analyze_cache_miss :=
   match goal with
   | PC : PartMaps.get ?cmem ?pc = Some ?i@_,
     INST : decode_instr ?i = Some _,
     MVEC : mvec_in_kernel ?cmem,
     KINV : kernel_invariant_statement _ ?cmem _ ?cache _,
     CACHE : cache_correct ?cache,
-    LOOKUP : Concrete.cache_lookup ?cache _ (encode_ivec _ (ivec_of_uivec ?mvec)) = None,
+    LOOKUP : Concrete.cache_lookup ?cache _ _ = None,
     HANDLER : Symbolic.transfer ?mvec = Some _ |- _ =>
-    let cmvec := constr:(encode_ivec _ (ivec_of_uivec mvec)) in
     let STORE := fresh "STORE" in
-    destruct (mvec_in_kernel_store_mvec cmvec MVEC) as [? STORE];
+    destruct (mvec_in_kernel_store_mvec _ MVEC) as [? STORE];
     pose proof (store_mvec_mvec_in_kernel _ _ STORE);
     pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE);
-    let HANDLER' := constr:(@symbolic_handler_concrete_handler mvec _ HANDLER erefl) in
-    destruct (handler_correct_allowed_case _ cmvec _ pc@(Concrete.ctpc cmvec) _ KINV HANDLER' STORE CACHE)
+    destruct (handler_correct_allowed_case _ _ _ pc@(Concrete.ctpc _) _ KINV _ STORE CACHE)
       as ([? ? ? [? ?] ?] &
           KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
     simpl in PC'; inv PC';
-    match_data;
-    unfold encode_ivec, encode_ovec, ovec_of_uovec in *; simpl in *
+    match_data
   end.
-*)
 
-Ltac find_and_rewrite :=
+Lemma forward_simulation_miss sst cst ivec ovec cmvec :
+  refine_state ki table sst cst ->
+  build_ivec table sst = Some ivec ->
+  build_cmvec cst = Some cmvec ->
+  Symbolic.transfer ivec = Some ovec ->
+  Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None ->
+  exists cst' crvec,
+    [/\ exec (Concrete.step _ masks) cst cst',
+        refine_state ki table sst cst',
+        decode_ovec e _ (Concrete.mem cst') crvec = Some ovec &
+        Concrete.cache_lookup (Concrete.cache cst') masks cmvec = Some crvec ].
+Proof.
+  move=> REF IVEC CMVEC TRANS LOOKUP.
+  have [cmem Hcmem] := mvec_in_kernel_store_mvec cmvec (rs_mvec REF).
+  have FAULT := lookup_none_step CMVEC LOOKUP Hcmem.
+  have [cmvec'] := refine_ivec REF IVEC.
+  rewrite CMVEC. move => [<-] {cmvec'} DEC.
+  have := handler_correct_allowed_case (Concrete.pc cst) (rs_kinv REF) DEC TRANS Hcmem
+                                       (rs_cache REF) => /(_ _ _ kcc).
+  case=> cst' [crvec [EXEC [CACHE [LOOKUP' [DEC' [MVEC [USERPCTAG [USERMEM [USERREGS [PC [ENTRYPOINTS KINV]]]]]]]]]]].
+  exists cst', crvec.
+  split=> //.
+    eapply re_step; trivial; try eassumption.
+    eapply exec_until_weaken; eauto.
+  constructor=> //.
+  - by rewrite /Concrete.pcv PC (rs_pc REF).
+  - apply USERPCTAG.
+    rewrite /Concrete.pct PC.
+    by apply (rs_pct REF).
+  - by eauto using user_mem_unchanged_refine_memory, rs_refm.
+  - by eauto using user_regs_unchanged_refine_registers, rs_refr.
+Qed.
+
+Lemma transfer_lookup sst cst ivec ovec cmvec crvec :
+  refine_state ki table sst cst ->
+  build_ivec table sst = Some ivec ->
+  build_cmvec cst = Some cmvec ->
+  Symbolic.transfer ivec = Some ovec ->
+  Concrete.cache_lookup (Concrete.cache cst) masks cmvec = Some crvec ->
+  decode_ovec e _ (Concrete.mem cst) crvec = Some ovec.
+Proof.
+  move=> REF IVEC CMVEC TRANS LOOKUP.
+  have [cmvec'] := refine_ivec REF IVEC.
+  rewrite CMVEC. move=> [<-] {cmvec'} DEC.
+  have [ |ivec' [ovec' [DEC' DECo TRANS' _]]] := rs_cache REF LOOKUP _.
+    by case/decode_ivec_inv: DEC => [[op [? ? ->]]|[? ? ->]].
+  move: DEC' ovec' DECo TRANS'.
+  rewrite DEC. move=> [<-]. rewrite TRANS.
+  by move=> ? -> [<-].
+Qed.
+
+Lemma forward_simulation_hit sst sst' cst ivec ovec cmvec crvec :
+  refine_state ki table sst cst ->
+  build_ivec table sst = Some ivec ->
+  build_cmvec cst = Some cmvec ->
+  Symbolic.transfer ivec = Some ovec ->
+  Concrete.cache_lookup (Concrete.cache cst) masks cmvec = Some crvec ->
+  Symbolic.step table sst sst' ->
+  exists2 cst',
+    exec (Concrete.step _ masks) cst cst' &
+    refine_state ki table sst' cst'.
+Proof.
+  move=> REF IVEC CMVEC TRANS LOOKUP /stepP STEP.
+  case GETi: (PartMaps.get (Symbolic.mem sst) (Symbolic.pcv sst)) => [[i ti]|]; last first.
+    move: STEP ivec ovec TRANS IVEC CMVEC.
+    rewrite {1}(Symbolic.state_eta sst) /build_ivec /= GETi.
+    case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.
+    move=> RUN ivec ovec TRANS [E]. subst ivec.
+    have [i [cti [GETi' DECti /is_nopP ISNOP]]] := wf_entry_points_if (rs_entry_points REF) GETSC.
+    rewrite (rs_pc REF) in GETi'.
+    rewrite /build_cmvec GETi' /= ISNOP /= (Symbolic.state_eta sst'). move => [E]. subst cmvec.
+    rewrite (Symbolic.state_eta sst') in RUN.
+    have := syscalls_correct_allowed_case (rs_kinv REF) (rs_refm REF)
+                                          (rs_refr REF) (rs_cache REF)
+                                          (rs_mvec REF) GETSC RUN (rs_pct REF)
+            => /(_ _ kcc (Concrete.epc cst)) /=.
+    rewrite /cache_allows_syscall /= GETSC
+            /build_cmvec (rs_pc REF) GETi' ISNOP LOOKUP.
+    case/(_ erefl) => cmem [creg [cache [ctpc [epc]]]].
+    case=> [[kst INUSER STEP EXEC] [DEC [REFM [REFR [CACHE [MVEC [ENTRYPOINTS KINV]]]]]]].
+    eexists.
+      rewrite (Concrete.state_eta cst).
+      eapply re_step; trivial; try eassumption.
+      by eapply exec_until_weaken; eauto.
+    by constructor=> //.
+  suff : match @step masks _ ops cst with
+         | Some cst' => @refine_state _ ops _ _ ki table sst' cst'
+         | None => False
+         end.
+    case STEP': (step _ _) => [cst'|] //= REF'.
+    move/concrete.exec.stepP in STEP'.
+    by eauto.
+  move: STEP.
+  rewrite /stepf /step (Concrete.state_eta cst) (Symbolic.state_eta sst) /=.
+  move: ivec ovec TRANS IVEC CMVEC (transfer_lookup REF IVEC CMVEC TRANS LOOKUP).
+  rewrite /build_ivec /build_cmvec GETi.
+  have [cti DECti GETi'] := proj2 (rs_refm REF) _ _ _ GETi.
+  rewrite (rs_pc REF) in GETi'.
+  rewrite GETi' /=.
+  case: (decode_instr i) => [instr|] //=.
+  repeat autounfold; simpl.
+  rewrite /decode_ovec.
+  destruct instr; move=> ivec ovec TRANS IVEC;
+  match_inv;
   repeat match goal with
-  | H : ?x = _ |- context[?x] =>
-    rewrite H /=
+  | x : atom _ _ |- _ => destruct x
+  end;
+  match_data; find_and_rewrite; rewrite ?(rs_pct REF);
+  move=> ? // DECo STEP; match_inv; match_data; rewrite ?LOOKUP; find_and_rewrite;
+  try solve [rewrite (rs_pc REF); solve_refine_state].
+
+
+  move=>
+
+  match_data.
+
+Ltac concretize_ivec ivec :=
+  match goal with
+  | REF : refine_state _ _ ?sst ?cst |- _ =>
+    first [
+        let ivec := eval hnf in ivec in
+        let mvec := match ivec with
+                    | Symbolic.mkIVec ?op ?tpc ?ti ?ts =>
+                      let op := match op with
+                                | OP ?op => op
+                                end in
+                      let cti := match goal with
+                                 | _ : decode Symbolic.M _ ?cti = Some (USER ti) |- _ => cti
+                                 end in
+                      let ct1 := match ts with
+                                 | (?t1, _) =>
+                                   match goal with
+                                   | _ : decode _ _ ?ct1 = Some (USER t1) |- _ => ct1
+                                   end
+                                 | _ => constr:(@Concrete.TNone mt)
+                                 end in
+                      let ct2 := match ts with
+                                 | (_, (?t2, _)) =>
+                                   match goal with
+                                   | _ : decode _ _ ?ct2 = Some (USER t2) |- _ => ct2
+                                   end
+                                 | _ => constr:(@Concrete.TNone mt)
+                                 end in
+                      let ct3 := match ts with
+                                 | (_, (_, (?t3, _))) =>
+                                   match goal with
+                                   | _ : decode _ _ ?ct3 = Some (USER t3) |- _ => ct3
+                                   end
+                                 | _ => constr:(@Concrete.TNone mt)
+                                 end in
+                      constr:(Concrete.mkMVec (op_to_word op) (common.tag (Concrete.pc cst)) cti ct1 ct2 ct3)
+                    end in
+        assert (build_cmvec cst = Some mvec) by (rewrite /build_cmvec; find_and_rewrite; reflexivity);
+        assert (build_ivec table sst = Some ivec) by (rewrite /build_ivec; find_and_rewrite; reflexivity)
+      | failwith "concretize_ivec" ]
   end.
 
-Ltac concretize_ivec :=
+Ltac solve_hit_case REF sst cst TRANS LOOKUP :=
   match goal with
-  | TRANS : Symbolic.transfer ?ivec = Some _,
-    REF : refine_state _ _ ?sst ?cst |- _ =>
-    let ivec := eval hnf in ivec in
-    let mvec := match ivec with
-                | Symbolic.mkIVec ?op ?tpc ?ti ?ts =>
-                  let op := match op with
-                            | OP ?op => op
-                            end in
-                  let cti := match goal with
-                             | _ : decode Symbolic.M _ ?cti = Some (USER ti) |- _ => cti
-                             end in
-                  let ct1 := match ts with
-                             | (?t1, _) =>
-                               match goal with
-                               | _ : decode _ _ ?ct1 = Some (USER t1) |- _ => ct1
-                               end
-                             | _ => constr:(@Concrete.TNone mt)
-                             end in
-                  let ct2 := match ts with
-                             | (_, (?t2, _)) =>
-                               match goal with
-                               | _ : decode _ _ ?ct2 = Some (USER t2) |- _ => ct2
-                               end
-                             | _ => constr:(@Concrete.TNone mt)
-                             end in
-                  let ct3 := match ts with
-                             | (_, (_, (?t3, _))) =>
-                               match goal with
-                               | _ : decode _ _ ?ct3 = Some (USER t3) |- _ => ct3
-                               end
-                             | _ => constr:(@Concrete.TNone mt)
-                             end in
-                  constr:(Concrete.mkMVec (op_to_word op) (common.tag (Concrete.pc cst)) cti ct1 ct2 ct3)
-                end in
-    assert (build_cmvec cst = Some mvec /\(* by (rewrite /build_cmvec; find_and_rewrite; reflexivity);*)
-            build_ivec table sst = Some ivec)
+  | IVEC : build_ivec _ sst = Some ?ivec,
+    CMVEC : build_cmvec cst = Some ?cmvec |- _ =>
+    first [ let DECo := fresh "DECo" in
+            have /= DECo := transfer_lookup REF IVEC CMVEC TRANS LOOKUP;
+            match_inv; match_data;
+            eexists; split; [ eapply exec_one; solve_concrete_step | solve_refine_state ]
+          | failwith "solve_hit_case" ]
   end.
 
 Ltac analyze_step :=
   match goal with
-  | CACHE : refine_state _ _ ?sst ?cst,
-    HANDLER : Symbolic.transfer ?ivec = Some ?ovec |- _ =>
+  | REF : refine_state _ _ ?sst ?cst,
+    TRANS : Symbolic.transfer ?ivec = Some ?ovec |- _ =>
     let trpc := fresh "trpc" in
     let tr   := fresh "tr"   in
     let ctrpc := fresh "ctrpc" in
     let ctr := fresh "ctr" in
     let rvec := fresh "rvec" in
     try simpl in ovec;
-    destruct ovec as [trpc tr]; simpl in tr; idtac (*
-    let cmvec := concretize_ivec in
-    destruct (Concrete.cache_lookup cache masks cmvec) as [[ctrpc ctr] | ] eqn:LOOKUP;
+    destruct ovec as [trpc tr]; simpl in tr;
+    concretize_ivec ivec;
+    let cmvec := match goal with
+                 | _ : build_cmvec _ = Some ?cmvec |- _ => cmvec
+                 end in
+    destruct (Concrete.cache_lookup (Concrete.cache cst) masks cmvec) as [[ctrpc ctr] | ] eqn:LOOKUP;
 
     [
       (* Cache hit case *)
-      generalize (@symbolic_handler_concrete_cache _ mvec _ _  CACHE HANDLER LOOKUP);
-      intros; subst rvec';
-      unfold encode_ivec, encode_ovec, ovec_of_uovec in LOOKUP; simpl in *;
-      match_data;
-      solve [eexists; split;
-                 [apply exec_one; solve_concrete_step|solve_refine_state]]
 
-          || let op := current_instr_opcode in fail 3 "failed hit case" op
+      solve_hit_case REF sst cst TRANS LOOKUP
+
     |
       (* Cache miss case, fault handler will execute *)
+      idtac (*
       analyze_cache_miss;
       solve [eexists; split;
       [
@@ -426,8 +506,8 @@ Ltac analyze_step :=
           try solve [eapply exec_one; solve_concrete_step]
         )
       | solve_refine_state ] ]
-      || let op := current_instr_opcode in fail 3 "failed miss case" op
-    ]*)
+      || let op := current_instr_opcode in fail 3 "failed miss case" op *)
+    ]
   | _ : Symbolic.run_syscall _ _ = Some _ |- _ => idtac
   end.
 
@@ -440,15 +520,47 @@ Lemma forward_simulation sst sst' cst :
 Proof.
   move=> REF STEP.
   inv STEP;
+  have := rs_pc REF; rewrite /Symbolic.pcv /= => ?; try subst pc'; try subst;
   match_data;
   repeat autounfold in NEXT;
-  match_inv.
+  match_inv;
 
   analyze_step.
 
-  concretize_ivec.
+  analyze_cache_miss.
+  eexists. split.
+  apply exec_one. solve_concrete_step.
+  solve_refine_state.
+  destruct REF.
+  constructor; simpl; eauto.
+  eauto using rs_refm.
 
-  rewrite /build_cmvec.
+
+  eapply Concrete.step_nop; eauto. eapply concrete_state_eta.
+  repeat autounfold. simpl. rewrite LOOKUP. reflexivity.
+
+  match goal with
+  | LOOKUP : Concrete.cache_lookup _ _ _ = _ |- _ =>
+    econstructor (solve [eauto; try solve [user_data_unchanged];
+                         repeat autounfold; simpl;
+                         simpl in LOOKUP; rewrite LOOKUP;
+                         match goal with
+                         | STORE : Concrete.store_mvec _ _ = Some _ |- _ =>
+                           rewrite STORE
+                         | |- _ => idtac
+                         end;
+                         simpl in *;
+                         find_and_rewrite; match_inv; eauto])
+  end.
+
+
+ solve_concrete_step.
+
+  match_data.
+
+  simpl.
+
+  subst
 
   eexists. split.
   apply exec_one. solve_concrete_step.
