@@ -289,8 +289,8 @@ Proof.
   move: INKERNEL LOOKUP.
   rewrite /in_kernel /Concrete.is_kernel_tag => /eqP -> LOOKUP _.
   rewrite /in_user /Concrete.pct /= -(build_cmvec_ctpc BUILD) in INUSER.
-  case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _ _]].
-  case: DECi ovec DECo => [[op [E DEC _ _ _]]|[DECop E _ DECti]].
+  case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _]].
+  case: DECi ovec DECo => [[op [E [Hpriv DEC _ _ _]]]|[DECop E _ DECti]].
     by rewrite {}E {ivec} /decode_ovec /= decode_kernel_tag /= => ovec.
   suff : false by done.
   move: {ivec E} (Symbolic.ti ivec) DECti => ti DECti.

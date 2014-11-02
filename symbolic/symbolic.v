@@ -42,6 +42,16 @@ Definition inputs (op : opcode) : list tag_kind :=
                          it just causes it to get stuck as it should *)
   end.
 
+(* Returns true iff an opcode can only be executed by the kernel *)
+Definition privileged_op (op : vopcode) : bool :=
+  match op with
+  | JUMPEPC
+  | ADDRULE
+  | GETTAG
+  | PUTTAG => true
+  | _ => false
+  end.
+
 Definition vinputs (vop : vopcode) : list tag_kind :=
   match vop with
   | OP op => inputs op

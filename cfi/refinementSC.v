@@ -1030,9 +1030,9 @@ Proof.
   move=> CACHE DEC TRANS.
   case LOOKUP: (Concrete.cache_lookup cache masks cmvec) => [crvec|] //=.
   have [t E] : exists t, rules.decode Symbolic.P cmem (Concrete.ctpc cmvec) = Some (rules.USER t).
-    by have [[op []]|[]] := rules.decode_ivec_inv DEC; eauto.
+    by have [[op [? []]]|[]] := rules.decode_ivec_inv DEC; eauto.
   have := CACHE _ _ LOOKUP.
-  rewrite {}E => /(_ erefl) [ivec' [ovec [DEC' _ TRANS' _]]].
+  rewrite {}E => /(_ erefl) [ivec' [ovec [DEC' _ TRANS']]].
   rewrite DEC in DEC'. case: DEC' TRANS => ->.
   by rewrite TRANS'.
 Qed.

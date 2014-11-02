@@ -68,9 +68,8 @@ Definition cache_correct cache cmem :=
     oapp (fun x => is_user x) false (decode Symbolic.P cmem (Concrete.ctpc cmvec)) ->
     exists ivec ovec,
       [/\ decode_ivec e cmem cmvec = Some ivec,
-          decode_ovec e (Symbolic.op ivec) cmem crvec = Some ovec,
-          Symbolic.transfer ivec = Some ovec &
-          ~~ privileged_op (Symbolic.op ivec) ].
+          decode_ovec e (Symbolic.op ivec) cmem crvec = Some ovec &
+          Symbolic.transfer ivec = Some ovec ].
 
 Definition in_mvec addr := In addr (Concrete.mvec_fields mt).
 
@@ -498,7 +497,7 @@ Lemma analyze_cache cache cmem cmvec crvec op :
   Concrete.cache_lookup cache masks cmvec = Some crvec ->
   oapp (fun x => is_user x) false (decode Symbolic.P cmem (Concrete.ctpc cmvec)) ->
   Concrete.cop cmvec = op_to_word op ->
-  if privileged_op op then False else
+  if Symbolic.privileged_op op then False else
   exists tpc : Symbolic.ttypes Symbolic.P, decode _ cmem (Concrete.ctpc cmvec) = Some (USER tpc) /\
   ((exists (ti : Symbolic.ttypes Symbolic.M)
            (ts : hlist Symbolic.ttypes (Symbolic.inputs op))
@@ -517,15 +516,15 @@ Lemma analyze_cache cache cmem cmvec crvec op :
 Proof.
   case: cmvec => op' tpc ti t1 t2 t3 /= CACHE LOOKUP INUSER EQ. subst op'.
   case: (CACHE _ crvec LOOKUP INUSER) =>
-        [[op' tpc' ti' ts] /= [ovec /= [/decode_ivec_inv /= [E1|E1] E2 E3 E4]]];
+        [[op' tpc' ti' ts] /= [ovec /= [/decode_ivec_inv /= [E1|E1] E2 E3]]];
   rewrite op_to_wordK in E1; last first.
-    case: E1 => [[?] ? -> ->] {E4}. subst op op'.
+    case: E1 => [[?] ? -> ->]. subst op op'.
     move: E2 => /=.
     have [-> _| //] := (Concrete.ctrpc _ =P _).
     by eauto 11 using And3.
-  case: E1 => op'' [? [?] -> ->]. subst op' op'' => ->.
-  move: E4 E2 => /= /negbTE ->.
-  case: ovec E3 => trpc tr E3.
+  case: E1 => op'' [? [Hpriv [?] -> ->]]. subst op' op'' => ->.
+  rewrite (negbTE Hpriv). eexists. split; eauto.
+  case: ovec E2 E3 => trpc tr /=.
   case: (decode _ cmem _) => [[trpc'|?]|] //= DEC.
   by eauto 11 using And4.
 Qed.

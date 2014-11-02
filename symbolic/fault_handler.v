@@ -128,7 +128,7 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   (* Check that [rop] contains a USER tag *)
   let do_op rop := extract_user_tag rop rb rop ++
                    if_ rb [] [Halt _] in
-  if privileged_op op then [Halt _] else
+  if Symbolic.privileged_op op then [Halt _] else
   match length (Symbolic.inputs op) with
   | 0 => []
   | 1 => do_op rt1

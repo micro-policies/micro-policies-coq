@@ -78,16 +78,6 @@ Definition is_entry_tag (t : tag) : bool :=
   | _ => false
   end.
 
-(* Returns true iff an opcode can only be executed by the kernel *)
-Definition privileged_op (op : vopcode) : bool :=
-  match op with
-  | JUMPEPC
-  | ADDRULE
-  | GETTAG
-  | PUTTAG => true
-  | _ => false
-  end.
-
 End tag.
 
 Arguments ENTRY {user_tag} _.
@@ -249,7 +239,8 @@ Definition decode_ivec (m : word_map t (atom (word t) (word t)))
                                 Concrete.ct2 mvec,
                                 Concrete.ct3 mvec);
       do! ts <- ensure_all_user ts;
-      Some (Symbolic.mkIVec (OP op) tpc ti ts)
+      if Symbolic.privileged_op (OP op) then None
+      else Some (Symbolic.mkIVec (OP op) tpc ti ts)
     | Some (ENTRY ti) =>
       match op with
       | NOP => Some (Symbolic.mkIVec SERVICE tpc ti tt)
@@ -319,19 +310,20 @@ Definition ground_rules : Concrete.rules (word t) :=
 Lemma decode_ivec_inv mvec m ivec :
   decode_ivec m mvec = Some ivec ->
   (exists op,
-    [/\ Symbolic.op ivec = OP op,
+    [/\ Symbolic.op ivec = OP op &
+    [/\ ~~ Symbolic.privileged_op op,
         word_to_op (Concrete.cop mvec) = Some op,
         decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)),
         decode Symbolic.M m (Concrete.cti mvec) = Some (USER (Symbolic.ti ivec)) &
         decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
-        Some (hmap (fun k x => Some (USER x)) (Symbolic.ts ivec)) ]) \/
+        Some (hmap (fun k x => Some (USER x)) (Symbolic.ts ivec)) ]]) \/
   [/\ word_to_op (Concrete.cop mvec) = Some NOP ,
       Symbolic.op ivec = SERVICE ,
       decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)) &
       decode Symbolic.M m (Concrete.cti mvec) = Some (ENTRY (Symbolic.ti ivec)) ].
 Proof.
-  case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts] /=.
-  rewrite /decode_ivec /=.
+  case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts].
+  rewrite /decode_ivec (lock Symbolic.privileged_op) /=.
   case: (word_to_op cop) => [op'|] //=.
   case: (decode _ m ctpc) => [[tpc'|?]|] //=.
   case: (decode _ m cti) => [[ti'|ti']|] //=; last first.
@@ -339,11 +331,13 @@ Proof.
     constructor; eauto.
   case DEC: (decode_fields _ m _) => [ts'|] //=.
   case ENSURE: (ensure_all_user _) => [ts''|] //=.
+  rewrite -lock.
+  case Hpriv: (Symbolic.privileged_op op') => //=.
   move/ensure_all_user_inv in ENSURE. subst ts'.
   case: op ts => [op|] //= ts.
   move=> E. move: (Symbolic.ivec_eq_inv (Some_inj E)) DEC => [] {E} [E1] E2 E3.
   subst op' tpc' ti' => /(@pair2_inj _ _ _ _ _) H. subst ts'' => ->.
-  left. eexists. by constructor; eauto.
+  left. eexists. split; try by eauto. rewrite Hpriv. by split; constructor; eauto.
 Qed.
 
 End tag_encoding.
