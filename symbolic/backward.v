@@ -7,6 +7,7 @@ Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.exec.
 Require Import symbolic.symbolic.
+Require Import symbolic.exec.
 Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 
@@ -155,7 +156,7 @@ Ltac update_decodings :=
 Ltac find_and_rewrite :=
   match goal with
   | H : ?x = _ |- context[?x] =>
-    rewrite H; clear H
+    rewrite H; clear H; simpl
   end.
 
 Ltac simplify_eqs :=
@@ -182,6 +183,49 @@ Ltac solve_step :=
 Ltac solve_refine_state :=
   solve [ econstructor; eauto; try update_decodings
         | failwith "solve_refine_state" ].
+
+Lemma refine_ivec_inv sst cst cmvec ivec :
+  refine_state ki table sst cst ->
+  build_cmvec cst = Some cmvec ->
+  decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
+  build_ivec table sst = Some ivec.
+Proof.
+  case: ivec => [vop tpc ti ts].
+  move=> Href Hbuild /decode_ivec_inv /= [Hdec | Hdec]; last first.
+    case: Hdec => [Hop ? Hdec_tpc Hdec_ti]. subst vop.
+    rewrite (build_cmvec_ctpc Hbuild) in Hdec_tpc.
+    have [i [instr [Hget Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
+    move: Hop. rewrite -{}Hop' op_to_wordK.
+    case: instr Hdec_i => // /is_nopP Hdec_i _.
+    have [sc Hget_sc Hsct] := wf_entry_points_only_if (rs_entry_points Href)
+                                                      Hget Hdec_ti Hdec_i.
+    rewrite /build_ivec (rs_pc Href).
+    case Hget': (PartMaps.get _ _) => [[i' ti']|] //=.
+      have [cti] := proj2 (rs_refm Href) _ _ _ Hget'.
+      rewrite Hget => Hdec_ti' [? ?]. subst i' cti.
+      by rewrite Hdec_ti' in Hdec_ti.
+    rewrite (rs_pct Href) in Hdec_tpc.
+    case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
+    by case: ts.
+  case: Hdec => op [Hop [Hpriv Hcop Hdec_tpc Hdec_ti Hdec_ts]]. subst vop.
+  rewrite (build_cmvec_ctpc Hbuild) (rs_pct Href) in Hdec_tpc.
+  case: Hdec_tpc => ?. subst tpc.
+  have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
+  move: Hcop. rewrite -{}Hop' op_to_wordK => [[?]]. subst op.
+  move: Hbuild.
+  rewrite /build_cmvec /build_ivec (rs_pc Href) Hget_i Hdec_i.
+  rewrite (proj1 (rs_refm Href) _ _ _ _ Hdec_ti Hget_i) Hdec_i /=.
+  destruct Href, instr, cmvec; move=> Hbuild; simpl in *; match_inv;
+  repeat match goal with
+  | x : unit |- _ => destruct x
+  | x : prod _ _ |- _ => destruct x
+  | x : atom _ _ |- _ => destruct x
+  | H : Some _ = Some _ |- _ => inv H
+  end; simpl in *; match_inv;
+  repeat relate_register_get;
+  repeat relate_memory_get;
+  trivial; repeat find_and_rewrite; by trivial.
+Qed.
 
 Lemma cache_hit_simulation sst cst cst' :
   refine_state ki table sst cst ->
@@ -240,7 +284,7 @@ Proof.
   unfold kernel_user_exec. intros EXEC1 EXEC2.
   eapply exec_until_determ; eauto.
   - clear. intros s s1 s2.
-    do 2 rewrite <- stepP in *. congruence.
+    do 2 rewrite <- concrete.exec.stepP in *. congruence.
   - clear. by move=> s /= ->.
   - clear. by move=> s /= ->.
 Qed.
@@ -251,7 +295,7 @@ Lemma user_kernel_user_step_determ s s1 s2 :
   s1 = s2.
 Proof.
   move => [s' USER1 STEP1 EXEC1] [s'' USER2 STEP2 EXEC2].
-  have E: (s' = s'') by rewrite <- stepP in *; congruence. subst s''.
+  have E: (s' = s'') by rewrite <- concrete.exec.stepP in *; congruence. subst s''.
   eauto using kernel_user_exec_determ.
 Qed.
 
@@ -298,7 +342,7 @@ Proof.
   rewrite op_to_wordK => [[Hinstr]].
   have {DECi Hinstr} ISNOP : is_nop i by rewrite /is_nop {}DECi; case: instr Hinstr.
   move: (wf_entry_points_only_if WFENTRYPOINTS GETPC DECti ISNOP).
-  rewrite GETSC. by case=> ? [? ?].
+  rewrite GETSC. by case.
 Qed.
 
 Lemma cache_miss_simulation sst cst cst' :

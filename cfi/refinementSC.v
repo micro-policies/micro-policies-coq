@@ -559,139 +559,6 @@ Proof.
   by case: (rules.fdecode _ _) => [[?|?]|] //=; eauto.
 Qed.
 
-(*Case 1: umvec = Some & cmvec = Some*)
-
-(*
-Lemma umvec_implies_cmvec sst cst smvec :
-  in_user cst ->
-  refine_state sst cst ->
-  build_ivec stable sst = Some smvec ->
-  exists cmvec, build_cmvec cst = Some cmvec.
-Proof.
-  intros USER [[REF | CONTRA] ?] MVEC.
-  - by case: (refine_ivec REF MVEC) => *; eauto.
-  - exfalso.
-    destruct CONTRA as [? [? [? [? KEXEC]]]].
-    apply restricted_exec_snd in KEXEC.
-    apply @in_user_in_kernel in USER.
-    by rewrite KEXEC in USER.
-Qed.
-*)
-
-(*
-Lemma unique_cmvec sst cst umvec cmvec :
-  in_user cst ->
-  refine_state sst cst ->
-  build_ivec stable sst = Some umvec ->
-  build_cmvec mt cst = Some cmvec ->
-  rules.encode_ivec (fun _ => e) (rules.ivec_of_uivec umvec) = cmvec.
-Proof.
-  intros USER REF MVEC CMVEC.
-  destruct REF as [REF INV].
-  destruct REF as [UREF | KREF].
-  - erewrite -> refine_ivec in CMVEC; eauto.
-    by move: CMVEC => [<-].
-  - destruct KREF as [? [? [? [? KEXEC]]]].
-    apply restricted_exec_snd in KEXEC.
-    eapply @in_user_in_kernel in USER.
-    by congruence.
-Qed.
-*)
-
-(*Case 2*)
-
-(*
-Lemma no_user_access_implies_halt sst cst cmvec :
-  in_user cst ->
-  refine_state sst cst ->
-  build_ivec stable sst = None ->
-  build_cmvec mt cst = Some cmvec ->
-  khandler cmvec = None.
-Proof.
-  intros USER REF MVEC CMVEC.
-  destruct REF as [REF ?].
-  destruct REF as [REF | CONTRA].
-  - destruct (khandler cmvec) as [rvec|] eqn:E; last by [].
-    generalize (handler_build_ivec REF CMVEC E).
-    move => [? ?] //. congruence.
-  - destruct CONTRA as [? [? [? [? KEXEC]]]].
-    apply restricted_exec_snd in KEXEC.
-    eapply @in_user_in_kernel in USER.
-    by congruence.
-Qed.
-*)
-
-(*Case 3*)
-
-(*
-Lemma fault_steps_at_kernel_aux ast cst cst' cmvec :
-  refinement_common.refine_state ki stable ast cst ->
-  Concrete.step _ masks cst cst' ->
-  build_cmvec mt cst = Some cmvec ->
-  khandler cmvec = None ->
-  exists cmem',
-  Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem' /\
-  cst' = Concrete.mkState cmem'
-                          (Concrete.regs cst)
-                          (Concrete.cache cst)
-                          (Concrete.fault_handler_start mt)@Concrete.TKernel
-                          (Concrete.pc cst).
-Proof.
-  intros REF CSTEP CMVEC KHANDLER.
-  destruct REF as [smem sreg int cmem creg cache epc pc tpc
-                         ASI CSI REFM REFR CACHE MVEC WF KI].
-  case LOOKUP: (Concrete.cache_lookup cache masks cmvec) => [rvec|].
-  - have ISUSER: rules.word_lift (fun x => rules.is_user x) (Concrete.ctpc cmvec).
-    { move: CMVEC => /(build_cmvec_ctpc _) ->.
-      by rewrite CSI /rules.word_lift ?rules.decodeK /=. }
-    generalize (mvec_in_kernel_store_mvec cmvec MVEC); move => [cmem' STORE].
-    exists cmem'.
-    split.
-    { by rewrite CSI. }
-    move: (CACHE _ _ ISUSER LOOKUP) => {ISUSER} [ivec [ovec [HANDLER1 [HANDLER2 [HANDLER3 HANDLER4]]]]].
-    rewrite /khandler /rules.handler HANDLER1 /= rules.decode_ivecK
-            /= rules.ivec_of_uivec_privileged (negbTE HANDLER4) in KHANDLER.
-    subst cmvec rvec.
-    rewrite rules.ivec_of_uivecK /= in KHANDLER.
-    case CFIHANDLER: (cfi_handler cfg ivec) KHANDLER => [uovec|] //= _.
-    by rewrite /= CFIHANDLER in HANDLER3.
-  - generalize (mvec_in_kernel_store_mvec cmvec MVEC).
-    move => {MVEC} [cmem' MVEC].
-    eexists cmem'.
-    subst cst.
-    split; first by [].
-    eapply initial_handler_state; try eassumption.
-    by rewrite /in_user /rules.word_lift /= rules.decodeK.
-Qed.
-*)
-
-(*
-Lemma fault_steps_at_kernel ast cst cst' cmvec :
-  in_user cst = true ->
-  refine_state ast cst ->
-  Concrete.step _ masks cst cst' ->
-  build_cmvec mt cst = Some cmvec ->
-  khandler cmvec = None ->
-  exists cmem',
-  Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem' /\
-  cst' = Concrete.mkState cmem'
-                          (Concrete.regs cst)
-                          (Concrete.cache cst)
-                          (Concrete.fault_handler_start mt)@Concrete.TKernel
-                          (Concrete.pc cst).
-Proof.
-  intros USER REF STEP MVEC HANDLER.
-  destruct REF as [REF ?].
-  destruct REF as [UREF | KREF].
-  - eauto using fault_steps_at_kernel_aux.
-  - destruct KREF as [? [? [? [? KEXEC]]]].
-    apply restricted_exec_snd in KEXEC.
-    eapply @in_user_in_kernel in USER.
-    by congruence.
-Qed.
-*)
-
-
 Lemma refine_traces_kexec axs cxs cst cst' :
   refine_traces cfi_refinementSC axs (cst :: cxs) ->
   in_kernel cst ->
@@ -1170,8 +1037,8 @@ Proof.
                 + rewrite GETCALL in H2.
                   unfold wf_entry_points in WF.
                   specialize (WF pcj (Symbolic.entry_tag s)).
-                  assert (ECALL : exists sc : Symbolic.syscall mt,
-                                    Symbolic.get_syscall stable pcj = Some sc /\
+                  assert (ECALL : exists2 sc : Symbolic.syscall mt,
+                                    Symbolic.get_syscall stable pcj = Some sc &
                                     Symbolic.entry_tag sc = Symbolic.entry_tag s)
                     by (eexists; eauto).
                   apply WF in ECALL.
@@ -1195,8 +1062,8 @@ Proof.
                 + rewrite GETCALL in H2.
                   unfold wf_entry_points in WF.
                   specialize (WF pcj (Symbolic.entry_tag s)).
-                  assert (ECALL : exists sc : Symbolic.syscall mt,
-                                    Symbolic.get_syscall stable pcj = Some sc /\
+                  assert (ECALL : exists2 sc : Symbolic.syscall mt,
+                                    Symbolic.get_syscall stable pcj = Some sc &
                                     Symbolic.entry_tag sc = Symbolic.entry_tag s)
                     by (eexists; eauto).
                   apply WF in ECALL.
@@ -1219,7 +1086,7 @@ Proof.
         { rewrite GET in H2.
           case GETSC: (Symbolic.get_syscall _ _) H2 => [sc|] //= _.
           remember (Symbolic.entry_tag sc) as sct eqn:ETAG. symmetry in ETAG.
-          have /WF: exists sc, Symbolic.get_syscall stable pci = Some sc /\
+          have /WF: exists2 sc, Symbolic.get_syscall stable pci = Some sc &
                                Symbolic.entry_tag sc = sct by eexists; eauto.
           case GET': (get cmemi  pci) => [[v ctg]|] //=.
           assert (CONTRA := fun CACHE GET' =>
@@ -1294,8 +1161,8 @@ Proof.
                   destruct (Symbolic.get_syscall stable pc') eqn:GETCALL.
                   + rewrite GETCALL in H1.
                     specialize (WF pc' (Symbolic.entry_tag s0)).
-                    assert (ECALL: (exists sc : Symbolic.syscall mt,
-                               Symbolic.get_syscall stable pc' = Some sc /\
+                    assert (ECALL: (exists2 sc : Symbolic.syscall mt,
+                               Symbolic.get_syscall stable pc' = Some sc &
                                Symbolic.entry_tag sc = Symbolic.entry_tag s0))
                       by (eexists; eauto).
                     apply WF in ECALL.
@@ -1309,7 +1176,7 @@ Proof.
                   + clear H1.
                     case: ut DEC'' => [[ut|]|] //= DEC''.
                     apply/negP=> /andP [ISNOP _].
-                    move: (wf_entry_points_only_if WF GET' DEC'' ISNOP) => [? [? ?]].
+                    move: (wf_entry_points_only_if WF GET' DEC'' ISNOP) => [? ? ?].
                     congruence.
               }
               { by reflexivity. }
@@ -1332,8 +1199,8 @@ Proof.
                   destruct (Symbolic.get_syscall stable pc') eqn:GETCALL.
                   + rewrite GETCALL in H1.
                     specialize (WF pc' (Symbolic.entry_tag s0)).
-                    assert (ECALL: (exists sc : Symbolic.syscall mt,
-                               Symbolic.get_syscall stable pc' = Some sc /\
+                    assert (ECALL: (exists2 sc : Symbolic.syscall mt,
+                               Symbolic.get_syscall stable pc' = Some sc &
                                Symbolic.entry_tag sc = Symbolic.entry_tag s0))
                       by (eexists; eauto).
                     apply WF in ECALL.
@@ -1347,7 +1214,7 @@ Proof.
                   + clear H1.
                     case: ut DEC'' => [[ut|]|] //= DEC''.
                     apply/negP=> /andP [ISNOP _].
-                    move: (wf_entry_points_only_if WF GET' DEC'' ISNOP) => [? [? ?]].
+                    move: (wf_entry_points_only_if WF GET' DEC'' ISNOP) => [? ? ?].
                     congruence.
               }
               { by reflexivity. }

@@ -153,21 +153,6 @@ Hint Resolve kernel_invariant_store_mvec.
 
 Variable ki : kernel_invariant.
 
-(*
-Lemma is_user_pc_tag_is_kernel_tag tg :
-  @word_lift _ _ (e Symbolic.P) (fun x => is_user x) tg -> Concrete.is_kernel_tag tg.
-Proof.
-  unfold word_lift, is_user, Concrete.is_kernel_tag.
-  destruct (decode tg) as [[ut| |]|] eqn:E; try discriminate.
-  intros _.
-  apply encodeK in E.
-  have [E'|//] := eqP.
-  rewrite (@encode_kernel_tag _ _ (e Symbolic.P)) in E'.
-  rewrite E' in E.
-  now apply encode_inj in E.
-Qed.
-*)
-
 Lemma in_user_in_kernel :
   forall st, in_user st -> ~~ in_kernel st.
 Proof.
@@ -657,117 +642,6 @@ Proof.
     by have [->|//] := _ =P Concrete.TKernel; auto.
   by case: (Concrete.store_mvec _ _) => [cmem'|] // ->; auto.
 Qed.
-
-Lemma refine_ivec_inv sst cst cmvec ivec :
-  refine_state sst cst ->
-  build_cmvec cst = Some cmvec ->
-  decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
-  build_ivec table sst = Some ivec.
-Proof.
-  move=> Href Hbuild /decode_ivec_inv [Hdec | Hdec]; last first.
-    case: Hdec => [Hop Hop' Hdec_tpc Hdec_ti].
-    rewrite (build_cmvec_ctpc Hbuild) in Hdec_tpc.
-    have [i [instr [Hget Hdec_i Hop'']]] := build_cmvec_cop_cti Hbuild.
-    move: Hop. rewrite -{}Hop'' op_to_wordK.
-    case: instr Hdec_i => // /is_nopP Hdec_i _.
-    have [sc Hget_sc Hsct] := wf_entry_points_only_if (rs_entry_points Href)
-                                                      Hget Hdec_ti Hdec_i.
-    rewrite /build_ivec (rs_pc Href).
-    case Hget': (PartMaps.get _ _) => [[i' ti]|] //=.
-      have [cti] := proj2 (rs_refm Href) _ _ _ Hget'.
-      rewrite Hget => Hdec_ti' [? ?]. subst i' cti.
-      by rewrite Hdec_ti' in Hdec_ti.
-    rewrite (rs_pct Href) in Hdec_tpc.
-    case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
-    move: Hop'.
-    case: ivec {Hdec_ti Hsct}=> op tpc ti ts /= ?. subst op.
-    by case: ts.
-  rewrite /build_cmvec.
-  case Hget: (PartMaps.get _ _) => [[i cti]|] //=.
-  have Hget'
-
-Qed.
-
-(*
-Lemma handler_build_ivec sst cst cmvec crvec :
-  refine_state sst cst ->
-  build_cmvec mt cst = Some cmvec ->
-  handler cmvec = Some crvec ->
-  exists ivec,
-    build_ivec table sst = Some ivec.
-Proof.
-  intros [smem sreg int mem reg cache epc pc stpc
-               ? ? REFM REFR CACHE MVE WF KI].
-  subst sst cst.
-  rewrite /build_cmvec.
-  move => CMVEC;
-  match_inv;
-  match goal with
-  | H : ?X = _ |- _ =>
-    match X with
-    | context[match ?Y with _ => _ end] =>
-      destruct Y; match_inv
-    end
-  end;
-  repeat match goal with
-  | a : atom _ _ |- _ =>
-    destruct a
-  end;
-  move => HANDLER;
-  rewrite /handler /rules.handler ?decodeK /= ?op_to_wordK in HANDLER;
-  match_inv;
-  try simpl in HANDLER;
-  rewrite /decode_ivec /= ?decodeK /= in HANDLER; match_inv;
-  try match goal with
-  | H : word_to_op (op_to_word _) = Some ?op |- _ =>
-    rewrite op_to_wordK in H; inv H
-  end;
-  repeat match goal with
-  | t : hlist _ _ |- _ => simpl in t
-  | t : unit |- _ => destruct t
-  | t : prod _ _ |- _ => destruct t
-  | H : context[ivec_of_ivec] |- _ => unfold ivec_of_ivec in H; simpl in H
-  | H : context[decode_fields] |- _ => unfold decode_fields in H; simpl in H
-  end;
-  unfold omap, obind, oapp in *;
-  match_inv;
-  repeat match goal with
-  | H : decode ?t = Some _ |- _ => apply encodeK in H; subst t
-  end;
-  repeat match goal with
-  | GET : PartMaps.get ?cregs ?r = Some _@(encode (USER _)),
-    REFR : refine_registers ?sregs ?cregs |- _ =>
-    match goal with
-    | GET' : PartMaps.get sregs r = Some _ |- _ => fail 1
-    | |- _ => idtac
-    end;
-    pose proof (proj1 (REFR _ _ _) GET)
-  | GET : PartMaps.get ?cmem ?addr = Some ?w@(encode ?t),
-    REFM : refine_memory ?smem ?cmem |- _ =>
-    match t with
-    | USER _ =>
-      match goal with
-      | GET' : PartMaps.get smem addr = Some _ |- _ => fail 2
-      | |- _ => idtac
-      end;
-      pose proof (proj1 (REFM _ _ _) GET)
-    | ENTRY _ =>
-      match goal with
-      | GET' : PartMaps.get smem addr = None |- _ => fail 2
-      | WF : wf_entry_points cmem,
-        DEC : decode_instr _ = Some (Nop _) |- _ =>
-        pose proof (entry_point_undefined _ _ REFM GET);
-        destruct (wf_entry_points_only_if _ _ WF GET (proj2 (is_nopP _) DEC))
-          as (? & ? & ?)
-      end
-    end
-  end; simpl;
-  repeat match goal with
-  | E : ?X = _ |- context[?X] => rewrite E; simpl
-  end;
-  solve [simpl in *; eauto].
-Qed.
-*)
 
 Hint Unfold Symbolic.next_state.
 Hint Unfold Symbolic.next_state_reg_and_pc.
