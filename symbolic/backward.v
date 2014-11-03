@@ -121,7 +121,7 @@ Ltac relate_register_upd :=
     DEC' : decode _ ?cmem ?t' = Some (USER _),
     REFR : refine_registers _ ?reg ?cmem,
     KINV : kernel_invariant_statement ?ki ?cmem _ _ _ |- _ =>
-    first [ destruct (refine_registers_upd REFR GET DEC UPD DEC') as (? & ? & ?);
+    first [ destruct (refine_registers_upd REFR GET DEC UPD DEC') as [? ? ?];
             pose proof (kernel_invariant_upd_reg KINV GET DEC UPD DEC')
           | failwith "relate_register_upd" ]
   end.
@@ -288,7 +288,7 @@ Proof.
   case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.
   move: INKERNEL LOOKUP.
   rewrite /in_kernel /Concrete.is_kernel_tag => /eqP -> LOOKUP _.
-  rewrite /in_user /Concrete.pct /= -(build_cmvec_ctpc BUILD) in INUSER.
+  rewrite /in_user /= -(build_cmvec_ctpc BUILD) in INUSER.
   case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _]].
   case: DECi ovec DECo => [[op [E [Hpriv DEC _ _ _]]]|[DECop E _ DECti]].
     by rewrite {}E {ivec} /decode_ovec /= decode_kernel_tag /= => ovec.

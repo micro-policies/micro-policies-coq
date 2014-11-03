@@ -106,7 +106,7 @@ End with_classes.
 
 End maps.
 
-Section rep.
+Section with_eqType.
 
 Context (M : Type -> Type)
         (K : eqType)
@@ -114,7 +114,7 @@ Context (M : Type -> Type)
         {a : axioms pm}
         {V : Type}.
 
-Definition get_rep (m m' : M V) (k : K) f :
+Lemma get_rep (m m' : M V) (k : K) f :
   rep m k f = Some m' ->
   forall k', get m' k' = if k' == k then omap f (get m k) else get m k'.
 Proof.
@@ -124,7 +124,17 @@ Proof.
   by rewrite (get_set_neq _ _ NE).
 Qed.
 
-End rep.
+Lemma get_upd (m m' : M V) k v :
+  upd m k v = Some m' ->
+  forall k', get m' k' = if k' == k then Some v else get m k'.
+Proof.
+  move=> Hupd k'.
+  have [-> {k'}|Hneq] := k' =P k.
+    by rewrite (get_upd_eq Hupd).
+  by rewrite (get_upd_neq Hneq Hupd).
+Qed.
+
+End with_eqType.
 
 Section upd_list.
 

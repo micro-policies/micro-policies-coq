@@ -16,6 +16,7 @@ Require Import cfi.symbolic.
 Require Import cfi.preservation.
 Require Import cfi.rules.
 Require Import symbolic.backward.
+Require Import symbolic.forward.
 Require Import symbolic.refinement_common.
 
 Set Implicit Arguments.

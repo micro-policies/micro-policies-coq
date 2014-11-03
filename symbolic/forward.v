@@ -384,6 +384,39 @@ Proof.
   done.
 Qed.
 
+Lemma refine_ivec sst cst ivec :
+  refine_state ki table sst cst ->
+  build_ivec table sst = Some ivec ->
+  exists2 cmvec,
+    build_cmvec cst = Some cmvec &
+    decode_ivec e (Concrete.mem cst) cmvec = Some ivec.
+Proof.
+  move=> Href Hbuild.
+  suff : match @build_cmvec _ ops cst with
+         | Some cmvec => decode_ivec e (Concrete.mem cst) cmvec = Some ivec
+         | None => False
+         end by case: (build_cmvec cst); eauto.
+  move: Hbuild.
+  rewrite /build_ivec /build_cmvec /decode_ivec (rs_pc Href).
+  case Hget: (PartMaps.get _ _) => [[i ti]|] //=; last first.
+    case Hget_sc: (Symbolic.get_syscall _ _) => [sc|] //= [<-] {ivec}.
+    have [i' [cti [Hget' Hdec_cti /is_nopP Hi]]] :=
+      wf_entry_points_if (rs_entry_points Href) Hget_sc.
+    rewrite Hget' Hi.
+    by rewrite /decode_ivec /= (rs_pct Href) Hdec_cti.
+  have [cti Hdec_cti Hget'] := proj2 (rs_refm Href) _ _ _ Hget.
+  rewrite Hget' /=.
+  case Hdec_i: (decode_instr i) => [instr|] //=.
+  rewrite /decode_fields.
+  destruct instr; move=> Hivec;
+  match_inv;
+  repeat match goal with
+  | x : atom _ _ |- _ => destruct x
+  end;
+  match_data; find_and_rewrite; rewrite ?op_to_wordK /= ?(rs_pct Href) //;
+  find_and_rewrite; done.
+Qed.
+
 Lemma forward_simulation_miss sst cst ivec ovec cmvec :
   refine_state ki table sst cst ->
   build_ivec table sst = Some ivec ->

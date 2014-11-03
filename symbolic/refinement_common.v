@@ -44,15 +44,15 @@ Definition refine_memory (amem : Symbolic.memory mt _) (cmem : Concrete.memory m
 Definition refine_registers (areg : Symbolic.registers mt _)
                             (creg : Concrete.registers mt)
                             (cmem : Concrete.memory mt) :=
-  (forall w x ctg atg,
+  (forall r x ctg atg,
      decode Symbolic.R cmem ctg = Some (USER atg) ->
-     PartMaps.get creg w = Some x@ctg ->
-     PartMaps.get areg w = Some x@atg) /\
-  (forall w x atg,
-     PartMaps.get areg w = Some x@atg ->
+     PartMaps.get creg r = Some x@ctg ->
+     PartMaps.get areg r = Some x@atg) /\
+  (forall r x atg,
+     PartMaps.get areg r = Some x@atg ->
      exists2 ctg,
        decode Symbolic.R cmem ctg = Some (USER atg) &
-       PartMaps.get creg w = Some x@ctg).
+       PartMaps.get creg r = Some x@ctg).
 
 Definition in_kernel (st : Concrete.state mt) :=
   Concrete.is_kernel_tag (Concrete.pct st).
@@ -194,8 +194,8 @@ Qed.
 
 Definition wf_entry_points (cmem : Concrete.memory mt) :=
   forall addr t,
-    (exists sc, Symbolic.get_syscall table addr = Some sc /\
-                Symbolic.entry_tag sc = t) <->
+    (exists2 sc, Symbolic.get_syscall table addr = Some sc &
+                 Symbolic.entry_tag sc = t) <->
     is_true match PartMaps.get cmem addr with
             | Some i@it => is_nop i && (decode Symbolic.M cmem it == Some (ENTRY t))
             | None => false
@@ -210,8 +210,8 @@ Lemma wf_entry_points_if cmem addr sc :
       is_nop i ].
 Proof.
   move => WFENTRYPOINTS GETCALL.
-  have: exists sc', Symbolic.get_syscall table addr = Some sc' /\
-                    Symbolic.entry_tag sc' = Symbolic.entry_tag sc by eauto.
+  have: exists2 sc', Symbolic.get_syscall table addr = Some sc' &
+                     Symbolic.entry_tag sc' = Symbolic.entry_tag sc by eauto.
   move/WFENTRYPOINTS.
   case: (PartMaps.get cmem addr) => [[i it]|] //.
   move/andP => [H1 H2]. exists i, it.
@@ -224,8 +224,8 @@ Lemma wf_entry_points_only_if cmem addr i it t :
   PartMaps.get cmem addr = Some i@it ->
   decode Symbolic.M cmem it = Some (ENTRY t) ->
   is_nop i ->
-  exists sc,
-    Symbolic.get_syscall table addr = Some sc /\
+  exists2 sc,
+    Symbolic.get_syscall table addr = Some sc &
     Symbolic.entry_tag sc = t.
 Proof.
   move => WF GET DEC ISNOP.
@@ -266,6 +266,27 @@ Proof.
   by rewrite /in_user DEC.
 Qed.
 
+(* MOVE *)
+Lemma decode_ivec_monotonic cmem cmem' addr x y ct st ct' st' :
+  PartMaps.get cmem addr = Some x@ct ->
+  decode Symbolic.M cmem ct = Some (USER st) ->
+  PartMaps.upd cmem addr y@ct' = Some cmem' ->
+  decode Symbolic.M cmem ct' = Some (USER st') ->
+  decode_ivec e cmem' =1 decode_ivec e cmem.
+Proof.
+  admit.
+Qed.
+
+Lemma decode_ovec_monotonic cmem cmem' op addr x y ct st ct' st' :
+  PartMaps.get cmem addr = Some x@ct ->
+  decode Symbolic.M cmem ct = Some (USER st) ->
+  PartMaps.upd cmem addr y@ct' = Some cmem' ->
+  decode Symbolic.M cmem ct' = Some (USER st') ->
+  decode_ovec e op cmem' =1 decode_ovec e op cmem.
+Proof.
+  admit.
+Qed.
+
 Lemma refine_memory_upd cache aregs cregs amem cmem cmem' addr v v' ct t ct' t' :
   cache_correct cache cmem ->
   refine_registers aregs cregs cmem ->
@@ -280,22 +301,50 @@ Lemma refine_memory_upd cache aregs cregs amem cmem cmem' addr v v' ct t ct' t' 
         refine_registers aregs cregs cmem' &
         refine_memory amem' cmem'].
 Proof.
-  intros CACHE REGS MEM GET DEC UPD DEC'.
-  assert (GET' := proj1 MEM _ _ _ _ DEC GET).
-  destruct (PartMaps.upd_defined v'@t' GET') as [amem' UPD'].
-  admit.
-(*
-  - apply MEM in GET.
-    rewrite (PartMaps.get_upd_eq UPD).
-    rewrite (PartMaps.get_upd_eq UPD').
-    intros t''. split; try congruence.
-    intros H.
-    inv H.
-    exploit (fun T => @encode_inj mt T); try eassumption; eauto.
-    congruence.
-  - rewrite (PartMaps.get_upd_neq NEQ UPD').
-    rewrite (PartMaps.get_upd_neq NEQ UPD).
-    now apply MEM.*)
+  move=> Hcache Hregs Hmem Hget Hdec Hupd Hdec'.
+  have Hget' := proj1 Hmem _ _ _ _ Hdec Hget.
+  have [amem' Hupd'] := PartMaps.upd_defined v'@t' Hget'.
+  have Hdec_eq := decode_monotonic _ Hget Hdec Hupd Hdec'.
+  exists amem'. split; trivial.
+  - move=> cmvec crvec Hlookup.
+    case Hdec_pc: (decode _ _ _) => [pct|] //= Hpct_user.
+    rewrite Hdec_eq in Hdec_pc.
+    have := Hcache cmvec crvec Hlookup.
+    rewrite Hdec_pc => /(_ Hpct_user) [ivec [ovec [Hdec_ivec Hdec_ovec Htrans]]].
+    rewrite -(decode_ivec_monotonic Hget Hdec Hupd Hdec') in Hdec_ivec.
+    rewrite -(decode_ovec_monotonic _ Hget Hdec Hupd Hdec') in Hdec_ovec.
+    by eauto using And3.
+  - split.
+    + move=> w x ct'' st'' Hdec_ct' Hget''.
+      rewrite Hdec_eq in Hdec_ct'.
+      by eapply (proj1 Hregs); eauto.
+    + move=> w x st'' /(proj2 Hregs _ _ _) [ct'' Hdec_ct'' Hget''].
+      rewrite -Hdec_eq in Hdec_ct''.
+      by eauto.
+  - split.
+    + move=> w x ct'' st'' Hdec_ct' Hget''.
+      rewrite Hdec_eq in Hdec_ct'.
+      have [Heq|Hneq] := w =P addr.
+      * subst w.
+        rewrite (PartMaps.get_upd_eq Hupd) in Hget''.
+        rewrite (PartMaps.get_upd_eq Hupd').
+        case: Hget'' => ? ?. subst. congruence.
+      * rewrite (PartMaps.get_upd_neq Hneq Hupd) in Hget''.
+        rewrite (PartMaps.get_upd_neq Hneq Hupd').
+        by eapply (proj1 Hmem); eauto.
+    + move=> w x st Hget''.
+      have [Heq|Hneq] := w =P addr.
+      * subst w.
+        rewrite (PartMaps.get_upd_eq Hupd') in Hget''.
+        case: Hget'' => ? ?. subst x st.
+        exists ct'=> //.
+          by rewrite Hdec_eq.
+        by rewrite (PartMaps.get_upd_eq Hupd).
+      * rewrite (PartMaps.get_upd_neq Hneq Hupd') in Hget''.
+        have [ct'' Hdec_ct'' Hget_ct''] := proj2 Hmem _ _ _ Hget''.
+        rewrite -(PartMaps.get_upd_neq Hneq Hupd) in Hget_ct''.
+        rewrite -Hdec_eq in Hdec_ct''.
+        by eauto.
 Qed.
 
 Lemma wf_entry_points_user_upd cmem cmem' addr v v' ct t ct' t' :
@@ -306,26 +355,12 @@ Lemma wf_entry_points_user_upd cmem cmem' addr v v' ct t ct' t' :
   decode Symbolic.M cmem ct' = Some (USER t') ->
   wf_entry_points cmem'.
 Proof.
-  unfold wf_entry_points.
-  intros WF GET UPD addr'.
-  admit. (*
-  split; intros H.
-  - rewrite ->WF in H.
-    case MEM: (PartMaps.get cmem addr') H => [[v'' t'']|] H //=.
-    erewrite PartMaps.get_upd_neq; try apply word_map_axioms; eauto; first by rewrite MEM.
-    intros ?. subst addr'.
-    assert (EQ : t'' = encode (USER t)) by congruence. subst.
-    move/andP: H => [_ H].
-    by move/eqP/encode_inj: H.
-  - apply WF. clear WF.
-    case GET': (PartMaps.get cmem' addr') H => [[v'' t'']|] H //=.
-    erewrite PartMaps.get_upd_neq in GET'; eauto using word_map_axioms.
-    { now rewrite GET'. }
-    intros ?. subst addr'.
-    erewrite PartMaps.get_upd_eq in GET'; eauto using word_map_axioms.
-    assert (EQ : t''= encode (USER t')) by congruence. subst.
-    move/andP: H => [_ H].
-    by move/eqP/encode_inj: H. *)
+  move=> Hwf Hget Hdec Hupd Hdec' addr' t''.
+  rewrite (PartMaps.get_upd Hupd) Hwf.
+  have [-> {addr'}|_] := altP (addr' =P addr).
+    by rewrite Hget (decode_monotonic _ Hget Hdec Hupd Hdec') Hdec Hdec' !andbF.
+  case: (PartMaps.get _ _) => [[i ti]|] //.
+  by rewrite (decode_monotonic _ Hget Hdec Hupd Hdec').
 Qed.
 
 Lemma mvec_in_kernel_user_upd cmem cmem' addr v v' ct t ct' t' :
@@ -371,28 +406,41 @@ Lemma refine_memory_upd' cache aregs cregs amem amem' cmem addr v ct t :
         refine_registers aregs cregs cmem' &
         refine_memory amem' cmem' ].
 Proof.
-  admit.
+  move=> Hcache Hregs Hmem Hupd Hdec.
+  have [[x t'] Hget] := PartMaps.upd_inv Hupd.
+  have [ct' Hdec' Hget'] := proj2 Hmem _ _ _ Hget.
+  have [cmem' Hupd'] := PartMaps.upd_defined v@ct Hget'.
+  have Hdec_eq := decode_monotonic _ Hget' Hdec' Hupd' Hdec.
+  rewrite Hupd'. eexists. split; eauto.
+  - move=> cmvec crvec Hlookup.
+    rewrite Hdec_eq.
+    move=> /(Hcache _ _ Hlookup) [ivec [ovec [Hdec_i Hdec_o Htrans]]].
+    rewrite -(decode_ivec_monotonic Hget' Hdec' Hupd' Hdec) in Hdec_i.
+    rewrite -(decode_ovec_monotonic _ Hget' Hdec' Hupd' Hdec) in Hdec_o.
+    by eauto using And3.
+  - split.
+    + move=> r x'' ct'' st'' Hdec_ct'' Hget''.
+      rewrite Hdec_eq in Hdec_ct''.
+      by apply (proj1 Hregs _ _ _ _ Hdec_ct'' Hget'').
+    + move=> r x'' st'' /(proj2 Hregs) [ct'' Hdec_ct'' Hget''].
+      rewrite -Hdec_eq in Hdec_ct''.
+      by eauto.
+  - split.
+    + move=> w x'' ct'' st''.
+      rewrite Hdec_eq (PartMaps.get_upd Hupd) (PartMaps.get_upd Hupd').
+      have [_ {w}|_] := altP (w =P addr).
+        move=> Hdec_ct'' [Hv Hct]. move: Hv Hct Hdec_ct'' => <- <- {x'' ct''}.
+        by rewrite Hdec; move => [->].
+      by apply (proj1 Hmem).
+    + move=> w x' st'.
+      rewrite (PartMaps.get_upd Hupd) (PartMaps.get_upd Hupd').
+      case: (w == addr) => [{w} [<- <-] {x' st'}|].
+        exists ct=> //.
+        by rewrite Hdec_eq.
+      move=> /(proj2 Hmem) [ct'' Hdec_ct'' Hget''].
+      exists ct''=> //.
+      by rewrite Hdec_eq.
 Qed.
-(*
-  intros MEM UPD.
-  destruct (PartMaps.upd_inv UPD) as [[w' t'] GET].
-  apply MEM in GET.
-  eapply PartMaps.upd_defined in GET; auto using word_map_axioms.
-  destruct GET as [cmem' UPD'].
-  eexists. split; eauto.
-  intros addr' w'' t''.
-  have [EQ|/eqP NEQ] := altP (addr' =P addr); simpl in *; subst.
-  - rewrite (PartMaps.get_upd_eq UPD').
-    rewrite (PartMaps.get_upd_eq UPD).
-    split; try congruence.
-    intros ?.
-    assert (E : USER t = USER t''); try congruence.
-    eapply encode_inj. congruence.
-  - rewrite (PartMaps.get_upd_neq NEQ UPD).
-    rewrite (PartMaps.get_upd_neq NEQ UPD').
-    now apply MEM.
-Qed.
-*)
 
 Lemma refine_registers_upd areg creg creg' cmem r v v' ct t ct' t' :
   refine_registers areg creg cmem ->
@@ -400,31 +448,25 @@ Lemma refine_registers_upd areg creg creg' cmem r v v' ct t ct' t' :
   decode Symbolic.R cmem ct = Some (USER t) ->
   PartMaps.upd creg r v'@ct' = Some creg' ->
   decode Symbolic.R cmem ct' = Some (USER t') ->
-  exists areg',
-    PartMaps.upd areg r v'@t' = Some areg' /\
+  exists2 areg',
+    PartMaps.upd areg r v'@t' = Some areg' &
     refine_registers areg' creg' cmem.
 Proof.
-  admit.
+  move=> Hregs Hget Hdec Hupd Hdec'.
+  have Hget' := proj1 Hregs _ _ _ _ Hdec Hget.
+  have [areg' Hupd'] := PartMaps.upd_defined v'@t' Hget'.
+  exists areg'=> //. split.
+  - move=> r' x ct'' st''.
+    rewrite (PartMaps.get_upd Hupd) (PartMaps.get_upd Hupd').
+    case: (r' == r) => [Hdec'' [Hx Hct'']|].
+      move: Hx Hct'' Hdec'' => <- <-.
+      by rewrite Hdec'=> [[->]].
+    by apply (proj1 Hregs).
+  - move=> r' x st''.
+    rewrite (PartMaps.get_upd Hupd) (PartMaps.get_upd Hupd').
+    case: (r' == r) => [[<- <-] {x st''}|]; first by eauto.
+    by apply (proj2 Hregs).
 Qed.
-(*
-  intros REG GET UPD.
-  assert (GET' := proj1 (REG _ _ _) GET).
-  assert (NEW := PartMaps.upd_defined v'@t' GET').
-  destruct NEW as [areg' UPD'].
-  eexists. split; eauto.
-  intros r' v'' t''.
-  have [EQ|/eqP NEQ] := altP (r' =P r); simpl in *; subst.
-  - rewrite (PartMaps.get_upd_eq UPD).
-    rewrite (PartMaps.get_upd_eq UPD').
-    split; try congruence.
-    intros ?.
-    assert (USER t' = USER t''); try congruence.
-    eapply encode_inj; congruence.
-  - rewrite (PartMaps.get_upd_neq NEQ UPD).
-    rewrite (PartMaps.get_upd_neq NEQ UPD').
-    now apply REG.
-Qed.
-*)
 
 Lemma refine_registers_upd' areg areg' creg cmem r v ct t :
   refine_registers areg creg cmem ->
@@ -434,28 +476,23 @@ Lemma refine_registers_upd' areg areg' creg cmem r v ct t :
     PartMaps.upd creg r v@ct = Some creg' &
     refine_registers areg' creg' cmem.
 Proof.
-  admit.
+  move=> Hregs Hupd Hdec.
+  have [[v0 t0] Hget] := PartMaps.upd_inv Hupd.
+  have [ct0 Hdec' Hget'] := proj2 Hregs _ _ _ Hget.
+  have [creg' Hupd'] := PartMaps.upd_defined v@ct Hget'.
+  exists creg'=> //.
+  split.
+  - move=> r' x ct' st'.
+    rewrite (PartMaps.get_upd Hupd) (PartMaps.get_upd Hupd').
+    case: (r' == r) => [Hdec_ct' [Hx Hct']|].
+      move: Hx Hct' Hdec_ct' => <- <- {x ct'}.
+      by rewrite Hdec => [[<-]].
+    by apply (proj1 Hregs).
+  - move=> r' x st'.
+    rewrite (PartMaps.get_upd Hupd) (PartMaps.get_upd Hupd').
+    case: (r' == r) => [[<- <-] {x st'}|]; first by rewrite -Hdec; eauto.
+    by apply (proj2 Hregs).
 Qed.
-(*
-  intros REF UPD.
-  move: (PartMaps.upd_inv UPD) => [[v0 t0] /REF GET].
-  eapply PartMaps.upd_defined in GET.
-  move: GET => [creg' UPD']. rewrite -> UPD'.
-  eexists. split; first by [].
-  intros r' v' t'.
-  have [EQ|/eqP NEQ] := altP (r' =P r); simpl in *.
-  - subst r'.
-    rewrite (PartMaps.get_upd_eq UPD).
-    rewrite (PartMaps.get_upd_eq UPD').
-    split; try congruence.
-    intros ?.
-    assert (USER t' = USER t); try congruence.
-    eapply encode_inj; try congruence.
-  - rewrite (PartMaps.get_upd_neq NEQ UPD).
-    rewrite (PartMaps.get_upd_neq NEQ UPD').
-    now apply REF.
-Qed.
-*)
 
 Inductive hit_step cst cst' : Prop :=
 | hs_intro (USER : in_user cst)
@@ -578,35 +615,22 @@ Lemma valid_initial_user_instr_tags cst cst' v ti :
   PartMaps.get (Concrete.mem cst) (Concrete.pcv cst) = Some v@ti ->
   oapp (fun x => is_user x) false (decode Symbolic.M (Concrete.mem cst) ti).
 Proof.
-  admit.
+  move=> Hcache Huser Huser' Hstep Hget.
+  have [cmvec [Hcmvec]] := step_lookup_success_or_fault Hstep.
+  case Hlookup: (Concrete.cache_lookup _ _ _) => [crvec|].
+    have := Hcache _ _ Hlookup.
+    rewrite (build_cmvec_ctpc Hcmvec) => /(_ Huser) [ivec [ovec [Hdec_i Hdec_o Htrans]]] Hpc_cst'.
+    have := build_cmvec_cop_cti Hcmvec.
+    rewrite Hget => [[i [instr [[<- -> {i}] _ _]]]].
+    have [[? [? [? ? ? ->]]] //|[_ Hservice _ _]] := decode_ivec_inv Hdec_i.
+    move: ovec Huser' {Htrans} Hdec_o.
+    rewrite /in_user {}Hservice /= -{}Hpc_cst' => [[]].
+    have [->|//] := (_ =P _).
+    by rewrite decode_kernel_tag.
+  case: (Concrete.store_mvec _ _) => [cmem'|//] Hcst'.
+  move: Huser'.
+  by rewrite /in_user {}Hcst' /= decode_kernel_tag.
 Qed.
-(*
-  intros CACHE INUSER INUSER' STEP GET;
-  inv STEP;
-  unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
-         Concrete.next_state_pc, Concrete.next_state,
-         Concrete.miss_state, word_lift in *;
-  simpl in *;
-
-  match_inv;
-
-  try analyze_cache;
-
-  try match goal with
-  | H1 : PartMaps.get ?mem ?pc = Some _@?w1,
-    H2 : PartMaps.get ?mem ?pc = Some _@?w2 |- _ =>
-    let EQ := fresh "EQ" in
-    assert (EQ : w1 = w2) by congruence;
-    try (apply encode_inj in EQ; discriminate EQ);
-    subst
-  end;
-
-  by [
-      rewrite decodeK
-    | rewrite /in_user /word_lift ?(@encode_kernel_tag _ _ (e Symbolic.P)) decodeK /= in INUSER'
-  ].
-Qed.
-*)
 
 Lemma valid_pcs st st' :
   Concrete.step _ masks st st' ->
@@ -616,72 +640,23 @@ Lemma valid_pcs st st' :
      decode Symbolic.P (Concrete.mem st') (Concrete.pct st') = Some (USER t)) \/
   Concrete.pct st' = Concrete.TKernel.
 Proof.
-  admit.
+  move=> Hstep Hcache Huser.
+  have [cmvec [Hcmvec]] := step_lookup_success_or_fault Hstep.
+  case Hlookup: (Concrete.cache_lookup _ _ _) => [crvec|].
+    have := Hcache _ _ Hlookup.
+    rewrite (build_cmvec_ctpc Hcmvec) => /(_ Huser) [ivec [ovec [Hdec_i Hdec_o Htrans]]] Hpc_st'.
+    have [[op [Hop [Hpriv _ _ _ _]]]|] := decode_ivec_inv Hdec_i.
+      move: ovec {Htrans} Hdec_o.
+      rewrite Hop /= -{}Hpc_st' => ovec.
+      case Hdec: (decode Symbolic.P (Concrete.mem st) _) => [[st''|]|] //.
+      by admit.
+    rewrite {}Hpc_st'.
+    case=> _ Hop _ _.
+    move: ovec {Htrans} Hdec_o.
+    rewrite {}Hop /= => [[]].
+    by have [->|//] := _ =P Concrete.TKernel; auto.
+  by case: (Concrete.store_mvec _ _) => [cmem'|] // ->; auto.
 Qed.
-(*
-  intros STEP CACHE INUSER. simpl.
-  inv STEP;
-  unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
-         Concrete.next_state_pc, Concrete.next_state,
-         Concrete.miss_state in *;
-  simpl in *;
-
-  match_inv;
-
-  try analyze_cache;
-
-  simpl in *; try rewrite (@encode_kernel_tag _ _ (e Symbolic.P)); now rewrite decodeK.
-
-Qed.
-*)
-
-Lemma refine_ivec sst cst ivec :
-  refine_state sst cst ->
-  build_ivec table sst = Some ivec ->
-  exists2 cmvec,
-    build_cmvec cst = Some cmvec &
-    decode_ivec e (Concrete.mem cst) cmvec = Some ivec.
-Proof.
-  admit.
-Qed.
-(*
-  intros [smem sreg int mem reg cache epc pc stpc
-               ? ? REFM REFR CACHE MVE WF KI] IVEC.
-  subst sst cst.
-  rewrite /build_ivec in IVEC.
-  match_inv;
-  try match goal with
-  | H : ?X = _ |- _ =>
-    match X with
-    | context[match ?E with _ => _ end] =>
-      destruct E eqn:?; try discriminate H
-    end
-  end;
-  match_inv;
-  repeat match goal with
-  | a : atom _ _ |- _ => destruct a
-  end;
-  repeat match goal with
-  | GET : PartMaps.get ?mem _ = Some _,
-    REFM : refine_memory ?mem _ |- _ =>
-    apply REFM in GET
-  | GET : PartMaps.get ?reg _ = Some _,
-    REFM : refine_registers ?reg _ |- _ =>
-    apply REFR in GET
-  end; simpl;
-  repeat match goal with
-  | E : ?X = _ |- context[?X] => rewrite E; simpl
-  end; try solve [ discriminate | eexists; reflexivity ].
-  match goal with
-  | GET : Symbolic.get_syscall _ _ = Some _,
-    WF : wf_entry_points _ |- _ =>
-    let EQ := fresh "EQ" in
-    let ISNOP := fresh "ISNOP" in
-    destruct (wf_entry_points_if _ WF GET) as (? & EQ & ISNOP);
-    apply is_nopP in ISNOP; rewrite EQ ISNOP //=
-  end.
-Qed.
-*)
 
 Lemma refine_ivec_inv sst cst cmvec ivec :
   refine_state sst cst ->
@@ -689,7 +664,28 @@ Lemma refine_ivec_inv sst cst cmvec ivec :
   decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
   build_ivec table sst = Some ivec.
 Proof.
-  admit.
+  move=> Href Hbuild /decode_ivec_inv [Hdec | Hdec]; last first.
+    case: Hdec => [Hop Hop' Hdec_tpc Hdec_ti].
+    rewrite (build_cmvec_ctpc Hbuild) in Hdec_tpc.
+    have [i [instr [Hget Hdec_i Hop'']]] := build_cmvec_cop_cti Hbuild.
+    move: Hop. rewrite -{}Hop'' op_to_wordK.
+    case: instr Hdec_i => // /is_nopP Hdec_i _.
+    have [sc Hget_sc Hsct] := wf_entry_points_only_if (rs_entry_points Href)
+                                                      Hget Hdec_ti Hdec_i.
+    rewrite /build_ivec (rs_pc Href).
+    case Hget': (PartMaps.get _ _) => [[i' ti]|] //=.
+      have [cti] := proj2 (rs_refm Href) _ _ _ Hget'.
+      rewrite Hget => Hdec_ti' [? ?]. subst i' cti.
+      by rewrite Hdec_ti' in Hdec_ti.
+    rewrite (rs_pct Href) in Hdec_tpc.
+    case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
+    move: Hop'.
+    case: ivec {Hdec_ti Hsct}=> op tpc ti ts /= ?. subst op.
+    by case: ts.
+  rewrite /build_cmvec.
+  case Hget: (PartMaps.get _ _) => [[i cti]|] //=.
+  have Hget'
+
 Qed.
 
 (*

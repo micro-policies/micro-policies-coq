@@ -283,7 +283,7 @@ Qed.
 
 Lemma build_cmvec_ctpc cst cmvec :
   build_cmvec cst = Some cmvec ->
-  Concrete.ctpc cmvec = common.tag (Concrete.pc cst).
+  Concrete.ctpc cmvec = Concrete.pct cst.
 Proof.
   case: cst => [mem regs cache [v t] epc].
   rewrite /build_cmvec => H.
@@ -301,7 +301,7 @@ Qed.
 Lemma build_cmvec_cop_cti cst cmvec :
   build_cmvec cst = Some cmvec ->
   exists i instr,
-    [/\ PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) =
+    [/\ PartMaps.get (Concrete.mem cst) (Concrete.pcv cst) =
         Some i@(Concrete.cti cmvec),
         decode_instr i = Some instr &
         op_to_word (opcode_of instr) = Concrete.cop cmvec].
