@@ -262,7 +262,7 @@ Lemma no_syscall_no_entry_point mem addr t :
 Proof.
   intros WF GETSC.
   apply/negP=> E.
-  move: (proj2 (WF addr t) E) => [? [? ?]].
+  move: (proj2 (WF addr t) E) => [? ? ?].
   congruence.
 Qed.
 
@@ -354,7 +354,7 @@ Proof.
       rewrite -{}Hop' op_to_wordK in Hop.
       by case: instr Hdec_i Hop.
     rewrite {}Hinstr {instr} in Hdec_i Hop'.
-    have [sc [Hget_sc Hsc_t]] :=
+    have [sc Hget_sc Hsc_t] :=
       wf_entry_points_only_if Hentry Hget_i Hdec_ti (proj2 (is_nopP _) Hdec_i).
     move/(Hmem _ _ _ _ Hdec_ti): (Hget_i) => Hget_i'.
     move: Hbuild.

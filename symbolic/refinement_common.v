@@ -251,27 +251,6 @@ Proof.
   by rewrite /in_user DEC.
 Qed.
 
-(* MOVE *)
-Lemma decode_ivec_monotonic cmem cmem' addr x y ct st ct' st' :
-  PartMaps.get cmem addr = Some x@ct ->
-  decode Symbolic.M cmem ct = Some (USER st) ->
-  PartMaps.upd cmem addr y@ct' = Some cmem' ->
-  decode Symbolic.M cmem ct' = Some (USER st') ->
-  decode_ivec e cmem' =1 decode_ivec e cmem.
-Proof.
-  admit.
-Qed.
-
-Lemma decode_ovec_monotonic cmem cmem' op addr x y ct st ct' st' :
-  PartMaps.get cmem addr = Some x@ct ->
-  decode Symbolic.M cmem ct = Some (USER st) ->
-  PartMaps.upd cmem addr y@ct' = Some cmem' ->
-  decode Symbolic.M cmem ct' = Some (USER st') ->
-  decode_ovec e op cmem' =1 decode_ovec e op cmem.
-Proof.
-  admit.
-Qed.
-
 Lemma refine_memory_upd cache aregs cregs amem cmem cmem' addr v v' ct t ct' t' :
   cache_correct cache cmem ->
   refine_registers aregs cregs cmem ->
@@ -633,8 +612,33 @@ Proof.
     have [[op [Hop [Hpriv _ _ _ _]]]|] := decode_ivec_inv Hdec_i.
       move: ovec {Htrans} Hdec_o.
       rewrite Hop /= -{}Hpc_st' => ovec.
-      case Hdec: (decode Symbolic.P (Concrete.mem st) _) => [[st''|]|] //.
-      by admit.
+      case Hdec: (decode Symbolic.P (Concrete.mem st) _) => [[st''|]|] //= Hdec_o.
+      suff : @decode _ _ e Symbolic.P (Concrete.mem st') =1
+             @decode _ _ e Symbolic.P (Concrete.mem st).
+        move=> E. rewrite -E in Hdec. by eauto.
+      move/concrete.exec.stepP: Hstep Hcmvec Hdec_i Hdec_o.
+      rewrite /step /build_cmvec {1}(Concrete.state_eta st) /=.
+      case Hget: (PartMaps.get _ (Concrete.pcv _)) => [[i cti]|] //=.
+      case Hdec_i: (decode_instr i) => [instr|] //=.
+      destruct instr; move=> Hstep; match_inv; try by []; move => [?]; subst cmvec;
+      unfold Concrete.next_state_reg, Concrete.next_state_pc,
+             Concrete.next_state_reg_and_pc, Concrete.next_state in *;
+      simpl in *;
+      match goal with
+      | H : match _ with _ => _ end = Some _ |- _ =>
+        rewrite Hlookup in H
+      end; match_inv;
+      repeat match goal with
+      | H : Some _ = Some _ |- _ => inv H; simpl in *
+      end; trivial.
+      rewrite /decode_ivec op_to_wordK /= => ?. match_inv.
+      repeat match goal with
+      | a : atom _ _ |- _ => destruct a; simpl in *
+      | H : OP _ = OP _ |- _ => inv H
+      end. simpl.
+      move=> H /=.
+      match_inv.
+      by eapply decode_monotonic; eauto.
     rewrite {}Hpc_st'.
     case=> _ Hop _ _.
     move: ovec {Htrans} Hdec_o.

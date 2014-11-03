@@ -340,4 +340,32 @@ Proof.
   left. eexists. split; try by eauto. rewrite Hpriv. by split; constructor; eauto.
 Qed.
 
+Lemma decode_ivec_monotonic cmem cmem' addr x y ct st ct' st' :
+  PartMaps.get cmem addr = Some x@ct ->
+  decode Symbolic.M cmem ct = Some (USER st) ->
+  PartMaps.upd cmem addr y@ct' = Some cmem' ->
+  decode Symbolic.M cmem ct' = Some (USER st') ->
+  decode_ivec cmem' =1 decode_ivec cmem.
+Proof.
+  move=> Hget Hdec Hupd Hdec' [cop ctpc cti ct1 ct2 ct3].
+  have Hdec_eq := decode_monotonic _ Hget Hdec Hupd Hdec'.
+  rewrite /decode_ivec /=.
+  case: (word_to_op cop) => [op|] //=.
+  by destruct op; simpl; rewrite !Hdec_eq.
+Qed.
+
+Lemma decode_ovec_monotonic cmem cmem' op addr x y ct st ct' st' :
+  PartMaps.get cmem addr = Some x@ct ->
+  decode Symbolic.M cmem ct = Some (USER st) ->
+  PartMaps.upd cmem addr y@ct' = Some cmem' ->
+  decode Symbolic.M cmem ct' = Some (USER st') ->
+  decode_ovec op cmem' =1 decode_ovec op cmem.
+Proof.
+  move=> Hget Hdec Hupd Hdec' [ctrpc ctr].
+  have Hdec_eq := decode_monotonic _ Hget Hdec Hupd Hdec'.
+  rewrite /decode_ovec.
+  case: op=> [op|] //=.
+  by destruct op; simpl; rewrite !Hdec_eq.
+Qed.
+
 End tag_encoding.

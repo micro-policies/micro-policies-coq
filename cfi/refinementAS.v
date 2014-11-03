@@ -952,7 +952,7 @@ Proof.
               move: CORRECTNESS => /(_ _ _ erefl) CORRECTNESS.
               move/CORRECTNESS: CONT => {CORRECTNESS} /(_ _ erefl).
               simpl in TG, TG'. subst.
-              by move: H => [[H ->]].
+              by move: H => [H ->].
           + destruct MEQUIV'.
         }
         { destruct (get mem' pc) eqn:GET'.
