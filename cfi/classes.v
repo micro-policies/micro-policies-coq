@@ -10,10 +10,10 @@ Class cfi_id := {
 
   word_to_id : word t -> option id;
   id_to_word : id -> word t;
-  
+
   id_to_wordK : forall x, word_to_id (id_to_word x) = Some x;
   word_to_idK : forall w x, word_to_id w = Some x -> id_to_word x = w
-                             
+
 }.
 
 End WithClasses.
@@ -32,8 +32,8 @@ Definition valid_jmp w1 w2 :=
   end.
 
 Lemma valid_jmp_true w1 w2 :
-  valid_jmp w1 w2 = true ->
-  exists id1 id2, 
+  valid_jmp w1 w2 ->
+  exists id1 id2,
     word_to_id w1 = Some id1 /\
     word_to_id w2 = Some id2.
 Proof.

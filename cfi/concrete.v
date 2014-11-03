@@ -23,7 +23,7 @@ Section ConcreteSection.
 Context {t : machine_types}
         {ops : machine_ops t}
         {ids : @classes.cfi_id t}
-        {e : rules.encodable t [eqType of cfi_tag]}.
+        {e : rules.fencodable t cfi_tags}.
 
 Import PartMaps.
 
@@ -36,48 +36,48 @@ Definition valid_jmp := classes.valid_jmp cfg.
 
 Definition no_violation (cst : Concrete.state t) :=
   let '(Concrete.mkState mem _  _ pc@tpc _) := cst in
-  (forall i ti src,
-    get mem pc = Some i@(encode (USER ti)) ->
-    tpc = encode (USER (INSTR (Some src))) ->
+  (forall i cti ti src,
+    get mem pc = Some i@cti ->
+    @fdecode _ _ e Symbolic.M cti = Some (USER ti) ->
+    @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
     exists dst,
-        ti = INSTR (Some dst) /\ cfg src dst = true) /\
-  (forall i ti src,
-     get mem pc = Some i@(encode (ENTRY ti)) ->
-     tpc = encode (USER (INSTR (Some src))) ->
+        ti = INSTR (Some dst) /\ cfg src dst) /\
+  (forall i cti ti src,
+     get mem pc = Some i@cti ->
+     @fdecode _ _ e Symbolic.M cti = Some (ENTRY ti) ->
+     @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
      exists dst,
-       ti = INSTR (Some dst) /\ cfg src dst = true).
+       ti = INSTR (Some dst) /\ cfg src dst).
 
 (*Defined in terms of atom_equiv for symbolic tags*)
 (* TODO: as a sanity check, please prove reflexivity for this and
    the other attacker relations. That will ensure that the attacker
    can at least keep things the same. *)
-Inductive atom_equiv : atom (word t) (word t) -> atom (word t) (word t)
-                       -> Prop :=
-  | user_equiv : forall a a' v v' ut ut',
-                   a = v@(encode (USER ut)) ->
-                   a' = v'@(encode (USER ut')) ->
+Inductive atom_equiv k (a : atom (word t) (word t)) (a' : atom (word t) (word t)) : Prop :=
+  | user_equiv : forall v v' ct ut ct' ut',
+                   a = v@ct ->
+                   @fdecode _ _ e k ct = Some (USER ut) ->
+                   a' = v'@ct' ->
+                   @fdecode _ _ e k ct' = Some (USER ut') ->
                    Sym.atom_equiv v@ut v'@ut' ->
-                   atom_equiv a a'
-  | any_equiv : forall a a',
-                    (~ exists ut, common.tag a = encode (USER ut)) ->
-                    a = a' ->
-                    atom_equiv a a'.
+                   atom_equiv k a a'
+  | any_equiv : (~ exists ut, @fdecode _ _ e k (common.tag a) = Some (USER ut)) ->
+                a = a' ->
+                atom_equiv k a a'.
 
-Definition equiv {M : Type -> Type} {Key : Type}
-           {M_class : partial_map M Key} :
-           M (atom (word t) (word t))-> M (atom (word t) (word t))-> Prop :=
-  pointwise atom_equiv.
+Definition equiv (mem mem' : Concrete.memory t) :=
+  pointwise (atom_equiv Symbolic.M) mem mem'.
 
 Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t) :=
   forall r, exists x x',
     PartMaps.get regs r = Some x /\
     PartMaps.get regs' r = Some x' /\
-    atom_equiv x x'.
+    atom_equiv Symbolic.R x x'.
 
 Inductive step_a : Concrete.state t ->
                    Concrete.state t -> Prop :=
 | step_attack : forall mem reg cache pc tpc epc mem' reg'
-                  (INUSER: word_lift (fun x => is_user x) tpc)
+                  (INUSER: oapp (fun x => is_user x) false (@fdecode _ _ e Symbolic.P tpc))
                   (REQUIV: reg_equiv reg reg')
                   (MEQUIV: equiv mem mem'),
                   step_a (Concrete.mkState mem reg cache pc@tpc epc)
@@ -92,14 +92,14 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
   if in_kernel st || in_kernel st' then true else
   match (get (Concrete.mem st) pc_s) with
     | Some i =>
-      match (decode (common.tag i)) with
+      match (@fdecode _ _ e Symbolic.M (common.tag i)) with
         | Some (USER (INSTR (Some src))) =>
           match decode_instr (common.val i) with
             | Some (Jump r)
             | Some (Jal r) =>
               match (get (Concrete.mem st) pc_s') with
                 | Some i' =>
-                  match (decode (common.tag i')) with
+                  match (@fdecode _ _ e Symbolic.M (common.tag i')) with
                     | Some (USER (INSTR (Some dst))) =>
                       cfg src dst
                     | Some (ENTRY (INSTR (Some dst))) =>
@@ -123,10 +123,10 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
             | None => false
             | _ => pc_s' == pc_s .+1
           end
+       (* this says that if cst,cst' is in user mode then it's
+          not sensible to point to kernel memory*)
         | Some (USER DATA)
-        | Some KERNEL             (* this says that if cst,cst' is in user mode then it's
-                                  not sensible to point to kernel memory*)
-        | Some (ENTRY _) => false
+        | Some (ENTRY _)
         | None => false
       end
     | None => false

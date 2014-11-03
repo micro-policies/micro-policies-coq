@@ -184,46 +184,21 @@ Proof.
     by move => H [<-].
 Qed.
 
-Instance enc: @encodable t Sym.tag_eqType := {|
-  encode t :=
-    match t with
-    | USER ut => Word.pack [29; 1] [encode_mtag ut; Word.one]%wp
-    | ENTRY ut => Word.pack [29; 1] [encode_mtag ut; Word.repr 2]%wp
-    | KERNEL => Word.pack [29; 1] [Word.zero; Word.zero]%wp
-    end;
-
-  decode w :=
+Instance enc: encodable t Sym.ms_tags := {|
+  decode k m w :=
     let: [ut; w']%wu := Word.unpack [29; 1] w in
-    if w' == Word.zero then
-      if ut == Word.zero then Some KERNEL
-      else None
+    if w' == Word.zero then None
     else if w' == Word.one then
       do! ut <- decode_mtag ut;
       Some (@USER Sym.tag_eqType ut)
     else if w' == Word.repr 2 then
       do! ut <- decode_mtag ut;
       Some (@ENTRY Sym.tag_eqType ut)
-    else None;
-
-  encode_kernel_tag := ssrfun.erefl
+    else None
 |}.
 Proof.
-  - case => [ut| |ut];
-    by rewrite Word.packK /= ?encode_mtagK.
-  - intros tg w.
-    case E: (Word.unpack [29; 1] w) => [ut [w' []]].
-    move: (Word.unpackK [29; 1] w). rewrite E.
-    have [?|?] := altP (w' =P Word.zero); try subst w'.
-    { have [?|?] := altP (ut =P Word.zero); try subst ut; last by [].
-      by move => H [<-]. }
-    have [?|?] := altP (w' =P Word.one); try subst w'.
-    { case DEC: (decode_mtag ut) => [ut'|] //=.
-      apply decode_mtagK in DEC. subst ut.
-      by move => H [<-]. }
-    have [?|?] := altP (w' =P Word.repr 2); try subst w'; last by [].
-    case DEC: (decode_mtag ut) => [ut'|] //=.
-    apply decode_mtagK in DEC. subst ut.
-    by move => H [<-].
+  - move=> * ?. reflexivity.
+  - by [].
 Qed.
 
 Instance sp : Symbolic.params := Sym.sym_memory_safety t.
@@ -232,7 +207,7 @@ Context {color_map : Type -> Type}
         {color_map_class : PartMaps.partial_map color_map color}
         {color_map_spec : PartMaps.axioms color_map_class}.
 
-Context {monitor_invariant : @kernel_invariant _ _ (fun k => enc)}
+Context {monitor_invariant : @kernel_invariant _ _ enc}
         {syscall_addrs : @memory_syscall_addrs t}
         {ap : Abstract.abstract_params [eqType of word t]}
         {apspec : Abstract.params_spec ap}

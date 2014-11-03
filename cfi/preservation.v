@@ -2,6 +2,7 @@ Require Import Coq.Lists.List Coq.Bool.Bool.
 Require Import common.common.
 Require Import lib.utils lib.Coqlib.
 Require Import cfi.property.
+Require Import ssreflect ssrbool.
 
 Set Implicit Arguments.
 
@@ -28,9 +29,9 @@ Class machine_refinement (amachine : cfi_machine) (cmachine : cfi_machine) := {
     forall ast cst cst'
       (REF: refine_state ast cst)
       (STEP: step cst cst'),
-      (check cst cst' = true ->
+      (check cst cst' ->
        exists ast', step ast ast' /\ refine_state ast' cst')
-      /\ (check cst cst' = false ->
+      /\ (~~ check cst cst' ->
           refine_state ast cst' \/
           exists ast', step ast ast' /\ refine_state ast' cst');
 
@@ -51,7 +52,7 @@ Inductive refine_traces :
             refine_traces [ast] [cst]
 | TRNormal0 : forall ast cst cst' axs cxs,
     step cst cst' ->
-    check cst cst' = false ->
+    ~~ check cst cst' ->
     refine_state ast cst ->
     refine_state ast cst' ->
     refine_traces (ast :: axs) (cst' :: cxs) ->
@@ -74,9 +75,9 @@ Inductive refine_traces :
 
 Lemma refine_traces_single ast cst cst' cxs :
   refine_traces [ast] (cst :: cst' :: cxs) ->
-  forall csi csj, 
-    In2 csi csj (cst :: cst' :: cxs) -> 
-    check csi csj = false.
+  forall csi csj,
+    In2 csi csj (cst :: cst' :: cxs) ->
+    ~~ check csi csj.
 Proof.
   intros REF csi csj IN2.
   inv REF.
@@ -104,7 +105,7 @@ Proof.
   - destruct IN as [EQ | IN]; subst.
     + econstructor(eauto).
     + destruct IN as [? | IN]; subst.
-      inv RTRACES. 
+      inv RTRACES.
       eapply re_step; eauto; econstructor(auto).
     + inv RTRACES.
       assert (IN' : In cst' (a :: cxs)) by (right; auto).
@@ -125,8 +126,8 @@ Proof.
   induction cxs; intros.
   - inv RTRACE.
   - inversion RTRACE
-    as [| ? ? ? ? ? STEP CHECK REF REF' RTRACE' 
-        | ? ? ? ? ? ? STEP ASTEP REF REF' RTRACE' 
+    as [| ? ? ? ? ? STEP CHECK REF REF' RTRACE'
+        | ? ? ? ? ? ? STEP ASTEP REF REF' RTRACE'
         | ? ? ? ? ? ? NSTEP STEPA SSTEPA REF REF' RTRACE'];
     subst.
     +  destruct (IHcxs _ RTRACE') as [cst' [cst'' IH]].
@@ -141,7 +142,7 @@ Proof.
     + exists cst; exists a.
       split; [simpl; by auto | right; auto].
 Qed.
-      
+
 Class machine_refinement_specs := {
 
   step_classic : forall (cst cst': @state cmachine),
@@ -154,15 +155,15 @@ Class machine_refinement_specs := {
   cfg_nocheck : forall asi csi csj,
     refine_state asi csi ->
     step csi csj ->
-    check csi csj = false ->
-    succ csi csj = true;
+    ~~ check csi csj ->
+    succ csi csj;
 
   (* We should merge this with av_implies_cv, as we did in the paper *)
   cfg_equiv : forall (asi asj : @state amachine) csi csj,
     refine_state asi csi ->
     refine_state asj csj ->
     step asi asj ->
-    check csi csj = true ->
+    check csi csj ->
     step csi csj ->
     succ csi csj = succ asi asj;
 
@@ -170,13 +171,13 @@ Class machine_refinement_specs := {
      making any assumptions on the shape of the CFG *)
   av_no_attacker : forall (asi asj : @state amachine) csi,
     refine_state asi csi ->
-    succ asi asj = false ->
+    ~~ succ asi asj ->
     step asi asj ->
     ~ step_a asi asj;
 
   as_implies_cs : forall axs cxs asi asj csi csj,
-    check csi csj = true ->
-    succ asi asj = false ->
+    check csi csj ->
+    ~~ succ asi asj ->
     step asi asj ->
     refine_state asi csi ->
     refine_traces (asj :: axs) (csj :: cxs) ->
@@ -203,13 +204,13 @@ Proof.
   {
     destruct (step_classic cst cst') as [STEPN | NST].
   - destruct (backwards_refinement_normal _ _ _ INITREF STEPN) as [VIS INVIS].
-    destruct (check cst cst') eqn:CHECK.
-    + destruct (VIS eq_refl) as [ast' [ASTEP AREF]]. clear INVIS VIS.
+    have [CHECK|CHECK] := boolP (check cst cst').
+    + destruct (VIS CHECK) as [ast' [ASTEP AREF]]. clear INVIS VIS.
       exists [ast;ast']. split.
       * exists ast'. eapply intermr_multi. right. eassumption. now constructor.
       * apply TRNormal1; auto.
         constructor(assumption).
-    + specialize (INVIS eq_refl); clear VIS.
+    + specialize (INVIS CHECK); clear VIS.
       destruct INVIS as [ZERO | [ast' [STEP REF]]].
       * exists [ast]; split; [exists ast; constructor | apply TRNormal0; auto].
         now constructor(assumption).
@@ -228,8 +229,8 @@ Proof.
   }
   { destruct (step_classic cst cst'') as [STEPN | NST].
     - destruct (backwards_refinement_normal _ _ _ INITREF STEPN) as [VIS INVIS].
-      destruct (check cst cst'') eqn:CHECK.
-      + destruct (VIS eq_refl) as [ast'' [ASTEP AREF]]. clear INVIS VIS.
+      have [CHECK|CHECK] := boolP (check cst cst'').
+      + destruct (VIS CHECK) as [ast'' [ASTEP AREF]]. clear INVIS VIS.
         destruct (IHINTERM2' ast'' AREF) as [axs [[ast' INTERMR1] IH]].
         exists (ast :: axs); split.
         assert (INTERMR1' : intermrstep amachine (ast :: axs) ast ast').
@@ -241,7 +242,7 @@ Proof.
           subst.
           apply TRNormal1; auto.
       + (*nocheck step case*)
-        specialize (INVIS eq_refl); clear VIS.
+        specialize (INVIS CHECK); clear VIS.
         destruct INVIS as [ZERO | [ast' [STEP REF]]].
         * destruct (IHINTERM2' ast ZERO) as [axs [[ast' INTERMR1] IH]].
           exists axs. split.
@@ -295,10 +296,10 @@ Proof.
     * apply (cfg_nocheck _ _ _ REF CSTEP VIS).
     * apply IHRTRACE'; assumption.
   - destruct IN2 as [[? ?] | IN2]; subst.
-    * assert (SUCC: succ ast ast' = true).
+    * assert (SUCC: succ ast ast').
       { apply TSAFE; simpl; auto. }
-      destruct (check csi csj) eqn:CHECK.
-      by (rewrite <- SUCC; apply (cfg_equiv _ _ _ _ REF REF' ASTEP' CHECK STEP)).
+      have [CHECK|CHECK] := boolP (check csi csj).
+        by rewrite (cfg_equiv _ _ _ _ REF REF' ASTEP' CHECK STEP).
       by apply (cfg_nocheck _ _ _ REF STEP CHECK).
     * apply IHRTRACE'.
       destruct axs.
@@ -326,7 +327,7 @@ Lemma refine_traces_split axs ahd atl asi asj cxs :
   axs = ahd ++ asi :: asj :: atl ->
   refine_traces axs cxs ->
   step asi asj ->
-  succ asi asj = false ->
+  ~~ succ asi asj ->
   exists chd csi csj ctl,
     step csi csj /\
     refine_state asi csi /\
@@ -379,23 +380,23 @@ Proof.
     clear INTERMR1.
     destruct (CFI1 ast ast' axs INIT1 INTERM1) as [TSAFE1 | VIOLATED].
     - (*machine1 has CFI at all steps*)
-      left. apply (refine_traces_preserves_cfi_trace RTRACE TSAFE1).
+      left. by apply (refine_traces_preserves_cfi_trace RTRACE TSAFE1).
     - (*machine1 has a violation*)
       destruct VIOLATED
          as [asi [asj [ahs [atl [ALST [[ASTEP AV] [TSAFE1 [TSAFE2 STOP1]]]]]]]].
       assert (IN2: In2 asi asj axs) by (rewrite ALST; apply in2_trivial).
       destruct (refine_traces_split ahs atl asi asj ALST RTRACE ASTEP AV)
         as [chs [csi [csj [ctl [CSTEP [REFI [REFJ [RHT [RTT CLST]]]]]]]]].
-      destruct (check csi csj) eqn:VIS.
+      have [VIS|VIS] := boolP (check csi csj).
       + right.
         exists csi; exists csj; exists chs; exists ctl.
-        split. now assumption.
-        split. split;
-               [assumption | rewrite <- AV; 
-                             apply (cfg_equiv asi asj csi csj REFI REFJ ASTEP VIS CSTEP)].
-        split. now apply (refine_traces_preserves_cfi_trace RHT TSAFE1).
-        split. now apply (refine_traces_preserves_cfi_trace  RTT TSAFE2).
-        apply (as_implies_cs asi csi VIS AV ASTEP REFI RTT STOP1).
+        split; first by [].
+        split.
+          split; first by [].
+          by rewrite (cfg_equiv asi asj csi csj REFI REFJ ASTEP VIS CSTEP).
+        split; first by apply (refine_traces_preserves_cfi_trace RHT TSAFE1).
+        split; first by apply (refine_traces_preserves_cfi_trace  RTT TSAFE2).
+        by apply (as_implies_cs asi csi VIS AV ASTEP REFI RTT STOP1).
       + left.
         intros csi' csj' IN2' STEP'.
         subst cxs.

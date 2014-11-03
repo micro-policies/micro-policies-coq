@@ -2,17 +2,20 @@ Require Import List NPeano Arith Bool.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.utils lib.partial_maps lib.Coqlib.
+Require Import lib.utils lib.partial_maps lib.Coqlib lib.hlist.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.exec.
 Require Import symbolic.symbolic.
+Require Import symbolic.exec.
 Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 
 Open Scope nat_scope.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Import ListNotations.
 
@@ -26,7 +29,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
-        {e : forall k, encodable mt (Symbolic.ttypes k)}
+        {e : encodable mt Symbolic.ttypes}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
         {kcc : kernel_code_correctness ki table}.
@@ -40,26 +43,27 @@ Hint Resolve kernel_invariant_upd_mem.
 Hint Resolve kernel_invariant_upd_reg.
 Hint Resolve kernel_invariant_store_mvec.
 
-Let miss_state_not_user st st' mvec :
-  Concrete.miss_state st mvec = Some st' ->
-  in_user st' = true ->
-  False.
-Proof.
-  intros MISS INUSER.
-  apply in_user_in_kernel in INUSER; eauto.
-  unfold Concrete.miss_state in MISS.
-  unfold in_kernel, Concrete.is_kernel_tag in INUSER.
-  match_inv. simpl in *.
-  rewrite eqxx in INUSER; try apply eq_wordP.
-  simpl in INUSER. discriminate.
-Qed.
+Ltac check_conv t1 t2 :=
+  let e := constr:(erefl t1 : t1 = t2) in idtac.
 
-Ltac simpl_encode :=
+Ltac failwith m :=
+  let op := current_instr_opcode in
+  fail 1000 m op.
+
+Ltac contradict_in_user :=
   match goal with
-  | H : context[decode (encode _)] |- _ =>
-    rewrite decodeK in H; simpl in *; subst
-  | H : encode _ = encode _ |- _ =>
-    apply encode_inj in H; simpl in H; try inv H; subst
+  | INUSER : is_true (in_user ?st),
+    ISKERNEL : ?t = Concrete.TKernel |- _ =>
+    check_conv (Concrete.pct st) t;
+    first [ rewrite ISKERNEL /in_user /= decode_kernel_tag in INUSER; done |
+            failwith "contradict_in_user" ]
+  end.
+
+Ltac destruct_hlist :=
+  repeat match goal with
+  | x : hlist _ _ |- _ => simpl in x
+  | x : unit |- _ => destruct x
+  | x : prod _ _ |- _ => destruct x
   end.
 
 Ltac analyze_cache :=
@@ -67,26 +71,161 @@ Ltac analyze_cache :=
   | LOOKUP : Concrete.cache_lookup ?cache _ ?mvec = Some ?rvec,
     PC     : PartMaps.get _ ?pc = Some ?i@_,
     INST   : decode_instr ?i = Some _,
-    INUSER : in_user (Concrete.mkState _ _ _ ?pc@_ _) = true,
-    CACHE  : cache_correct ?cache |- _ =>
-    unfold in_user in INUSER; simpl in INUSER;
-    assert (CACHEHIT := analyze_cache mvec CACHE LOOKUP INUSER (erefl _));
+    INUSER : is_true (in_user (Concrete.mkState _ _ _ ?pc@_ _)),
+    CACHE  : cache_correct ?cache ?cmem |- _ =>
+    assert (CACHEHIT := analyze_cache CACHE LOOKUP INUSER (erefl _));
     simpl in CACHEHIT;
     repeat match type of CACHEHIT with
     | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
     | _ /\ _ => destruct CACHEHIT as [? CACHEHIT]
     | _ \/ _ => destruct CACHEHIT as [CACHEHIT | CACHEHIT]
+    | and3 _ _ _ => destruct CACHEHIT
+    | and4 _ _ _ _ => destruct CACHEHIT
     | False => destruct CACHEHIT
     end;
-    try subst mvec; simpl in *; subst;
-    try match goal with
-    | H : context[decode (encode _)] |- _ =>
-      rewrite decodeK in H; simpl in *; subst
-    end
+    try contradict_in_user; match_inv; destruct_hlist; simpl in *
   | MISS   : Concrete.miss_state _ _ = Some ?st',
-    INUSER : in_user ?st' = true |- _ =>
-    destruct (miss_state_not_user _ _ MISS INUSER)
+    INUSER : is_true (in_user ?st') |- _ =>
+    destruct (miss_state_not_user MISS INUSER)
   end.
+
+Ltac relate_register_get :=
+  match goal with
+  | REFR : refine_registers ?areg ?creg ?cmem,
+    GET : PartMaps.get ?creg ?r = Some _@?t,
+    DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
+    match goal with
+    | GET' : PartMaps.get areg r = Some _ |- _ => fail 1
+    | |- _ => first [ pose proof (proj1 REFR _ _ _ _ DEC GET) |
+                      failwith "relate_register_get" ]
+    end
+  end.
+
+Ltac relate_memory_get :=
+  match goal with
+  | MEM : PartMaps.get ?cmem ?addr = Some _@?t,
+    REFM : refine_memory ?smem ?cmem,
+    DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
+    match goal with
+    | _ : PartMaps.get smem addr = Some _ |- _ => fail 1
+    | |- _ => idtac
+    end;
+    first [ pose proof (proj1 REFM _ _ _ _ DEC MEM) |
+            failwith "relate_memory_get" ]
+  end.
+
+Ltac relate_register_upd :=
+  match goal with
+  | GET : PartMaps.get ?reg ?r = Some _@?t,
+    DEC : decode _ ?cmem ?t = Some (USER _),
+    UPD : PartMaps.upd ?reg ?r ?v@?t' = Some ?reg',
+    DEC' : decode _ ?cmem ?t' = Some (USER _),
+    REFR : refine_registers _ ?reg ?cmem,
+    KINV : kernel_invariant_statement ?ki ?cmem _ _ _ |- _ =>
+    first [ destruct (refine_registers_upd REFR GET DEC UPD DEC') as [? ? ?];
+            pose proof (kernel_invariant_upd_reg KINV GET DEC UPD DEC')
+          | failwith "relate_register_upd" ]
+  end.
+
+Ltac relate_memory_upd :=
+  match goal with
+  | GET : PartMaps.get ?cmem ?addr = Some _@?t,
+    DEC : decode _ ?cmem ?t = Some (USER _),
+    UPD : PartMaps.upd ?cmem ?addr _@?t' = Some _,
+    DEC' : decode _ ?cmem ?t' = Some (USER _),
+    CACHE : cache_correct _ ?cmem,
+    REFR : refine_registers _ _ ?cmem,
+    REFM : refine_memory _ ?cmem,
+    WFENTRYPOINTS : wf_entry_points _ ?cmem,
+    MVEC : mvec_in_kernel ?cmem |- _ =>
+    first [ destruct (refine_memory_upd CACHE REFR REFM GET DEC UPD DEC') as [? [? ? ?]];
+            pose proof (wf_entry_points_user_upd WFENTRYPOINTS GET DEC UPD DEC');
+            pose proof (mvec_in_kernel_user_upd MVEC GET DEC UPD DEC')
+          | failwith "relate_memory_upd" ]
+  end.
+
+Ltac update_decodings :=
+  match goal with
+  | DEC : decode ?k ?cmem ?ct = Some (USER ?ut),
+    UPD : PartMaps.upd ?cmem _ _ = Some ?cmem' |-
+    decode ?k ?cmem' ?ct = Some (USER ?ut) =>
+    first [ solve [ rewrite -DEC; eapply decode_monotonic; eauto ] |
+            failwith "update_decodings" ]
+  end.
+
+Ltac find_and_rewrite :=
+  match goal with
+  | H : ?x = _ |- context[?x] =>
+    rewrite H; clear H; simpl
+  end.
+
+Ltac simplify_eqs :=
+  match goal with
+  | E1 : ?x = ?y1,
+    E2 : ?x = ?y2 |- _ =>
+    rewrite E1 in E2;
+    inversion E2; subst; clear E2
+  end.
+
+Ltac solve_step :=
+  solve [
+      econstructor (
+          solve [eauto;
+                 repeat autounfold;
+                 repeat destruct_hlist;
+                 repeat simplify_eqs;
+                 repeat (find_and_rewrite; simpl);
+                 reflexivity]
+        )
+    | failwith "solve_step"
+  ].
+
+Ltac solve_refine_state :=
+  solve [ econstructor; eauto; try update_decodings
+        | failwith "solve_refine_state" ].
+
+Lemma refine_ivec_inv sst cst cmvec ivec :
+  refine_state ki table sst cst ->
+  build_cmvec cst = Some cmvec ->
+  decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
+  build_ivec table sst = Some ivec.
+Proof.
+  case: ivec => [vop tpc ti ts].
+  move=> Href Hbuild /decode_ivec_inv /= [Hdec | Hdec]; last first.
+    case: Hdec => [Hop ? Hdec_tpc Hdec_ti]. subst vop.
+    rewrite (build_cmvec_ctpc Hbuild) in Hdec_tpc.
+    have [i [instr [Hget Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
+    move: Hop. rewrite -{}Hop' op_to_wordK.
+    case: instr Hdec_i => // /is_nopP Hdec_i _.
+    have [sc Hget_sc Hsct] := wf_entry_points_only_if (rs_entry_points Href)
+                                                      Hget Hdec_ti Hdec_i.
+    rewrite /build_ivec (rs_pc Href).
+    case Hget': (PartMaps.get _ _) => [[i' ti']|] //=.
+      have [cti] := proj2 (rs_refm Href) _ _ _ Hget'.
+      rewrite Hget => Hdec_ti' [? ?]. subst i' cti.
+      by rewrite Hdec_ti' in Hdec_ti.
+    rewrite (rs_pct Href) in Hdec_tpc.
+    case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
+    by case: ts.
+  case: Hdec => op [Hop [Hpriv Hcop Hdec_tpc Hdec_ti Hdec_ts]]. subst vop.
+  rewrite (build_cmvec_ctpc Hbuild) (rs_pct Href) in Hdec_tpc.
+  case: Hdec_tpc => ?. subst tpc.
+  have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
+  move: Hcop. rewrite -{}Hop' op_to_wordK => [[?]]. subst op.
+  move: Hbuild.
+  rewrite /build_cmvec /build_ivec (rs_pc Href) Hget_i Hdec_i.
+  rewrite (proj1 (rs_refm Href) _ _ _ _ Hdec_ti Hget_i) Hdec_i /=.
+  destruct Href, instr, cmvec; move=> Hbuild; simpl in *; match_inv;
+  repeat match goal with
+  | x : unit |- _ => destruct x
+  | x : prod _ _ |- _ => destruct x
+  | x : atom _ _ |- _ => destruct x
+  | H : Some _ = Some _ |- _ => inv H
+  end; simpl in *; match_inv;
+  repeat relate_register_get;
+  repeat relate_memory_get;
+  trivial; repeat find_and_rewrite; by trivial.
+Qed.
 
 Lemma cache_hit_simulation sst cst cst' :
   refine_state ki table sst cst ->
@@ -95,12 +234,10 @@ Lemma cache_hit_simulation sst cst cst' :
     Symbolic.step table sst sst' /\
     refine_state ki table sst' cst'.
 Proof.
-  move => [smem sregs int ? ? ? ? pc tpc ? ? REFM REFR ? MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
-  subst sst cst.
+  case: sst => smem sregs [pc atpc] int.
+  move => [/= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
+  rewrite /Symbolic.pcv /= in PC. subst pc.
   inv STEP; subst mvec;
-  try match goal with
-  | EQ : Concrete.mkState _ _ _ _ _ = Concrete.mkState _ _ _ _ _ |- _ => inv EQ
-  end;
   unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
          Concrete.next_state_pc, Concrete.next_state in *;
   simpl in *;
@@ -108,82 +245,22 @@ Proof.
 
   match_inv;
 
-  analyze_cache; simpl in *;
+  analyze_cache;
 
-  try solve [rewrite /in_user /word_lift /= (@encode_kernel_tag _ _ (e Symbolic.P)) decodeK //= in INUSER'];
+  repeat relate_register_get;
 
-  repeat match goal with
-  | H : encode _ = encode _ |- _ =>
-    apply encode_inj in H;
-    move: H => [H]; subst
-  end;
+  repeat relate_memory_get;
 
-  repeat match goal with
-  | MEM : PartMaps.get ?cmem ?addr = Some _,
-    REFM : refine_memory ?smem ?cmem |- _ =>
-    match goal with
-    | _ : PartMaps.get smem addr = Some _ |- _ => fail 1
-    | |- _ => idtac
-    end;
-    pose proof (proj1 (REFM _ _ _) MEM)
-  end;
+  try relate_register_upd;
 
-  try match goal with
-  | GET : PartMaps.get ?reg ?r = Some _,
-    UPD : PartMaps.upd ?reg ?r ?v@(encode (USER ?t)) = Some ?reg',
-    REFR : refine_registers _ ?reg |- _ =>
-    (destruct (refine_registers_upd _ v _ t REFR OLD UPD) as (? & ? & ?);
-     pose proof (kernel_invariant_upd_reg ki _ _ _ _ _ v t _ KINV OLD UPD))
-    || let op := current_instr_opcode in fail 3 op reg
-  end;
+  try relate_memory_upd;
 
-  try match goal with
-  | GET : PartMaps.get ?cmem ?addr = Some _,
-    UPD : PartMaps.upd ?cmem ?addr _ = Some _,
-    REFM : refine_memory _ ?cmem  |- _ =>
-    (destruct (refine_memory_upd _ _ _ _ REFM GET UPD) as (? & ? & ?);
-     pose proof (wf_entry_points_user_upd _ _ _ _ WFENTRYPOINTS GET UPD);
-     pose proof (mvec_in_kernel_user_upd _ _ _ _ MVEC GET UPD))
-    || let op := current_instr_opcode in fail 3 op
-  end;
-
-  repeat match goal with
-  | REFR : refine_registers _ ?creg,
-    H : PartMaps.get ?creg ?r = _ |- _ =>
-    apply REFR in H
-  end;
-
-  try match goal with
-  | INST : decode_instr _ = Some (Jal _ _) |- _ =>
-    pose proof (in_user_no_system_call _ _ INUSER' (erefl _) WFENTRYPOINTS)
-  end;
-
-  solve [
-        eexists; split;
-        [ econstructor (
-              solve [eauto;
-                     repeat autounfold;
-                     repeat match goal with
-                     | H : ?x = _ |- context[?x] =>
-                       rewrite H; simpl; clear H
-                     end; reflexivity]
-            )
-        | econstructor; eauto; now rewrite decodeK ]
-  ].
+  eexists; (split; [ solve_step | solve_refine_state ]).
 
 Qed.
 
-Ltac simpl_word_lift :=
-  match goal with
-  | H : context[word_lift _ (encode _)] |- _ =>
-    unfold word_lift in H;
-    rewrite decodeK in H;
-    simpl in H
-  end.
-
 Lemma initial_handler_state cst kst cmvec cmem' :
-  forall (ISUSER : in_user cst = true)
-         (CMVEC : build_cmvec _ cst = Some cmvec)
+  forall (CMVEC : build_cmvec cst = Some cmvec)
          (MEM : Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem')
          (MISS : Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None)
          (STEP : Concrete.step _ masks cst kst),
@@ -193,24 +270,10 @@ Lemma initial_handler_state cst kst cmvec cmem' :
                              (Concrete.fault_handler_start mt)@Concrete.TKernel
                              (Concrete.pc cst).
 Proof.
-  intros.
-  rewrite (lock build_cmvec) in CMVEC.
-  inv STEP; try subst mvec;
-  unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
-         Concrete.next_state_pc, Concrete.next_state,
-         Concrete.miss_state in *;
-  match_inv; simpl in *;
-  try analyze_cache; simpl in *;
-
-  solve [
-    repeat simpl_word_lift; simpl in *; discriminate |
-    move: CMVEC;
-    rewrite -(lock build_cmvec) /=;
-    repeat match goal with
-           | E : ?X = _ |- context [?X] => rewrite E; simpl
-           end;
-    congruence
-  ].
+  move=> BUILD MVEC LOOKUP /step_lookup_success_or_fault.
+  rewrite BUILD.
+  case=> [cmvec' [[<-]]] {cmvec'}.
+  by rewrite LOOKUP MVEC.
 Qed.
 
 Lemma kernel_user_exec_determ k s1 s2 :
@@ -221,9 +284,9 @@ Proof.
   unfold kernel_user_exec. intros EXEC1 EXEC2.
   eapply exec_until_determ; eauto.
   - clear. intros s s1 s2.
-    do 2 rewrite <- stepP in *. congruence.
-  - clear. intros s H1 H2. simpl in *. congruence.
-  - clear. intros s H1 H2. simpl in *. congruence.
+    do 2 rewrite <- concrete.exec.stepP in *. congruence.
+  - clear. by move=> s /= ->.
+  - clear. by move=> s /= ->.
 Qed.
 
 Lemma user_kernel_user_step_determ s s1 s2 :
@@ -232,7 +295,7 @@ Lemma user_kernel_user_step_determ s s1 s2 :
   s1 = s2.
 Proof.
   move => [s' USER1 STEP1 EXEC1] [s'' USER2 STEP2 EXEC2].
-  have E: (s' = s'') by rewrite <- stepP in *; congruence. subst s''.
+  have E: (s' = s'') by rewrite <- concrete.exec.stepP in *; congruence. subst s''.
   eauto using kernel_user_exec_determ.
 Qed.
 
@@ -240,30 +303,15 @@ Import Vector.VectorNotations.
 
 Lemma build_cmvec_cache_lookup_pc cst cst' cmvec crvec :
   Concrete.step _ masks cst cst' ->
-  build_cmvec _ cst = Some cmvec ->
+  build_cmvec cst = Some cmvec ->
   Concrete.cache_lookup (Concrete.cache cst) masks cmvec = Some crvec ->
   common.tag (Concrete.pc cst') = Concrete.ctrpc crvec.
 Proof.
-  move/stepP.
-  case: cst => mem regs cache [pc tpc] epc /= STEP BUILD LOOKUP.
-  move: BUILD STEP.
-  case: (PartMaps.get mem pc) => [[w ti]|] //=.
-  case: (decode_instr w) => [i|] //=.
-  destruct i => BUILD STEP; repeat match_inv;
-  unfold Concrete.next_state_pc, Concrete.next_state_reg,
-         Concrete.next_state_reg_and_pc, Concrete.next_state in *;
-  simpl in *;
-  repeat match goal with
-  | E1 : ?x = ?y1, E2 : ?x = ?y2 |- _ =>
-   rewrite E1 in E2; inv E2
-  end;
-  try match goal with
-  | LOOKUP : Concrete.cache_lookup _ _ _ = Some _,
-    STEP : context[Concrete.cache_lookup _ _ _] |- _ =>
-    rewrite LOOKUP in STEP
-  end;
-  match_inv; simpl; trivial.
-  discriminate.
+  move=> STEP BUILD LOOKUP.
+  move/step_lookup_success_or_fault: STEP.
+  rewrite BUILD.
+  case=> cmvec' [[<-]] {cmvec'}.
+  by rewrite LOOKUP.
 Qed.
 
 Lemma kernel_cache_lookup_fail (cst cst' : Concrete.state mt) cmvec :
@@ -272,52 +320,29 @@ Lemma kernel_cache_lookup_fail (cst cst' : Concrete.state mt) cmvec :
   Concrete.step _ masks cst cst' ->
   ~~ cache_allows_syscall table cst ->
   wf_entry_points table (Concrete.mem cst) ->
-  cache_correct (Concrete.cache cst) ->
-  build_cmvec _ cst = Some cmvec ->
+  cache_correct (Concrete.cache cst) (Concrete.mem cst) ->
+  build_cmvec cst = Some cmvec ->
   Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None.
 Proof.
-  case: cst => mem regs cache [pc tpc] epc.
   move=> INUSER INKERNEL STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT BUILD.
-  move: NOTALLOWED.
-  rewrite /cache_allows_syscall /=.
-  case GETSC: (Symbolic.get_syscall table pc) => [sc|] //=.
-    case LOOKUP: (Concrete.cache_lookup cache masks _) => [res|] //= _.
-    rewrite <- LOOKUP. apply f_equal.
-    move: BUILD.
-    rewrite /build_cmvec.
-    have [i [-> /is_nopP -> //=]] := wf_entry_points_if _ WFENTRYPOINTS GETSC.
-    congruence.
-  case LOOKUP: (Concrete.cache_lookup cache masks _) => [crvec|] //= _.
-  have E: Concrete.ctrpc crvec = Concrete.TKernel.
-    move: INKERNEL.
-    rewrite -(build_cmvec_cache_lookup_pc STEP BUILD LOOKUP)
-             /in_kernel /Concrete.is_kernel_tag.
-    by move/eqP.
-  move/(_ cmvec crvec): CACHECORRECT. move: INUSER.
-  rewrite (build_cmvec_ctpc _ _ _ BUILD) /= /in_user /=
-          => INUSER /(_ INUSER LOOKUP) {INUSER} [ivec [ovec [? [? _]]]].
-  subst cmvec crvec.
-  suff: false by done.
-  move: E.
-  rewrite /encode_ovec /ovec_of_uovec /=.
-  have [E _|NE /=] := Symbolic.op ivec =P SERVICE; last first.
-    rewrite (@encode_kernel_tag _ (Symbolic.ttypes Symbolic.P) _).
-    by move=> /encode_inj.
-  move=> {LOOKUP}.
-  have [//= i [instr [Hi Hinstr /op_to_word_inj Hinstr']]] := build_cmvec_cop_cti _ _ _ BUILD.
-  have [ISNOP [t Ht]] : opcode_of instr = NOP /\ exists t, Symbolic.ti (ivec_of_uivec ivec) = ENTRY t.
-    rewrite {}Hinstr'.
-    move: E {BUILD Hi ovec}.
-    case: ivec => op tpc' ti ts /= H.
-    move: ts.
-    by rewrite {}H=> _ /=; eauto.
-  rewrite {}Ht in Hi.
-  move: ISNOP {Hinstr'} Hinstr.
-  case: instr => //= _ Hinstr.
-  move: (WFENTRYPOINTS pc t) => /=.
-  rewrite Hi eqxx /is_nop Hinstr /= => {E} E.
-  move/E: (erefl true) => [? [? ?]].
-  congruence.
+  move/step_lookup_success_or_fault: STEP NOTALLOWED.
+  rewrite /cache_allows_syscall BUILD.
+  case=> cmvec' [[<-]] {cmvec'}.
+  case LOOKUP: (Concrete.cache_lookup _ _ _) => [[ctrpc ctr]|] //= E. subst ctrpc.
+  case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.
+  move: INKERNEL LOOKUP.
+  rewrite /in_kernel /Concrete.is_kernel_tag => /eqP -> LOOKUP _.
+  rewrite /in_user /= -(build_cmvec_ctpc BUILD) in INUSER.
+  case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _]].
+  case: DECi ovec DECo => [[op [E [Hpriv DEC _ _ _]]]|[DECop E _ DECti]].
+    by rewrite {}E {ivec} /decode_ovec /= decode_kernel_tag /= => ovec.
+  suff : false by done.
+  move: {ivec E} (Symbolic.ti ivec) DECti => ti DECti.
+  move: (build_cmvec_cop_cti BUILD) DECop => [i [instr [GETPC DECi <-]]].
+  rewrite op_to_wordK => [[Hinstr]].
+  have {DECi Hinstr} ISNOP : is_nop i by rewrite /is_nop {}DECi; case: instr Hinstr.
+  move: (wf_entry_points_only_if WFENTRYPOINTS GETPC DECti ISNOP).
+  rewrite GETSC. by case.
 Qed.
 
 Lemma cache_miss_simulation sst cst cst' :
@@ -326,46 +351,52 @@ Lemma cache_miss_simulation sst cst cst' :
   user_kernel_user_step cst cst' ->
   refine_state ki table sst cst'.
 Proof.
+  case: sst => smem sregs [pc tpc] int.
+  case: cst => cmem cregs cache [pc' ctpc] epc.
   move => REF NOTALLOWED [kst ISUSER STEP KEXEC].
   have KER : in_kernel kst = true.
   { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
-  destruct REF as [smem sregs int cmem cregs cache epc pc tpc
-                   ? ? REFM REFR CACHECORRECT  MVEC WFENTRYPOINTS KINV].
-  subst sst cst.
-  assert (NUSER : @word_lift _ _ (e Symbolic.P) (fun t => is_user t) (common.tag (Concrete.pc kst)) = false).
-  { destruct (@word_lift _ _ (e Symbolic.P) (fun t => is_user t) (common.tag (Concrete.pc kst))) eqn:EQ; trivial.
-    rewrite /in_kernel in KER.
-    apply is_user_pc_tag_is_kernel_tag in EQ; auto. congruence. }
-  have [cmvec Hcmvec] := step_build_cmvec _ _ _ _ STEP.
+  case: REF=> [//= PC DEC REFM REFR CACHECORRECT MVEC WFENTRYPOINTS KINV].
+  rewrite /Concrete.pcv /= in PC. subst pc'.
+  have ISUSER' : ~~ in_kernel cst' by case: KEXEC.
+  have [cmvec Hcmvec] := step_build_cmvec STEP.
   have [cmem' Hcmem'] := mvec_in_kernel_store_mvec cmvec MVEC.
   have LOOKUP := kernel_cache_lookup_fail ISUSER KER STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT Hcmvec.
-  have H := initial_handler_state ISUSER Hcmvec Hcmem' LOOKUP STEP.
-  subst. simpl in *.
-  case HANDLER: (handler _ (fun m => Symbolic.transfer m) cmvec) => [rvec|].
-  - destruct (handler_correct_allowed_case cmem cmvec cregs pc@(encode (USER tpc)) int
-                                           KINV HANDLER Hcmem' CACHECORRECT)
-      as (cst'' & KEXEC' & CACHE' & LOOKUP' & MVEC' &
-          HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
-    assert (EQ := kernel_user_exec_determ KEXEC' KEXEC). subst cst''.
-    destruct cst' as [cmem'' cregs'' cache' ? ?]. simpl in *. subst.
-    econstructor; eauto.
-    + clear - ISUSER MVEC Hcmem' REFM HMEM.
-      intros addr w t. unfold user_mem_unchanged in *.
-      rewrite <- HMEM. apply REFM.
-    + clear - REFR HREGS.
-      intros r w t. unfold user_regs_unchanged in *.
-      rewrite <- HREGS.
-      apply REFR.
-  - assert (EXEC : forall st st',
-                     kernel_user_exec st st' ->
-                     exec (Concrete.step _ masks) st st').
-    { clear. intros st st' EXEC. destruct EXEC as [kst' EXEC].
-      apply restricted_exec_weaken in EXEC.
-      apply restricted_exec_trans with kst'; eauto. }
-    assert (ISUSER' : in_kernel cst' = false).
-    { destruct KEXEC. eauto. }
-    apply EXEC in KEXEC.
-    destruct (handler_correct_disallowed_case cmem cmvec int KINV HANDLER Hcmem' ISUSER' KEXEC).
+  have H := initial_handler_state Hcmvec Hcmem' LOOKUP STEP.
+  have EXEC : exec (Concrete.step _ masks) kst cst'.
+    case: KEXEC => kst' EXEC _ STEP'.
+    apply restricted_exec_weaken in EXEC.
+    by apply restricted_exec_trans with kst'; eauto.
+  subst kst. rewrite /= in STEP KEXEC EXEC KER LOOKUP.
+  case DECivec: (decode_ivec _ cmem cmvec) => [ivec|]; last first.
+    have := (handler_correct_disallowed_case KINV _ Hcmem' ISUSER' EXEC).
+    move=> /(_ _ kcc). by rewrite DECivec => /(_ erefl).
+  case TRANS: (Symbolic.transfer ivec) => [ovec|]; last first.
+    have := (handler_correct_disallowed_case KINV _ Hcmem' ISUSER' EXEC).
+    move=> /(_ _ kcc). by rewrite DECivec TRANS => /(_ erefl).
+  destruct (handler_correct_allowed_case pc@ctpc KINV DECivec TRANS Hcmem' CACHECORRECT)
+      as (cst'' & rvec & KEXEC' & CACHE' & LOOKUP' & DECovec & MVEC' &
+          HPCT & HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
+  have EQ := kernel_user_exec_determ KEXEC' KEXEC. subst cst''.
+  case: cst' {KEXEC KEXEC' EXEC LOOKUP' DECovec} HPC CACHE'
+             ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' KINV' =>
+        cmem'' cregs'' cache' pc' ? /= -> {pc'} CACHE' ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' KINV'.
+  econstructor; eauto.
+  - by apply/HPCT.
+  - split.
+    + move=> w x ctg atg {DECivec DEC} /HPCT DEC GET.
+      move: (HMEM w x ctg _ DEC) GET => H /H {H} ?.
+      by eapply (proj1 REFM); eauto.
+    + move=> w x atg /(proj2 REFM) {DEC} [ctg DEC GET].
+      move: DEC (HMEM w x ctg _ DEC) GET => /HPCT DEC H /H {H} ? /=.
+      by eauto.
+  - split.
+    + move=> r x ctg atg {DECivec DEC} /HPCT DEC GET.
+      move: (HREGS r x ctg _ DEC) GET => H /H {H} ?.
+      by eapply (proj1 REFR); eauto.
+    + move=> r x atg /(proj2 REFR) {DEC} [ctg DEC GET].
+      move: DEC (HREGS r x ctg _ DEC) GET => /HPCT DEC H /H {H} ? /=.
+      by eauto.
 Qed.
 
 Lemma syscall_simulation sst cst cst' :
@@ -375,10 +406,11 @@ Lemma syscall_simulation sst cst cst' :
   exists sst', Symbolic.step table sst sst' /\
                refine_state ki table sst' cst'.
 Proof.
+  case: sst=> smem sregs [pc tpc] int.
+  case: cst=> cmem cregs cache [pc' ctpc] epc.
   intros REF ALLOWED STEP.
-  destruct REF as [smem sregs int cmem cregs cache epc pc tpc
-                   ? ? REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
-  subst sst cst.
+  case: REF=> [//= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
+  rewrite /Concrete.pcv /= in PC. subst pc'.
   have [sc GETCALL]: (exists sc, Symbolic.get_syscall table pc = Some sc).
   { rewrite /cache_allows_syscall in ALLOWED.
     case GETCALL: (Symbolic.get_syscall table pc) ALLOWED => [sc|//] ALLOWED.
@@ -386,44 +418,35 @@ Proof.
   case SCEXEC: (Symbolic.run_syscall sc (Symbolic.State smem sregs pc@tpc int))
     => [[smem' sregs' [pc' tpc'] int']|].
   - exploit syscalls_correct_allowed_case; eauto.
-    intros (cmem' & creg' & cache' & pct' & EXEC' &
-            REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
+    intros (cmem' & creg' & cache' & ctpc' & epc' & EXEC' &
+            HPCT & REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
     generalize (user_kernel_user_step_determ STEP EXEC'). intros ?. subst.
     { exists (Symbolic.State smem' sregs' pc'@tpc' int'). split.
       - eapply Symbolic.step_syscall; eauto.
         eapply wf_entry_points_if in GETCALL; last by exact WFENTRYPOINTS.
-        move: GETCALL => [i [GETPC ISNOP]].
+        move: GETCALL => [i [ti [GETPC DECti ISNOP]]].
         case GET': (PartMaps.get smem pc) => [[? ?]|] //.
-        move/REFM: GET' => GET'.
+        move: (proj2 REFM _ _ _ GET') => {GET' DEC} [ctg' DEC GET'].
         rewrite GETPC in GET'.
-        move: GET' => [? H].
-        by apply encode_inj in H.
+        move: GET' => [? H]. subst i ti.
+        by rewrite DEC in DECti.
       - econstructor; eauto. }
-  - destruct (syscalls_correct_disallowed_case _ _ KINV REFM REFR CACHE MVEC
-                                               WFENTRYPOINTS GETCALL SCEXEC ALLOWED STEP).
+  - destruct (syscalls_correct_disallowed_case KINV REFM REFR CACHE MVEC
+                                               WFENTRYPOINTS GETCALL SCEXEC DEC ALLOWED STEP).
 Qed.
 
 Lemma user_into_kernel sst cst cst' :
   refine_state ki table sst cst ->
   Concrete.step _ masks cst cst' ->
-  in_user cst' = false ->
-  in_kernel cst' = true.
+  ~~ in_user cst'->
+  in_kernel cst'.
 Proof.
-  intros REF STEP NUSER.
+  move=> REF STEP NUSER.
   move: (refine_state_in_user REF) => INUSER.
-  destruct (in_kernel cst') eqn:NKERNEL; trivial.
-  unfold in_user in NUSER.
-  unfold in_kernel, Concrete.is_kernel_tag in NKERNEL.
-  rewrite (@encode_kernel_tag _ _ (e Symbolic.P)) in NKERNEL.
-  destruct REF as [? ? ? ? ? ? ? ? ? ? ? ? ? CACHE ? ? ?].
-  subst sst cst.
-  assert (PCS := valid_pcs STEP CACHE INUSER).
-  rewrite /word_lift in NUSER.
-  destruct (decode (common.tag (Concrete.pc cst'))) as [[t| |]|] eqn:DEC;
-  try discriminate; simpl in *;
-  apply encodeK in DEC.
-  rewrite <- DEC in NKERNEL.
-  rewrite eq_tag_eq_word // in NKERNEL.
+  case: REF => [? ? ? ? CACHE ? ? ?]. subst.
+  move : (valid_pcs STEP CACHE INUSER) NUSER.
+  rewrite /in_kernel /Concrete.is_kernel_tag /in_user.
+  move => [[t ->]|->] //=.
 Qed.
 
 Definition refine_state_weak sst cst :=
@@ -442,20 +465,20 @@ Lemma backwards_simulation sst cst cst' :
     refine_state ki table sst' cst'.
 Proof.
   intros [REF | (cst0 & kst & REF & KSTEP & EXEC)] STEP.
-  - assert (USER : in_user cst = true) by (eapply refine_state_in_user; eauto).
-    destruct (in_user cst') eqn:USER'.
+  - have USER : in_user cst by eapply refine_state_in_user; eauto.
+    have [USER'|USER'] := boolP (in_user cst').
     + right.
       eapply cache_hit_simulation; eauto.
       by constructor; auto.
     + left. right. do 2 eexists. do 2 (split; eauto).
       constructor.
       by eapply user_into_kernel; eauto.
-  - assert (USER : in_user cst0 = true) by (eapply refine_state_in_user; eauto).
-    destruct (in_kernel cst') eqn:KER'.
+  - have USER : in_user cst0 by eapply refine_state_in_user; eauto.
+    have [KER'|KER'] := boolP (in_kernel cst').
     + left. right.
       do 2 eexists. do 2 (split; eauto).
       eapply restricted_exec_trans; eauto.
-      have KER : in_kernel cst = true by eapply restricted_exec_snd in EXEC.
+      have KER : in_kernel cst by eapply restricted_exec_snd in EXEC.
       eapply re_step; by eauto using user_into_kernel.
     + assert (EXEC' : user_kernel_user_step cst0 cst').
       { econstructor; eauto.
@@ -468,7 +491,7 @@ Qed.
 Theorem backwards_refinement sst cst cst' :
   refine_state ki table sst cst ->
   exec (Concrete.step _ masks) cst cst' ->
-  in_user cst' = true ->
+  in_user cst' ->
   exists sst',
     exec (Symbolic.step table) sst sst' /\
     refine_state ki table sst' cst'.
@@ -480,7 +503,8 @@ Proof.
   - move => sst [? | REF]; first by eauto.
     destruct REF as (? & ? & ? & ? & EXEC).
     apply restricted_exec_snd in EXEC.
-    apply in_user_in_kernel in USER'. congruence.
+    apply in_user_in_kernel in USER'.
+    by rewrite EXEC in USER'.
   - move => sst REF.
     exploit backwards_simulation; eauto.
     intros [REF' | (sst' & SSTEP & REF')]; first by auto.

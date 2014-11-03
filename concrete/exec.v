@@ -8,6 +8,10 @@ Require Import List.
 Import ListNotations.
 Import Concrete. Import DoNotation.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Open Scope Z_scope.
 
 Section Masks.
@@ -151,65 +155,64 @@ Qed.
 Import PartMaps.
 
 Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
-  let '(Concrete.mkState mem reg cache pc@tpc epc) := st in
-  match get mem pc with
+  match get (Concrete.mem st) (Concrete.pcv st) with
     | Some i =>
       match decode_instr (val i) with
         | Some op =>
           let part := @Concrete.mkMVec (word mt) (op_to_word (opcode_of op))
-                                       tpc (common.tag i) in
+                                       (Concrete.pct st) (common.tag i) in
           match op  with
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
             | Const n r =>
               fun part =>
-                do! old <- PartMaps.get reg r;
+                do! old <- PartMaps.get (Concrete.regs st) r;
                   Some (part (common.tag old) Concrete.TNone Concrete.TNone)
             | Mov r1 r2 =>
               fun part =>
-                do! v1 <- PartMaps.get reg r1;
-                do! v2 <- PartMaps.get reg r2;
+                do! v1 <- PartMaps.get (Concrete.regs st) r1;
+                do! v2 <- PartMaps.get (Concrete.regs st) r2;
                   Some (part (common.tag v1) (common.tag v2) Concrete.TNone)
             | Binop _ r1 r2 r3 => fun part =>
-              do! v1 <- PartMaps.get reg r1;
-              do! v2 <- PartMaps.get reg r2;
-              do! v3 <- PartMaps.get reg r3;
+              do! v1 <- PartMaps.get (Concrete.regs st) r1;
+              do! v2 <- PartMaps.get (Concrete.regs st) r2;
+              do! v3 <- PartMaps.get (Concrete.regs st) r3;
                 Some (part (common.tag v1) (common.tag v2) (common.tag v3))
             | Load r1 r2 => fun part =>
-              do! w1 <- PartMaps.get reg r1;
-              do! w2 <- get mem (val w1);
-              do! old <- PartMaps.get reg r2;
+              do! w1 <- PartMaps.get (Concrete.regs st) r1;
+              do! w2 <- get (Concrete.mem st) (val w1);
+              do! old <- PartMaps.get (Concrete.regs st) r2;
                 Some (part (common.tag w1) (common.tag w2) (common.tag old))
             | Store r1 r2 => fun part =>
-              do! w1 <- PartMaps.get reg r1;
-              do! w2 <- PartMaps.get reg r2;
-                do! w3 <- get mem (val w1);
+              do! w1 <- PartMaps.get (Concrete.regs st) r1;
+              do! w2 <- PartMaps.get (Concrete.regs st) r2;
+                do! w3 <- get (Concrete.mem st) (val w1);
                 Some (part (common.tag w1) (common.tag w2) (common.tag w3))
             | Jump r => fun part =>
-              do! w <- PartMaps.get reg r;
+              do! w <- PartMaps.get (Concrete.regs st) r;
                 Some (part (common.tag w) Concrete.TNone Concrete.TNone)
             | Bnz r n => fun part =>
-              do! w <- PartMaps.get reg r;
+              do! w <- PartMaps.get (Concrete.regs st) r;
                 Some (part (common.tag w) Concrete.TNone Concrete.TNone)
             | Jal r => fun part =>
-              do! w <- PartMaps.get reg r;
-              do! old <- PartMaps.get reg ra;
+              do! w <- PartMaps.get (Concrete.regs st) r;
+              do! old <- PartMaps.get (Concrete.regs st) ra;
                 Some (part (common.tag w) (common.tag old) Concrete.TNone)
             | JumpEpc =>
               fun part =>
-                Some (part (common.tag epc) Concrete.TNone Concrete.TNone)
+                Some (part (common.tag (Concrete.epc st)) Concrete.TNone Concrete.TNone)
             | AddRule =>
               fun part =>
                 Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
             | GetTag r1 r2 =>
               fun part =>
-                do! w1 <- PartMaps.get reg r1;
-                do! old <- PartMaps.get reg r2;
+                do! w1 <- PartMaps.get (Concrete.regs st) r1;
+                do! old <- PartMaps.get (Concrete.regs st) r2;
                 Some (part (common.tag w1) (common.tag old) Concrete.TNone)
             | PutTag r1 r2 r3 =>
               fun part =>
-                do! w1 <- PartMaps.get reg r1;
-                do! w2 <- PartMaps.get reg r2;
-                do! old <- PartMaps.get reg r3;
+                do! w1 <- PartMaps.get (Concrete.regs st) r1;
+                do! w2 <- PartMaps.get (Concrete.regs st) r2;
+                do! old <- PartMaps.get (Concrete.regs st) r3;
                 Some (part (common.tag w1) (common.tag w2) (common.tag old))
             | Halt => fun _ => None
           end part
@@ -218,23 +221,69 @@ Definition build_cmvec st : option (Concrete.MVec (word mt)) :=
     | None => None
   end.
 
+Lemma step_lookup_success_or_fault cst cst' :
+  Concrete.step _ masks cst cst' ->
+  exists cmvec,
+    build_cmvec cst = Some cmvec /\
+    match cache_lookup (cache cst) masks cmvec with
+    | Some crvec => pct cst' = ctrpc crvec
+    | None =>
+      match store_mvec (mem cst) cmvec with
+      | Some cmem' =>
+        cst' = mkState cmem'
+                       (regs cst)
+                       (cache cst)
+                       (fault_handler_start mt)@TKernel
+                       (pc cst)
+      | None => False
+      end
+    end.
+Proof.
+  move => STEP.
+  rewrite /build_cmvec.
+  inv STEP; subst; simpl;
+  repeat match goal with
+  | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
+  end;
+  eexists; (split; first by reflexivity);
+  subst mvec;
+  unfold next_state_reg, next_state_pc,
+         next_state_reg_and_pc, next_state, miss_state, pct in *;
+  simpl in *; match_inv; reflexivity.
+Qed.
+
+Lemma lookup_none_step cst cmvec cmem :
+  build_cmvec cst = Some cmvec ->
+  Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None ->
+  Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem ->
+  Concrete.step _ masks cst (Concrete.mkState cmem
+                                              (Concrete.regs cst)
+                                              (Concrete.cache cst)
+                                              (Concrete.fault_handler_start mt)@Concrete.TKernel
+                                              (Concrete.pc cst)).
+Proof.
+  move=> CMVEC LOOKUP STORE.
+  apply/stepP.
+  rewrite (Concrete.state_eta cst) /=.
+  move: CMVEC.
+  rewrite /build_cmvec.
+  case: (get _ _) => [[i ti]|] //=.
+  case: (decode_instr i) => [instr|] //= CMVEC;
+  destruct instr; simpl in *; match_inv;
+  by rewrite /next_state_reg /next_state_pc /next_state_reg_and_pc /next_state /miss_state //=
+             LOOKUP STORE.
+Qed.
+
 Lemma step_build_cmvec cst cst' :
   Concrete.step _ masks cst cst' ->
   exists cmvec, build_cmvec cst = Some cmvec.
 Proof.
-  intros STEP.
-  inv STEP; try subst mvec;
-  unfold next_state_pc, next_state_reg_and_pc, next_state, miss_state in *;
-  match_inv; simpl in *;
-  repeat match goal with
-  | H : ?X = _ |- context[?X] => rewrite H; simpl
-  end;
-  solve [eauto].
+  by move=> /step_lookup_success_or_fault [cmvec [? _]]; eauto.
 Qed.
 
 Lemma build_cmvec_ctpc cst cmvec :
   build_cmvec cst = Some cmvec ->
-  Concrete.ctpc cmvec = common.tag (Concrete.pc cst).
+  Concrete.ctpc cmvec = Concrete.pct cst.
 Proof.
   case: cst => [mem regs cache [v t] epc].
   rewrite /build_cmvec => H.
@@ -252,13 +301,13 @@ Qed.
 Lemma build_cmvec_cop_cti cst cmvec :
   build_cmvec cst = Some cmvec ->
   exists i instr,
-    [/\ PartMaps.get (Concrete.mem cst) (common.val (Concrete.pc cst)) =
+    [/\ PartMaps.get (Concrete.mem cst) (Concrete.pcv cst) =
         Some i@(Concrete.cti cmvec),
         decode_instr i = Some instr &
         op_to_word (opcode_of instr) = Concrete.cop cmvec].
 Proof.
-  case: cst => mem regs cache [pc tpc] epc /=.
-  case: (get mem pc) => [[i ti]|] //= MVEC. exists i. move: MVEC.
+  rewrite /build_cmvec.
+  case: (get _ _) => [[i ti]|] //= MVEC. exists i. move: MVEC.
   case: (decode_instr i) => [instr|] //= MVEC. exists instr.
   destruct instr; match_inv; simpl; eauto using And3.
   discriminate.

@@ -149,46 +149,45 @@ Proof.
 Qed.
 
 Definition build_ivec st : option (Symbolic.IVec Symbolic.ttypes)  :=
-  let '(Symbolic.State mem reg pc@tpc int) := st in
-  match get mem pc with
+  match get (Symbolic.mem st) (Symbolic.pcv st) with
     | Some i =>
       match decode_instr (common.val i) with
         | Some op =>
-          let part := @Symbolic.mkIVec Symbolic.ttypes (opcode_of op) tpc (common.tag i) in
+          let part := @Symbolic.mkIVec Symbolic.ttypes (opcode_of op) (Symbolic.pct st) (common.tag i) in
           match op return (hlist Symbolic.ttypes (Symbolic.inputs (opcode_of op)) ->
                            Symbolic.IVec Symbolic.ttypes) -> option (Symbolic.IVec Symbolic.ttypes) with
             | Nop => fun part => Some (part [])
             | Const n r => fun part =>
-                do! old <- get reg r;
+                do! old <- get (Symbolic.regs st) r;
                 Some (part [common.tag old])
             | Mov r1 r2 => fun part =>
-              do! v1 <- get reg r1;
-              do! v2 <- get reg r2;
+              do! v1 <- get (Symbolic.regs st) r1;
+              do! v2 <- get (Symbolic.regs st) r2;
               Some (part [(common.tag v1); (common.tag v2)])
             | Binop _ r1 r2 r3 => fun part =>
-              do! v1 <- get reg r1;
-              do! v2 <- get reg r2;
-              do! v3 <- get reg r3;
+              do! v1 <- get (Symbolic.regs st) r1;
+              do! v2 <- get (Symbolic.regs st) r2;
+              do! v3 <- get (Symbolic.regs st) r3;
               Some (part [(common.tag v1); (common.tag v2); (common.tag v3)])
             | Load  r1 r2 => fun part =>
-              do! w1 <- get reg r1;
-              do! w2 <- get mem (common.val w1);
-              do! old <- get reg r2;
+              do! w1 <- get (Symbolic.regs st) r1;
+              do! w2 <- get (Symbolic.mem st) (common.val w1);
+              do! old <- get (Symbolic.regs st) r2;
               Some (part [(common.tag w1); (common.tag w2); (common.tag old)])
             | Store  r1 r2 => fun part =>
-              do! w1 <- get reg r1;
-              do! w2 <- get reg r2;
-              do! w3 <- get mem (common.val w1);
+              do! w1 <- get (Symbolic.regs st) r1;
+              do! w2 <- get (Symbolic.regs st) r2;
+              do! w3 <- get (Symbolic.mem st) (common.val w1);
               Some (part [(common.tag w1); (common.tag w2); (common.tag w3)])
             | Jump  r => fun part =>
-              do! w <- get reg r;
+              do! w <- get (Symbolic.regs st) r;
               Some (part [common.tag w])
             | Bnz  r n => fun part =>
-              do! w <- get reg r;
+              do! w <- get (Symbolic.regs st) r;
               Some (part [common.tag w])
             | Jal  r => fun part =>
-              do! w <- get reg r;
-              do! old <- get reg ra;
+              do! w <- get (Symbolic.regs st) r;
+              do! old <- get (Symbolic.regs st) ra;
               Some (part [common.tag w; common.tag old])
             | JumpEpc => fun _ => None
             | AddRule => fun _ => None
@@ -199,11 +198,29 @@ Definition build_ivec st : option (Symbolic.IVec Symbolic.ttypes)  :=
         | None => None
       end
     | None =>
-      match Symbolic.get_syscall table pc with
+      match Symbolic.get_syscall table (Symbolic.pcv st) with
         | Some sc =>
-          Some (Symbolic.mkIVec SERVICE tpc (Symbolic.entry_tag sc) [])
+          Some (Symbolic.mkIVec SERVICE (Symbolic.pct st) (Symbolic.entry_tag sc) [])
         | None => None
       end
   end.
+
+Lemma step_build_ivec st st' :
+  step table st st' ->
+  exists ivec ovec,
+    build_ivec st = Some ivec /\
+    transfer ivec = Some ovec.
+Proof.
+  move/stepP.
+  rewrite {1}(state_eta st) /= /build_ivec.
+  case: (get _ _) => [[i ti]|] //=; last first.
+    case: (get_syscall _ _) => [sc|] //=.
+    rewrite /run_syscall /=.
+    case TRANS: (transfer _) => [ovec|] //= _.
+    by eauto.
+  case: (decode_instr i) => [instr|] //=.
+  rewrite /next_state_pc /next_state_reg /next_state_reg_and_pc /next_state.
+  by destruct instr; move=> STEP; match_inv; first [ eauto | discriminate ].
+Qed.
 
 End WithClasses.

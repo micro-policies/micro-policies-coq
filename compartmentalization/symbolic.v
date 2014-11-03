@@ -201,18 +201,18 @@ Definition rvec_store (c : word t) (I W : {set (word t)})
 
 (* The `REG's in the IVec's fields can also be _s; it's an invariant that
    registers are always tagged with `REG'. *)
-Definition compartmentalization_handler (iv : IVec stags) : option (OVec stags (op iv)) :=
+Definition compartmentalization_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   match iv with
-    | mkIVec NOP       Lpc LI []                      => rvec_next NOP       tt  Lpc LI
-    | mkIVec CONST     Lpc LI [REG]                   => rvec_next CONST     REG Lpc LI
-    | mkIVec MOV       Lpc LI [REG; REG]              => rvec_next MOV       REG Lpc LI
-    | mkIVec (BINOP b) Lpc LI [REG; REG; REG]         => rvec_next (BINOP b) REG Lpc LI
-    | mkIVec LOAD      Lpc LI [REG; DATA _ _ _; REG]  => rvec_next LOAD      REG Lpc LI
-    | mkIVec STORE     Lpc LI [REG; REG; DATA c In W] => rvec_store c In W Lpc LI
-    | mkIVec JUMP      Lpc LI [REG]                   => rvec_jump JUMP      tt  Lpc LI
-    | mkIVec BNZ       Lpc LI [REG]                   => rvec_next BNZ       tt  Lpc LI
-    | mkIVec JAL       Lpc LI [REG; REG]              => rvec_jump JAL       REG Lpc LI
-    | mkIVec SERVICE   Lpc LI []                      => Some (@mkOVec stags SERVICE Lpc tt)
+    | mkIVec (OP NOP)       Lpc LI []                      => rvec_next NOP       tt  Lpc LI
+    | mkIVec (OP CONST)     Lpc LI [REG]                   => rvec_next CONST     REG Lpc LI
+    | mkIVec (OP MOV)       Lpc LI [REG; REG]              => rvec_next MOV       REG Lpc LI
+    | mkIVec (OP (BINOP b)) Lpc LI [REG; REG; REG]         => rvec_next (BINOP b) REG Lpc LI
+    | mkIVec (OP LOAD)      Lpc LI [REG; DATA _ _ _; REG]  => rvec_next LOAD      REG Lpc LI
+    | mkIVec (OP STORE)     Lpc LI [REG; REG; DATA c In W] => rvec_store c In W Lpc LI
+    | mkIVec (OP JUMP)      Lpc LI [REG]                   => rvec_jump JUMP      tt  Lpc LI
+    | mkIVec (OP BNZ)       Lpc LI [REG]                   => rvec_next BNZ       tt  Lpc LI
+    | mkIVec (OP JAL)       Lpc LI [REG; REG]              => rvec_jump JAL       REG Lpc LI
+    | mkIVec SERVICE        Lpc LI []                      => Some tt
     | mkIVec _         _   _  _                       => None
   end.
 

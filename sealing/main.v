@@ -145,46 +145,21 @@ Proof.
   by move => H [<-].
 Qed.
 
-Instance encodable_tag : @encodable t Sym.stag_eqType := {|
-  encode t :=
-    match t with
-    | USER ut => Word.pack [29; 1] [encode_sealing_tag ut; Word.one]%wp
-    | ENTRY ut => Word.pack [29; 1] [encode_sealing_tag ut; Word.repr 2]%wp
-    | KERNEL => Word.pack [29; 1] [Word.zero; Word.zero]%wp
-    end;
-
-  decode w :=
+Instance encodable_tag : @encodable t Sym.stags := {|
+  decode k mem w :=
     let: [ut; w']%wu := Word.unpack [29; 1] w in
-    if w' == Word.zero then
-      if ut == Word.zero then Some KERNEL
-      else None
+    if w' == Word.zero then None
     else if w' == Word.one then
       do! ut <- decode_sealing_tag ut;
       Some (@USER Sym.stag_eqType ut)
     else if w' == Word.repr 2 then
       do! ut <- decode_sealing_tag ut;
       Some (@ENTRY Sym.stag_eqType ut)
-    else None;
-
-  encode_kernel_tag := erefl
+    else None
 |}.
 Proof.
-  - case => [ut| |ut];
-    by rewrite Word.packK /= ?encode_sealing_tagK.
-  - intros t w.
-    case E: (Word.unpack [29; 1] w) => [ut [w' []]].
-    move: (Word.unpackK [29; 1] w). rewrite E.
-    have [?|?] := altP (w' =P Word.zero); try subst w'.
-    { have [?|?] := altP (ut =P Word.zero); try subst ut; last by [].
-      by move => H [<-]. }
-    have [?|?] := altP (w' =P Word.one); try subst w'.
-    { case DEC: (decode_sealing_tag ut) => [ut'|] //=.
-      apply decode_sealing_tagK in DEC. subst ut.
-      by move => H [<-]. }
-    have [?|?] := altP (w' =P Word.repr 2); try subst w'; last by [].
-    case DEC: (decode_sealing_tag ut) => [ut'|] //=.
-    apply decode_sealing_tagK in DEC. subst ut.
-    by move => H [<-].
+  - by eauto.
+  - by [].
 Qed.
 
 Definition DATA : word t := Word.repr 0.
@@ -196,7 +171,7 @@ Definition transfer_function : list (instr t) :=
                         if_ ri1 [] [Halt _]
    in
  (* entry points for system calls *)
- ([ Const (Word.repr (op_to_Z SERVICE)) ri1;
+ ([ Const (Word.repr (vop_to_Z SERVICE)) ri1;
     Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     []
@@ -706,7 +681,7 @@ Definition summarize_abstract_state mem_count st :=
 
 Definition runn n p :=
   let init := build_concrete_sealing_machine p in
-  let tr := utils.runn (step masks t) n init in
+  let tr := utils.runn (@step masks t _) n init in
   (
    summarize_concrete_state 3000 1000 init ::
    map (summarize_concrete_state 8 1) tr

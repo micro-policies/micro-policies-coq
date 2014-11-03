@@ -23,7 +23,7 @@ Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
 Existing Instance sp.
 
-Context {enc : forall tk, encodable t (@Sym.stags t tk)}
+Context {enc : encodable t (@Sym.stags t)}
         {monitor_invariant : kernel_invariant}
         {syscall_addrs : compartmentalization_syscall_addrs t}.
 

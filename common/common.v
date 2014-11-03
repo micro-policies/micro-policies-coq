@@ -66,9 +66,14 @@ Inductive opcode : Set :=
 | ADDRULE
 | GETTAG
 | PUTTAG
-| HALT
+| HALT.
+
+Inductive vopcode : Set :=
+| OP : opcode -> vopcode
 (* "Virtual" opcode used for describing handlers for system services *)
 | SERVICE.
+
+Coercion OP : opcode >-> vopcode.
 
 Scheme Equality for opcode.
 
@@ -102,11 +107,34 @@ Definition opcodes :=
    ADDRULE;
    GETTAG;
    PUTTAG;
-   HALT;
-   SERVICE].
+   HALT].
 
 Lemma opcodesP : forall op, op \in opcodes.
 Proof. by do !case. Qed.
+
+Definition vopcode_eq (x1 x2 : vopcode) : bool :=
+  match x1, x2 with
+  | OP x1, OP x2 => x1 == x2
+  | SERVICE, SERVICE => true
+  | _, _ => false
+  end.
+
+Lemma vopcode_eqP : Equality.axiom vopcode_eq.
+Proof.
+  move=> [x1|] [x2|] /=; try by constructor.
+  by apply/(iffP idP); [move /eqP ->| move=> [->]].
+Qed.
+
+Definition vopcode_eqMixin := EqMixin vopcode_eqP.
+Canonical vopcode_eqType := Eval hnf in EqType vopcode vopcode_eqMixin.
+
+Definition vopcodes := SERVICE :: [seq OP x | x <- opcodes].
+
+Lemma vopcodesP x : x \in vopcodes.
+Proof.
+  case: x => [x|] //=.
+  by rewrite inE orFb map_f // opcodesP.
+Qed.
 
 Record machine_types := {
   word_size_minus_one : nat;
@@ -488,7 +516,6 @@ Definition Z_to_op (z : Z) : option opcode :=
   | 22 => Some (BINOP SHRU)
   | 23 => Some (BINOP SHL)
   | 24 => Some HALT
-  | 25 => Some SERVICE
   | _  => None
   end.
 
@@ -518,10 +545,9 @@ Definition op_to_Z (o : opcode) : Z :=
   | BINOP SHRU => 22
   | BINOP SHL  => 23
   | HALT       => 24
-  | SERVICE    => 25
   end.
 
-Definition max_opcode := 25.
+Definition max_opcode := 24.
 
 Lemma max_opcodeP o : 0 <= op_to_Z o <= max_opcode.
 Proof. by move: o; do! case; split; apply/Z.leb_le. Qed.
@@ -537,6 +563,12 @@ Proof.
     destruct x; simpl; try reflexivity
   end.
 Qed.
+
+Definition vop_to_Z (vo : vopcode) : Z :=
+  match vo with
+  | OP op => op_to_Z op
+  | SERVICE => max_opcode + 1
+  end.
 
 Definition word_to_op (w : word t) : option opcode :=
   Z_to_op (Word.unsigned w).

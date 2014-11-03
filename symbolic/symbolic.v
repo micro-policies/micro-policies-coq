@@ -33,7 +33,6 @@ Definition inputs (op : opcode) : list tag_kind :=
   | JUMP    => [R]
   | BNZ     => [R]
   | JAL     => [R;R]
-  | SERVICE => []
   (* the other opcodes are not used by the symbolic machine *)
   | JUMPEPC => [P]
   | ADDRULE => []
@@ -41,6 +40,22 @@ Definition inputs (op : opcode) : list tag_kind :=
   | PUTTAG  => [R;R;R]
   | HALT    => [] (* CH: in a way this is used by symbolic machine;
                          it just causes it to get stuck as it should *)
+  end.
+
+(* Returns true iff an opcode can only be executed by the kernel *)
+Definition privileged_op (op : vopcode) : bool :=
+  match op with
+  | JUMPEPC
+  | ADDRULE
+  | GETTAG
+  | PUTTAG => true
+  | _ => false
+  end.
+
+Definition vinputs (vop : vopcode) : list tag_kind :=
+  match vop with
+  | OP op => inputs op
+  | SERVICE => []
   end.
 
 Definition outputs (op : opcode) : option tag_kind :=
@@ -54,7 +69,6 @@ Definition outputs (op : opcode) : option tag_kind :=
   | JUMP    => None
   | BNZ     => None
   | JAL     => Some R
-  | SERVICE => None
   (* the other opcodes are not used by the symbolic machine *)
   | JUMPEPC => None
   | ADDRULE => None
@@ -68,11 +82,17 @@ Section WithTagTypes.
 Variable tag_type : tag_kind -> eqType.
 
 Record IVec : Type := mkIVec {
-  op  : opcode;
+  op  : vopcode;
   tpc : tag_type P;
   ti  : tag_type M;
-  ts  : hlist tag_type (inputs op)
+  ts  : hlist tag_type (vinputs op)
 }.
+
+Lemma ivec_eq_inv op op' tpc tpc' ti ti' ts ts'
+                  (p : mkIVec op tpc ti ts = mkIVec op' tpc' ti' ts') :
+  [/\ op = op', tpc = tpc', ti = ti' &
+      existT (hlist tag_type \o vinputs) op ts = existT _ op' ts'].
+Proof. inversion p. by constructor. Qed.
 
 Definition type_of_result (o : option tag_kind) :=
   odflt [eqType of unit] (option_map tag_type o).
@@ -81,6 +101,12 @@ Record OVec (op : opcode) : Type := mkOVec {
   trpc : tag_type P;
   tr   : type_of_result (outputs op)
 }.
+
+Definition VOVec (vop : vopcode) : Type :=
+  match vop with
+  | OP op => OVec op
+  | SERVICE => unit
+  end.
 
 End WithTagTypes.
 
@@ -99,7 +125,7 @@ Import PartMaps.
 Class params := {
   ttypes :> tag_kind -> eqType;
 
-  transfer : forall (iv : IVec ttypes), option (OVec ttypes (op iv));
+  transfer : forall (iv : IVec ttypes), option (VOVec ttypes (op iv));
 
   internal_state : eqType
 }.
@@ -122,6 +148,13 @@ Record state := State {
   internal : internal_state
 }.
 
+Definition pcv (s : state) := val (pc s).
+Definition pct (s : state) := tag (pc s).
+
+Lemma state_eta st :
+  st = State (mem st) (regs st) (pcv st)@(pct st) (internal st).
+Proof. by case: st=> ? ? [? ?] ?. Qed.
+
 (* CH: TODO: should make the entry_tags part of the state
    (for compartmentalization they need to be mutable) *)
 Record syscall := Syscall {
@@ -142,26 +175,37 @@ Definition run_syscall (sc : syscall) (st : state) : option state :=
   end.
 
 Definition next_state (st : state) (iv : IVec ttypes)
-                      (k : OVec ttypes (op iv) -> option state) : option state :=
+                      (k : VOVec ttypes (op iv) -> option state) : option state :=
   do! ov <- transfer iv;
     k ov.
 
 Definition next_state_reg_and_pc (st : state) (iv : @IVec ttypes)
   (r : reg t) (x : word) (pc' : word) : option state :=
-  next_state st iv (fun ov =>
-    match outputs (op iv) as o return (type_of_result _ o -> option state) with
-      | Some R => fun tr' =>
-          do! regs' <- upd (regs st) r x@tr';
-          Some (State (mem st) regs' pc'@(trpc ov) (internal st))
-      | _ => fun _ => None
-    end (tr ov)).
+  next_state st iv (
+    match op iv as o return VOVec _ o -> option state with
+    | OP op => fun ov =>
+      match outputs op as o return (type_of_result _ o -> option state) with
+        | Some R => fun tr' =>
+            do! regs' <- upd (regs st) r x@tr';
+            Some (State (mem st) regs' pc'@(trpc ov) (internal st))
+        | _ => fun _ => None
+      end (tr ov)
+    | SERVICE => fun _ => None
+    end
+  ).
 
 Definition next_state_reg (st : state) (mvec : @IVec ttypes) r x : option state :=
   next_state_reg_and_pc st mvec r x (val (pc st)).+1.
 
-Definition next_state_pc (st : state) (mvec : @IVec ttypes) x : option state :=
-  next_state st mvec (fun ov =>
-    Some (State (mem st) (regs st) x@(trpc ov) (internal st))).
+Definition next_state_pc (st : state) (iv : @IVec ttypes)
+  (x : word) : option state :=
+  next_state st iv (
+    match op iv as o return VOVec _ o -> option state with
+    | OP op => fun ov =>
+                 Some (State (mem st) (regs st) x@(trpc ov) (internal st))
+    | SERVICE => fun _ => None
+    end
+  ).
 
 Import HListNotations.
 

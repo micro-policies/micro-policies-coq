@@ -57,8 +57,8 @@ Definition default_rtag (op : opcode) : type_of_result cfi_tags (outputs op) :=
   end.
 
 (* This allows loading of instructions as DATA *)
-Definition cfi_handler (ivec : Symbolic.IVec cfi_tags) : option (Symbolic.OVec cfi_tags (Symbolic.op ivec)) :=
-  match ivec return option (Symbolic.OVec cfi_tags (Symbolic.op ivec)) with
+Definition cfi_handler (ivec : Symbolic.IVec cfi_tags) : option (Symbolic.VOVec cfi_tags (Symbolic.op ivec)) :=
+  match ivec return option (Symbolic.VOVec cfi_tags (Symbolic.op ivec)) with
   | mkIVec   (JUMP as op) (INSTR (Some n))  (INSTR (Some m))  _
   | mkIVec   (JAL  as op) (INSTR (Some n))  (INSTR (Some m))  _  =>
     if cfg n m then Some (@mkOVec cfi_tags op (INSTR (Some m)) (default_rtag op))
@@ -74,12 +74,16 @@ Definition cfi_handler (ivec : Symbolic.IVec cfi_tags) : option (Symbolic.OVec c
   | mkIVec   STORE  DATA  (INSTR _)  [_ ; _ ; DATA]  =>
     Some (@mkOVec cfi_tags STORE DATA DATA)
   | mkIVec   STORE  _  _  _  => None
-  | mkIVec   op     (INSTR (Some n))  (INSTR (Some m))  _  =>
+  | mkIVec   (OP op) (INSTR (Some n))  (INSTR (Some m))  _  =>
     (* this includes op = SERVICE *)
     if cfg n m then Some (@mkOVec cfi_tags op DATA (default_rtag op)) else None
-  | mkIVec   op     DATA  (INSTR _)  _  =>
+  | mkIVec   (OP op) DATA  (INSTR _)  _  =>
     (* this includes op = SERVICE, fall-throughs checked statically *)
     Some (@mkOVec cfi_tags op DATA (default_rtag op))
+  | mkIVec   SERVICE (INSTR (Some n)) (INSTR (Some m)) _ =>
+    if cfg n m then Some tt else None
+  | mkIVec   SERVICE DATA (INSTR _) _ =>
+    Some tt
   | mkIVec _ _ _ _ => None
   end.
 
