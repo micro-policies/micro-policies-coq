@@ -293,8 +293,7 @@ Fixpoint pmem_from (i : Word.int 31) (n : nat) x
 Definition preg_at x (regs : reg_map t patom) (r: reg t) : reg_map t patom :=
   PartMaps.set regs r (V t (RP t r))@x.
 
-
-Definition parametric_initial_state : pstate concrete_int_32_t :=
+Definition parametric_initial_state: pstate concrete_int_32_t :=
   let gen_cache := pmem_from Word.zero 8 (C t Concrete.TKernel) in
   let base_addr := Concrete.fault_handler_start _ in
   let (handler_length,handler_segment) := pkernelize fault_handler in
@@ -321,14 +320,65 @@ Definition parametric_initial_state : pstate concrete_int_32_t :=
           kregs in
   {| pmem := mem;
      pregs  := regs;
-     pcache := [];
+     pcache := []; (* too simple? *)
      ppc  := (C t (Concrete.fault_handler_start _))@(C t Concrete.TKernel);
      pepc := (V t (RP t epc_reg))@(C t (kernelize_user_tag DUMMY))
   |}
 .
 
+Definition mvec_stored (mem : Concrete.memory t) (mv : Concrete.MVec w) : Prop := 
+  PartMaps.get mem (Concrete.Mop t) = Some (Concrete.cop mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mtpc t) = Some (Concrete.ctpc mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mti t) = Some (Concrete.cti mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mt1 t) = Some (Concrete.ct1 mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mt2 t) = Some (Concrete.ct2 mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mt3 t) = Some (Concrete.ct3 mv)@Concrete.TKernel. 
 
-
+Lemma phandler_correct_allowed :
+  forall env cmvec crvec,
+    let st := concretize_pstate _ env parametric_initial_state in
+    (* If kernel invariant holds... *)
+    ki (Concrete.mem st) (Concrete.regs st) (Concrete.cache st) tt /\
+    (* and calling the handler on the current m-vector succeeds and returns rvec... *)
+    handler cmvec = Some crvec ->
+    (* and memory contains the the concrete representation of the m-vector ...
+       NB This differs from the existing correctness condition, which builds
+       the memory description in two stages. I don't quite see how to do that in parametric world... *)
+    mvec_stored (Concrete.mem st) cmvec -> 
+    (* and the concrete rule cache is correct (in the sense that every
+       rule it holds is exactly the concrete representations of
+       some (mvec,rvec) pair in the relation defined by the [handler]
+       function) ... *)
+    cache_correct (Concrete.cache st) ->
+    (* THEN if we start the concrete machine in kernel mode (i.e.,
+       with the PC tagged TKernel) at the beginning of the fault
+       handler (and with the current memory, and with the current PC
+       in the return-addr register epc)) and let it run until it
+       reaches a user-mode state st'... *)
+  exists ts', pkue t 4000 parametric_initial_state = Some ts' /\
+   exists st', Some st' = concretize_tstate t env ts' /\
+       cache_correct (Concrete.cache st') /\
+      (* and the new cache now contains a rule mapping mvec to rvec... *)
+      Concrete.cache_lookup (Concrete.cache st') masks cmvec = Some crvec /\
+      (* and the mvec has been tagged as kernel data (BCP: why is this important??) *)
+      mvec_in_kernel (Concrete.mem st') /\
+      (* and we've arrived at the return address that was in epc with
+         unchanged user memory and registers... *)
+      user_mem_unchanged (Concrete.mem st) (Concrete.mem st') /\
+      user_regs_unchanged (Concrete.regs st) (Concrete.regs st') /\
+      Concrete.pc st' = Concrete.epc st /\
+      (* and the system call entry points are all tagged ENTRY (BCP:
+         Why do we care, and if we do then why isn't this part of the
+         kernel invariant?  Could user code possibly change it?) *)
+      wf_entry_points Sym.trivial_syscalls (Concrete.mem st')  /\ 
+      (* and the kernel invariant still holds. *)
+      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') tt.
+Proof.
+  intros. eexists.
+  split.
+  match goal with |- ?A = ?B => set z := A end. 
+  vm_compute in z.   
+Admitted.
 
 
 End WithClasses.
