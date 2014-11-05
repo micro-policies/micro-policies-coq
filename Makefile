@@ -15,7 +15,7 @@ test: coq
 
 SHARED=lib/*.v common/*.v concrete/*.v symbolic/*.v
 
-SPECIF=memory_safety/*.v sealing/*.v compartmentalization/*.v cfi/*.v
+SPECIF=memory_safety/*.v sealing/*.v compartmentalization/*.v cfi/*.v trivial/*.v
 
 bc:
 	@echo "The shared/common/framework part"

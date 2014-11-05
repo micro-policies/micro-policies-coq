@@ -38,6 +38,7 @@ Section WithClasses.
 Definition t := concrete_int_32_t.
 Instance ops : machine_ops t := concrete_int_32_ops.
 Instance fhp : fault_handler_params t := concrete_int_32_fh.
+Instance symtriv : Symbolic.params := Sym.sym_trivial. 
 
 (* ---------------------------------------------------------------- *)
 (* Generic definitions for building concrete machine instances *)
@@ -183,14 +184,149 @@ Definition build_concrete_trivial_machine
    user_registers
    DUMMY.
 
-(* We need to set up a similar parametric state, but:
-   - with concrete handler code in place
-   - starting at known handler entry point
-   - with epc at parametrized address, but known user tag
-   - no user memory: argue that this is strongest (since any reference will die)
-   - parameterized user registers (a bit arbitrary)
-   - 
-  
+(* Based on the definitions in fault_handler,.... *)
+
+Definition invariant_statement 
+           (_:Concrete.memory t)
+           (_:Symbolic.internal_state) := True.
+
+Lemma invariant_upd_mem :
+    forall mem mem' addr w1 ut  w2 int
+           (PINV : invariant_statement mem int)
+           (GET : PartMaps.get mem addr = Some w1@(encode (USER ut))) 
+                      (* @encode _ _ (Symbolic.ttypes Symbolic.M) ((fun _ => encodable_tag) Symbolic.M) (USER ut))) *)
+           (UPD : PartMaps.upd mem addr w2 = Some mem'),
+      invariant_statement mem' int.
+Proof.
+  intros; auto.
+Qed.
+
+Lemma invariant_store_mvec :
+    forall mem mem' mvec int
+           (KINV : invariant_statement mem int)
+           (MVEC : Concrete.store_mvec mem mvec = Some mem'),
+    invariant_statement mem' int.
+Proof.
+  intros; auto.
+Qed.
+
+Definition trivial_policy_invariant : policy_invariant t := {|
+  policy_invariant_statement := invariant_statement;  
+  policy_invariant_upd_mem := invariant_upd_mem; 
+  policy_invariant_store_mvec := invariant_store_mvec
+|}.
+
+
+Definition ki := fault_handler_invariant t ops fhp transfer_function trivial_policy_invariant. 
+
+(* Based on the definitions in refinement_common,.... *)
+
+Definition handler := @rules.handler t _ _ (fun x => @Symbolic.transfer symtriv x).
+
+Definition handler_correct_allowed : Prop :=
+  forall mem mem' cmvec crvec reg cache old_pc int,
+    (* If kernel invariant holds... *)
+    ki mem reg cache int -> 
+    (* and calling the handler on the current m-vector succeeds and returns rvec... *)
+    handler cmvec = Some crvec ->
+    (* and storing the concrete representation of the m-vector yields new memory mem'... *)
+    Concrete.store_mvec mem cmvec = Some mem' ->
+    (* and the concrete rule cache is correct (in the sense that every
+       rule it holds is exactly the concrete representations of
+       some (mvec,rvec) pair in the relation defined by the [handler]
+       function) ... *)
+    cache_correct cache ->
+    (* THEN if we start the concrete machine in kernel mode (i.e.,
+       with the PC tagged TKernel) at the beginning of the fault
+       handler (and with the current memory, and with the current PC
+       in the return-addr register epc)) and let it run until it
+       reaches a user-mode state st'... *)
+    exists st',
+      kernel_user_exec
+        (Concrete.mkState mem' reg cache
+                          (Concrete.fault_handler_start _)@Concrete.TKernel
+                          old_pc)
+        st' /\
+      (* then the new cache is still correct... *)
+      cache_correct (Concrete.cache st') /\
+      (* and the new cache now contains a rule mapping mvec to rvec... *)
+      Concrete.cache_lookup (Concrete.cache st') masks cmvec = Some crvec /\
+      (* and the mvec has been tagged as kernel data (BCP: why is this important??) *)
+      mvec_in_kernel (Concrete.mem st') /\
+      (* and we've arrived at the return address that was in epc with
+         unchanged user memory and registers... *)
+      user_mem_unchanged mem (Concrete.mem st') /\
+      user_regs_unchanged reg (Concrete.regs st') /\
+      Concrete.pc st' = old_pc /\
+      (* and the system call entry points are all tagged ENTRY (BCP:
+         Why do we care, and if we do then why isn't this part of the
+         kernel invariant?  Could user code possibly change it?) *)
+      wf_entry_points Sym.trivial_syscalls (Concrete.mem st')  /\ 
+      (* and the kernel invariant still holds. *)
+      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int 
+.
+
+Require Import concrete.eval.
+
+Let patom := common.atom (pvalue t) (pvalue t).
+
+(* Setting up initial state of parametric machine, specifially at
+entry to the fault handler.  We can try to generalize this later. *)
+
+Definition pkernelize (seg : @relocatable_segment concrete_int_32_t w w)
+                   : relocatable_segment w patom :=
+  let (l,gen) := seg in
+  (l, fun b rest => map (fun x => (C t x)@(C t Concrete.TKernel)) (gen b rest)).
+
+
+(* Kludge: temporarily treat epc as having a real register number. *)
+Definition epc_reg : reg t := Word.repr 1000.
+
+Fixpoint pmem_from (i : Word.int 31) (n : nat) x 
+                        (mem : word_map t patom) : word_map t patom :=
+  match n with
+    | O    => mem
+    | S n' => pmem_from (Word.add i Word.one) n' x 
+                              (PartMaps.set mem i (V t (MP t i))@x)
+  end.
+
+Definition preg_at x (regs : reg_map t patom) (r: reg t) : reg_map t patom :=
+  PartMaps.set regs r (V t (RP t r))@x.
+
+
+Definition parametric_initial_state : pstate concrete_int_32_t :=
+  let gen_cache := pmem_from Word.zero 8 (C t Concrete.TKernel) in
+  let base_addr := Concrete.fault_handler_start _ in
+  let (handler_length,handler_segment) := pkernelize fault_handler in
+  let kernel_code := handler_segment base_addr (Word.reprn handler_length) in
+  let gen_kernel_code := insert_from base_addr kernel_code in
+  let extra_state_addr := Word.add base_addr
+                                     (Word.reprn handler_length) in
+  let user_code_addr := extra_state_addr (* since there is no exta state *) in 
+  let user_code_length := 1%nat in (* very arbitrary ! *)
+  let gen_user_code := pmem_from user_code_addr user_code_length 
+                                 (C t (kernelize_user_tag DUMMY)) in
+  let mem := 
+       ( gen_cache 
+       ∘ gen_kernel_code
+       ∘ gen_user_code )
+       (PartMaps.empty) in
+  let kregs :=
+      fold_left (preg_at (C t Concrete.TKernel)) 
+        (kernel_regs t concrete_int_32_fh)
+        PartMaps.empty in
+  let regs :=    (* all the "standard" user regs: a bit arbitrary! *)
+         fold_left (preg_at (C t (kernelize_user_tag DUMMY)))
+          user_registers
+          kregs in
+  {| pmem := mem;
+     pregs  := regs;
+     pcache := [];
+     ppc  := (C t (Concrete.fault_handler_start _))@(C t Concrete.TKernel);
+     pepc := (V t (RP t epc_reg))@(C t (kernelize_user_tag DUMMY))
+  |}
+.
+
 
 
 
