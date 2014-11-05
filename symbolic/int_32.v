@@ -1,5 +1,5 @@
 (* Specializing protected kernel for symbolic machine to 32 bits *)
-
+ 
 Require Import ZArith.
 Require Import Integers.
 Require Import List.
@@ -147,12 +147,18 @@ Program Definition concrete_initial_state
     : Concrete.state concrete_int_32_t :=
   let '(_, user_gen) := kernelize_tags user_mem in
   let mem' := insert_from user_mem_addr (user_gen user_mem_addr syscall_addrs) initial_memory in
+  let kregs :=
+      fold_left
+        (fun regs r =>
+           PartMaps.set regs r Word.zero@(Concrete.TKernel:w))
+        (kernel_regs t concrete_int_32_fh)
+        PartMaps.empty in
   let regs :=
         fold_left
           (fun regs r =>
             PartMaps.set regs r Word.zero@(kernelize_user_tag initial_reg_tag))
           user_regs
-          (PartMaps.empty) in
+          kregs in
   {|
     Concrete.mem := mem';
     Concrete.regs := regs;
