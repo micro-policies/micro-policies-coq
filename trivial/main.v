@@ -143,6 +143,18 @@ Definition transfer_function : list (instr t) :=
 Definition fault_handler : @relocatable_segment t w w :=
  kernel_code (fault_handler.handler t fhp transfer_function).
 
+(*
+(* Printing out the handler code *)
+
+Require Import String.
+Import printing.
+Compute (to_string (snd (foldl 
+            (fun (ns:nat * sstring) i => let (n,s) := ns in 
+               (S n, s +++ format_nat n +++ schar " " +++ format_instr i +++ schar "010" ))
+            (1,ssempty) 
+            (fault_handler.handler t fhp transfer_function)))). 
+*)
+
 Definition extra_state : @relocatable_segment t w w :=
  kernel_data [].
 
@@ -222,6 +234,8 @@ Definition ki := fault_handler_invariant t ops fhp transfer_function trivial_pol
 (* Based on the definitions in refinement_common,.... *)
 
 Definition handler := @rules.handler t _ _ (fun x => @Symbolic.transfer symtriv x).
+
+
 
 Definition handler_correct_allowed : Prop :=
   forall mem mem' cmvec crvec reg cache old_pc int,
@@ -326,6 +340,20 @@ Definition parametric_initial_state: pstate concrete_int_32_t :=
   |}
 .
 
+Set Printing Depth 20. 
+
+
+Fixpoint extract_pcs (ts: tstate t) : list patom :=
+match ts with
+| Halted => []
+| St ps => [ppc t ps]
+| Ch _ s1 s2 => extract_pcs s1 ++ extract_pcs s2
+end. 
+
+(*   Compute (match (teval t masks 40 (St _ parametric_initial_state))
+               with Some ts => extract_pcs ts | None => [] end). 
+*)
+
 Definition mvec_stored (mem : Concrete.memory t) (mv : Concrete.MVec w) : Prop := 
   PartMaps.get mem (Concrete.Mop t) = Some (Concrete.cop mv)@Concrete.TKernel /\ 
   PartMaps.get mem (Concrete.Mtpc t) = Some (Concrete.ctpc mv)@Concrete.TKernel /\ 
@@ -334,11 +362,45 @@ Definition mvec_stored (mem : Concrete.memory t) (mv : Concrete.MVec w) : Prop :
   PartMaps.get mem (Concrete.Mt2 t) = Some (Concrete.ct2 mv)@Concrete.TKernel /\ 
   PartMaps.get mem (Concrete.Mt3 t) = Some (Concrete.ct3 mv)@Concrete.TKernel. 
 
+(* Parametric equivalents of the kue functions. *)
+(* Building block for more sophisticated steppers *)
+Fixpoint tdistr (f: pstate t -> option (tstate t)) (ts: (tstate t)) : option (tstate t) :=
+  match ts with
+  | Halted => Some (Halted _)
+  | St s => f s
+  | Ch z s1 s2 =>
+      match tdistr f s1,tdistr f s2 with
+      | Some l,Some r => Some (Ch _ z l r)
+      | Some l,None  => Some l
+      | None,Some r => Some r
+      | None, None => None
+      end
+   end.
+
+Definition crazy : pstate t := 
+  mkPState _ PartMaps.empty PartMaps.empty [] ((C t (Word.repr 777))@(C t (Word.repr 888))) ((C t (Word.repr 999))@(C t (Word.repr 666))). 
+
+Fixpoint pkuer (max_steps:nat) (k:pstate t -> option (tstate t)) (ps:(pstate t)) : option (tstate t) :=
+  do! u <- known _ (common.tag (ppc t ps));
+  if Concrete.is_kernel_tag u then
+    match max_steps with
+    | O => None 
+    | S max_steps' =>
+      do! ts <- pstep _ masks ps;
+      tdistr (pkuer max_steps' (fun ps => Some(St _ ps))) ts
+    end
+  else k ps.
+
+
+Definition pkue (max_steps:nat) (ps:pstate t) : option (tstate t) :=
+   pkuer max_steps (fun _ => Some (St _ crazy)) ps.  
+
+
 Lemma phandler_correct_allowed :
   forall env cmvec crvec,
     let st := concretize_pstate _ env parametric_initial_state in
     (* If kernel invariant holds... *)
-    ki (Concrete.mem st) (Concrete.regs st) (Concrete.cache st) tt /\
+    ki (Concrete.mem st) (Concrete.regs st) (Concrete.cache st) tt ->
     (* and calling the handler on the current m-vector succeeds and returns rvec... *)
     handler cmvec = Some crvec ->
     (* and memory contains the the concrete representation of the m-vector ...
@@ -355,7 +417,7 @@ Lemma phandler_correct_allowed :
        handler (and with the current memory, and with the current PC
        in the return-addr register epc)) and let it run until it
        reaches a user-mode state st'... *)
-  exists ts', pkue t 4000 parametric_initial_state = Some ts' /\
+  exists ts', pkue 40 parametric_initial_state = Some ts' /\
    exists st', Some st' = concretize_tstate t env ts' /\
        cache_correct (Concrete.cache st') /\
       (* and the new cache now contains a rule mapping mvec to rvec... *)
@@ -374,12 +436,31 @@ Lemma phandler_correct_allowed :
       (* and the kernel invariant still holds. *)
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') tt.
 Proof.
-  intros. eexists.
-  split.
-  match goal with |- ?A = ?B => set z := A end. 
-  vm_compute in z.   
-Admitted.
+  intros. 
+  vm_compute in st. subst st. 
+  unfold Concrete.mem in *.  unfold Concrete.regs in *.
+  unfold Concrete.cache in *.  unfold Concrete.pc in *. 
+  unfold Concrete.epc in *. 
+  (* that was overkill, but simpl runs forever *)
+  destruct H1 as [? [? [? [? [? ?]]]]].
+  unfold Concrete.Mtpc, Concrete.cache_line_addr in H3.
+  change (0 + Word.repr 1)%w with ((Word.repr 1):w) in H3.
+  simpl in H3. vm_compute in H3. 
+  destruct cmvec. vm_compute in H3. injection H3. clear H3; intro H3. 
+  clear H1 H4 H5 H6 H7. (* temporarily, for printing speed *)
+  clear H. (* ditto *)
+  idtac. 
+  unfold handler in H0. unfold rules.handler in H0. 
+  undo. unfold decode_ivec in Heqo. simpl in Heqo. 
+  (* undo is too slow so we're screwed here *)
 
+  eexists. split.
+  match goal with |- ?A = ?B => set z := A end. 
+  vm_compute in z; reflexivity.
+  unfold concretize_tstate, concretize_pvalue.
+
+  (* factoid we will want first is that ctpc = user. how do
+     we establish that?  via uivec_of_ivec, I believe. *)
 
 End WithClasses.
 
