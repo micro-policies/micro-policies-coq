@@ -343,6 +343,8 @@ Definition parametric_initial_state: pstate concrete_int_32_t :=
 Set Printing Depth 20. 
 
 
+(* teval is much faster than pkue *)
+
 Fixpoint extract_pcs (ts: tstate t) : list patom :=
 match ts with
 | Halted => []
@@ -350,20 +352,14 @@ match ts with
 | Ch _ s1 s2 => extract_pcs s1 ++ extract_pcs s2
 end. 
 
-(*   Compute (match (teval t masks 40 (St _ parametric_initial_state))
-               with Some ts => extract_pcs ts | None => [] end). 
-*)
+(* Compute (match (teval t masks 40 (St _ parametric_initial_state))
+         with Some ts => extract_pcs ts | None => [] end).  *)
+  
 
-Definition mvec_stored (mem : Concrete.memory t) (mv : Concrete.MVec w) : Prop := 
-  PartMaps.get mem (Concrete.Mop t) = Some (Concrete.cop mv)@Concrete.TKernel /\ 
-  PartMaps.get mem (Concrete.Mtpc t) = Some (Concrete.ctpc mv)@Concrete.TKernel /\ 
-  PartMaps.get mem (Concrete.Mti t) = Some (Concrete.cti mv)@Concrete.TKernel /\ 
-  PartMaps.get mem (Concrete.Mt1 t) = Some (Concrete.ct1 mv)@Concrete.TKernel /\ 
-  PartMaps.get mem (Concrete.Mt2 t) = Some (Concrete.ct2 mv)@Concrete.TKernel /\ 
-  PartMaps.get mem (Concrete.Mt3 t) = Some (Concrete.ct3 mv)@Concrete.TKernel. 
+(* REDEFINE some things from concrete/eval.v *)
 
-(* Parametric equivalents of the kue functions. *)
-(* Building block for more sophisticated steppers *)
+(* This version is unsound, but it lets us investigate behavior with much
+smaller step counts.  *)
 Fixpoint tdistr (f: pstate t -> option (tstate t)) (ts: (tstate t)) : option (tstate t) :=
   match ts with
   | Halted => Some (Halted _)
@@ -377,7 +373,8 @@ Fixpoint tdistr (f: pstate t -> option (tstate t)) (ts: (tstate t)) : option (ts
       end
    end.
 
-Definition crazy : pstate t := 
+(* Hack to distinguish initial not-in-kernel failures from running out of steps. *)
+Definition marker: pstate t := 
   mkPState _ PartMaps.empty PartMaps.empty [] ((C t (Word.repr 777))@(C t (Word.repr 888))) ((C t (Word.repr 999))@(C t (Word.repr 666))). 
 
 Fixpoint pkuer (max_steps:nat) (k:pstate t -> option (tstate t)) (ps:(pstate t)) : option (tstate t) :=
@@ -391,10 +388,19 @@ Fixpoint pkuer (max_steps:nat) (k:pstate t -> option (tstate t)) (ps:(pstate t))
     end
   else k ps.
 
-
 Definition pkue (max_steps:nat) (ps:pstate t) : option (tstate t) :=
-   pkuer max_steps (fun _ => Some (St _ crazy)) ps.  
+   pkuer max_steps (fun _ => Some (St _ marker)) ps.  
 
+(* Compute (match (pkue 40  parametric_initial_state)
+         with Some ts => extract_pcs ts | None => [] end).    *)
+
+Definition mvec_stored (mem : Concrete.memory t) (mv : Concrete.MVec w) : Prop := 
+  PartMaps.get mem (Concrete.Mop t) = Some (Concrete.cop mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mtpc t) = Some (Concrete.ctpc mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mti t) = Some (Concrete.cti mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mt1 t) = Some (Concrete.ct1 mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mt2 t) = Some (Concrete.ct2 mv)@Concrete.TKernel /\ 
+  PartMaps.get mem (Concrete.Mt3 t) = Some (Concrete.ct3 mv)@Concrete.TKernel. 
 
 Lemma phandler_correct_allowed :
   forall env cmvec crvec,
@@ -461,6 +467,7 @@ Proof.
 
   (* factoid we will want first is that ctpc = user. how do
      we establish that?  via uivec_of_ivec, I believe. *)
+Admitted.
 
 End WithClasses.
 
