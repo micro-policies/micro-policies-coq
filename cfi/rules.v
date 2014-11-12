@@ -69,9 +69,9 @@ Definition cfi_handler (ivec : Symbolic.IVec cfi_tags) : option (Symbolic.VOVec 
   | mkIVec   JUMP   DATA  (INSTR None)  _
   | mkIVec   JAL    DATA  (INSTR None)  _  =>
     None
-  | mkIVec   STORE  (INSTR (Some n))  (INSTR (Some m))  [:: _ ; _ ; DATA]  =>
+  | mkIVec   STORE  (INSTR (Some n))  (INSTR (Some m))  [hl _ ; _ ; DATA]  =>
     if cfg n m then Some (@mkOVec cfi_tags STORE DATA DATA) else None
-  | mkIVec   STORE  DATA  (INSTR _)  [:: _ ; _ ; DATA]  =>
+  | mkIVec   STORE  DATA  (INSTR _)  [hl _ ; _ ; DATA]  =>
     Some (@mkOVec cfi_tags STORE DATA DATA)
   | mkIVec   STORE  _  _  _  => None
   | mkIVec   (OP op) (INSTR (Some n))  (INSTR (Some m))  _  =>

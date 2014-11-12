@@ -1,4 +1,4 @@
-Require Import ssreflect ssrbool ssrfun eqtype.
+Require Import ssreflect ssrbool ssrfun eqtype seq.
 
 Require Import Coq.Lists.List.
 Require Import lib.Coqlib lib.utils.
@@ -112,17 +112,15 @@ Defined.
       INSTR (Some x) --> x*4+2
 *)
 
-Import Word.Notations List.ListNotations.
-
 Definition encode_cfi_tag (t : cfi_tag) : Word.int 29 :=
  match t with
-   DATA => Word.pack [27; 1] [Word.zero; Word.zero]%wp
- | INSTR None => Word.pack [27; 1] [Word.zero; Word.one]%wp
- | INSTR (Some x) => Word.pack [27; 1] [x; Word.repr 2]%wp
+   DATA => Word.pack [:: 27; 1] [wp Word.zero; Word.zero]%w
+ | INSTR None => Word.pack [:: 27; 1] [wp Word.zero; Word.one]%w
+ | INSTR (Some x) => Word.pack [:: 27; 1] [wp x; Word.repr 2]%w
  end.
 
 Definition decode_cfi_tag (t : Word.int 29) : option cfi_tag :=
-  let: [k; t]%wu := Word.unpack [27; 1] t in
+  let: [wu k; t]%w := Word.unpack [:: 27; 1] t in
   if t == Word.zero then
     if k == Word.zero then Some DATA
     else None
@@ -143,8 +141,8 @@ Lemma decode_cfi_tagK w t : decode_cfi_tag w = Some t ->
                                 encode_cfi_tag t = w.
 Proof.
   rewrite /decode_cfi_tag /encode_cfi_tag.
-  case E: (Word.unpack [27; 1] w) => [k [w' []]].
-  move: (Word.unpackK [27; 1] w). rewrite E.
+  case E: (Word.unpack [:: 27; 1] w) => [k [w' []]].
+  move: (Word.unpackK [:: 27; 1] w). rewrite E.
   have [?|?] := altP (w' =P Word.zero); try subst w'.
   { have [?|?] := altP (k =P Word.zero); try subst k; last by [].
     by move => H [<-]. }
@@ -159,7 +157,7 @@ Import DoNotation.
 
 Instance encodable_tag : encodable t cfi_tags := {|
   decode k m w :=
-    let: [ut; w']%wu := Word.unpack [29; 1] w in
+    let: [wu ut; w']%w := Word.unpack [:: 29; 1] w in
     if w' == Word.zero then None
     else if w' == Word.one then
       do! ut <- decode_cfi_tag ut;

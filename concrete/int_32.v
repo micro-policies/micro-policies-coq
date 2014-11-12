@@ -1,13 +1,10 @@
 (* Instantiate the concrete machine with 32-bit integers *)
 
 Require Import ZArith.
-Require Import Integers.
-Require Import List.
+Require Import lib.Integers.
 Require Import Bool.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-
-Import ListNotations.
 
 Require Import lib.Coqlib.
 Require Import lib.FiniteMaps.
@@ -28,9 +25,6 @@ Program Definition concrete_int_32_t : machine_types := {|
 |}.
 Solve Obligations using omega.
 
-Import Word.Notations.
-Import ListNotations.
-
 Definition encode_opcode (o : opcode) : int 4 :=
   repr (op_to_Z o).
 
@@ -46,20 +40,20 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
   encode_instr i :=
     let op := encode_opcode (opcode_of i) in
     match i with
-    | Nop => pack [4; 26] [op; zero]%wp
-    | Const i r => pack [4; 14; 4; 6] [op; i; r; zero]%wp
-    | Mov r1 r2 => pack [4; 4; 4; 16] [op; r1; r2; zero]%wp
-    | Binop _ r1 r2 r3 => pack [4; 4; 4; 4; 11] [op; r1; r2; r3; zero]%wp
-    | Load r1 r2 => pack [4; 4; 4; 16] [op; r1; r2; zero]%wp
-    | Store r1 r2 => pack [4; 4; 4; 16] [op; r1; r2; zero]%wp
-    | Jump r => pack [4; 4; 21] [op; r; zero]%wp
-    | Bnz r i => pack [4; 4; 14; 6] [op; r; i; zero]%wp
-    | Jal r => pack [4; 4; 21] [op; r; zero]%wp
-    | JumpEpc => pack [4; 26] [op; zero]%wp
-    | AddRule => pack [4; 26] [op; zero]%wp
-    | GetTag r1 r2 => pack [4; 4; 4; 16] [op; r1; r2; zero]%wp
-    | PutTag r1 r2 r3 => pack [4; 4; 4; 4; 11] [op; r1; r2; r3; zero]%wp
-    | Halt => pack [4; 26] [op; zero]%wp
+    | Nop => pack [:: 4; 26] [wp op; zero]%w
+    | Const i r => pack [:: 4; 14; 4; 6] [wp op; i; r; zero]%w
+    | Mov r1 r2 => pack [:: 4; 4; 4; 16] [wp op; r1; r2; zero]%w
+    | Binop _ r1 r2 r3 => pack [:: 4; 4; 4; 4; 11] [wp op; r1; r2; r3; zero]%w
+    | Load r1 r2 => pack [:: 4; 4; 4; 16] [wp op; r1; r2; zero]%w
+    | Store r1 r2 => pack [:: 4; 4; 4; 16] [wp op; r1; r2; zero]%w
+    | Jump r => pack [:: 4; 4; 21] [wp op; r; zero]%w
+    | Bnz r i => pack [:: 4; 4; 14; 6] [wp op; r; i; zero]%w
+    | Jal r => pack [:: 4; 4; 21] [wp op; r; zero]%w
+    | JumpEpc => pack [:: 4; 26] [wp op; zero]%w
+    | AddRule => pack [:: 4; 26] [wp op; zero]%w
+    | GetTag r1 r2 => pack [:: 4; 4; 4; 16] [wp op; r1; r2; zero]%w
+    | PutTag r1 r2 r3 => pack [:: 4; 4; 4; 4; 11] [wp op; r1; r2; r3; zero]%w
+    | Halt => pack [:: 4; 26] [wp op; zero]%w
     end;
 
   decode_instr i :=
@@ -68,27 +62,27 @@ Instance concrete_int_32_ops : machine_ops concrete_int_32_t := {|
     do! op <- decode_opcode op;
     match op : let int := reg concrete_int_32_t in opcode with
     | NOP => Some (Nop t)
-    | CONST => let: [i; r; _]%wu := unpack [14; 4; 6] rest in
+    | CONST => let: [wu i; r; _]%w := unpack [:: 14; 4; 6] rest in
                Some (@Const t i r)
-    | MOV => let: [r1; r2; _]%wu := unpack [4; 4; 16] rest in
+    | MOV => let: [wu r1; r2; _]%w := unpack [:: 4; 4; 16] rest in
              Some (@Mov t r1 r2)
-    | BINOP op => let: [r1; r2; r3; _]%wu := unpack [4; 4; 4; 11] rest in
+    | BINOP op => let: [wu r1; r2; r3; _]%w := unpack [:: 4; 4; 4; 11] rest in
                   Some (@Binop t op r1 r2 r3)
-    | LOAD => let: [r1; r2; _]%wu := unpack [4; 4; 16] rest in
+    | LOAD => let: [wu r1; r2; _]%w := unpack [:: 4; 4; 16] rest in
               Some (@Load t r1 r2)
-    | STORE => let: [r1; r2; _]%wu := unpack [4; 4; 16] rest in
+    | STORE => let: [wu r1; r2; _]%w := unpack [:: 4; 4; 16] rest in
                Some (@Store t r1 r2)
-    | JUMP => let : [r; _]%wu := unpack [4; 21] rest in
+    | JUMP => let : [wu r; _]%w := unpack [:: 4; 21] rest in
               Some (@Jump t r)
-    | BNZ => let: [r; i; _]%wu := unpack [4; 14; 6] rest in
+    | BNZ => let: [wu r; i; _]%w := unpack [:: 4; 14; 6] rest in
              Some (@Bnz t r i)
-    | JAL => let: [r; _]%wu := unpack [4; 21] rest in
+    | JAL => let: [wu r; _]%w := unpack [:: 4; 21] rest in
              Some (@Jal t r)
     | JUMPEPC => Some (JumpEpc t)
     | ADDRULE => Some (AddRule t)
-    | GETTAG => let: [r1; r2; _]%wu := unpack [4; 4; 16] rest in
+    | GETTAG => let: [wu r1; r2; _]%w := unpack [:: 4; 4; 16] rest in
                 Some (@GetTag t r1 r2)
-    | PUTTAG => let: [r1; r2; r3; _]%wu := unpack [4; 4; 4; 11] rest in
+    | PUTTAG => let: [wu r1; r2; r3; _]%w := unpack [:: 4; 4; 4; 11] rest in
                 Some (@PutTag t r1 r2 r3)
     | HALT => Some (Halt t)
     end;

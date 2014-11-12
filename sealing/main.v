@@ -2,7 +2,6 @@
 TODO: write better testing support -- e.g. comparing final states
 *)
 
-Require Import List. Import ListNotations.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq.
@@ -104,17 +103,15 @@ Proof.
     rewrite [_ 1%w]/=. omega.
 Defined.
 
-Import Word.Notations.
-
 Definition encode_sealing_tag (t : Sym.stag) : Word.int 29 :=
  match t with
-   Sym.DATA => Word.pack [27; 1] [Word.zero; Word.zero]%wp
- | Sym.KEY k => Word.pack [27; 1] [k; Word.one]%wp
- | Sym.SEALED k => Word.pack [27; 1] [k; Word.repr 3]%wp
+   Sym.DATA => Word.pack [:: 27; 1] [wp Word.zero; Word.zero]%w
+ | Sym.KEY k => Word.pack [:: 27; 1] [wp k; Word.one]%w
+ | Sym.SEALED k => Word.pack [:: 27; 1] [wp k; Word.repr 3]%w
  end.
 
 Definition decode_sealing_tag (t : Word.int 29) : option Sym.stag :=
-  let: [k; t]%wu := Word.unpack [27; 1] t in
+  let: [wu k; t]%w := Word.unpack [:: 27; 1] t in
   if t == Word.zero then
     if k == Word.zero then Some Sym.DATA
     else None
@@ -134,8 +131,8 @@ Lemma decode_sealing_tagK w t : decode_sealing_tag w = Some t ->
                                 encode_sealing_tag t = w.
 Proof.
   rewrite /decode_sealing_tag /encode_sealing_tag.
-  case E: (Word.unpack [27; 1] w) => [k [w' []]].
-  move: (Word.unpackK [27; 1] w). rewrite E.
+  case E: (Word.unpack [:: 27; 1] w) => [k [w' []]].
+  move: (Word.unpackK [:: 27; 1] w). rewrite E.
   have [?|?] := altP (w' =P Word.zero); try subst w'.
   { have [?|?] := altP (k =P Word.zero); try subst k; last by [].
     by move => H [<-]. }
@@ -147,7 +144,7 @@ Qed.
 
 Instance encodable_tag : @encodable t Sym.stags := {|
   decode k mem w :=
-    let: [ut; w']%wu := Word.unpack [29; 1] w in
+    let: [wu ut; w']%w := Word.unpack [:: 29; 1] w in
     if w' == Word.zero then None
     else if w' == Word.one then
       do! ut <- decode_sealing_tag ut;
@@ -165,95 +162,95 @@ Qed.
 Definition DATA : word t := Word.repr 0.
 
 Definition transfer_function : list (instr t) :=
- let assert_DATA r := [
+ let assert_DATA r := [::
    Const (Word.casts DATA) ri1;
    Binop EQ r ri1 ri1 ] ++
-                        if_ ri1 [] [Halt _]
+                        if_ ri1 [::] [:: Halt _]
    in
  (* entry points for system calls *)
- ([ Const (Word.repr (vop_to_Z SERVICE)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (vop_to_Z SERVICE)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
-    []
+    [::]
  (* NOP *)
- ([ Const (Word.repr (op_to_Z NOP)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (op_to_Z NOP)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
-     [Const (Word.casts DATA) rtrpc;
-      Const (Word.casts DATA) rtr
+     [:: Const (Word.casts DATA) rtrpc;
+         Const (Word.casts DATA) rtr
      ])
  (* CONST *)
- ([ Const (Word.repr (op_to_Z CONST)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (op_to_Z CONST)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
-     [Const (Word.casts DATA) rtrpc;
-      Const (Word.casts DATA) rtr
+     [:: Const (Word.casts DATA) rtrpc;
+         Const (Word.casts DATA) rtr
      ])
  (* MOV *)
- ([ Const (Word.repr (op_to_Z MOV)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (op_to_Z MOV)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
-     [Const (Word.casts DATA) rtrpc;
+     [:: Const (Word.casts DATA) rtrpc;
       Mov rt1 rtr
      ])
  (* BINOPs *)
  (let binop cont b :=
-        [ Const (Word.repr (op_to_Z (BINOP b))) ri1;
-          Binop EQ rop ri1 ri1 ] ++
+        [:: Const (Word.repr (op_to_Z (BINOP b))) ri1;
+            Binop EQ rop ri1 ri1 ] ++
         (if_ ri1
           (assert_DATA rtpc ++ assert_DATA rti ++
            assert_DATA rt1 ++ assert_DATA rt2 ++
-           [Const (Word.casts DATA) rtrpc;
-            Const (Word.casts DATA) rtr
+           [:: Const (Word.casts DATA) rtrpc;
+               Const (Word.casts DATA) rtr
            ])
           cont) in
-   fold_left binop binops
+   foldl binop [::] binops ++
  (* LOAD *)
- ([ Const (Word.repr (op_to_Z LOAD)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (op_to_Z LOAD)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-     [Const (Word.casts DATA) rtrpc;
+     [:: Const (Word.casts DATA) rtrpc;
       Mov rt2 rtr
      ])
  (* STORE *)
- ([ Const (Word.repr (op_to_Z STORE)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (op_to_Z STORE)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-     [Const (Word.casts DATA) rtrpc;
-      Mov rt2 rtr
+     [:: Const (Word.casts DATA) rtrpc;
+         Mov rt2 rtr
      ])
  (* JUMP *)
- ([ Const (Word.repr (op_to_Z JUMP)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (op_to_Z JUMP)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
-     [Const (Word.casts DATA) rtrpc])
+     [:: Const (Word.casts DATA) rtrpc])
  (* BNZ *)
- ([ Const (Word.repr (op_to_Z BNZ)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (op_to_Z BNZ)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-     [Const (Word.casts DATA) rtrpc])
+     [:: Const (Word.casts DATA) rtrpc])
  (* JAL *)
- ([ Const (Word.repr (op_to_Z JAL)) ri1;
-    Binop EQ rop ri1 ri1 ] ++
+ ([:: Const (Word.repr (op_to_Z JAL)) ri1;
+      Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
-     [Const (Word.casts DATA) rtrpc;
-      Const (Word.casts DATA) rtr])
+     [:: Const (Word.casts DATA) rtrpc;
+         Const (Word.casts DATA) rtr])
  (* Unknown opcode: Halt *)
- ([Halt _])))))))))))))))))))).
+ ([:: Halt _])))))))))))))))))))).
 
 Definition fault_handler : @relocatable_segment t w w :=
  kernel_code (fault_handler.handler t fhp transfer_function).
 
 Definition extra_state : @relocatable_segment t w w :=
- kernel_data [Word.reprn 13].
+ kernel_data [:: Word.reprn 13].
 
 Definition gen_syscall_code gen : @relocatable_segment t w w :=
  (length (gen (Word.repr 0) (Word.repr 0)),
@@ -261,92 +258,92 @@ Definition gen_syscall_code gen : @relocatable_segment t w w :=
 
 Definition mkkey_segment : @relocatable_segment t w w :=
  gen_syscall_code (fun _ (extra : w) =>
-        [Const (Word.casts extra) ri1; (* load next key *)
-         Load ri1 ri5;
-         Const (Word.repr 1) ri3; (* increment and store back *)
-         Binop ADD ri5 ri3 ri3;
-         Store ri1 ri3;
-         Const (Word.repr 2) ri3; (* wrap k as KEY(k): SHL by 2 and add 1 *)
-         Binop SHL ri5 ri3 ri4;
-         Const Word.one ri3;
-         Binop ADD ri3 ri4 ri4] ++
+        [:: Const (Word.casts extra) ri1; (* load next key *)
+            Load ri1 ri5;
+            Const (Word.repr 1) ri3; (* increment and store back *)
+            Binop ADD ri5 ri3 ri3;
+            Store ri1 ri3;
+            Const (Word.repr 2) ri3; (* wrap k as KEY(k): SHL by 2 and add 1 *)
+            Binop SHL ri5 ri3 ri4;
+            Const Word.one ri3;
+            Binop ADD ri3 ri4 ri4] ++
         wrap_user_tag ri4 ri4 ++
-        [Const Word.zero ri5; (* payload for new key is 0, arbitrarily *)
-         PutTag ri5 ri4 syscall_ret; (* build the key *)
-         Jump ra
+        [:: Const Word.zero ri5; (* payload for new key is 0, arbitrarily *)
+            PutTag ri5 ri4 syscall_ret; (* build the key *)
+            Jump ra
          ]).
 
 Definition seal_segment : @relocatable_segment t w w :=
  gen_syscall_code (fun _ (extra : w) =>
        (* Ensure that first argument is tagged DATA, halting otherwise *)
-       [GetTag syscall_arg1 ri3] ++
+       [:: GetTag syscall_arg1 ri3] ++
        extract_user_tag ri3 rb ri3 ++
-       if_ rb [] [Halt _] ++
-       [Const (Word.repr 3) ri5;
-        Binop AND ri3 ri5 ri5] ++
-       if_ ri5 [Halt _] [] ++
+       if_ rb [::] [:: Halt _] ++
+       [:: Const (Word.repr 3) ri5;
+           Binop AND ri3 ri5 ri5] ++
+       if_ ri5 [:: Halt _] [::] ++
        (* Ensure that second argument is tagged KEY, halting otherwise *)
-       [GetTag syscall_arg2 ri4] ++
+       [:: GetTag syscall_arg2 ri4] ++
        extract_user_tag ri4 rb ri4 ++
-       if_ rb [] [Halt _] ++
-       [Const (Word.repr 3) ri5;
-        Binop AND ri4 ri5 ri2;
-        Const (Word.repr 1) ri5;
-        Binop EQ ri5 ri2 ri5] ++
-       if_ ri5 [] [Halt _] ++
+       if_ rb [::] [:: Halt _] ++
+       [:: Const (Word.repr 3) ri5;
+           Binop AND ri4 ri5 ri2;
+           Const (Word.repr 1) ri5;
+           Binop EQ ri5 ri2 ri5] ++
+       if_ ri5 [::] [:: Halt _] ++
        (* Form SEALED(k) tag from KEY(k) in ri4 *)
-       [Const (Word.repr 2) ri5;
-        Binop OR ri5 ri4 ri4] ++
+       [:: Const (Word.repr 2) ri5;
+           Binop OR ri5 ri4 ri4] ++
        wrap_user_tag ri4 ri4 ++
-       [PutTag syscall_arg1 ri4 syscall_ret] ++
+       [:: PutTag syscall_arg1 ri4 syscall_ret] ++
        (* Check that return PC is tagged DATA *)
-       [GetTag ra ri3] ++
+       [:: GetTag ra ri3] ++
        extract_user_tag ri3 rb ri3 ++
-       if_ rb [] [Halt _] ++
-       [Const (Word.repr 0) ri5;
-        Binop EQ ri3 ri5 ri5] ++
-       if_ ri5 [Jump ra] [Halt _]
+       if_ rb [::] [:: Halt _] ++
+       [:: Const (Word.repr 0) ri5;
+           Binop EQ ri3 ri5 ri5] ++
+       if_ ri5 [:: Jump ra] [:: Halt _]
  ).
 
 Definition unseal_segment : @relocatable_segment t w w :=
  gen_syscall_code (fun _ (extra : w) =>
        (* Ensure that second argument is tagged KEY, halting otherwise *)
-       [GetTag syscall_arg2 ri4] ++
+       [:: GetTag syscall_arg2 ri4] ++
        extract_user_tag ri4 rb ri4 ++
-       if_ rb [] [Halt _] ++
-       [Const (Word.repr 3) ri5;
-        Binop AND ri4 ri5 ri2;
-        Const (Word.repr 1) ri5;
-        Binop EQ ri5 ri2 ri5] ++
-       if_ ri5 [] [Halt _] ++
+       if_ rb [::] [:: Halt _] ++
+       [:: Const (Word.repr 3) ri5;
+           Binop AND ri4 ri5 ri2;
+           Const (Word.repr 1) ri5;
+           Binop EQ ri5 ri2 ri5] ++
+       if_ ri5 [::] [:: Halt _] ++
        (* Form SEALED(k) tag from KEY(k) in ri4 *)
-       [Const (Word.repr 2) ri5;
-        Binop OR ri5 ri4 ri4] ++
+       [:: Const (Word.repr 2) ri5;
+           Binop OR ri5 ri4 ri4] ++
        (* Ensure that first argument has a user tag (put it in ri3) *)
-       [GetTag syscall_arg1 ri3] ++
+       [:: GetTag syscall_arg1 ri3] ++
        extract_user_tag ri3 rb ri3 ++
-       if_ rb [] [Halt _] ++
+       if_ rb [::] [:: Halt _] ++
        (* Check that the two tags are equal (i.e. both SEALED(k)) *)
-       [Binop EQ ri3 ri4 ri4] ++
-       if_ ri5 [] [Halt _] ++
+       [:: Binop EQ ri3 ri4 ri4] ++
+       if_ ri5 [::] [:: Halt _] ++
        (* Retag the payload with DATA *)
-       [Const (Word.repr 0) ri5] ++
+       [:: Const (Word.repr 0) ri5] ++
        wrap_user_tag ri5 ri5 ++
-       [PutTag syscall_arg1 ri5 syscall_ret] ++
+       [:: PutTag syscall_arg1 ri5 syscall_ret] ++
        (* Check that return PC is tagged DATA *)
        (* (not certain this is needed, but keeping it here and above
            to make sure we satisfy refinement hypotheses...) *)
-       [GetTag ra ri3] ++
+       [:: GetTag ra ri3] ++
        extract_user_tag ri3 rb ri3 ++
-       if_ rb [] [Halt _] ++
-       [Const (Word.repr 0) ri5;
-        Binop EQ ri3 ri5 ri5] ++
-       if_ ri5 [Jump ra] [Halt _]
+       if_ rb [::] [:: Halt _] ++
+       [:: Const (Word.repr 0) ri5;
+           Binop EQ ri3 ri5 ri5] ++
+       if_ ri5 [:: Jump ra] [:: Halt _]
 ).
 
 Definition concrete_sealing_monitor :
   Concrete.memory t * w * @classes.sealing_syscall_addrs t :=
-  let syscalls := [mkkey_segment; seal_segment; unseal_segment] in
+  let syscalls := [:: mkkey_segment; seal_segment; unseal_segment] in
   let res := build_monitor_memory extra_state fault_handler syscalls in
   let monitor_memory := fst (fst res) in
   let user_memory_addr := snd (fst res) in
@@ -418,7 +415,7 @@ Definition build_symbolic_sealing_machine
 Definition keytype := [eqType of nat].
 
 Definition max_element (l : list keytype) : keytype :=
- fold_right maxn O l.
+ foldr maxn O l.
 
 Lemma max_element_plus_one_is_distinct :
  forall (l : list keytype),
@@ -519,7 +516,7 @@ Require Import Coqlib.
 
 Fixpoint enum (M R S : Type) s (map : M) (get : M -> Word.int s -> R) (f : R -> S) (n : nat) (i : Word.int s) :=
   match n with
-  | O => []
+  | O => [::]
   | S p => (Word.unsigned i, f (get map i)) :: enum map get f p (Word.add i (Word.repr 1))
   end.
 
@@ -721,19 +718,19 @@ Definition user_code (f : w -> @classes.sealing_syscall_addrs t -> list (instr t
   f).
 
 Definition hello_world0 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
-  user_code (fun _ _ => [
+  user_code (fun _ _ => [::
      Const (Word.repr 2) ruser1
   ]).
 
 Definition hello_world1 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
-  user_code (fun _ _ => [
+  user_code (fun _ _ => [::
     Const (Word.repr 2) ruser1;
     Binop ADD ruser1 ruser1 ruser2
   ]).
 
 Definition hello_world2 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t) :=
   user_code (fun _ _ =>
-        [
+        [::
           Const (Word.casts classes.mkkey_addr) ruser1;
           Jal ruser1;
           Const (Word.casts classes.seal_addr) ruser1;
@@ -746,7 +743,7 @@ Definition hello_world2 : @relocatable_segment t (@classes.sealing_syscall_addrs
 (* double seal: should fail *)
 Definition hello_world3 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun _ _ =>
-        [
+        [::
           Const (Word.casts classes.mkkey_addr) ruser1;
           Jal ruser1;
           Const (Word.casts classes.seal_addr) ruser1;
@@ -761,7 +758,7 @@ Definition hello_world3 : @relocatable_segment t (@classes.sealing_syscall_addrs
 (* Test seal-then-unseal *)
 Definition hello_world4 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun _ _ =>
-        [
+        [::
           Const (Word.casts classes.mkkey_addr) ruser1;
           Jal ruser1;
           Mov syscall_ret syscall_arg2;
@@ -778,7 +775,7 @@ Definition hello_world4 : @relocatable_segment t (@classes.sealing_syscall_addrs
 Definition hello_world5 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
   user_code (fun base _ =>
     let data := Word.casts (Word.add base (Word.repr 0)) in
-        [
+        [::
           (* DATA BLOCK *)
           Nop _;
           (* As before, make up a key and seal 17 with it *)

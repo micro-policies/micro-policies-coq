@@ -24,8 +24,8 @@ Fixpoint hmap {A} {B1 B2 : A -> Type} {l : seq A} (f : forall a, B1 a -> B2 a) :
   end.
 
 Module HListNotations.
-Notation "[::]" := tt : hlist_scope.
+Notation "[ 'hl' ]" := tt : hlist_scope.
 Notation "h :: t" := (h, t) (at level 60, right associativity) : hlist_scope.
-Notation " [:: x ; .. ; y ] " := (pair x .. (pair y tt) ..) : hlist_scope.
+Notation " [ 'hl'  x ; .. ; y ] " := (pair x .. (pair y tt) ..) : hlist_scope.
 Open Scope hlist_scope.
 End HListNotations.

@@ -1,4 +1,4 @@
-Require Import ssreflect ssrbool eqtype.
+Require Import ssreflect ssrbool eqtype seq.
 
 Require Import lib.Integers.
 Require Import lib.Coqlib.
@@ -63,7 +63,7 @@ Defined.
     TagMemory c t -> c*2^(type_bits+3) + (enc t)*8 + 2
 *)
 
-Import Word.Notations List.ListNotations Sym.
+Import Sym.
 
 Close Scope Z.
 Open Scope nat.
@@ -71,11 +71,11 @@ Open Scope nat.
 Definition encode_type (ty : Sym.type) : Word.int 13 :=
   match ty with
       TypeData => Word.zero
-    | TypePointer c => Word.pack [12;0] [c;Word.one]%wp
+    | TypePointer c => Word.pack [:: 12;0] [wp c;Word.one]%w
   end.
 
 Definition decode_type (cty : Word.int 13) : option Sym.type :=
-  let: [k; t]%wu := Word.unpack [12; 0] cty in
+  let: [wu k; t]%w := Word.unpack [:: 12; 0] cty in
   if t == Word.zero then
     if k == Word.zero then Some TypeData
     else None
@@ -95,8 +95,8 @@ Lemma decode_typeK w ty : decode_type w = Some ty ->
                           encode_type ty = w.
 Proof.
   rewrite /decode_type /encode_type.
-  case E: (Word.unpack [12; 0] w) => [k [w' []]].
-  move: (Word.unpackK [12; 0] w). rewrite E.
+  case E: (Word.unpack [:: 12; 0] w) => [k [w' []]].
+  move: (Word.unpackK [:: 12; 0] w). rewrite E.
   have [?|?] := altP (w' =P Word.zero); try subst w'.
   { have [?|?] := altP (k =P Word.zero); try subst k; last by [].
     by move => H [<-]. }
@@ -107,19 +107,19 @@ Qed.
 Definition encode_mtag (tg : Sym.tag) : Word.int 29 :=
   match tg with
       TagFree => Word.zero
-    | TagValue ty => Word.pack [12;13;2] [Word.zero; encode_type ty; Word.one]%wp
-    | TagMemory c ty => Word.pack [12;13;2] [c; encode_type ty; Word.repr 2]%wp
+    | TagValue ty => Word.pack [:: 12;13;2] [wp Word.zero; encode_type ty; Word.one]%w
+    | TagMemory c ty => Word.pack [:: 12;13;2] [wp c; encode_type ty; Word.repr 2]%w
   end.
 
 Import DoNotation.
 
 Definition decode_mtag' (ctg : Word.int 29) : option Sym.tag :=
-  let: [hb; m]%wu := Word.unpack [26;2] ctg in
+  let: [wu hb; m]%w := Word.unpack [:: 26;2] ctg in
   if m == Word.zero then
     if hb == Word.zero then Some TagFree
     else None
   else
-    let: [c; ty]%wu := Word.unpack [12;13] hb in
+    let: [wu c; ty]%w := Word.unpack [:: 12;13] hb in
     if m == Word.one then
       if (c == Word.zero) then
         do! cty <- decode_type ty;
@@ -132,7 +132,7 @@ Definition decode_mtag' (ctg : Word.int 29) : option Sym.tag :=
       else None.
 
 Definition decode_mtag (ctg : Word.int 29) : option Sym.tag :=
-  let: [c;ty; m]%wu := Word.unpack [12;13;2] ctg in
+  let: [wu c;ty; m]%w := Word.unpack [:: 12;13;2] ctg in
   if m == Word.zero then
     if c == Word.zero then
       if ty == Word.zero then Some TagFree
@@ -165,8 +165,8 @@ Lemma decode_mtagK w tg : decode_mtag w = Some tg ->
                           encode_mtag tg = w.
 Proof.
   rewrite /decode_mtag /encode_mtag.
-  case E: (Word.unpack [12;13;2] w) => [c [cty [m []]]].
-  move: (Word.unpackK [12;13;2] w). rewrite E.
+  case E: (Word.unpack [:: 12;13;2] w) => [c [cty [m []]]].
+  move: (Word.unpackK [:: 12;13;2] w). rewrite E.
   have [?|?] := altP (m =P Word.zero); try subst m.
   { have [?|?] := altP (c =P Word.zero); try subst c; last by [].
     have [?|?] := altP (cty =P Word.zero); try subst cty; last by [].
@@ -186,7 +186,7 @@ Qed.
 
 Instance enc: encodable t Sym.ms_tags := {|
   decode k m w :=
-    let: [ut; w']%wu := Word.unpack [29; 1] w in
+    let: [wu ut; w']%w := Word.unpack [:: 29; 1] w in
     if w' == Word.zero then None
     else if w' == Word.one then
       do! ut <- decode_mtag ut;

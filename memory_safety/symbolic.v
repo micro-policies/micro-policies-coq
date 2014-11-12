@@ -125,8 +125,8 @@ Definition rules_normal (op : opcode) (c : color)
   match op, ts, ret, retv with
   | NOP, _, ret, retv => retv tt
   | CONST, _, ret, retv => retv V(DATA)
-  | MOV, [:: V(ty); _], ret, retv => retv V(ty)
-  | BINOP bo, [:: t1; t2; _], ret, retv =>
+  | MOV, [hl V(ty); _], ret, retv => retv V(ty)
+  | BINOP bo, [hl t1; t2; _], ret, retv =>
     match bo with
     | ADD =>
       match t1, t2 with
@@ -158,17 +158,17 @@ Definition rules_normal (op : opcode) (c : color)
       | _, _ => None
       end
     end
-  | LOAD, [:: V(PTR b1); M(b2,ty); _], ret, retv =>
+  | LOAD, [hl V(PTR b1); M(b2,ty); _], ret, retv =>
     if b1 == b2 then retv V(ty)
     else None
-  | STORE, [:: V(PTR b1); V(ty); M(bd,_)], ret, retv =>
+  | STORE, [hl V(PTR b1); V(ty); M(bd,_)], ret, retv =>
     if b1 == bd then retv M(bd,ty)
     else None
-  | JUMP, [:: V(PTR b')], ret, retv =>
+  | JUMP, [hl V(PTR b')], ret, retv =>
     ret V(PTR b') tt
-  | BNZ, [:: V(DATA)], ret, retv =>
+  | BNZ, [hl V(DATA)], ret, retv =>
     retv tt
-  | JAL, [:: V(ty); _], ret, retv =>
+  | JAL, [hl V(ty); _], ret, retv =>
     ret V(ty) V(PTR c)
   | _, _, _, _ => None
   end.

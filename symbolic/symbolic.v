@@ -21,7 +21,7 @@ Module Symbolic.
 
 Inductive tag_kind : Type := R | M | P.
 
-Definition inputs (op : opcode) : list tag_kind :=
+Definition inputs (op : opcode) : seq tag_kind :=
   match op with
   | NOP     => [:: ]
   | CONST   => [:: R]
@@ -51,7 +51,7 @@ Definition privileged_op (op : vopcode) : bool :=
   | _ => false
   end.
 
-Definition vinputs (vop : vopcode) : list tag_kind :=
+Definition vinputs (vop : vopcode) : seq tag_kind :=
   match vop with
   | OP op => inputs op
   | SERVICE => [::]
@@ -162,7 +162,7 @@ Record syscall := Syscall {
   sem : state -> option state
 }.
 
-Variable table : list syscall.
+Variable table : seq syscall.
 
 Definition get_syscall (addr : word) : option syscall :=
   ofind (fun sc => address sc == addr) table.
@@ -213,14 +213,14 @@ Inductive step (st st' : state) : Prop :=
     (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Nop _)),
-    let mvec := mkIVec NOP tpc ti [::] in forall
+    let mvec := mkIVec NOP tpc ti [hl] in forall
     (NEXT : next_state_pc st mvec (pc.+1) = Some st'),    step st st'
 | step_const : forall mem reg pc tpc i ti n r old told extra
     (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Const n r))
     (OLD  : get reg r = Some old@told),
-    let mvec := mkIVec CONST tpc ti [:: told] in forall
+    let mvec := mkIVec CONST tpc ti [hl told] in forall
     (NEXT : next_state_reg st mvec r (Word.casts n) = Some st'),   step st st'
 | step_mov : forall mem reg pc tpc i ti r1 w1 t1 r2 old told extra
     (ST   : st = State mem reg pc@tpc extra)
@@ -228,7 +228,7 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode_instr i = Some (Mov r1 r2))
     (R1W  : get reg r1 = Some w1@t1)
     (OLD  : get reg r2 = Some old@told),
-    let mvec := mkIVec MOV tpc ti [:: t1; told] in forall
+    let mvec := mkIVec MOV tpc ti [hl t1; told] in forall
     (NEXT : next_state_reg st mvec r2 w1 = Some st'),   step st st'
 | step_binop : forall mem reg pc tpc i ti op r1 r2 r3 w1 w2 t1 t2 old told extra
     (ST   : st = State mem reg pc@tpc extra)
@@ -237,7 +237,7 @@ Inductive step (st st' : state) : Prop :=
     (R1W  : get reg r1 = Some w1@t1)
     (R2W  : get reg r2 = Some w2@t2)
     (OLD  : get reg r3 = Some old@told),
-    let mvec := mkIVec (BINOP op) tpc ti [:: t1; t2; told] in forall
+    let mvec := mkIVec (BINOP op) tpc ti [hl t1; t2; told] in forall
     (NEXT : next_state_reg st mvec r3 (binop_denote op w1 w2) = Some st'),
       step st st'
 | step_load : forall mem reg pc tpc i ti r1 r2 w1 w2 t1 t2 old told extra
@@ -247,7 +247,7 @@ Inductive step (st st' : state) : Prop :=
     (R1W  : get reg r1 = Some w1@t1)
     (MEM1 : get mem w1 = Some w2@t2)
     (OLD  : get reg r2 = Some old@told),
-    let mvec := mkIVec LOAD tpc ti [:: t1; t2; told] in forall
+    let mvec := mkIVec LOAD tpc ti [hl t1; t2; told] in forall
     (NEXT : next_state_reg st mvec r2 w2 = Some st'),    step st st'
 | step_store : forall mem reg pc i r1 r2 w1 w2 tpc ti t1 t2 old told extra
     (ST   : st = State mem reg pc@tpc extra)
@@ -256,7 +256,7 @@ Inductive step (st st' : state) : Prop :=
     (R1W  : get reg r1 = Some w1@t1)
     (R2W  : get reg r2 = Some w2@t2)
     (OLD  : get mem w1 = Some old@told),
-    let mvec := mkIVec STORE tpc ti [:: t1; t2; told] in forall
+    let mvec := mkIVec STORE tpc ti [hl t1; t2; told] in forall
     (NEXT : next_state st mvec (fun ov =>
                  do! mem' <- upd mem w1 w2@(tr ov);
                  Some (State mem' reg (pc.+1)@(trpc ov) extra)) = Some st'),
@@ -266,14 +266,14 @@ Inductive step (st st' : state) : Prop :=
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Jump r))
     (RW   : get reg r = Some w@t1),
-    let mvec := mkIVec JUMP tpc ti [:: t1] in forall
+    let mvec := mkIVec JUMP tpc ti [hl t1] in forall
     (NEXT : next_state_pc st mvec w = Some st'),    step st st'
 | step_bnz : forall mem reg pc i r n w tpc ti t1 extra
     (ST   : st = State mem reg pc@tpc extra)
     (PC   : get mem pc = Some i@ti)
     (INST : decode_instr i = Some (Bnz r n))
     (RW   : get reg r = Some w@t1),
-     let mvec := mkIVec BNZ tpc ti [:: t1] in
+     let mvec := mkIVec BNZ tpc ti [hl t1] in
      let pc' := Word.add pc (if w == Word.zero
                              then Word.one else Word.casts n) in forall
     (NEXT : next_state_pc st mvec pc' = Some st'),     step st st'
@@ -283,7 +283,7 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode_instr i = Some (Jal r))
     (RW : get reg r = Some w@t1)
     (OLD : get reg ra = Some old@told),
-     let mvec := mkIVec JAL tpc ti [:: t1; told] in forall
+     let mvec := mkIVec JAL tpc ti [hl t1; told] in forall
     (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'), step st st'
 | step_syscall : forall mem reg pc sc tpc extra
     (ST : st = State mem reg pc@tpc extra)

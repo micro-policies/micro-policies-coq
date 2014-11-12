@@ -203,16 +203,16 @@ Definition rvec_store (c : word t) (I W : {set (word t)})
    registers are always tagged with `REG'. *)
 Definition compartmentalization_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   match iv with
-    | mkIVec (OP NOP)       Lpc LI [::]                       => rvec_next NOP       tt  Lpc LI
-    | mkIVec (OP CONST)     Lpc LI [:: REG]                   => rvec_next CONST     REG Lpc LI
-    | mkIVec (OP MOV)       Lpc LI [:: REG; REG]              => rvec_next MOV       REG Lpc LI
-    | mkIVec (OP (BINOP b)) Lpc LI [:: REG; REG; REG]         => rvec_next (BINOP b) REG Lpc LI
-    | mkIVec (OP LOAD)      Lpc LI [:: REG; DATA _ _ _; REG]  => rvec_next LOAD      REG Lpc LI
-    | mkIVec (OP STORE)     Lpc LI [:: REG; REG; DATA c In W] => rvec_store c In W Lpc LI
-    | mkIVec (OP JUMP)      Lpc LI [:: REG]                   => rvec_jump JUMP      tt  Lpc LI
-    | mkIVec (OP BNZ)       Lpc LI [:: REG]                   => rvec_next BNZ       tt  Lpc LI
-    | mkIVec (OP JAL)       Lpc LI [:: REG; REG]              => rvec_jump JAL       REG Lpc LI
-    | mkIVec SERVICE        Lpc LI [::]                       => Some tt
+    | mkIVec (OP NOP)       Lpc LI [hl]                       => rvec_next NOP       tt  Lpc LI
+    | mkIVec (OP CONST)     Lpc LI [hl REG]                   => rvec_next CONST     REG Lpc LI
+    | mkIVec (OP MOV)       Lpc LI [hl REG; REG]              => rvec_next MOV       REG Lpc LI
+    | mkIVec (OP (BINOP b)) Lpc LI [hl REG; REG; REG]         => rvec_next (BINOP b) REG Lpc LI
+    | mkIVec (OP LOAD)      Lpc LI [hl REG; DATA _ _ _; REG]  => rvec_next LOAD      REG Lpc LI
+    | mkIVec (OP STORE)     Lpc LI [hl REG; REG; DATA c In W] => rvec_store c In W Lpc LI
+    | mkIVec (OP JUMP)      Lpc LI [hl REG]                   => rvec_jump JUMP      tt  Lpc LI
+    | mkIVec (OP BNZ)       Lpc LI [hl REG]                   => rvec_next BNZ       tt  Lpc LI
+    | mkIVec (OP JAL)       Lpc LI [hl REG; REG]              => rvec_jump JAL       REG Lpc LI
+    | mkIVec SERVICE        Lpc LI [hl]                       => Some tt
     | mkIVec _         _   _  _                               => None
   end.
 

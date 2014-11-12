@@ -4188,14 +4188,11 @@ Proof.
     now rewrite packed_word_unpackK.
 Qed.
 
-Module Notations.
-Notation "[ w1 ; .. ; wn ]" := (wcons _ _ w1 .. (wcons _ _ wn wnil) ..) : word_pack_scope.
-Notation "[ w1 ; .. ; wn ]" := (pair w1 .. (pair wn tt) ..) : word_unpack_scope.
-Delimit Scope word_pack_scope with wp.
-Delimit Scope word_unpack_scope with wu.
-End Notations.
-
 End Word.
+
+Delimit Scope word_scope with w.
+Notation "[ 'wp' w1 ; .. ; wn ]" := (Word.wcons _ _ w1 .. (Word.wcons _ _ wn Word.wnil) ..) : word_scope.
+Notation "[ 'wu' w1 ; .. ; wn ]" := (pair w1 .. (pair wn tt) ..) : word_scope.
 
 Require Import ssreflect ssrbool ssrnat ssrfun eqtype choice fintype.
 

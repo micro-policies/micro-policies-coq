@@ -62,16 +62,16 @@ Import HListNotations.
 
 Definition sealing_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   match iv with
-  | mkIVec (OP NOP)       _ DATA [::]               => Some (@mkOVec stags NOP DATA tt)
-  | mkIVec (OP CONST)     _ DATA [:: _]             => Some (@mkOVec stags CONST DATA DATA)
-  | mkIVec (OP MOV)       _ DATA [:: tsrc; _]       => Some (@mkOVec stags MOV DATA tsrc)
-  | mkIVec (OP (BINOP o)) _ DATA [:: DATA; DATA; _] => Some (@mkOVec stags (BINOP o) DATA DATA)
-  | mkIVec (OP LOAD)      _ DATA [:: DATA; tmem; _] => Some (@mkOVec stags LOAD DATA tmem)
-  | mkIVec (OP STORE)     _ DATA [:: DATA; tsrc; _] => Some (@mkOVec stags STORE DATA tsrc)
-  | mkIVec (OP JUMP)      _ DATA [:: DATA]          => Some (@mkOVec stags JUMP DATA tt)
-  | mkIVec (OP BNZ)       _ DATA [:: DATA]          => Some (@mkOVec stags BNZ DATA tt)
-  | mkIVec (OP JAL)       _ DATA [:: DATA; _]       => Some (@mkOVec stags JAL DATA DATA)
-  | mkIVec SERVICE        _ _    [::]               => Some tt
+  | mkIVec (OP NOP)       _ DATA [hl]               => Some (@mkOVec stags NOP DATA tt)
+  | mkIVec (OP CONST)     _ DATA [hl _]             => Some (@mkOVec stags CONST DATA DATA)
+  | mkIVec (OP MOV)       _ DATA [hl tsrc; _]       => Some (@mkOVec stags MOV DATA tsrc)
+  | mkIVec (OP (BINOP o)) _ DATA [hl DATA; DATA; _] => Some (@mkOVec stags (BINOP o) DATA DATA)
+  | mkIVec (OP LOAD)      _ DATA [hl DATA; tmem; _] => Some (@mkOVec stags LOAD DATA tmem)
+  | mkIVec (OP STORE)     _ DATA [hl DATA; tsrc; _] => Some (@mkOVec stags STORE DATA tsrc)
+  | mkIVec (OP JUMP)      _ DATA [hl DATA]          => Some (@mkOVec stags JUMP DATA tt)
+  | mkIVec (OP BNZ)       _ DATA [hl DATA]          => Some (@mkOVec stags BNZ DATA tt)
+  | mkIVec (OP JAL)       _ DATA [hl DATA; _]       => Some (@mkOVec stags JAL DATA DATA)
+  | mkIVec SERVICE        _ _    [hl]               => Some tt
   | mkIVec _              _ _ _                     => None
   end.
 
