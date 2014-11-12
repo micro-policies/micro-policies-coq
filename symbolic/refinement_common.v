@@ -543,7 +543,7 @@ Proof.
 Qed.
 
 (*
-(* Need to double-check that is_true is not affecting the match below *)
+(\* Need to double-check that is_true is not affecting the match below *\)
 Ltac analyze_cache :=
   match goal with
   | LOOKUP : Concrete.cache_lookup ?cache _ ?mvec = Some ?rvec,

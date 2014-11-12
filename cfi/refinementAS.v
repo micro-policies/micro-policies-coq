@@ -1137,7 +1137,7 @@ Proof.
         | [H: exists _, _ |- _] =>
           destruct H as [? INSTR]; simpl in INSTR
       end;
-  (* for jump and jal tagging *)
+  (\* for jump and jal tagging *\)
    try match goal with
         | [H: get _ pc = Some _,
               H1: decode_instr _ = Some (Jump _) |- _] =>
@@ -1149,12 +1149,12 @@ Proof.
    try subst;
   try (subst spc tpc);
   eexists;
-  (*solving the step first*)
+  (\*solving the step first*\)
   try match goal with
       | [ |- Symbolic.step ?A ?B ?C /\ _] =>
         assert (Symbolic.step A B C)
   end;
-  (*picking the correct step*)
+  (\*picking the correct step*\)
   try match goal with
       | [H : decode_instr _ = Some (Nop _) |- Symbolic.step _ _ _] =>
         eapply Symbolic.step_nop
@@ -1177,7 +1177,7 @@ Proof.
       | [H : Abs.sem _ _ = _ |- Symbolic.step _ _ _] =>
         eapply Symbolic.step_syscall
   end; eauto;
-  (*transfer function*)
+  (\*transfer function*\)
   repeat match goal with
       | [|- Symbolic.next_state_pc _ _ _ = _] =>
         unfold Symbolic.next_state_pc;
@@ -1219,9 +1219,9 @@ Proof.
   try match goal with
         | [|- Some _ = Some _] => reflexivity
       end;
-  (*splitting and solving the refine_state*)
+  (\*splitting and solving the refine_state*\)
   split; try assumption;
-  (*refine_state*)
+  (\*refine_state*\)
   repeat match goal with
     | [|- refine_state _ _] =>
       unfold refine_state
@@ -1250,7 +1250,7 @@ Proof.
       | [H: DATA = INSTR _ |- _] => inv H
     end. Focus 12.
   try (discriminate || reflexivity || assumption);
-  (*re-establishing invariants*)
+  (\*re-establishing invariants*\)
   repeat  match goal with
             | [|- Sym.invariants _ ?St'] =>
               unfold Sym.invariants
@@ -1269,8 +1269,8 @@ Proof.
               eapply Sym.jal_tags_preserved_by_step; eauto; simpl; auto
           end; simpl; trivial.
 
-  (*if i stop the sequencing here it matches*)
-  (* for jumps and jals refinement *)
+  (\*if i stop the sequencing here it matches*\)
+  (\* for jumps and jals refinement *\)
   try (inv H7); try (inv H4); try (inv H5); try (inv H8); try (inv H6);
   try match goal with
         | [H: Abs.valid_jmp _ _ _ = _ |- exists _, _] =>
@@ -1301,7 +1301,7 @@ Proof.
           eexists;
             eauto
       end;
-  (*UGLY - need to fix ltac match*)
+  (\*UGLY - need to fix ltac match*\)
   try (inv H3; eauto).
 Qed.
 *)

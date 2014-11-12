@@ -32,5 +32,17 @@ dist: clean
 	rm -f rm ../micropolicies.tar.gz
 	tar czvf ../micropolicies.tar.gz . --transform 's/^\./micropolicies/' --exclude=testing --exclude=.gitignore --exclude=cfi/review.org --exclude=compartmentalization/global-hint.el
 
+DIR=../micropolicies-coq-anon
+
+dist-anon: clean
+	rm -dfr rm $(DIR) ../micropolicies-coq-anon.tar.gz
+	cp -R . $(DIR)
+	rm -dfr $(DIR)/.git
+	perl -0777 -i -pe 's/Copyright.*Permission/Copyright Anonymized\n\nPermission/igs' $(DIR)/LICENSE
+	perl -0777 -i -pe 's/Description.*Prerequisites/Prerequisites/igs' $(DIR)/README.md
+        # Next command doesn't work for nested comments, please don't add any until Saturday
+	find $(DIR) -name '*.v' -exec perl -0777 -i -pe 's/\(\*.*?\*\)//igs' {} \;
+	cd $(DIR); tar czvf ../micropolicies-coq-anon.tar.gz . --transform 's/^\./micropolicies-coq-anon/' --exclude=testing --exclude=.gitignore --exclude=cfi/review.org --exclude=compartmentalization/global-hint.el
+
 coqide:
 	coqide -R . MicroPolicies

@@ -14,7 +14,7 @@ Coq formalization accompanying the paper:
 
 ### Compiling
 
-    make
+    make -j
 
 ### License
 
