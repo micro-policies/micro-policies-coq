@@ -12,6 +12,7 @@ lib/haskell_notation.v
 lib/ssr_list_utils.v
 lib/ssr_set_utils.v
 lib/hlist.v
+lib/alist.v
 
 common/common.v
 common/printing.v
