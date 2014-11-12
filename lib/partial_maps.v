@@ -1,5 +1,4 @@
-Require Import List. Import ListNotations.
-Require Import ssreflect ssrfun ssrbool eqtype.
+Require Import ssreflect ssrfun ssrbool eqtype seq.
 Require Import lib.Coqlib lib.utils.
 
 Set Implicit Arguments.
@@ -146,7 +145,7 @@ Context (M : Type -> Type)
 
 Fixpoint upd_list (m : M V) (ps : list (K * V)) : option (M V) :=
   match ps with
-  | [] => Some m
+  | [::] => Some m
   | (k, v) :: ps' =>
     match upd_list m ps' with
     | Some m' => upd m' k v
@@ -196,7 +195,7 @@ Qed.
 
 Lemma get_upd_list_in m m' ps k :
   upd_list m ps = Some m' ->
-  In k (List.map (fun p => fst p) ps) ->
+  In k (map (fun p => fst p) ps) ->
   exists v,
     In (k, v) ps /\ get m' k = Some v.
 Proof.
@@ -215,7 +214,7 @@ Qed.
 
 Lemma get_upd_list_nin m m' ps k :
   upd_list m ps = Some m' ->
-  ~ In k (List.map (fun p => fst p) ps) ->
+  ~ In k (map (fun p => fst p) ps) ->
   get m' k = get m k.
 Proof.
   gdep m'.
@@ -228,7 +227,7 @@ Proof.
 Qed.
 
 Lemma upd_list_defined m ps :
-  (forall k, In k (List.map (fun p => fst p) ps) ->
+  (forall k, In k (map (fun p => fst p) ps) ->
              exists v, get m k = Some v) ->
   exists m', upd_list m ps = Some m'.
 Proof.

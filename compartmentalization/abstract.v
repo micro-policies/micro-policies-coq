@@ -217,7 +217,7 @@ Definition add_to_store_targets :=
 Let table := [:: isolate; add_to_jump_targets; add_to_store_targets].
 
 Definition get_syscall (addr : value) : option syscall :=
-  List.find (fun sc => address sc == addr) table.
+  ofind (fun sc => address sc == addr) table.
 
 Definition user_address_space (M : memory) (c : compartment) : bool :=
   [forall x in address_space c, get M x].

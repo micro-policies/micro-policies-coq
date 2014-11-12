@@ -2,10 +2,7 @@
 
 Require Import ZArith.
 Require Import Integers.
-Require Import List.
 Require Import Bool.
-
-Import ListNotations.
 
 Require Import lib.FiniteMaps.
 Require Import lib.utils lib.Coqlib.
@@ -15,7 +12,7 @@ Require Import concrete.concrete.
 Require Import symbolic.rules.
 Require Import symbolic.fault_handler.
 Require Import symbolic.symbolic.
-Require Import eqtype.
+Require Import eqtype seq.
 Require Import lib.partial_maps.
 
 Import DoNotation.
@@ -40,16 +37,16 @@ Instance concrete_int_32_fh : fault_handler_params t := {
      should be strictly smaller than word. However, it should work
      fine when used on small immediates *)
   load_const := fun (x : word t) (r : reg t) =>
-    [Const (Word.casts x) r]
+    [:: Const (Word.casts x) r]
 }.
 
 Open Scope bool_scope.
 Open Scope Z_scope.
 
-Fixpoint insert_from {A : Type} (i : Word.int 31) (l : list A)
+Fixpoint insert_from {A : Type} (i : Word.int 31) (l : seq A)
                      (mem : word_map t A) : word_map t A :=
   match l with
-    | []      => mem
+    | [::]      => mem
     | h :: l' => insert_from (Word.add i Word.one) l' (PartMaps.set mem i h)
   end.
 
@@ -105,7 +102,7 @@ Definition build_monitor_memory
   let cacheCell := Atom Word.zero Concrete.TKernel in
   let '((kernel_length,gen_kernel), offsets) :=
     concat_and_measure_relocatable_segments
-      ([kernelize handler;
+      ([:: kernelize handler;
        kernelize extra_state] ++
        (map kernelize_syscall syscalls)) in
   match offsets with
@@ -125,7 +122,7 @@ Definition build_monitor_memory
      (mem, user_code_addr, syscall_addrs)
    | _ =>
      (* Should not happen *)
-     (PartMaps.empty, Word.repr 0, [])
+     (PartMaps.empty, Word.repr 0, [::])
    end.
 
 (* BCP: Register initialization may need to be generalized at some

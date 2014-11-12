@@ -1,7 +1,7 @@
-Require Import List. Import ListNotations.
 Require Import Coq.Classes.SetoidDec.
-Require Import ssreflect ssrfun ssrbool eqtype.
+Require Import ssreflect ssrfun ssrbool eqtype seq.
 Require Import lib.Integers lib.utils lib.ordered lib.partial_maps. Import PartMaps.
+Require Import lib.ssr_list_utils.
 Require Import common.common symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
@@ -89,8 +89,8 @@ Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
   w = val a.
 
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
-Definition refine_ins (akeys : list Abs.key) (next_skey : Sym.key) : Prop :=
-  (forall ak, ~In ak akeys -> get km ak = None) /\
+Definition refine_ins (akeys : seq Abs.key) (next_skey : Sym.key) : Prop :=
+  (forall ak, ak \notin akeys -> get km ak = None) /\
   (forall ak sk, get km ak = Some sk -> (sk <? next_skey)%ordered) /\
   (key_map_inj km).
 
@@ -331,11 +331,12 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     erewrite (@pointwise_none _ _ _ _ _ _ _ _ amem smem apc rmem) in PC.
-    simpl in GETCALL. move : GETCALL.
+    simpl in GETCALL.
+    rewrite /Symbolic.get_syscall /= in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
       have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];
-      move => GETCALL ; injection GETCALL; move {GETCALL} => ?; subst.
+      move => GETCALL; injection GETCALL; move {GETCALL} => ?; subst.
     + {(* mkkey *)
     apply obind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL; move: CALL.
@@ -373,10 +374,10 @@ Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
       - (* abstract keys *)
         intros ak ninak.
         have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)).
-        + subst. apply False_ind. apply ninak. simpl. tauto.
+        + subst. apply False_ind. by rewrite inE eqxx in ninak.
         + simpl in ninak.
           rewrite -> get_set_neq => //.
-          destruct rins as [rins1 _]. apply rins1. tauto.
+          destruct rins as [rins1 _]. apply rins1. by case/norP: ninak.
       - (* symbolic keys *)
         move => ak sk /=.
         have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)) => hsk.

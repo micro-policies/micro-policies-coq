@@ -422,14 +422,14 @@ Definition max_element (l : list keytype) : keytype :=
 
 Lemma max_element_plus_one_is_distinct :
  forall (l : list keytype),
-   ~(In (1 + max_element l) l).
+   1 + max_element l \notin l.
 Proof.
  move => l.
- have MAX: forall x, In x l -> x <= max_element l.
- { elim: l => [|x' l IH] // x [-> | THERE] //=.
+ have MAX: forall x, x \in l -> x <= max_element l.
+ { elim: l => [|x' l IH] // x /orP [/eqP -> | THERE] //=.
    - by rewrite leq_max leqnn.
    - by rewrite leq_max IH //= orb_true_r. }
- move => CONTRA.
+ apply/negP => CONTRA.
  move: (MAX _ CONTRA).
  rewrite /addn /addn_rec.
  move/leP => LE.

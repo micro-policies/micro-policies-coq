@@ -25,11 +25,11 @@
 
 *)
 
-Require Import List Arith Bool ZArith. Import ListNotations.
+Require Import Arith Bool ZArith.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.partial_maps lib.hlist lib.Coqlib lib.Integers lib.utils.
+Require Import lib.partial_maps lib.hlist lib.Integers lib.utils.
 Require Import common.common concrete.concrete symbolic.symbolic.
 Import DoNotation.
 Import Concrete.
@@ -181,24 +181,24 @@ Local Notation wrapped_tag := (fun tk => [eqType of tag (tty tk)]).
 
 Variable transfer : forall ivec : Symbolic.IVec tty, option (Symbolic.VOVec tty (Symbolic.op ivec)).
 
-Definition decode_fields (fs : list Symbolic.tag_kind)
+Definition decode_fields (fs : seq Symbolic.tag_kind)
                          (m : word_map t (atom (word t) (word t)))
                          (ts : word t * word t * word t)
                          : option (hlist (fun x => option (wrapped_tag x)) fs) :=
   match fs return option (hlist (fun x => option (wrapped_tag x)) fs) with
-  | [] => Some tt
+  | [::] => Some tt
   | k1 :: fs' =>
     let t1 := decode k1 m (fst (fst ts)) in
     match fs' return option (hlist (fun x => option (wrapped_tag x)) (k1 :: fs')) with
-    | [] => Some (t1, tt)
+    | [::] => Some (t1, tt)
     | k2 :: fs'' =>
       let t2 := decode k2 m (snd (fst ts)) in
       match fs'' return option (hlist (fun x => option (wrapped_tag x)) (k1 :: k2 :: fs'')) with
-      | [] => Some (t1, (t2, tt))
+      | [::] => Some (t1, (t2, tt))
       | k3 :: fs''' =>
         let t3 := decode k3 m (snd ts) in
         match fs''' return option (hlist (fun x => option (wrapped_tag x)) (k1 :: k2 :: k3 :: fs''')) with
-        | [] => Some (t1, (t2, (t3, tt)))
+        | [::] => Some (t1, (t2, (t3, tt)))
         | _ :: _ => None
         end
       end
@@ -209,7 +209,7 @@ Fixpoint ensure_all_user (ks : list Symbolic.tag_kind) :
                          hlist (fun x => option (wrapped_tag x)) ks ->
                          option (hlist tty ks) :=
   match ks with
-  | []      => fun _  => Some tt
+  | [::]      => fun _  => Some tt
   | k :: ks => fun ts => match fst ts, ensure_all_user (snd ts) with
                          | Some (USER t), Some ts => Some (t, ts)
                          | _, _ => None
@@ -283,7 +283,7 @@ Let TCopy : word t := TNone.
 Definition ground_rules : Concrete.rules (word t) :=
   let mk op := Concrete.mkMVec (op_to_word op) TKernel TKernel
                                TNone TNone TNone in
-  [
+  [::
    (mk NOP, Concrete.mkRVec TCopy TNone);
    (mk CONST, Concrete.mkRVec TCopy TKernel);
    (mk MOV, Concrete.mkRVec TCopy TCopy);

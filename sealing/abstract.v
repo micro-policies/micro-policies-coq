@@ -1,7 +1,7 @@
 Require Import List. Import ListNotations.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
-Require Import ssreflect eqtype.
+Require Import ssreflect ssrfun ssrbool eqtype seq.
 Require Import lib.Integers lib.utils lib.partial_maps.
 
 Import DoNotation.
@@ -29,7 +29,7 @@ Class sealing_key := {
   mkkey_f : list key -> key;
 
   (* This ensures freshness without fixing a generation strategy *)
-  mkkey_fresh : forall ks, ~In (mkkey_f ks) ks
+  mkkey_fresh : forall ks, mkkey_f ks \notin ks
 }.
 
 Context {sk : sealing_key}.

@@ -2575,6 +2575,7 @@ Proof.
       * erewrite get_set_neq, get_upd_neq with (m' := regs') by eauto.
         apply RREGS.
   - (* Syscall *)
+    rewrite /Symbolic.get_syscall /= in GETCALL.
     destruct (isolate_addr == pc) eqn:EQ;
       [ move/eqP in EQ; subst
       | clear EQ; destruct (add_to_jump_targets_addr == pc) eqn:EQ;

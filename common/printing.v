@@ -3,8 +3,7 @@ Require Import String.
 Require Import Ascii.
 Require Import ZArith.
 Require Import NPeano.
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import List. Import ListNotations.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Import common.
 Import String.
@@ -74,7 +73,7 @@ Notation "x +++ y" := (ssappend x y) (right associativity, at level 60).
 Definition to_string (s : sstring) : string := s "".
 
 Definition ssconcat (sep : sstring) (s : list sstring) : sstring :=
-  List.fold_right (fun rest x => rest +++ sep +++ x) ssempty s.
+  foldr (fun rest x => rest +++ sep +++ x) ssempty s.
 
 Definition sspace := ss " ".
 

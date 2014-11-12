@@ -159,7 +159,7 @@ Proof.
 Qed.
 
 Lemma test_rec_f_equal:
-  forall (n1 n2: nat) (P: list (list nat) -> nat -> Prop),
+  forall (n1 n2: nat) (P: seq (seq nat) -> nat -> Prop),
   P (((n1+1)::nil)::nil) (n1+n2) -> P (((1+n1)::nil)::nil) (n2+n1).
 Proof.
   intros ? ? ? HP. exact_f_equal HP; rec_f_equal omega.
@@ -269,7 +269,7 @@ Ltac simpl_exists_tag :=
 
 
 (* And basic lemmas *)
-Lemma rev_nil_nil (A: Type) : forall (l: list A),
+Lemma rev_nil_nil (A: Type) : forall (l: seq A),
   rev l = nil ->
   l = nil.
 Proof.
@@ -280,7 +280,7 @@ Qed.
 
 Notation "f ∘ g" := (f \o g) (at level 30).
 
-Definition index_list_Z A i (xs: list A) : option A :=
+Definition index_list_Z A i (xs: seq A) : option A :=
   if Z.ltb i 0 then
     None
   else
@@ -300,7 +300,7 @@ Proof.
   intros. unfold index_list_Z in *. destruct (i <? 0)%Z. congruence. auto.
 Qed.
 
-Lemma nth_error_cons (T: Type): forall n a (l:list T),
+Lemma nth_error_cons (T: Type): forall n a (l:seq T),
  nth_error l n = nth_error (a :: l) (n+1)%nat.
 Proof.
   intros.
@@ -311,7 +311,7 @@ Proof.
   simpl. eauto.
 Qed.
 
-Lemma index_list_Z_cons (T: Type): forall i (l1: list T) a,
+Lemma index_list_Z_cons (T: Type): forall i (l1: seq T) a,
   (i >= 0)%Z ->
   index_list_Z i l1 = index_list_Z (i+1) (a::l1).
 Proof.
@@ -324,7 +324,7 @@ Proof.
 Qed.
 
 Lemma index_list_Z_app:
-  forall (T : Type)  (l1 l2: list T) (i : Z),
+  forall (T : Type)  (l1 l2: seq T) (i : Z),
   i = Z.of_nat (length l1) -> index_list_Z i (l1 ++ l2) = index_list_Z 0 l2.
 Proof.
   induction l1; intros.
@@ -336,7 +336,7 @@ Proof.
   eapply IHl1. omega.
 Qed.
 
-Lemma index_list_Z_eq (T: Type) : forall (l1 l2: list T),
+Lemma index_list_Z_eq (T: Type) : forall (l1 l2: seq T),
   (forall i, index_list_Z i l1 = index_list_Z i l2) ->
   l1 = l2.
 Proof.
@@ -357,7 +357,7 @@ Proof.
   destruct l1, l2 ; auto.
 Qed.
 
-Lemma nth_error_Some (T:Type): forall n (l:list T) v,
+Lemma nth_error_Some (T:Type): forall n (l:seq T) v,
    nth_error l n = Some v -> n < length l. (* APT: converse isn't true, due to quantification of v! *)
 Proof.
   induction n.
@@ -365,7 +365,7 @@ Proof.
   - intros. destruct l; inv H.  simpl. pose proof (IHn _ _ H1).  omega.
 Qed.
 
-Lemma index_list_Z_Some (T:Type): forall i (l:list T) v,  (* APT: ditto *)
+Lemma index_list_Z_Some (T:Type): forall i (l:seq T) v,  (* APT: ditto *)
    index_list_Z i l = Some v -> (0 <= i < Z.of_nat (length l))%Z.
 Proof.
   unfold index_list_Z. intros.
@@ -375,7 +375,7 @@ Proof.
   zify. rewrite Z2Nat.id in H0; omega.
 Qed.
 
-Fixpoint update_list A (n : nat) (y : A) (xs : list A) : option (list A) :=
+Fixpoint update_list A (n : nat) (y : A) (xs : seq A) : option (seq A) :=
   match xs, n with
   | nil, _ => None
   | _ :: xs', 0 => Some (y :: xs')
@@ -399,7 +399,7 @@ Proof.
   congruence.
 Qed.
 
-Definition update_list_Z A i y (xs: list A) : option (list A) :=
+Definition update_list_Z A i y (xs: seq A) : option (seq A) :=
   if Z.ltb i 0 then
     None
   else
@@ -496,7 +496,7 @@ revert n v; induction l; intros n v; constructor; simpl; try omega.
 now exists l''.
 Qed.
 
-Lemma valid_update T i (l : list T) x : index_list_Z i l = Some x ->
+Lemma valid_update T i (l : seq T) x : index_list_Z i l = Some x ->
   forall x', exists l', update_list_Z i x' l = Some l'.
 Proof.
   intros.
@@ -515,7 +515,7 @@ Proof.
 Qed.
 
 Lemma filter_cons_inv_strong :
-  forall X (l1 : list X) x2 l2
+  forall X (l1 : seq X) x2 l2
          (f : X -> bool),
     x2 :: l2 = filter f l1 ->
     exists l11 l12,
@@ -554,7 +554,7 @@ Proof.
 Qed.
 
 Lemma filter_app :
-  forall X (l1 l2 : list X) (f : X -> bool),
+  forall X (l1 l2 : seq X) (f : X -> bool),
     filter f (l1 ++ l2) = filter f l1 ++ filter f l2.
 Proof.
   induction l1 as [|x l1 IH]; simpl; intros. trivial.
@@ -598,7 +598,7 @@ Proof.
       * inv H.
 Qed.
 
-Lemma length_update_list_Z A i v (l l' : list A) : update_list_Z i v l = Some l' ->
+Lemma length_update_list_Z A i v (l l' : seq A) : update_list_Z i v l = Some l' ->
   length l' = length l.
 Proof.
 unfold update_list_Z.
@@ -606,7 +606,7 @@ destruct (i <? 0)%Z; try discriminate.
 intros H; apply (length_update_list H).
 Qed.
 
-Lemma app_same_length_eq (T: Type): forall (l1 l2 l3 l4: list T),
+Lemma app_same_length_eq (T: Type): forall (l1 l2 l3 l4: seq T),
   l1++l2 = l3++l4 ->
   length l1 = length l3 ->
   l1 = l3.
@@ -617,7 +617,7 @@ Proof.
   inv H. erewrite IHl1 ; eauto.
 Qed.
 
-Lemma app_same_length_eq_rest (T: Type): forall (l1 l2 l3 l4: list T),
+Lemma app_same_length_eq_rest (T: Type): forall (l1 l2 l3 l4: seq T),
   l1++l2 = l3++l4 ->
   length l1 = length l3 ->
   l2 = l4.
@@ -630,7 +630,7 @@ Proof.
   inv H. eauto.
 Qed.
 
-Fixpoint just_somes {X Y} (l : list (X * option Y)) :=
+Fixpoint just_somes {X Y} (l : seq (X * option Y)) :=
   match l with
   | nil => nil
   | (_, None) :: l' => just_somes l'
@@ -638,7 +638,7 @@ Fixpoint just_somes {X Y} (l : list (X * option Y)) :=
   end.
 
 Lemma nth_error_In :
-  forall T n (l : list T) (x : T),
+  forall T n (l : seq T) (x : T),
     nth_error l n = Some x ->
     In x l.
 Proof.
@@ -652,7 +652,7 @@ Qed.
 Hint Resolve nth_error_In.
 
 Lemma update_list_In :
-  forall T n x y (l l' : list T)
+  forall T n x y (l l' : seq T)
          (UPD: update_list n x l = Some l')
          (IN: In y l'),
     y = x \/ In y l.
@@ -667,7 +667,7 @@ Proof.
 Qed.
 
 Lemma index_list_app :
-  forall T n (l1 l2 : list T) x,
+  forall T n (l1 l2 : seq T) x,
     nth_error l1 n = Some x ->
     nth_error (l1 ++ l2) n = Some x.
 Proof.
@@ -676,7 +676,7 @@ Proof.
 Qed.
 
 Lemma update_list_app :
-  forall T n x (l1 l1' l2 : list T)
+  forall T n x (l1 l1' l2 : seq T)
          (UPD : update_list n x l1 = Some l1'),
     update_list n x (l1 ++ l2) = Some (l1' ++ l2).
 Proof.
@@ -695,7 +695,7 @@ Proof.
   induction 1; eauto; simpl; congruence.
 Qed.
 
-Lemma nth_error_app' X : forall (l1 l2 : list X) (x : X),
+Lemma nth_error_app' X : forall (l1 l2 : seq X) (x : X),
                             nth_error (l1 ++ x :: l2) (length l1) = Some x.
 Proof.
   induction l1 as [|x' l1 IH]; intros; simpl in *; subst; eauto.
@@ -752,7 +752,7 @@ Fixpoint assoc_list_lookup {T1 T2 : Type} (xys : seq (T1 * T2)%type)
                      else assoc_list_lookup xys' select
   end.
 
-Theorem assoc_list_lookup_some : forall {T1 T2 : Type} (xys : list (T1 * T2))
+Theorem assoc_list_lookup_some : forall {T1 T2 : Type} (xys : seq (T1 * T2))
                                         (select : T1 -> bool) (y : T2),
   assoc_list_lookup xys select = Some y ->
   exists x, select x = true /\ In (x,y) xys.
@@ -765,7 +765,7 @@ Proof.
     + apply IHxys in LOOKUP; destruct LOOKUP as [x [SEL' IN]]; eauto.
 Qed.
 
-Theorem in_assoc_list_lookup : forall {T1 T2 : Type} (xys : list (T1 * T2))
+Theorem in_assoc_list_lookup : forall {T1 T2 : Type} (xys : seq (T1 * T2))
                                       (select : T1 -> bool) (x : T1) (y : T2),
   select x = true ->
   In (x,y) xys    ->
@@ -779,7 +779,7 @@ Proof.
     destruct (select x') eqn:SEL'; eauto.
 Qed.
 
-Theorem assoc_list_lookup_none : forall {T1 T2 : Type} (xys : list (T1 * T2))
+Theorem assoc_list_lookup_none : forall {T1 T2 : Type} (xys : seq (T1 * T2))
                                         (select : T1 -> bool),
   assoc_list_lookup xys select = None <->
   (forall xy, In xy xys -> select (fst xy) = false).
@@ -805,7 +805,7 @@ Variable A : Type.
 
 Variable x y : A.
 
-Fixpoint In2 (l : list A) {struct l} : Prop :=
+Fixpoint In2 (l : seq A) {struct l} : Prop :=
   match l with
       | nil => False
       | a :: l' =>
@@ -1012,25 +1012,25 @@ Inductive zero_one : A -> A -> Prop :=
 Hint Constructors zero_one.
 
 (* Capture steps from s to s' (with s') *)
-Inductive interm : list A -> A -> A -> Prop :=
+Inductive interm : seq A -> A -> A -> Prop :=
   | interm_single : forall (x y : A), R x y -> interm [:: x;y] x y
-  | interm_multi : forall (x y z : A) (xs : list A),
+  | interm_multi : forall (x y z : A) (xs : seq A),
                     R x y ->
                     interm xs y z ->
                     interm (x :: xs) x z.
 Hint Constructors interm.
 
-Inductive interm_reverse : list A -> A -> A -> Prop :=
+Inductive interm_reverse : seq A -> A -> A -> Prop :=
   | intermrev_single : forall (x y : A), R x y -> interm_reverse [:: x;y] x y
-  | intermrev_multi : forall (x y z : A) (xs : list A),
+  | intermrev_multi : forall (x y z : A) (xs : seq A),
                       R y z ->
                       interm_reverse xs x y ->
                       interm_reverse (xs ++ [:: z]) x z.
 Hint Constructors interm_reverse.
 
-Inductive intermr : list A -> A -> A -> Prop :=
+Inductive intermr : seq A -> A -> A -> Prop :=
   | intermr_refl : forall x, intermr [:: x] x x
-  | intermr_multi : forall (x y z : A) (xs : list A),
+  | intermr_multi : forall (x y z : A) (xs : seq A),
                     R x y ->
                     intermr xs y z ->
                     intermr (x :: xs) x z.
@@ -1465,7 +1465,7 @@ Fixpoint stepn {A} (step : A -> option A) (max_steps : nat) (st : A) : option A 
     end
   end.
 
-Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : list A :=
+Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : seq A :=
   st ::
   match max_steps with
   | O => [::]

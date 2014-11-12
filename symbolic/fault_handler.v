@@ -1,11 +1,8 @@
 (* Fault handler implementation for concrete realization of symbolic machine *)
 
 Require Import ZArith.
-Require Import List.
 
-Import ListNotations.
-
-Require Import ssreflect eqtype ssrbool.
+Require Import ssreflect eqtype ssrbool seq.
 
 Require Import lib.Integers lib.utils lib.Coqlib lib.partial_maps.
 Require Import common.common.
@@ -49,12 +46,12 @@ Context (fhp : fault_handler_params).
    (where "ENTRY ut" means that the entry point carries a specific
    tag, which might be used by the transfer function) *)
 
-Definition mvec_regs := [rop; rtpc; rti; rt1; rt2; rt3].
+Definition mvec_regs := [:: rop; rtpc; rti; rt1; rt2; rt3].
 
-Definition kernel_regs := mvec_regs ++ [rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
+Definition kernel_regs := mvec_regs ++ [:: rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
 
 (* For debugging -- put a telltale marker in the code *)
-Definition got_here : code := [Const (Word.repr 999) ri5; Const Word.zero ri5].
+Definition got_here : code := [:: Const (Word.repr 999) ri5; Const Word.zero ri5].
 
 (* TODO: Not needed anymore *)
 Definition bool_to_imm (b : bool) : imm mt :=
@@ -64,10 +61,10 @@ Definition bool_to_imm (b : bool) : imm mt :=
    execute [f]. Warning: overwrites ri1. *)
 Definition if_ (r : reg mt) (t f : code) : code :=
   let lt := Word.reprn (length t + 1) in
-  let eend := [Const (bool_to_imm true) ri1] ++
-              [Bnz ri1 lt] in
+  let eend := [:: Const (bool_to_imm true) ri1] ++
+              [:: Bnz ri1 lt] in
   let lf := Word.reprn (length f + length eend + 1) in
-  [Bnz r lf] ++
+  [:: Bnz r lf] ++
   f ++
   eend ++
   t.
@@ -77,42 +74,42 @@ Definition if_ (r : reg mt) (t f : code) : code :=
    puts 0 in second register.  Warning: overwrites ri2.*)
 
 Definition extract_user_tag (rsrc rsucc rut : reg mt) : code :=
-  [Const (Word.repr 1) ri2] ++
-  [Binop AND rsrc ri2 rsucc] ++
+  [:: Const (Word.repr 1) ri2] ++
+  [:: Binop AND rsrc ri2 rsucc] ++
   if_ rsucc
-      ([Const (Word.repr 2) ri2] ++
-       [Binop SHRU rsrc ri2 rut])
-      [].
+      ([:: Const (Word.repr 2) ri2] ++
+       [:: Binop SHRU rsrc ri2 rut])
+      [::].
 
 (* The inverse operation. Take a tag [t] in first register and return
    the encoding of [USER t] in the second register. Warning:
    overwrites ri2. *)
 Definition wrap_user_tag (rut rdst : reg mt) : code :=
-  [Const (Word.repr 2) ri2] ++
-  [Binop SHL rut ri2 ri2] ++
-  [Const (Word.repr 1) rdst] ++
-  [Binop OR rdst ri2 rdst].
+  [:: Const (Word.repr 2) ri2] ++
+  [:: Binop SHL rut ri2 ri2] ++
+  [:: Const (Word.repr 1) rdst] ++
+  [:: Binop OR rdst ri2 rdst].
 
 (* Similar to [extract_user_tag], but for kernel entry-point tags. *)
 Definition extract_entry_tag (rsrc rsucc rut : reg mt) : code :=
-  [Const (Word.repr 3) ri2] ++
-  [Binop AND rsrc ri2 rsucc] ++
-  [Const (Word.repr 2) ri2] ++
-  [Binop EQ rsucc ri2 rsucc] ++
+  [:: Const (Word.repr 3) ri2] ++
+  [:: Binop AND rsrc ri2 rsucc] ++
+  [:: Const (Word.repr 2) ri2] ++
+  [:: Binop EQ rsucc ri2 rsucc] ++
   if_ rsucc
-      ([Const (Word.repr 2) ri2] ++
-       [Binop SHRU rsrc ri2 rut])
-      [].
+      ([:: Const (Word.repr 2) ri2] ++
+       [:: Binop SHRU rsrc ri2 rut])
+      [::].
 
 Definition load_mvec : code :=
   fst (fold_left (fun acc r =>
                     let '(c,addr) := acc in
                     (c ++
                      load_const addr raddr ++
-                     [Load raddr r],
+                     [:: Load raddr r],
                      addr + Word.one))%w
                  mvec_regs
-                 ([],Concrete.cache_line_addr _)).
+                 ([::],Concrete.cache_line_addr _)).
 
 (* Take as input an mvector of high-level tags (in the appropriate
    registers, as set above), and computes the policy handler on
@@ -127,14 +124,14 @@ Variable policy_handler : code.
 Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   (* Check that [rop] contains a USER tag *)
   let do_op rop := extract_user_tag rop rb rop ++
-                   if_ rb [] [Halt _] in
-  if Symbolic.privileged_op op then [Halt _] else
+                   if_ rb [::] [:: Halt _] in
+  if Symbolic.privileged_op op then [:: Halt _] else
   match length (Symbolic.inputs op) with
-  | 0 => []
+  | 0 => [::]
   | 1 => do_op rt1
   | 2 => do_op rt1 ++ do_op rt2
   | 3 => do_op rt1 ++ do_op rt2 ++ do_op rt3
-  | _ => [Halt _]
+  | _ => [:: Halt _]
   end.
 
 (* The entire code for the generic fault handler.
@@ -153,10 +150,10 @@ Definition handler : code :=
                     tags in rvector. NB: system calls are now
                     required to begin with a Nop to simplify the
                     specification of the fault handler. *)
-           ([Const (Word.repr (op_to_Z NOP)) ri4] ++
-            [Binop EQ ri4 rop ri4] ++
-            if_ ri4 [] [Halt _] ++
-            [Const (Word.repr (vop_to_Z SERVICE)) rop] ++
+           ([:: Const (Word.repr (op_to_Z NOP)) ri4] ++
+            [:: Binop EQ ri4 rop ri4] ++
+            if_ ri4 [::] [:: Halt _] ++
+            [:: Const (Word.repr (vop_to_Z SERVICE)) rop] ++
             policy_handler ++
             load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
@@ -167,27 +164,27 @@ Definition handler : code :=
                    and run policy handler *)
                 (fold_right (fun op c =>
                                load_const (op_to_word op) ri4 ++
-                               [Binop EQ rop ri4 rb] ++
+                               [:: Binop EQ rop ri4 rb] ++
                                if_ rb
                                   (analyze_operand_tags_for_opcode op)
                                   c)
-                            [] opcodes ++
+                            [::] opcodes ++
                  policy_handler ++
                  (* Wrap RVec *)
                  wrap_user_tag rtrpc rtrpc ++
                  wrap_user_tag rtr rtr)
                 (* ELSE: The instruction is not tagged USER: halt the machine *)
-                [Halt _]))
+                [:: Halt _]))
       (* PC is not tagged USER, halt execution *)
-      [Halt _] ++
+      [:: Halt _] ++
   (* Store rvector registers in memory, install rule in cache, and
      return from trap *)
   load_const (Concrete.Mtrpc mt) raddr ++
-  [Store raddr rtrpc] ++
+  [:: Store raddr rtrpc] ++
   load_const (Concrete.Mtr mt) raddr ++
-  [Store raddr rtr] ++
-  [AddRule _] ++
-  [JumpEpc _].
+  [:: Store raddr rtr] ++
+  [:: AddRule _] ++
+  [:: JumpEpc _].
 
 Section invariant.
 

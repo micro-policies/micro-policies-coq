@@ -1,4 +1,4 @@
-Require Import List Arith ZArith.
+Require Import Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
 Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
 Require Import lib.hlist.
@@ -11,7 +11,6 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
 Import DoNotation.
-Import ListNotations.
 
 Module Sym.
 
@@ -126,8 +125,8 @@ Definition rules_normal (op : opcode) (c : color)
   match op, ts, ret, retv with
   | NOP, _, ret, retv => retv tt
   | CONST, _, ret, retv => retv V(DATA)
-  | MOV, [V(ty); _], ret, retv => retv V(ty)
-  | BINOP bo, [t1; t2; _], ret, retv =>
+  | MOV, [:: V(ty); _], ret, retv => retv V(ty)
+  | BINOP bo, [:: t1; t2; _], ret, retv =>
     match bo with
     | ADD =>
       match t1, t2 with
@@ -159,17 +158,17 @@ Definition rules_normal (op : opcode) (c : color)
       | _, _ => None
       end
     end
-  | LOAD, [V(PTR b1); M(b2,ty); _], ret, retv =>
+  | LOAD, [:: V(PTR b1); M(b2,ty); _], ret, retv =>
     if b1 == b2 then retv V(ty)
     else None
-  | STORE, [V(PTR b1); V(ty); M(bd,_)], ret, retv =>
+  | STORE, [:: V(PTR b1); V(ty); M(bd,_)], ret, retv =>
     if b1 == bd then retv M(bd,ty)
     else None
-  | JUMP, [V(PTR b')], ret, retv =>
+  | JUMP, [:: V(PTR b')], ret, retv =>
     ret V(PTR b') tt
-  | BNZ, [V(DATA)], ret, retv =>
+  | BNZ, [:: V(DATA)], ret, retv =>
     retv tt
-  | JAL, [V(ty); _], ret, retv =>
+  | JAL, [:: V(ty); _], ret, retv =>
     ret V(ty) V(PTR c)
   | _, _, _, _ => None
   end.
@@ -321,11 +320,11 @@ Definition eqp_fun (st : state t) : option (state t) :=
   end.
 
 Definition memsafe_syscalls : list (syscall t) :=
-  [Syscall malloc_addr V(DATA) malloc_fun;
-   Syscall free_addr V(DATA) free_fun;
-(* Syscall size_addr V(DATA) sizeof_fun; *)
-   Syscall base_addr V(DATA) basep_fun;
-   Syscall eq_addr V(DATA) eqp_fun].
+  [:: Syscall malloc_addr V(DATA) malloc_fun;
+      Syscall free_addr V(DATA) free_fun;
+   (* Syscall size_addr V(DATA) sizeof_fun; *)
+      Syscall base_addr V(DATA) basep_fun;
+      Syscall eq_addr V(DATA) eqp_fun].
 
 Definition step := step memsafe_syscalls.
 

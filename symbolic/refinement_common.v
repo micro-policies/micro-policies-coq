@@ -1,6 +1,6 @@
-Require Import List NPeano Arith Bool.
+Require Import NPeano Arith Bool.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.hlist lib.Integers lib.utils lib.Coqlib lib.partial_maps.
 Require Import common.common.
@@ -15,8 +15,6 @@ Open Scope nat_scope.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-
-Import ListNotations.
 
 Hint Constructors restricted_exec.
 Hint Unfold exec.

@@ -2,6 +2,10 @@ Require Import Coq.Lists.List.
 Require Import lib.utils.
 Require Import ssreflect ssrfun ssrbool eqtype seq.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Set Bullet Behavior "Strict Subproofs".
 
 Theorem eq_op_is_equiv_dec (T : eqType) (x y : T) :
@@ -46,3 +50,9 @@ Definition rem_all {T : eqType} : T -> seq T -> seq T :=
 Corollary in_rem_all (T : eqType) (a b : T) (xs : seq T) :
   a \in rem_all b xs = (a != b) && (a \in xs).
 Proof. by rewrite mem_filter. Qed.
+
+Fixpoint ofind T (p : pred T) (s : seq T) : option T :=
+  match s with
+  | [::] => None
+  | x :: s => if p x then Some x else ofind p s
+  end.

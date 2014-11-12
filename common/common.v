@@ -1,4 +1,4 @@
-Require Import List Arith ZArith Bool.
+Require Import Arith ZArith Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
 Require Import lib.ordered.
@@ -8,8 +8,6 @@ Require Import lib.Integers.
 Require Import lib.Maps.
 Require Import lib.FiniteMaps.
 Require Import lib.partial_maps.
-
-Import ListNotations.
 
 Set Implicit Arguments.
 
@@ -27,7 +25,7 @@ Inductive binop :=
 | SHRU
 | SHL.
 
-Definition binops := [
+Definition binops := [::
   ADD;
   SUB;
   MUL;
@@ -84,7 +82,8 @@ Definition opcode_eqMixin := EqMixin opcode_eqP.
 Canonical opcode_eqType := Eval hnf in EqType opcode opcode_eqMixin.
 
 Definition opcodes :=
-  [NOP;
+  [::
+   NOP;
    CONST;
    MOV;
    BINOP ADD;
@@ -649,7 +648,7 @@ Definition relocatable_segment :=
   fun Args => fun Cell => (nat * (word t -> Args -> list Cell))%type.
 
 Definition empty_relocatable_segment (Args Cell : Type) : relocatable_segment Args Cell :=
-  (0, fun (base : word t) (rest : Args) => []).
+  (0, fun (base : word t) (rest : Args) => [::]).
 
 (*
 Definition concat_relocatable_segments
@@ -670,7 +669,7 @@ Definition concat_and_measure_relocatable_segments
              (Args Cell : Type)
              (segs : list (relocatable_segment Args Cell))
            : relocatable_segment Args Cell * list nat :=
-  fold_left
+  foldl
     (fun (p : relocatable_segment Args Cell * list nat)
          (seg : relocatable_segment Args Cell) =>
        let: (acc,addrs) := p in
@@ -680,9 +679,9 @@ Definition concat_and_measure_relocatable_segments
                        gen1 base rest
                     ++ gen2 (Word.add base (Word.reprn l1)) rest in
        let newseg := (l1+l2, gen) in
-       (newseg, addrs ++ [l1]))
-    segs
-    (empty_relocatable_segment _ _, []).
+       (newseg, addrs ++ [:: l1]))
+    (empty_relocatable_segment _ _, [::])
+    segs.
 
 Definition concat_relocatable_segments
              (Args Cell : Type)

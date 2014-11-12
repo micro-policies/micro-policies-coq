@@ -1,4 +1,3 @@
-Require Import List.
 Require Import compcert.lib.Coqlib compcert.lib.Maps lib.utils.
 Require Import ssrfun.
 
