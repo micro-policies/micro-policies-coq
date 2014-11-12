@@ -38,17 +38,17 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
+Inductive tag T : Type :=
+| USER (ut : T)
+| ENTRY (sct : T).
+
 Section tag.
 
 Variable user_tag : eqType.
 
 Open Scope nat_scope.
 
-Inductive tag : Type :=
-| USER (ut : user_tag)
-| ENTRY (sct : user_tag).
-
-Definition tag_eq u v :=
+Definition tag_eq (u v : tag user_tag) :=
   match u, v with
     | USER ut1, USER ut2 => ut1 == ut2
     | ENTRY sct1, ENTRY sct2 => sct1 == sct2
@@ -64,15 +64,15 @@ congruence.
 Qed.
 
 Definition tag_eqMixin := EqMixin tag_eqP.
-Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
+Canonical tag_eqType := Eval hnf in EqType (tag _) tag_eqMixin.
 
-Definition is_user (t : tag) : bool :=
+Definition is_user (t : tag user_tag) : bool :=
   match t with
   | USER _ => true
   | _ => false
   end.
 
-Definition is_entry_tag (t : tag) : bool :=
+Definition is_entry_tag (t : tag user_tag) : bool :=
   match t with
   | ENTRY _ => true
   | _ => false
@@ -80,7 +80,7 @@ Definition is_entry_tag (t : tag) : bool :=
 
 End tag.
 
-Arguments ENTRY {user_tag} _.
+Arguments ENTRY {T} _.
 
 (*
 Definition rule := (MVec tag * RVec tag)%type.
