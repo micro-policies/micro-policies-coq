@@ -402,6 +402,10 @@ Definition mvec_stored (mem : Concrete.memory t) (mv : Concrete.MVec w) : Prop :
   PartMaps.get mem (Concrete.Mt2 t) = Some (Concrete.ct2 mv)@Concrete.TKernel /\ 
   PartMaps.get mem (Concrete.Mt3 t) = Some (Concrete.ct3 mv)@Concrete.TKernel. 
 
+Inductive phantom (T : Type) (x : T) : Type := Phantom.
+Arguments Phantom {T x}.
+Definition almost_id {T : Type} {x : T} (p : phantom x) := x.
+
 Lemma phandler_correct_allowed :
   forall env cmvec crvec,
     let st := concretize_pstate _ env parametric_initial_state in
@@ -442,12 +446,19 @@ Lemma phandler_correct_allowed :
       (* and the kernel invariant still holds. *)
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') tt.
 Proof.
-  intros. 
-  vm_compute in st. subst st. 
+(*  intros. 
+  change st with (almost_id (@Phantom _ st)) in *.
+  vm_compute in st. 
+Set Printing Width 20. 
+Set Printing All.
+idtac. 
+subst st. simpl in *.  
   unfold Concrete.mem in *.  unfold Concrete.regs in *.
   unfold Concrete.cache in *.  unfold Concrete.pc in *. 
   unfold Concrete.epc in *. 
   (* that was overkill, but simpl runs forever *)
+  unfold mvec_stored in H1. 
+
   destruct H1 as [? [? [? [? [? ?]]]]].
   unfold Concrete.Mtpc, Concrete.cache_line_addr in H3.
   change (0 + Word.repr 1)%w with ((Word.repr 1):w) in H3.
@@ -463,9 +474,10 @@ Proof.
   eexists. split.
   match goal with |- ?A = ?B => set z := A end. 
   vm_compute in z; reflexivity.
-  unfold concretize_tstate, concretize_pvalue.
-
-  (* factoid we will want first is that ctpc = user. how do
+  unfold concretize_tstate.  rewrite {1}/concretize_pvalue.
+  idtac. 
+*)
+ (* factoid we will want first is that ctpc = user. how do
      we establish that?  via uivec_of_ivec, I believe. *)
 Admitted.
 

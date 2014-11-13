@@ -77,6 +77,17 @@ Fixpoint combine_int S1 S2 S3 (f : option S1 -> option S2 -> option S3)
 Definition combine S1 S2 S3 (f : option S1 -> option S2 -> option S3) al1 al2 :=
   AList (combine_int f (get_alist al1) (get_alist al2)).
 
+Definition eqb (S:eqType) (al1 al2: alist S) := get_alist al1 == get_alist al2.
+
+Lemma eqbP (S:eqType) : Equality.axiom (@eqb S). 
+Proof.
+  move => [s1]. 
+  move => [s2]/=. 
+  apply/(iffP idP).
+  rewrite/eqb/=. by move =>/eqP ->.
+  move =>[->]. by rewrite/eqb.                        
+Qed.
+
 End Basic.
 
 End AList.
@@ -90,3 +101,10 @@ Global Instance alist_partial_map T : PartMaps.partial_map (AList.alist T) T := 
   empty := @AList.empty T;
   is_empty := @AList.is_empty T
 }.
+
+Global Instance alist_partial_map_axioms T : PartMaps.axioms (alist_partial_map T).
+Admitted.
+
+Definition alist_eq_mixin S T := EqMixin (@AList.eqbP S T). 
+
+Canonical alist_eq_type S T := Eval hnf in EqType _ (alist_eq_mixin S T).
