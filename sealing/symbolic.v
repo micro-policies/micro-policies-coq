@@ -3,8 +3,7 @@ Require Import List. Import ListNotations.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import lib.hlist lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
-Require Import symbolic.symbolic symbolic.rules.
-Require Import sealing.classes.
+Require Import symbolic.symbolic sealing.classes.
 
 Import Symbolic.
 

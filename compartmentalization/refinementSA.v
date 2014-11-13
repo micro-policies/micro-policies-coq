@@ -1,7 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
 Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
-Require Import symbolic.symbolic symbolic.rules.
+Require Import symbolic.symbolic.
 Require Import lib.haskell_notation.
 Require Import lib.ssr_list_utils.
 Require Import compartmentalization.common compartmentalization.isolate_sets.
