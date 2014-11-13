@@ -1,29 +1,5 @@
 (* Definition of symbolic rules and tags used for kernel protection,
-   along with conversion functions towards concrete integer tags.
-
-   Here are the various kinds of tags we use:
-
-     For the PC:
-
-     - KERNEL          : for kernel mode
-
-     - USER ut is_call : for user mode. [ut] gives the user-level tag,
-       while flag [is_call] signals whether we've just executed a JAL,
-       for keeping track of system calls.
-
-     For registers:
-
-     - KERNEL : for data only used in the kernel
-
-     - USER ut false : for data only used in user mode, with
-       corresponding user-level tag [ut]
-
-     For memory:
-     - KERNEL : for kernel space
-     - USER [ut] false : similar to above
-     - ENTRY : for system call entry points
-
-*)
+   along with conversion functions towards concrete integer tags. *)
 
 Require Import Arith Bool ZArith.
 
@@ -37,6 +13,10 @@ Import Concrete.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
+
+(* Type of decoded tags. [USER ut] denotes a regular user-level
+tag. [ENTRY ut] is used only for items in memory, and is used to mark
+monitor-service entry points. *)
 
 Inductive tag T : Type :=
 | USER (ut : T)
@@ -81,11 +61,6 @@ Definition is_entry_tag (t : tag user_tag) : bool :=
 End tag.
 
 Arguments ENTRY {T} _.
-
-(*
-Definition rule := (MVec tag * RVec tag)%type.
-Definition rules := list rule.
-*)
 
 Definition masks : Masks :=
   let mk_mask dcm cm :=
