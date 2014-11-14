@@ -789,93 +789,50 @@ Class kernel_code_fwd_correctness : Prop := {
 
 Class kernel_code_bwd_correctness : Prop := {
 
-(* BCP: Added some comments -- please check! *)
   handler_correct_allowed_case_bwd :
-  forall mem mem' cmvec ivec ovec reg cache old_pc int st',
-    (* If kernel invariant holds... *)
+  forall mem mem' cmvec reg cache old_pc int st',
     ki mem reg cache int ->
-    (* and calling the handler on the current m-vector succeeds and returns rvec... *)
-    decode_ivec e mem cmvec = Some ivec ->
-    Symbolic.transfer ivec = Some ovec ->
-    (* and storing the concrete representation of the m-vector yields new memory mem'... *)
     Concrete.store_mvec mem cmvec = Some mem' ->
-    (* and the concrete rule cache is correct (in the sense that every
-       rule it holds is exactly the concrete representations of
-       some (mvec,rvec) pair in the relation defined by the [handler]
-       function) ... *)
     cache_correct cache mem ->
-    (* THEN if we start the concrete machine in kernel mode (i.e.,
-       with the PC tagged TKernel) at the beginning of the fault
-       handler (and with the current memory, and with the current PC
-       in the return-addr register epc)) and let it run until it
-       reaches a user-mode state st'... *)
     kernel_user_exec
         (Concrete.mkState mem' reg cache
                           (Concrete.fault_handler_start _)@Concrete.TKernel
                           old_pc)
         st' ->
-      (* then the new cache is still correct... *)
+    exists ivec ovec,
+      decode_ivec e mem cmvec = Some ivec /\
+      Symbolic.transfer ivec = Some ovec /\
       cache_correct (Concrete.cache st') (Concrete.mem st') /\
-      (* and the mvec has been tagged as kernel data (BCP: why is this important??) *)
       mvec_in_kernel (Concrete.mem st') /\
-      (* and we've arrived at the return address that was in epc with
-         unchanged user memory and registers... *)
       user_tags_unchanged mem (Concrete.mem st') /\
       user_mem_unchanged mem (Concrete.mem st') /\
       user_regs_unchanged reg (Concrete.regs st') mem /\
       Concrete.pc st' = old_pc /\
-      (* and the system call entry points are all tagged ENTRY (BCP:
-         Why do we care, and if we do then why isn't this part of the
-         kernel invariant?  Could user code possibly change it?) *)
       wf_entry_points (Concrete.mem st') /\
-      (* and the kernel invariant still holds. *)
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
   syscalls_correct_allowed_case_bwd :
   forall amem areg apc atpc int
-         amem' areg' apc' atpc' int'
-         cmem creg cache ctpc epc sc,
-    (* and the kernel invariant holds... *)
+         cmem creg cache ctpc epc
+         cmem' creg' cache' cpc' ctpc' epc' sc,
     ki cmem creg cache int ->
-    (* and the USER-tagged portion of the concrete memory cmem
-       corresponds to the abstract (symbolic??) memory amem... *)
     refine_memory amem cmem ->
-    (* and the USER-tagged concrete registers in creg correspond to
-       the abstract register set areg... *)
     refine_registers areg creg cmem ->
-    (* and the rule cache is correct... *)
     cache_correct cache cmem ->
-    (* and the mvec has been tagged as kernel data (BCP: again, why is this
-       important... and why is it now part of the premises whereas
-       upstairs it was part of the conclusion??) *)
     mvec_in_kernel cmem ->
-    (* and the symbolic system call at addr is the function
-       sc... (BCP: This would make more sense after the next
-       hypothesis) *)
     Symbolic.get_syscall table apc = Some sc ->
-    (* and running sc on the current abstract machine state reaches a
-       new state with primes on everything... *)
-    Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) = Some (Symbolic.State amem' areg' apc'@atpc' int') ->
     decode _ cmem ctpc = Some (USER atpc) ->
     let cst := Concrete.mkState cmem
                                 creg
                                 cache
                                 apc@ctpc epc in
-
     cache_allows_syscall cst ->
-
-    (* THEN if we start the concrete machine in kernel mode at the
-       beginning of the corresponding system call code and let it run
-       until it reaches a user-mode state with primes on everything... *)
-
-    exists cmem' creg' cache' ctpc' epc',
-      user_kernel_user_step cst
-                            (Concrete.mkState cmem' creg' cache'
-                                              apc'@ctpc' epc') /\
-
-      (* then the new concrete state is in the same relation as before
-         with the new abstract state and the same invariants
-         hold (BCP: Plus one more about ra!). *)
+    user_kernel_user_step cst
+                          (Concrete.mkState cmem' creg' cache'
+                                            cpc'@ctpc' epc') ->
+    exists amem' areg' atpc' int',
+      Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) =
+      Some (Symbolic.State amem' areg' cpc'@atpc' int') /\
       decode Symbolic.P cmem' ctpc' = Some (USER atpc') /\
       refine_memory amem' cmem' /\
       refine_registers areg' creg' cmem' /\
