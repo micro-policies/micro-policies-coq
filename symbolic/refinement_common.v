@@ -684,10 +684,10 @@ Definition cache_allows_syscall (cst : Concrete.state mt) : bool :=
   | None => false
   end.
 
-Class kernel_code_correctness : Prop := {
+Class kernel_code_fwd_correctness : Prop := {
 
 (* BCP: Added some comments -- please check! *)
-  handler_correct_allowed_case :
+  handler_correct_allowed_case_fwd :
   forall mem mem' cmvec ivec ovec reg cache old_pc int,
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
@@ -732,27 +732,7 @@ Class kernel_code_correctness : Prop := {
       (* and the kernel invariant still holds. *)
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
-  handler_correct_disallowed_case :
-  forall mem mem' cmvec reg cache old_pc int st',
-    (* If kernel invariant holds... *)
-    ki mem reg cache int ->
-    (* and calling the handler on mvec FAILS... *)
-    match decode_ivec e mem cmvec with
-    | Some ivec => ~~ Symbolic.transfer ivec
-    | None => true
-    end ->
-    (* and storing the concrete representation of the m-vector yields new memory mem'... *)
-    Concrete.store_mvec mem cmvec = Some mem' ->
-    (* then if we start the concrete machine in kernel mode and let it
-       run, it will never reach a user-mode state. *)
-    ~~ in_kernel st' ->
-    ~ exec (Concrete.step _ masks)
-      (Concrete.mkState mem' reg cache
-                        (Concrete.fault_handler_start _)@Concrete.TKernel
-                        old_pc)
-      st';
-
-  syscalls_correct_allowed_case :
+  syscalls_correct_allowed_case_fwd :
   forall amem areg apc atpc int
          amem' areg' apc' atpc' int'
          cmem creg cache ctpc epc sc,
@@ -803,27 +783,83 @@ Class kernel_code_correctness : Prop := {
       cache_correct cache' cmem' /\
       mvec_in_kernel cmem' /\
       wf_entry_points cmem' /\
-      ki cmem' creg' cache' int';
+      ki cmem' creg' cache' int'
 
-  syscalls_correct_disallowed_case :
+}.
+
+Class kernel_code_bwd_correctness : Prop := {
+
+  handler_correct_allowed_case_bwd :
+  forall mem mem' cmvec reg cache old_pc int st',
+    ki mem reg cache int ->
+    Concrete.store_mvec mem cmvec = Some mem' ->
+    cache_correct cache mem ->
+    kernel_user_exec
+        (Concrete.mkState mem' reg cache
+                          (Concrete.fault_handler_start _)@Concrete.TKernel
+                          old_pc)
+        st' ->
+    exists ivec ovec,
+      decode_ivec e mem cmvec = Some ivec /\
+      Symbolic.transfer ivec = Some ovec /\
+      cache_correct (Concrete.cache st') (Concrete.mem st') /\
+      mvec_in_kernel (Concrete.mem st') /\
+      user_tags_unchanged mem (Concrete.mem st') /\
+      user_mem_unchanged mem (Concrete.mem st') /\
+      user_regs_unchanged reg (Concrete.regs st') mem /\
+      Concrete.pc st' = old_pc /\
+      wf_entry_points (Concrete.mem st') /\
+      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
+
+  handler_correct_disallowed_case :
+  forall mem mem' cmvec reg cache old_pc int st',
+    (* If kernel invariant holds... *)
+    ki mem reg cache int ->
+    (* and calling the handler on mvec FAILS... *)
+    match decode_ivec e mem cmvec with
+    | Some ivec => ~~ Symbolic.transfer ivec
+    | None => true
+    end ->
+    (* and storing the concrete representation of the m-vector yields new memory mem'... *)
+    Concrete.store_mvec mem cmvec = Some mem' ->
+    (* then if we start the concrete machine in kernel mode and let it
+       run, it will never reach a user-mode state. *)
+    ~~ in_kernel st' ->
+    ~ exec (Concrete.step _ masks)
+      (Concrete.mkState mem' reg cache
+                        (Concrete.fault_handler_start _)@Concrete.TKernel
+                        old_pc)
+      st';
+
+  syscalls_correct_allowed_case_bwd :
   forall amem areg apc atpc int
-         cmem creg cache ctpc epc sc
-         cst',
+         cmem creg cache ctpc epc
+         cmem' creg' cache' cpc' ctpc' epc' sc,
     ki cmem creg cache int ->
     refine_memory amem cmem ->
     refine_registers areg creg cmem ->
     cache_correct cache cmem ->
     mvec_in_kernel cmem ->
-    wf_entry_points cmem ->
     Symbolic.get_syscall table apc = Some sc ->
-    Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) = None ->
     decode _ cmem ctpc = Some (USER atpc) ->
     let cst := Concrete.mkState cmem
                                 creg
                                 cache
                                 apc@ctpc epc in
     cache_allows_syscall cst ->
-    ~ user_kernel_user_step cst cst'
+    user_kernel_user_step cst
+                          (Concrete.mkState cmem' creg' cache'
+                                            cpc'@ctpc' epc') ->
+    exists amem' areg' atpc' int',
+      Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) =
+      Some (Symbolic.State amem' areg' cpc'@atpc' int') /\
+      decode Symbolic.P cmem' ctpc' = Some (USER atpc') /\
+      refine_memory amem' cmem' /\
+      refine_registers areg' creg' cmem' /\
+      cache_correct cache' cmem' /\
+      mvec_in_kernel cmem' /\
+      wf_entry_points cmem' /\
+      ki cmem' creg' cache' int'
 
 }.
 

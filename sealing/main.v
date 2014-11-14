@@ -808,7 +808,7 @@ Context {sealing_invariant : policy_invariant t}.
 
 Let monitor_invariant := fault_handler_invariant t ops fhp transfer_function sealing_invariant.
 
-Context {implementation_correct : kernel_code_correctness monitor_invariant Sym.sealing_syscalls}.
+Context {implementation_correct : kernel_code_bwd_correctness monitor_invariant Sym.sealing_syscalls}.
 
 Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
 | rs_intro : forall sst m,

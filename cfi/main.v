@@ -194,7 +194,7 @@ Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
 Hint Constructors refine_state.
 
 Hypothesis implementation_correct :
-  kernel_code_correctness ki stable.
+  kernel_code_bwd_correctness ki stable.
 
 Hypothesis refine_syscalls_correct : RefinementAS.refine_syscalls stable atable stable.
 

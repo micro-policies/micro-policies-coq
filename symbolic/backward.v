@@ -32,7 +32,7 @@ Context {mt : machine_types}
         {e : encodable mt Symbolic.ttypes}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
-        {kcc : kernel_code_correctness ki table}.
+        {kcc : kernel_code_bwd_correctness ki table}.
 
 Hint Unfold Symbolic.next_state.
 Hint Unfold Symbolic.next_state_reg_and_pc.
@@ -368,17 +368,10 @@ Proof.
     apply restricted_exec_weaken in EXEC.
     by apply restricted_exec_trans with kst'; eauto.
   subst kst. rewrite /= in STEP KEXEC EXEC KER LOOKUP.
-  case DECivec: (decode_ivec _ cmem cmvec) => [ivec|]; last first.
-    have := (handler_correct_disallowed_case KINV _ Hcmem' ISUSER' EXEC).
-    move=> /(_ _ kcc). by rewrite DECivec => /(_ erefl).
-  case TRANS: (Symbolic.transfer ivec) => [ovec|]; last first.
-    have := (handler_correct_disallowed_case KINV _ Hcmem' ISUSER' EXEC).
-    move=> /(_ _ kcc). by rewrite DECivec TRANS => /(_ erefl).
-  destruct (handler_correct_allowed_case pc@ctpc KINV DECivec TRANS Hcmem' CACHECORRECT)
-      as (cst'' & rvec & KEXEC' & CACHE' & LOOKUP' & DECovec & MVEC' &
+  destruct (handler_correct_allowed_case_bwd KINV Hcmem' CACHECORRECT KEXEC)
+      as (ivec & ovec & DECivec & TRANS & CACHE' & MVEC' &
           HPCT & HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
-  have EQ := kernel_user_exec_determ KEXEC' KEXEC. subst cst''.
-  case: cst' {KEXEC KEXEC' EXEC LOOKUP' DECovec} HPC CACHE'
+  case: cst' {KEXEC EXEC} HPC CACHE'
              ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' KINV' =>
         cmem'' cregs'' cache' pc' ? /= -> {pc'} CACHE' ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' KINV'.
   econstructor; eauto.
@@ -415,24 +408,20 @@ Proof.
   { rewrite /cache_allows_syscall in ALLOWED.
     case GETCALL: (Symbolic.get_syscall table pc) ALLOWED => [sc|//] ALLOWED.
     by eauto. }
-  case SCEXEC: (Symbolic.run_syscall sc (Symbolic.State smem sregs pc@tpc int))
-    => [[smem' sregs' [pc' tpc'] int']|].
-  - exploit syscalls_correct_allowed_case; eauto.
-    intros (cmem' & creg' & cache' & ctpc' & epc' & EXEC' &
-            HPCT & REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
-    generalize (user_kernel_user_step_determ STEP EXEC'). intros ?. subst.
-    { exists (Symbolic.State smem' sregs' pc'@tpc' int'). split.
-      - eapply Symbolic.step_syscall; eauto.
-        eapply wf_entry_points_if in GETCALL; last by exact WFENTRYPOINTS.
-        move: GETCALL => [i [ti [GETPC DECti ISNOP]]].
-        case GET': (PartMaps.get smem pc) => [[? ?]|] //.
-        move: (proj2 REFM _ _ _ GET') => {GET' DEC} [ctg' DEC GET'].
-        rewrite GETPC in GET'.
-        move: GET' => [? H]. subst i ti.
-        by rewrite DEC in DECti.
-      - econstructor; eauto. }
-  - destruct (syscalls_correct_disallowed_case KINV REFM REFR CACHE MVEC
-                                               WFENTRYPOINTS GETCALL SCEXEC DEC ALLOWED STEP).
+  destruct cst' as [cmem' creg' cache' [cpc' ctpc'] epc'].
+  exploit syscalls_correct_allowed_case_bwd; eauto.
+  intros (smem' & sregs' & stpc' & sint' & RUNSC &
+          HPCT & REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
+  exists (Symbolic.State smem' sregs' cpc'@stpc' sint'). split.
+  - eapply Symbolic.step_syscall; eauto.
+    eapply wf_entry_points_if in GETCALL; last by exact WFENTRYPOINTS.
+    move: GETCALL => [i [ti [GETPC DECti ISNOP]]].
+    case GET': (PartMaps.get smem pc) => [[? ?]|] //.
+    move: (proj2 REFM _ _ _ GET') => {GET' DEC} [ctg' DEC GET'].
+    rewrite GETPC in GET'.
+    move: GET' => [? H]. subst i ti.
+    by rewrite DEC in DECti.
+  - by econstructor; eauto.
 Qed.
 
 Lemma user_into_kernel sst cst cst' :

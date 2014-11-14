@@ -346,7 +346,7 @@ Qed.
 Definition smachine := Sym.symbolic_cfi_machine stable.
 Definition cmachine := Conc.concrete_cfi_machine ki stable masks.
 
-Context {kcc : kernel_code_correctness ki stable}. (*should this go to the top?*)
+Context {kcc : kernel_code_bwd_correctness ki stable}. (*should this go to the top?*)
 
 Definition check st st' := in_user st && in_user st'.
 
