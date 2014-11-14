@@ -32,7 +32,7 @@ Context {mt : machine_types}
         {e : encodable mt Symbolic.ttypes}
         {ki : kernel_invariant}
         {table : list (Symbolic.syscall mt)}
-        {kcc : kernel_code_correctness ki table}.
+        {kcc : kernel_code_fwd_correctness ki table}.
 
 Hint Unfold Symbolic.next_state.
 Hint Unfold Symbolic.next_state_reg_and_pc.
@@ -303,7 +303,7 @@ Ltac analyze_syscall :=
   match goal with
   | H : Symbolic.run_syscall _ _ = Some ?sst' |- _ =>
     destruct sst' as [smem' sregs' [spc' sapc'] int'];
-    exploit syscalls_correct_allowed_case; eauto;
+    exploit syscalls_correct_allowed_case_fwd; eauto;
     intros;
     repeat match goal with
     | H : exists _, _ |- _ => destruct H
@@ -326,7 +326,7 @@ Ltac analyze_cache_miss :=
     destruct (mvec_in_kernel_store_mvec _ MVEC) as [? STORE];
     pose proof (store_mvec_mvec_in_kernel _ _ STORE);
     pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE);
-    destruct (handler_correct_allowed_case _ _ _ pc@(Concrete.ctpc _) _ KINV _ STORE CACHE)
+    destruct (handler_correct_allowed_case_fwd _ _ _ pc@(Concrete.ctpc _) _ KINV _ STORE CACHE)
       as ([? ? ? [? ?] ?] &
           KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
     simpl in PC'; inv PC';
@@ -435,8 +435,8 @@ Proof.
   have FAULT := lookup_none_step CMVEC LOOKUP Hcmem.
   have [cmvec'] := refine_ivec REF IVEC.
   rewrite CMVEC. move => [<-] {cmvec'} DEC.
-  have := handler_correct_allowed_case (Concrete.pc cst) (rs_kinv REF) DEC TRANS Hcmem
-                                       (rs_cache REF) => /(_ _ _ kcc).
+  have := handler_correct_allowed_case_fwd (Concrete.pc cst) (rs_kinv REF) DEC TRANS Hcmem
+                                           (rs_cache REF) => /(_ _ _ kcc).
   case=> cst' [crvec [EXEC [CACHE [LOOKUP' [DEC' [MVEC [USERPCTAG [USERMEM [USERREGS [PC [ENTRYPOINTS KINV]]]]]]]]]]].
   exists cst', crvec.
   split=> //.
@@ -493,9 +493,9 @@ Proof.
     rewrite (rs_pc REF) in GETi'.
     rewrite /build_cmvec GETi' /= ISNOP /= (Symbolic.state_eta sst'). move => [E]. subst cmvec.
     rewrite (Symbolic.state_eta sst') in RUN.
-    have := syscalls_correct_allowed_case (rs_kinv REF) (rs_refm REF)
-                                          (rs_refr REF) (rs_cache REF)
-                                          (rs_mvec REF) GETSC RUN (rs_pct REF)
+    have := syscalls_correct_allowed_case_fwd (rs_kinv REF) (rs_refm REF)
+                                              (rs_refr REF) (rs_cache REF)
+                                              (rs_mvec REF) GETSC RUN (rs_pct REF)
             => /(_ _ kcc (Concrete.epc cst)) /=.
     rewrite /cache_allows_syscall /= GETSC
             /build_cmvec (rs_pc REF) GETi' ISNOP LOOKUP.
