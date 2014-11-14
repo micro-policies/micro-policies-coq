@@ -181,7 +181,7 @@ Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
 Hint Constructors refine_state.
 
 Hypothesis implementation_correct :
-  kernel_code_correctness monitor_invariant Sym.syscalls.
+  kernel_code_bwd_correctness monitor_invariant Sym.syscalls.
 
 Lemma backwards_refinement_as ast sst sst' :
   Abs.good_state ast ->

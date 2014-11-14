@@ -811,6 +811,26 @@ Class kernel_code_bwd_correctness : Prop := {
       wf_entry_points (Concrete.mem st') /\
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
+  handler_correct_disallowed_case :
+  forall mem mem' cmvec reg cache old_pc int st',
+    (* If kernel invariant holds... *)
+    ki mem reg cache int ->
+    (* and calling the handler on mvec FAILS... *)
+    match decode_ivec e mem cmvec with
+    | Some ivec => ~~ Symbolic.transfer ivec
+    | None => true
+    end ->
+    (* and storing the concrete representation of the m-vector yields new memory mem'... *)
+    Concrete.store_mvec mem cmvec = Some mem' ->
+    (* then if we start the concrete machine in kernel mode and let it
+       run, it will never reach a user-mode state. *)
+    ~~ in_kernel st' ->
+    ~ exec (Concrete.step _ masks)
+      (Concrete.mkState mem' reg cache
+                        (Concrete.fault_handler_start _)@Concrete.TKernel
+                        old_pc)
+      st';
+
   syscalls_correct_allowed_case_bwd :
   forall amem areg apc atpc int
          cmem creg cache ctpc epc
