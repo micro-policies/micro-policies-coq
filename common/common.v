@@ -735,11 +735,11 @@ opaque. *)
 
 Global Opaque int_partial_map.
 
-Require Import lib.alist.
+(* Require Import lib.alist. *)
 
 Inductive word_map (mt : machine_types) T :=
-(*   WordMap of ZMap.t T. *)
-  WordMap of AList.alist [eqType of word mt] T.
+   WordMap of ZMap.t T. 
+(*   WordMap of AList.alist [eqType of word mt] T. *)
 
 Let wm mt T (m : word_map mt T) := let (m) := m in m.
 
@@ -755,8 +755,8 @@ Definition word_map_eqMixin mt T := EqMixin (@word_map_eqbP mt T).
 Canonical word_map_eqType mt T := Eval hnf in EqType _ (@word_map_eqMixin mt T).
 
 Inductive reg_map (mt : machine_types) T :=
-(*   RegMap of ZMap.t T. *)
-  RegMap of AList.alist [eqType of reg mt] T.
+  RegMap of ZMap.t T. 
+(*   RegMap of AList.alist [eqType of reg mt] T. *)
 
 Let rm mt T (m : reg_map mt T) := let (m) := m in m.
 
@@ -771,7 +771,7 @@ Qed.
 Definition reg_map_eqMixin mt T := EqMixin (@reg_map_eqbP mt T).
 Canonical reg_map_eqType mt T := Eval hnf in EqType _ (@reg_map_eqMixin mt T).
 
-Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt) (word mt) := {
+(*Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt) (word mt) := {
   get V m k := PartMaps.get (wm m) k;
   set V m k v := WordMap (PartMaps.set (wm m) k v );
   map_filter V1 V2 f m := WordMap (PartMaps.map_filter f (wm m));
@@ -780,8 +780,8 @@ Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt
   empty V := WordMap  PartMaps.empty;
   is_empty V m := wm m == PartMaps.empty
 }.
+*)
 
-(*
 Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt) (word mt) := {
   get V m k := ZMap.get (Word.unsigned k) (wm m);
   set V m k v := WordMap mt (ZMap.set (Word.unsigned k) v (wm m));
@@ -791,11 +791,9 @@ Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt
   empty V := WordMap mt (@ZMap.empty V);
   is_empty V m := wm m == ZMap.empty V
 }.
-*)
 
 Instance word_map_axioms (mt : machine_types) : PartMaps.axioms (word_map_class mt).
-Admitted.
-(*
+(* Admitted.*)
   constructor.
   + (* get_set_eq *)
     intros V mem i x. by apply ZMap.gss.
@@ -821,8 +819,8 @@ Admitted.
   + (* is_emptyP *)
     intros. exact: eqP.
 Qed.
-*)
 
+(*
 Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) (reg mt) := {
   get V m k := PartMaps.get (rm m) k;
   set V m k v := RegMap (PartMaps.set (rm m) k v );
@@ -832,8 +830,8 @@ Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) 
   empty V := RegMap  PartMaps.empty;
   is_empty V m := rm m == PartMaps.empty
 }.
+*)
 
-(*
 Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) (reg mt) := {
   get V m k := ZMap.get (Word.unsigned k) (rm m);
   set V m k v := RegMap mt (ZMap.set (Word.unsigned k) v (rm m));
@@ -843,12 +841,11 @@ Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) 
   empty V := RegMap mt (@ZMap.empty V);
   is_empty V m := rm m == ZMap.empty V
 }.
-*)
 
 Instance reg_map_axioms (mt : machine_types) : PartMaps.axioms (reg_map_class mt).
 Proof.
-  Admitted.
-(*  constructor.
+(*   Admitted. *)
+ constructor.
   + (* get_set_eq *)
     intros V mem i x. by apply ZMap.gss.
   + (* get_set_neq *)
@@ -873,7 +870,7 @@ Proof.
   + (* is_emptyP *)
     intros. exact: eqP.
 Qed.
-*)
+
 
 Global Opaque word_map_class.
 Global Opaque reg_map_class.

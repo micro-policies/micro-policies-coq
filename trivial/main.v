@@ -287,10 +287,10 @@ Let patom := common.atom (pvalue t) (pvalue t).
 (* Setting up initial state of parametric machine, specifially at
 entry to the fault handler.  We can try to generalize this later. *)
 
-Definition pkernelize (seg : @relocatable_segment concrete_int_32_t w w)
-                   : relocatable_segment w patom :=
+Definition kernelize (seg : @relocatable_segment concrete_int_32_t w w)
+                   : relocatable_segment w atom :=
   let (l,gen) := seg in
-  (l, fun b rest => map (fun x => (C t x)@(C t Concrete.TKernel)) (gen b rest)).
+  (l, fun b rest => map (fun x => x@Concrete.TKernel) (gen b rest)).
 
 
 (* Kludge: temporarily treat epc as having a real register number. *)
@@ -307,21 +307,30 @@ Fixpoint pmem_from (i : Word.int 31) (n : nat) x
 Definition preg_at x (regs : reg_map t patom) (r: reg t) : reg_map t patom :=
   PartMaps.set regs r (V t (RP t r))@x.
 
+About insert_from.
+
+Definition basemem0 : word_map t atom := 
+   let base_addr := Concrete.fault_handler_start _ in
+   let (handler_length, handler_segment) := kernelize fault_handler in
+   let kernel_code := handler_segment base_addr (Word.reprn handler_length) in 
+   insert_from base_addr kernel_code PartMaps.empty.
+
+Definition basemem := Eval vm_compute in basemem0.
+
+Opaque basemem. 
+
 Definition parametric_initial_state: pstate concrete_int_32_t :=
   let gen_cache := pmem_from Word.zero 8 (C t Concrete.TKernel) in
-  let base_addr := Concrete.fault_handler_start _ in
-  let (handler_length,handler_segment) := pkernelize fault_handler in
-  let kernel_code := handler_segment base_addr (Word.reprn handler_length) in
-  let gen_kernel_code := insert_from base_addr kernel_code in
+  let base_addr := Concrete.fault_handler_start concrete_int_32_t in
+  let (handler_length,handler_segment) := kernelize fault_handler in
   let extra_state_addr := Word.add base_addr
                                      (Word.reprn handler_length) in
   let user_code_addr := extra_state_addr (* since there is no exta state *) in 
-  let user_code_length := 1%nat in (* very arbitrary ! *)
+  let user_code_length := 1%nat in (* very arbitrary ! -- try 0 ?  *)
   let gen_user_code := pmem_from user_code_addr user_code_length 
                                  (C t (kernelize_user_tag DUMMY)) in
   let mem := 
        ( gen_cache 
-       ∘ gen_kernel_code
        ∘ gen_user_code )
        (PartMaps.empty) in
   let kregs :=
@@ -383,13 +392,20 @@ Fixpoint pkuer (max_steps:nat) (k:pstate t -> option (tstate t)) (ps:(pstate t))
     match max_steps with
     | O => None 
     | S max_steps' =>
-      do! ts <- pstep _ masks ps;
+      do! ts <- pstep _ basemem masks ps;
       tdistr (pkuer max_steps' (fun ps => Some(St _ ps))) ts
     end
   else k ps.
 
 Definition pkue (max_steps:nat) (ps:pstate t) : option (tstate t) :=
    pkuer max_steps (fun _ => Some (St _ marker)) ps.  
+
+Definition foo := concretize_pstate _ basemem (fun _ => Word.zero) parametric_initial_state.
+
+Print foo. Check foo.
+
+Set Printing Depth 10000.
+
 
 (* Compute (match (pkue 40  parametric_initial_state)
          with Some ts => extract_pcs ts | None => [] end).    *)
@@ -408,7 +424,7 @@ Definition almost_id {T : Type} {x : T} (p : phantom x) := x.
 
 Lemma phandler_correct_allowed :
   forall env cmvec crvec,
-    let st := concretize_pstate _ env parametric_initial_state in
+    let st := concretize_pstate _ basemem env parametric_initial_state in
     (* If kernel invariant holds... *)
     ki (Concrete.mem st) (Concrete.regs st) (Concrete.cache st) tt ->
     (* and calling the handler on the current m-vector succeeds and returns rvec... *)
@@ -428,7 +444,7 @@ Lemma phandler_correct_allowed :
        in the return-addr register epc)) and let it run until it
        reaches a user-mode state st'... *)
   exists ts', pkue 40 parametric_initial_state = Some ts' /\
-   exists st', Some st' = concretize_tstate t env ts' /\
+   exists st', Some st' = concretize_tstate t basemem env ts' /\
        cache_correct (Concrete.cache st') /\
       (* and the new cache now contains a rule mapping mvec to rvec... *)
       Concrete.cache_lookup (Concrete.cache st') masks cmvec = Some crvec /\
@@ -446,36 +462,35 @@ Lemma phandler_correct_allowed :
       (* and the kernel invariant still holds. *)
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') tt.
 Proof.
-(*  intros. 
-  change st with (almost_id (@Phantom _ st)) in *.
-  vm_compute in st. 
-Set Printing Width 20. 
-Set Printing All.
-idtac. 
-subst st. simpl in *.  
-  unfold Concrete.mem in *.  unfold Concrete.regs in *.
-  unfold Concrete.cache in *.  unfold Concrete.pc in *. 
-  unfold Concrete.epc in *. 
-  (* that was overkill, but simpl runs forever *)
+  intros. 
+(*   change st with (almost_id (@Phantom _ st)) in *. *)
+(*  vm_compute in st. 
+  subst st. 
+  Set Printing Width 20.
+  Set Printing All.
+  Set Silent.
+  simpl in *. 
   unfold mvec_stored in H1. 
-
-  destruct H1 as [? [? [? [? [? ?]]]]].
-  unfold Concrete.Mtpc, Concrete.cache_line_addr in H3.
-  change (0 + Word.repr 1)%w with ((Word.repr 1):w) in H3.
-  simpl in H3. vm_compute in H3. 
-  destruct cmvec. vm_compute in H3. injection H3. clear H3; intro H3. 
-  clear H1 H4 H5 H6 H7. (* temporarily, for printing speed *)
+  destruct H1 as [Hop [Htpc [Hti [Ht1 [Ht2 Ht3]]]]].
+  Set Silent.
+  unfold Concrete.Mtpc, Concrete.cache_line_addr in Htpc.
+  change (0 + Word.repr 1)%w with ((Word.repr 1):w) in Htpc.
+  vm_compute in Htpc. 
+  destruct cmvec. vm_compute in Htpc. injection Htpc. clear Htpc; intro Htpc. 
+(*   clear H1 H4 H5 H6 H7. (* temporarily, for printing speed *)
   clear H. (* ditto *)
-  idtac. 
-  unfold handler in H0. unfold rules.handler in H0. 
+  idtac.  *)
+  unfold handler, rules.handler in H0. 
   undo. unfold decode_ivec in Heqo. simpl in Heqo. 
   (* undo is too slow so we're screwed here *)
+*)
 
   eexists. split.
   match goal with |- ?A = ?B => set z := A end. 
   vm_compute in z; reflexivity.
   unfold concretize_tstate.  rewrite {1}/concretize_pvalue.
   idtac. 
+
 *)
  (* factoid we will want first is that ctpc = user. how do
      we establish that?  via uivec_of_ivec, I believe. *)

@@ -34,7 +34,7 @@ Definition r2 : reg t := 2.
 Definition r3 : reg t := Word.repr 3. 
 
 Definition max_code :=
-map (fun i => (Atom (C t i) (C t TKernel)))
+map (fun i => (Atom i (@TKernel t)))
 (map encode_instr
  [(* 0 *) Binop LEQ r2 r1 r3;
   (* 1 *) Bnz r3 (Word.repr 4); 
@@ -86,6 +86,8 @@ Fixpoint initial_pmem_from (i:Z) (m:memory) : memory :=
 .
 *)
 
+(* 
+
 Definition initial_pmem_from (i : Z)  (m:memory) : memory :=
   fst (
   Z.iter i 
@@ -100,6 +102,10 @@ Definition max_mem_loc : Z := 10.
 
 Definition initial_pmem code := 
   insert_from Word.zero code (initial_pmem_from max_mem_loc PartMaps.empty).
+*)
+
+Definition basemem code : word_map t (common.atom (word t) (word t)) := 
+  insert_from Word.zero code PartMaps.empty.
 
 Let regs := reg_map t (common.atom (pvalue t) (pvalue t)).
 
@@ -136,8 +142,8 @@ Definition initial_pregs :=
    Initial ppc is (0,Kernel)
    Initial pepc is unimportant *)
 
-Definition initial_tstate code := 
-  St t (mkPState t (initial_pmem code)
+Definition initial_tstate := 
+  St t (mkPState t PartMaps.empty 
                    initial_pregs
                    []
                    (Atom (C t 0) (C t TKernel))
@@ -157,10 +163,12 @@ Set Printing Depth 20.
 Definition arga : var t := RP t (r1).
 Definition argb : var t := RP t (r2). 
 
+Definition max_basemem := basemem max_code. 
+
 Lemma max_behavior: forall env  masks,
                     forall (T:forall w, env (RT t w) = TKernel),
-                    exists ts', Some ts' = teval t masks 8 (initial_tstate max_code) /\ 
-                    exists s', Some s' = concretize_tstate t env ts' /\
+                    exists ts', Some ts' = teval t max_basemem masks 8 initial_tstate /\ 
+                    exists s', Some s' = concretize_tstate t max_basemem env ts' /\
                     PartMaps.get (Concrete.regs s') (Word.repr 3) = 
                     Some (Atom (Word.repr (Z.max (Word.signed (env arga)) (Word.signed (env argb)))) TKernel). 
 
@@ -169,7 +177,6 @@ Proof.
   split.
   match goal with |- ?A = ?B => set z := B end. 
   vm_compute in z;  reflexivity.
-
   (* things become distessingly slow here...*)
   unfold concretize_tstate, concretize_pvalue.
   destruct (binop_denote LEQ (env argb) (env arga) == 0) eqn: D; rewrite D;   
@@ -257,8 +264,8 @@ Definition env (a b: word t) (v:var t) : word t :=
   end. 
 
 Lemma max_behavior': forall (a b:word t) masks,
-                    exists ts', Some ts' = teval t masks 8 (initial_tstate max_code) /\ 
-                    exists s', Some s' = concretize_tstate t (env a b) ts' /\
+                    exists ts', Some ts' = teval t max_basemem masks 8 initial_tstate /\ 
+                    exists s', Some s' = concretize_tstate t max_basemem (env a b) ts' /\
                     PartMaps.get (Concrete.regs s') (Word.repr 3) = 
                     Some (Atom (Word.repr (Z.max (Word.signed a) (Word.signed b))) TKernel). 
 
