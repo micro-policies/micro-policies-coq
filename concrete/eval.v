@@ -51,14 +51,15 @@ Let patom := atom pvalue pvalue.
 
 Let atom := atom (word mt) (word mt).
 
+Definition mkE (f:binop) (a b: pvalue) : pvalue :=
+match a,b with
+| C a',C b' => C (binop_denote f a' b')
+| _,_ => E f a b
+end.
+
 Fixpoint known  (pv:pvalue): option (word mt)  :=
 match pv with
 | C a => Some a
-| E f a b =>  (* not clear whether this makes any difference *)
-    match known a,known b with
-    | Some a', Some b' => Some (binop_denote f a' b')
-    | _,_ => None
-    end
 | _ => None  
 end.
 
@@ -206,7 +207,7 @@ Definition pstep (st : pstate) : option tstate :=
     do! v2 <- PartMaps.get reg r2;
     do! old <- PartMaps.get reg r3;
     let mvec := mvec (tag v1) (tag v2) (tag old) in
-    do! st' <- next_pstate_reg st mvec r3 (E f (val v1) (val v2));
+    do! st' <- next_pstate_reg st mvec r3 (mkE f (val v1) (val v2));
     Some (St st')
   | Load r1 r2 =>
     do! v1 <- PartMaps.get reg r1;
@@ -324,13 +325,6 @@ Lemma concretize_known: forall pv w,
   concretize_pvalue pv = w.
 Proof.
   induction pv; intros; inv H; auto.
-  destruct (known pv1) eqn:?.
-  destruct (known pv2) eqn:?.
-  inv H1. 
-  erewrite <- (IHpv1 w0); auto.
-  erewrite <- (IHpv2 w1); auto. 
-  inv H1. 
-  inv H1. 
 Qed.
 
 Definition concretize_atom (a:patom) : atom :=
@@ -605,6 +599,7 @@ Proof.
   rewrite Heqo3. rewrite Heqo4. rewrite Heqo5. simpl.
   symmetry in Heqo6.
   erewrite (sound_next_pstate_reg _ _ _ _ _ _ _ Heqo6); eauto.
+  unfold mkE.  destruct (common.val a0); destruct (common.val a1); eauto. 
 
   (* Load *)
   undo.

@@ -84,6 +84,18 @@ Definition extract_user_tag (rsrc rsucc rut : reg mt) : code :=
        [Binop SHRU rsrc ri2 rut])
       [].
 
+(* Continuation version. 
+   If tag in [rsrc] has the form [USER t], put [t] in [rut] and execute [yes];
+   otherwise execute [no].  Overwrites: ri2. *)
+Definition k_extract_user_tag (rsrc rut : reg mt) (yes no:code) : code :=
+  [Const (Word.repr 1) ri2] ++
+  [Binop AND rsrc ri2 ri2] ++
+  if_ ri2
+      ([Const (Word.repr 2) ri2] ++
+       [Binop SHRU rsrc ri2 rut] ++
+       yes)
+      no.
+
 (* The inverse operation. Take a tag [t] in first register and return
    the encoding of [USER t] in the second register. Warning:
    overwrites ri2. *)
@@ -103,6 +115,21 @@ Definition extract_entry_tag (rsrc rsucc rut : reg mt) : code :=
       ([Const (Word.repr 2) ri2] ++
        [Binop SHRU rsrc ri2 rut])
       [].
+
+(* Continuation version. 
+   If tag in [rsrc] has the form [ENTRY t], put [t] in [rut] and execute [yes];
+   otherwise execute [no]. Overwrites: ri1,ri2. *)
+Definition k_extract_entry_tag (rsrc rut : reg mt) (yes no:code) : code :=
+  [Const (Word.repr 3) ri2] ++
+  [Binop AND rsrc ri2 ri1] ++
+  [Const (Word.repr 2) ri2] ++
+  [Binop EQ ri1 ri2 ri1] ++
+  if_ ri1
+      ([Const (Word.repr 2) ri2] ++
+       [Binop SHRU rsrc ri2 rut] ++
+       yes)
+      no.
+
 
 Definition load_mvec : code :=
   fst (fold_left (fun acc r =>
@@ -126,8 +153,7 @@ Variable policy_handler : code.
    ri3. *)
 Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
   (* Check that [rop] contains a USER tag *)
-  let do_op rop := extract_user_tag rop rb rop ++
-                   if_ rb [] [Halt _] in
+  let do_op rop := k_extract_user_tag rop rop [] [Halt _] in
   if privileged_op op then [Halt _] else
   match length (Symbolic.inputs op) with
   | 0 => []
@@ -141,45 +167,42 @@ Definition analyze_operand_tags_for_opcode (op : opcode) : code :=
    Warning: overwrites ri4. *)
 Definition handler : code :=
   load_mvec ++
-  extract_user_tag rtpc rb rtpc ++
-  if_ rb
-      (* PC has USER tag *)
+  k_extract_user_tag rtpc rtpc 
+    ((* PC has USER tag *)
       (* Check whether we're at an entry point *)
-      (extract_entry_tag rti ri4 rti ++
-       if_ ri4
-           (* THEN: We are entering a system call routine.
+      k_extract_entry_tag rti rti 
+        ((* THEN: We are entering a system call routine.
                     Change opcode to SERVICE and invoke policy
                     fault handler. If call is allowed, put KERNEL
                     tags in rvector. NB: system calls are now
                     required to begin with a Nop to simplify the
                     specification of the fault handler. *)
-           ([Const (Word.repr (op_to_Z NOP)) ri4] ++
+            [Const (Word.repr (op_to_Z NOP)) ri4] ++
             [Binop EQ ri4 rop ri4] ++
             if_ ri4 [] [Halt _] ++
             [Const (Word.repr (op_to_Z SERVICE)) rop] ++
             policy_handler ++
             load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
-           (* ELSE: We are not in a system call. *)
-           (extract_user_tag rti rb rti ++
-            if_ rb
-                (* THEN: We are in user mode: extract operand tags
+           ((* ELSE: We are not in a system call. *)
+           k_extract_user_tag rti rti
+              ((* THEN: We are in user mode: extract operand tags
                    and run policy handler *)
-                (fold_right (fun op c =>
+                fold_right (fun op c =>
                                load_const (op_to_word op) ri4 ++
                                [Binop EQ rop ri4 rb] ++
                                if_ rb
                                   (analyze_operand_tags_for_opcode op)
                                   c)
-                            [] opcodes ++
+                            [Halt _] opcodes ++
                  policy_handler ++
                  (* Wrap RVec *)
                  wrap_user_tag rtrpc rtrpc ++
                  wrap_user_tag rtr rtr)
-                (* ELSE: The instruction is not tagged USER: halt the machine *)
-                [Halt _]))
-      (* PC is not tagged USER, halt execution *)
-      [Halt _] ++
+                ((* ELSE: The instruction is not tagged USER: halt the machine *)
+                [Halt _])))
+      ((* PC is not tagged USER, halt execution *)
+       [Halt _]) ++
   (* Store rvector registers in memory, install rule in cache, and
      return from trap *)
   load_const (Concrete.Mtrpc mt) raddr ++

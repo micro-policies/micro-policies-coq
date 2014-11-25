@@ -459,7 +459,7 @@ Lemma phandler_correct_allowed :
        handler (and with the current memory, and with the current PC
        in the return-addr register epc)) and let it run until it
        reaches a user-mode state st'... *)
-  exists ts', pkue 75 parametric_initial_state = Some ts' /\
+  exists ts', pkue 140 parametric_initial_state = Some ts' /\
    exists st', Some st' = concretize_tstate t env ts' /\
        cache_correct (Concrete.cache st') /\
       (* and the new cache now contains a rule mapping mvec to rvec... *)
@@ -479,8 +479,6 @@ Lemma phandler_correct_allowed :
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') tt.
 Proof.
   intros. 
-
-(* temporary: *)
 
   eexists.
   split.
@@ -517,7 +515,12 @@ Ltac renum :=
           with (@Word.repr 31 5) in *. 
   renum.
 simpl. 
-
+Set Printing Depth 100.
+idtac.
+Set Printing Depth 10.
+idtac.
+idtac.
+(* note: 140 is *almost* enough steps! try 150 next time *)
 
 (*   change st with (almost_id (@Phantom _ st)) in *. *)
   vm_compute in st. 
@@ -534,8 +537,8 @@ simpl.
   vm_compute in Ht3; inv Ht3; 
   unfold handler, rules.handler in H0; 
   unfold decode_ivec in H0; simpl in H0. 
-Set Printing Depth 1000.
-  idtac.
+  undo; simpl in *|-; undo.
+
 
 
 (*
@@ -560,14 +563,12 @@ Ltac undox H :=
            | None = Some  =>  discriminate
          end.
 *)
-  undo; simpl in *; undo.
 
 (* first case was: 
   inv Heqo4.
 *)
 
 Focus 1.   (* to speed printing *)
-  simpl in *; undo.
 
 Ltac renum :=
   change  {|
@@ -598,76 +599,25 @@ Ltac renum :=
 
   eexists. split.
   match goal with |- ?A = ?B => set z := A end. 
-Set Printing Depth 10. 
-  vm_compute in z; reflexivity; renum.  -- why does this die?  Printing Depth???
+  vm_compute in z; reflexivity; renum;
   unfold concretize_tstate;  (*  rewrite {1}/concretize_pvalue. *)
-  unfold concretize_pvalue. 
-  unfold binop_denote.
+  unfold concretize_pvalue; 
+  unfold binop_denote;
   renum.
 Set Printing Depth 1000.
   idtac.
-  simpl.
+  simpl. renum.
   unfold word_to_op in Heqo0. 
   assert (X:Word.and (env (MP t 1%w)) 1%w == 1%w).  admit.
   rewrite X. 
   simpl. 
-(*   unfold bool_to_word.  *)
   assert (X1: Word.and (env (MP t 2%w)) (Word.repr 3) == 1%w). admit.
   rewrite X1. 
   simpl. 
   unfold decode_trivial_tag in *; undo.
 
-(* hmmm.wrong *)
   admit.
 
-Focus 1. 
-
-  simpl in *; undo.
-  renum.
-
-  eexists. split.
-  match goal with |- ?A = ?B => set z := A end. 
-  vm_compute in z; reflexivity; renum. simpl in Heqo4.
-  unfold concretize_tstate;  (*  rewrite {1}/concretize_pvalue. *)
-  unfold concretize_pvalue; 
-  unfold binop_denote;
-  renum.
-
-Set Printing Depth 1000. 
-idtac.
- simpl. 
-
-assert (X: Word.and (env (MP t 1%w)) 1%w == 1%w) by admit.
-  rewrite X.
-  simpl. 
-assert (X1: Word.and (env (MP t 2%w)) (Word.repr 3) == 1%w) by admit.
-   rewrite X1. 
-   simpl. 
-
-  unfold decode_trivial_tag in Heqo6. 
-  undo. 
-Transparent word_map_class.
-   compute in Hti; inv Hti. 
-  rewrite X1. 
-  simpl. 
-  compute in Ht1; inv Ht1. 
-  compute in Hop; inv Hop. 
-
-  apply encodeK in Heqo1. 
-  simpl in Heqo1. 
-  unfold t. 
-  rewrite <- Heqo1. 
-  rewrite {1}/binop_denote. 
-Print t. 
-  unfold decode in Heqo1.
-About encodable_tag. 
-  simpl in Heqo1. 
-  vm_compute in Heqo1. 
-
-  change (env (MP t {| wo
-  idtac. 
-
-*)
  (* factoid we will want first is that ctpc = user. how do
      we establish that?  via uivec_of_ivec, I believe. *)
 Admitted.
