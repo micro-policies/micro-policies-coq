@@ -132,7 +132,7 @@ Proof.
     case DEC: (decode_trivial_tag ut) => [ut'|] //=.
     apply decode_trivial_tagK in DEC. subst ut.
     by move => H [<-].
-Qed.
+Defined.
 
 Definition DUMMY : word t := Word.repr 0.
 
@@ -307,7 +307,6 @@ Fixpoint pmem_from (i : Word.int 31) (n : nat) x
 Definition preg_at x (regs : reg_map t patom) (r: reg t) : reg_map t patom :=
   PartMaps.set regs r (V t (RP t r))@x.
 
-About insert_from.
 
 Definition basemem0 : word_map t atom := 
    let base_addr := Concrete.fault_handler_start _ in
@@ -317,7 +316,6 @@ Definition basemem0 : word_map t atom :=
 
 Definition basemem := Eval vm_compute in basemem0.
 
-Opaque basemem. 
 
 Definition parametric_initial_state: pstate concrete_int_32_t :=
   let gen_cache := pmem_from Word.zero 8 (C t Concrete.TKernel) in
@@ -400,11 +398,7 @@ Fixpoint pkuer (max_steps:nat) (k:pstate t -> option (tstate t)) (ps:(pstate t))
 Definition pkue (max_steps:nat) (ps:pstate t) : option (tstate t) :=
    pkuer max_steps (fun _ => Some (St _ marker)) ps.  
 
-Definition foo := concretize_pstate _ basemem (fun _ => Word.zero) parametric_initial_state.
-
-Print foo. Check foo.
-
-Set Printing Depth 10000.
+Definition foo := concretize_pstate _ (fun _ => Word.zero) parametric_initial_state.
 
 
 (* Compute (match (pkue 40  parametric_initial_state)
@@ -422,9 +416,31 @@ Inductive phantom (T : Type) (x : T) : Type := Phantom.
 Arguments Phantom {T x}.
 Definition almost_id {T : Type} {x : T} (p : phantom x) := x.
 
+Ltac undo :=
+  repeat match goal with
+           | STEP : (do! x <- ?t; _) = Some _ |- _ =>
+               destruct t eqn:?; simpl in STEP; try discriminate
+           | STEP : Some _ = (do! x <- ?t; _) |- _ =>
+               destruct t eqn:?; simpl in STEP; try discriminate
+           | STEP : (if ?t then _  else _) = Some _ |- _ =>
+                destruct t eqn:?; simpl in STEP; try discriminate
+           | STEP : Some _ = (if ?t then _ else _) |- _ =>
+                destruct t eqn:?; simpl in STEP; try discriminate
+           | STEP : match ?t with _ => _ end = Some _ |- _ => 
+                destruct t eqn:?; simpl in STEP; try discriminate
+           | STEP : Some _ = match ?t with _ => _ end |- _ => 
+                destruct t eqn:?; simpl in STEP; try discriminate
+           | H : Some _ = Some _ |- _ =>
+               inv H
+           | H : Some _ = None |- _ =>  discriminate
+           | H : None = Some _ |- _ =>  discriminate
+         end.
+
+
+
 Lemma phandler_correct_allowed :
   forall env cmvec crvec,
-    let st := concretize_pstate _ basemem env parametric_initial_state in
+    let st := concretize_pstate _ env parametric_initial_state in
     (* If kernel invariant holds... *)
     ki (Concrete.mem st) (Concrete.regs st) (Concrete.cache st) tt ->
     (* and calling the handler on the current m-vector succeeds and returns rvec... *)
@@ -443,8 +459,8 @@ Lemma phandler_correct_allowed :
        handler (and with the current memory, and with the current PC
        in the return-addr register epc)) and let it run until it
        reaches a user-mode state st'... *)
-  exists ts', pkue 40 parametric_initial_state = Some ts' /\
-   exists st', Some st' = concretize_tstate t basemem env ts' /\
+  exists ts', pkue 75 parametric_initial_state = Some ts' /\
+   exists st', Some st' = concretize_tstate t env ts' /\
        cache_correct (Concrete.cache st') /\
       (* and the new cache now contains a rule mapping mvec to rvec... *)
       Concrete.cache_lookup (Concrete.cache st') masks cmvec = Some crvec /\
@@ -463,32 +479,192 @@ Lemma phandler_correct_allowed :
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') tt.
 Proof.
   intros. 
+
+(* temporary: *)
+
+  eexists.
+  split.
+  match goal with |- ?A = ?B => set z := A end. 
+Set Printing Depth 10. 
+  vm_compute in z; reflexivity.
+  unfold concretize_tstate;  (*  rewrite {1}/concretize_pvalue. *)
+  unfold concretize_pvalue; 
+  unfold binop_denote.
+Ltac renum :=
+  change  {|
+                 Word.intval := 0;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 0 |}
+          with (@Word.zero 31) in *; 
+  change  {|
+                 Word.intval := 1;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 1 |}
+          with (@Word.one 31) in *; 
+  change  {|
+                 Word.intval := 2;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 2 |}
+          with (@Word.repr 31 2) in *; 
+  change  {|
+                 Word.intval := 3;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 3 |}
+          with (@Word.repr 31 3) in *; 
+  change  {|
+                 Word.intval := 4;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 4 |}
+          with (@Word.repr 31 4) in *; 
+  change  {|
+                 Word.intval := 5;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 5 |}
+          with (@Word.repr 31 5) in *. 
+  renum.
+simpl. 
+
+
 (*   change st with (almost_id (@Phantom _ st)) in *. *)
-(*  vm_compute in st. 
+  vm_compute in st. 
   subst st. 
-  Set Printing Width 20.
-  Set Printing All.
-  Set Silent.
   simpl in *. 
   unfold mvec_stored in H1. 
   destruct H1 as [Hop [Htpc [Hti [Ht1 [Ht2 Ht3]]]]].
-  Set Silent.
-  unfold Concrete.Mtpc, Concrete.cache_line_addr in Htpc.
-  change (0 + Word.repr 1)%w with ((Word.repr 1):w) in Htpc.
-  vm_compute in Htpc. 
-  destruct cmvec. vm_compute in Htpc. injection Htpc. clear Htpc; intro Htpc. 
-(*   clear H1 H4 H5 H6 H7. (* temporarily, for printing speed *)
-  clear H. (* ditto *)
-  idtac.  *)
-  unfold handler, rules.handler in H0. 
-  undo. unfold decode_ivec in Heqo. simpl in Heqo. 
-  (* undo is too slow so we're screwed here *)
+  destruct cmvec;
+  vm_compute in Hop; inv Hop; 
+  vm_compute in Htpc; inv Htpc; 
+  vm_compute in Hti; inv Hti;
+  vm_compute in Ht1; inv Ht1;
+  vm_compute in Ht2; inv Ht2; 
+  vm_compute in Ht3; inv Ht3; 
+  unfold handler, rules.handler in H0; 
+  unfold decode_ivec in H0; simpl in H0. 
+Set Printing Depth 1000.
+  idtac.
+
+
+(*
+Ltac undox H :=
+       match type of H with
+           | (do! x <- ?t; _) = Some _ =>
+              destruct t eqn:?; simpl in H; try discriminate 
+           | Some _ = (do! x <- ?t; _) =>
+               destruct t eqn:?; simpl in H; try discriminate
+           | (if ?t then _  else _) = Some _ =>
+                destruct t eqn:?; simpl in H; try discriminate
+           | Some _ = (if ?t then _ else _)  =>
+                destruct t eqn:?; simpl in H; try discriminate
+(*           | STEP : match ?t with _ => _ end = Some _ |- _ => 
+                destruct t eqn:?; simpl in STEP; try discriminate
+           | STEP : Some _ = match ?t with _ => _ end |- _ => 
+                destruct t eqn:?; simpl in STEP; try discriminate
 *)
+           | Some _ = Some _ =>
+               inv H
+           | Some _ = None  =>  discriminate
+           | None = Some  =>  discriminate
+         end.
+*)
+  undo; simpl in *; undo.
+
+(* first case was: 
+  inv Heqo4.
+*)
+
+Focus 1.   (* to speed printing *)
+  simpl in *; undo.
+
+Ltac renum :=
+  change  {|
+                 Word.intval := 0;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 0 |}
+          with (@Word.zero 31) in *; 
+  change  {|
+                 Word.intval := 1;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 1 |}
+          with (@Word.one 31) in *; 
+  change  {|
+                 Word.intval := 2;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 2 |}
+          with (@Word.repr 31 2) in *; 
+  change  {|
+                 Word.intval := 3;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 3 |}
+          with (@Word.repr 31 3) in *; 
+  change  {|
+                 Word.intval := 4;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 4 |}
+          with (@Word.repr 31 4) in *; 
+  change  {|
+                 Word.intval := 5;
+                 Word.intrange := Word.Z_mod_modulus_range' 31 5 |}
+          with (@Word.repr 31 5) in *. 
+  renum.
 
   eexists. split.
   match goal with |- ?A = ?B => set z := A end. 
-  vm_compute in z; reflexivity.
-  unfold concretize_tstate.  rewrite {1}/concretize_pvalue.
+Set Printing Depth 10. 
+  vm_compute in z; reflexivity; renum.  -- why does this die?  Printing Depth???
+  unfold concretize_tstate;  (*  rewrite {1}/concretize_pvalue. *)
+  unfold concretize_pvalue. 
+  unfold binop_denote.
+  renum.
+Set Printing Depth 1000.
+  idtac.
+  simpl.
+  unfold word_to_op in Heqo0. 
+  assert (X:Word.and (env (MP t 1%w)) 1%w == 1%w).  admit.
+  rewrite X. 
+  simpl. 
+(*   unfold bool_to_word.  *)
+  assert (X1: Word.and (env (MP t 2%w)) (Word.repr 3) == 1%w). admit.
+  rewrite X1. 
+  simpl. 
+  unfold decode_trivial_tag in *; undo.
+
+(* hmmm.wrong *)
+  admit.
+
+Focus 1. 
+
+  simpl in *; undo.
+  renum.
+
+  eexists. split.
+  match goal with |- ?A = ?B => set z := A end. 
+  vm_compute in z; reflexivity; renum. simpl in Heqo4.
+  unfold concretize_tstate;  (*  rewrite {1}/concretize_pvalue. *)
+  unfold concretize_pvalue; 
+  unfold binop_denote;
+  renum.
+
+Set Printing Depth 1000. 
+idtac.
+ simpl. 
+
+assert (X: Word.and (env (MP t 1%w)) 1%w == 1%w) by admit.
+  rewrite X.
+  simpl. 
+assert (X1: Word.and (env (MP t 2%w)) (Word.repr 3) == 1%w) by admit.
+   rewrite X1. 
+   simpl. 
+
+  unfold decode_trivial_tag in Heqo6. 
+  undo. 
+Transparent word_map_class.
+   compute in Hti; inv Hti. 
+  rewrite X1. 
+  simpl. 
+  compute in Ht1; inv Ht1. 
+  compute in Hop; inv Hop. 
+
+  apply encodeK in Heqo1. 
+  simpl in Heqo1. 
+  unfold t. 
+  rewrite <- Heqo1. 
+  rewrite {1}/binop_denote. 
+Print t. 
+  unfold decode in Heqo1.
+About encodable_tag. 
+  simpl in Heqo1. 
+  vm_compute in Heqo1. 
+
+  change (env (MP t {| wo
   idtac. 
 
 *)

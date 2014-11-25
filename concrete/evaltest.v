@@ -8,7 +8,7 @@ Import Concrete. Import DoNotation.
 
 Open Scope Z_scope.
 
-Require Import concrete.exec.
+(* Require Import concrete.execb. *)
 
 Require Import concrete.int_32.
 
@@ -168,7 +168,7 @@ Definition max_basemem := basemem max_code.
 Lemma max_behavior: forall env  masks,
                     forall (T:forall w, env (RT t w) = TKernel),
                     exists ts', Some ts' = teval t max_basemem masks 8 initial_tstate /\ 
-                    exists s', Some s' = concretize_tstate t max_basemem env ts' /\
+                    exists s', Some s' = concretize_tstate t env ts' /\
                     PartMaps.get (Concrete.regs s') (Word.repr 3) = 
                     Some (Atom (Word.repr (Z.max (Word.signed (env arga)) (Word.signed (env argb)))) TKernel). 
 
@@ -265,7 +265,7 @@ Definition env (a b: word t) (v:var t) : word t :=
 
 Lemma max_behavior': forall (a b:word t) masks,
                     exists ts', Some ts' = teval t max_basemem masks 8 initial_tstate /\ 
-                    exists s', Some s' = concretize_tstate t max_basemem (env a b) ts' /\
+                    exists s', Some s' = concretize_tstate t (env a b) ts' /\
                     PartMaps.get (Concrete.regs s') (Word.repr 3) = 
                     Some (Atom (Word.repr (Z.max (Word.signed a) (Word.signed b))) TKernel). 
 
