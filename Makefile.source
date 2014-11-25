@@ -19,6 +19,7 @@ common/printing.v
 
 concrete/concrete.v
 concrete/exec.v
+concrete/execb.v
 concrete/int_32.v
 concrete/eval.v
 concrete/evaltest.v
