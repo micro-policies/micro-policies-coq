@@ -436,7 +436,19 @@ Ltac undo :=
            | H : None = Some _ |- _ =>  discriminate
          end.
 
+Fixpoint tstate_size mt (ts : tstate mt) : Z :=
+  match ts with
+  | Halted => 1
+  | St _ => 1
+  | Ch _ ts1 ts2 => 1 + tstate_size ts1 + tstate_size ts2
+  end.
 
+Fixpoint tstate_halted mt (ts : tstate mt) : Z :=
+  match ts with
+  | Halted => 1
+  | St _ => 0
+  | Ch _ ts1 ts2 => tstate_halted ts1 + tstate_halted ts2
+  end.
 
 Lemma phandler_correct_allowed :
   forall env cmvec crvec,
