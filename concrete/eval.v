@@ -299,6 +299,7 @@ Fixpoint tdistr (f: pstate -> option tstate) (ts: tstate) : option tstate :=
   | St s => f s
   | Ch z s1 s2 =>
       match tdistr f s1,tdistr f s2 with
+      | Some Halted, Some Halted => Some Halted
       | Some l,Some r => Some (Ch z l r)
       | _,_ => None
       end
@@ -795,8 +796,13 @@ Proof.
   simpl in *. inv H0. eauto. 
   inv H0.
   destruct (concretize_pvalue mt env p == Word.zero) eqn:?;
-    inv H; destruct (tdistr mt pf ts0_1) eqn:?; destruct (tdistr mt pf ts0_2) eqn:?; 
-    inv H2; simpl in *; rewrite Heqb in H1; eauto.
+  inv H; 
+  destruct (tdistr mt pf ts0_1) eqn:?; destruct (tdistr mt pf ts0_2) eqn:?;
+  try            
+   (destruct t; destruct t0; inv H2; 
+    inv H1; rewrite Heqb in H0; inv H0; eauto);
+  try (destruct t; inv H2);
+  inv H2.
 Qed.
 
 Lemma sound_tdistr_none: forall env f t ts, 
@@ -807,12 +813,25 @@ Proof.
   induction t; intros. 
   inv H0. auto. 
   inv H. 
-  simpl in H.  simpl in H0. 
-  destruct (concretize_pvalue mt env p == Word.zero) eqn:?; 
-    destruct (tdistr mt f t1) eqn:?; destruct (tdistr mt f t2) eqn:?;
-    inv H0; simpl; rewrite Heqb; eauto.
-Qed.
+  simpl in H. 
+  destruct (concretize_pvalue mt env p == Word.zero) eqn:?;
+  inv H0;
+  destruct (tdistr mt f t1) eqn:?; destruct (tdistr mt f t2) eqn:?.
 
+  destruct t; destruct t0; inv H2;
+    try (simpl; rewrite Heqb; erewrite <- IHt1; eauto; auto);
+  eauto.
+  destruct t; inv H2. 
+  inv H2. 
+  inv H2. 
+
+  destruct t; destruct t0; inv H2;
+    try (simpl; rewrite Heqb; erewrite <- IHt2; eauto; auto);
+  eauto.
+  destruct t; inv H2. 
+  inv H2. 
+  inv H2. 
+Qed.
 
 (*  An older version of tdistr:
 
@@ -902,8 +921,8 @@ Hypothesis sound_next_rvec : forall env cache (mvec: MVec (pvalue mt)) (rvec: RV
 
 (* Parametric equivalents of the kue functions. *)
 Fixpoint pkuer (max_steps:nat) (k:pstate mt -> option (tstate mt)) (ps:(pstate mt)) : option (tstate mt) :=
-  do! t <- known _ (common.tag (ppc mt ps));
-  if is_kernel_tag t then
+  do! t <- known _ (common.tag (ppc mt ps)); 
+ if is_kernel_tag t then
     match max_steps with
     | O => None
     | S max_steps' =>
