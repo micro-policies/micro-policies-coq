@@ -352,6 +352,7 @@ Set Printing Depth 20.
 
 (* teval is much faster than pkue *)
 
+(*
 Fixpoint extract_pcs (ts: tstate t) : list patom :=
 match ts with
 | Halted => []
@@ -359,11 +360,30 @@ match ts with
 | Ch _ s1 s2 => extract_pcs s1 ++ extract_pcs s2
 end. 
 
-(* Compute (match (teval t masks 40 (St _ parametric_initial_state))
+Compute (match (teval t masks 40 (St _ parametric_initial_state))
          with Some ts => extract_pcs ts | None => [] end).  *)
   
 
+(*
 (* REDEFINE some things from concrete/eval.v *)
+
+(* Here's a version that is deliberately more eager, for timing exploration purposes.*)
+
+Fixpoint tdistr (f: pstate t -> option (tstate t)) (ts: (tstate t)) : option (tstate t) :=
+  match ts with
+  | Halted => Some (Halted _)
+  | St s => f s
+  | Ch z s1 s2 =>
+      let a1 := tdistr f s1 in
+      let a2 := tdistr f s2 in
+      match a1,a2 with
+      | Some Halted, Some Halted => Some (Halted _)
+      | Some l,Some r => Some (Ch _ z l r)
+      | _,_ => None
+      end
+   end.
+
+
 
 (* This version is unsound, but it lets us investigate behavior with much
 smaller step counts.  *)
@@ -373,12 +393,14 @@ Fixpoint tdistr (f: pstate t -> option (tstate t)) (ts: (tstate t)) : option (ts
   | St s => f s
   | Ch z s1 s2 =>
       match tdistr f s1,tdistr f s2 with
+      | Some Halted,Some Halted => Some(Halted _) 
       | Some l,Some r => Some (Ch _ z l r)
       | Some l,None  => Some l
       | None,Some r => Some r
       | None, None => None
       end
    end.
+
 
 (* Hack to distinguish initial not-in-kernel failures from running out of steps. *)
 Definition marker: pstate t := 
@@ -400,6 +422,7 @@ Definition pkue (max_steps:nat) (ps:pstate t) : option (tstate t) :=
 
 Definition foo := concretize_pstate _ (fun _ => Word.zero) parametric_initial_state.
 
+*)
 
 (* Compute (match (pkue 40  parametric_initial_state)
          with Some ts => extract_pcs ts | None => [] end).    *)
@@ -450,6 +473,29 @@ Fixpoint tstate_halted mt (ts : tstate mt) : Z :=
   | Ch _ ts1 ts2 => tstate_halted ts1 + tstate_halted ts2
   end.
 
+Fixpoint tstate_st mt (ts : tstate mt) : Z :=
+  match ts with
+  | Halted => 0
+  | St _ => 1
+  | Ch _ ts1 ts2 => tstate_st ts1 + tstate_st ts2
+  end.
+
+
+(* 
+
+Eval vm_compute in oapp (@tstate_size concrete_int_32_t) 9999
+                        (pkue 408 parametric_initial_state).
+
+Eval vm_compute in oapp (@tstate_st concrete_int_32_t) 9999
+                        (pkue 408 parametric_initial_state).
+
+Eval vm_compute in oapp (@tstate_halted concrete_int_32_t) 9999
+                        (pkue 408 parametric_initial_state).
+*)
+
+(* Factoid: pkue needs 408 steps to halt or resolve back into user steps on all paths. 
+The above computations take far too much time/memory to complete on my machine. *)
+
 Lemma phandler_correct_allowed :
   forall env cmvec crvec,
     let st := concretize_pstate _ env parametric_initial_state in
@@ -471,7 +517,7 @@ Lemma phandler_correct_allowed :
        handler (and with the current memory, and with the current PC
        in the return-addr register epc)) and let it run until it
        reaches a user-mode state st'... *)
-  exists ts', pkue 140 parametric_initial_state = Some ts' /\
+  exists ts', pkue t basemem 408 parametric_initial_state = Some ts' /\
    exists st', Some st' = concretize_tstate t env ts' /\
        cache_correct (Concrete.cache st') /\
       (* and the new cache now contains a rule mapping mvec to rvec... *)
@@ -527,12 +573,7 @@ Ltac renum :=
           with (@Word.repr 31 5) in *. 
   renum.
 simpl. 
-Set Printing Depth 100.
-idtac.
-Set Printing Depth 10.
-idtac.
-idtac.
-(* note: 140 is *almost* enough steps! try 150 next time *)
+
 
 (*   change st with (almost_id (@Phantom _ st)) in *. *)
   vm_compute in st. 

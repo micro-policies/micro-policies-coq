@@ -297,8 +297,12 @@ Fixpoint tdistr (f: pstate -> option tstate) (ts: tstate) : option tstate :=
   match ts with
   | Halted => Some Halted
   | St s => f s
-  | Ch z s1 s2 =>
-      match tdistr f s1,tdistr f s2 with
+  | Ch z s1 s2 =>  
+      (* force both sub-trees to avoid short-circuiting that can
+         induce surprising (good) performance effects *)
+      let ts1 := tdistr f s1 in
+      let ts2 := tdistr f s2 in
+      match ts1, ts2 with
       | Some Halted, Some Halted => Some Halted
       | Some l,Some r => Some (Ch z l r)
       | _,_ => None
