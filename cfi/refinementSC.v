@@ -1,7 +1,5 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import Coq.Lists.List.
-Require Import lib.Integers.
 Require Import lib.utils.
 Require Import common.common.
 Require Import symbolic.symbolic.

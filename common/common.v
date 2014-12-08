@@ -1,9 +1,8 @@
-Require Import Arith ZArith Bool.
-Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
-Require Import word partmap.
-Require Import lib.utils.
+Require Import div.
+Require Import word partmap ord.
 
+Require Import lib.utils.
 
 Set Implicit Arguments.
 
@@ -132,22 +131,22 @@ Proof.
 Qed.
 
 Record machine_types := {
-  word_size_minus_one : nat;
-  word_size_lb : (6 <= word_size_minus_one)%coq_nat;
-  reg_field_size_minus_one : nat;
-  imm_size_minus_one : nat
+  word_size : nat;
+  word_size_lb : 7 <= word_size;
+  reg_field_size : nat;
+  imm_size : nat
 }.
 
-Definition word (mt : machine_types) : Type :=
-  Word.int (word_size_minus_one mt).
-Arguments word mt : simpl never.
+Definition mword (mt : machine_types) : Type :=
+  word (word_size mt).
+Arguments mword mt : simpl never.
 
 Definition reg (mt : machine_types) : Type :=
-  Word.int (reg_field_size_minus_one mt).
+  word (reg_field_size mt).
 Arguments reg mt : simpl never.
 
 Definition imm (mt : machine_types) : Type :=
-  Word.int (imm_size_minus_one mt).
+  word (imm_size mt).
 Arguments imm mt : simpl never.
 
 Section instr.
@@ -226,22 +225,11 @@ Definition opcode_of (i : instr) : opcode :=
 End instr.
 
 Class machine_ops (t : machine_types) := {
-  encode_instr : instr t -> word t;
-  decode_instr : word t -> option (instr t);
+  encode_instr : instr t -> mword t;
+  decode_instr : mword t -> option (instr t);
 
   ra : reg t
 }.
-
-Notation "+%w" := Word.add.
-Notation "-%w" := Word.neg.
-Notation "x + y" := (Word.add x y) : word_scope.
-Notation "- x" := (Word.neg x) : word_scope.
-Notation "x - y" := (Word.sub x y) : word_scope.
-Notation "0" := (Word.zero) : word_scope.
-Notation "1" := (Word.one) : word_scope.
-Notation "2" := (Word.repr 2) : word_scope.
-
-Delimit Scope word_scope with w.
 
 Class machine_ops_spec t (ops : machine_ops t) := {
 
@@ -249,52 +237,15 @@ Class machine_ops_spec t (ops : machine_ops t) := {
 
 }.
 
-Definition min_word t : word t := Word.zero.
-
-Definition max_word t : word t := Word.repr (Word.max_unsigned (word_size_minus_one t)).
-
-Lemma unsigned_min_word t : Word.unsigned (min_word t) = 0%Z.
-Proof. reflexivity. Qed.
-
-Lemma unsigned_max_word t :
-  Word.unsigned (max_word t) = Word.max_unsigned (word_size_minus_one t).
+Lemma max_word_bound t : (31 < val (monew : mword t)).
 Proof.
-  rewrite /max_word Word.unsigned_repr /Word.max_unsigned; first by [].
-  split; try reflexivity.
-  have ? := (Word.modulus_pos (word_size_minus_one t)). omega.
-Qed.
-
-Lemma min_word_bound t : (Word.unsigned (min_word t) <= 0)%Z.
-Proof.
-rewrite unsigned_min_word -(Word.signed_zero (word_size_minus_one t)).
-omega.
-Qed.
-
-Lemma max_word_bound t : (31 < Word.unsigned (max_word t))%Z.
-Proof.
-rewrite unsigned_max_word /Word.max_unsigned Word.modulus_power
-        /Word.zwordsize /Word.wordsize.
-zify. clear H.
-case: t => [s Hs ? ?]. simpl.
-have ->: (31 = two_p 5 - 1)%Z by [].
-suffices: (two_p 5 < two_p (Z.succ (Z.of_nat s)))%Z by (move => ?; omega).
-apply Coqlib.two_p_monotone_strict.
-omega.
-Qed.
-
-Lemma lew_min t (w : word t) : min_word t <= w.
-Proof.
-rewrite /le IntOrdered.compare_unsigned unsigned_min_word.
-move: (Word.unsigned_range w) => H1 /Z.compare_gt_iff => H2.
-omega.
-Qed.
-
-Lemma lew_max t (w : word t) : w <= max_word t.
-Proof.
-rewrite /le IntOrdered.compare_unsigned unsigned_max_word.
-move: (Word.unsigned_range w) => H1 /Z.compare_gt_iff => H2.
-rewrite /Word.max_unsigned in H2.
-omega.
+have lb : 1 < 2 ^ word_size t.
+  rewrite -{1}(expn0 2) ltn_exp2l //.
+  by have := ltn_trans _ (word_size_lb t); apply.
+rewrite -[31]/(2 ^ 5 - 1) /= ?modn_small //;
+  try by rewrite subn1 prednK ?expn_gt0 // leqnn.
+apply: ltn_sub2r=> //; rewrite ltn_exp2l //.
+by have := ltn_trans _ (word_size_lb t); apply.
 Qed.
 
 Section Ops.
@@ -305,176 +256,24 @@ Context {t : machine_types}
         {op : machine_ops t}
         {ops : machine_ops_spec op}.
 
-Definition bool_to_word (b : bool) : word t := if b then 1 else 0.
+Definition bool_to_word (b : bool) : mword t := as_word b.
 
-Definition binop_denote (f : binop) : word t -> word t -> word t :=
+Definition binop_denote (f : binop) : mword t -> mword t -> mword t :=
   match f with
-  | ADD => Word.add
-  | SUB => Word.sub
-  | MUL => Word.mul
+  | ADD => addw
+  | SUB => subw
+  | MUL => mulw
   | EQ  => fun w1 w2 => bool_to_word (w1 == w2)
-  | LEQ => fun w1 w2 => bool_to_word (Word.lt w1 w2 || (w1 == w2))
-  | LEQU => fun w1 w2 => bool_to_word (leb w1 w2)
-  | AND => Word.and
-  | OR => Word.or
-  | XOR => Word.xor
-  | SHRU => Word.shru
-  | SHL => Word.shl
+  | LEQ => fun w1 w2 => bool_to_word (w1 <= w2)%ord (* FIXME: we don't have signed comparison right now *)
+  | LEQU => fun w1 w2 => bool_to_word (w1 <= w2)%ord
+  | AND => andw
+  | OR => orw
+  | XOR => xorw
+  | SHRU => addw (* FIXME: we don't have shifts right now *)
+  | SHL => addw
   end.
 
-Lemma addwP : forall x y, (Word.repr x + Word.repr y)%w = (Word.repr (x + y)%Z) :> word t.
-Proof. exact: Word.add_repr. Qed.
-
-Lemma oppwP : forall x, (- Word.repr x)%w = Word.repr (- x)%Z :> word t.
-Proof. exact: Word.neg_repr. Qed.
-
-Lemma addwA n : associative (@Word.add n).
-Proof.
-intros x y z.
-by rewrite Word.add_assoc.
-Qed.
-
-Lemma addwC n : commutative (@Word.add n).
-Proof.
-intros x y.
-apply Word.add_commut.
-Qed.
-
-Lemma add0w n : left_id 0 (@Word.add n).
-Proof.
-exact: Word.add_zero_l.
-Qed.
-
-Lemma addNw n : left_inverse 0 (@Word.neg n) +%w.
-Proof.
-intros x.
-by rewrite addwC Word.add_neg_zero.
-Qed.
-
-Lemma addw0 n : right_id 0 (@Word.add n).
-Proof.
-move => x. by rewrite Word.add_zero.
-Qed.
-
-Lemma addwN n : right_inverse 0 (@Word.neg n) +%w.
-Proof. move => x. now rewrite Word.add_neg_zero. Qed.
-Definition subww := addwN.
-
-Lemma addKw n : left_loop (@Word.neg n) +%w.
-Proof.
-now intros x y; rewrite addwA addNw add0w.
-Qed.
-
-Lemma addNKw n : rev_left_loop (@Word.neg n) +%w.
-Proof.
-now intros x y; rewrite addwA addwN add0w.
-Qed.
-
-Lemma addwK n : right_loop (@Word.neg n) +%w.
-Proof.
-now intros x y; rewrite <-addwA, addwN, addw0.
-Qed.
-
-Lemma addwNK n : rev_right_loop (@Word.neg n) +%w.
-Proof.
-now intros x y; rewrite <-addwA, addNw, addw0.
-Qed.
-
-Definition subwK := addwNK.
-
-Lemma addwI n : right_injective (@Word.add n).
-Proof. intros x; exact (can_inj (addKw x)). Qed.
-
-Lemma addIw n : left_injective (@Word.add n).
-Proof. intros y; exact (can_inj (addwK y)). Qed.
-
-(* If more lemmas are needed, please copy the statements and proofs
-from ssralg.v in ssreflect to keep the nice structure. *)
-
 End Ops.
-
-Section WordCompare.
-
-Context {t : machine_types}
-        {op : machine_ops t}
-        {ops : machine_ops_spec op}.
-
-Local Open Scope Z.
-Local Open Scope word_scope.
-Local Open Scope ordered.
-
-Local Ltac reflect thm :=
-  intros until 0;
-  repeat first [ rewrite ltb_lt | rewrite gtb_gt
-               | rewrite leb_le | rewrite geb_ge ];
-  apply thm.
-
-Local Ltac comparison :=
-  intros until 0; unfold lt,gt,le,ge,Zlt,Zgt,Zle,Zge;
-  rewrite IntOrdered.compare_unsigned; split; auto.
-
-Ltac comparison_b :=
-  intros; unfold ltb,gtb,leb,geb,Z.ltb,Z.gtb,Z.leb,Z.geb;
-  rewrite IntOrdered.compare_unsigned; destruct (Word.unsigned _ ?= Word.unsigned _); reflexivity.
-
-Theorem word_unsigned_lt : forall n (x y : Word.int n), x <  y <-> (Word.unsigned x <  Word.unsigned y)%Z.
-Proof. comparison. Qed.
-
-Theorem word_unsigned_gt : forall n (x y : Word.int n), x >  y <-> (Word.unsigned x >  Word.unsigned y)%Z.
-Proof. comparison. Qed.
-
-Theorem word_unsigned_le : forall n (x y : Word.int n), x <= y <-> (Word.unsigned x <= Word.unsigned y)%Z.
-Proof. comparison. Qed.
-
-Theorem word_unsigned_ge : forall n (x y : Word.int n), x >= y <-> (Word.unsigned x >= Word.unsigned y)%Z.
-Proof. comparison. Qed.
-
-Theorem word_unsigned_ltb : forall n (x y : Word.int n), x <?  y = (Word.unsigned x <?  Word.unsigned y)%Z.
-Proof. comparison_b. Qed.
-
-Theorem word_unsigned_gtb : forall n (x y : Word.int n), x >?  y = (Word.unsigned x >?  Word.unsigned y)%Z.
-Proof. comparison_b. Qed.
-
-Theorem word_unsigned_leb : forall n (x y : Word.int n), x <=? y = (Word.unsigned x <=? Word.unsigned y)%Z.
-Proof. comparison_b. Qed.
-
-Theorem word_unsigned_geb : forall n (x y : Word.int n), x >=? y = (Word.unsigned x >=? Word.unsigned y)%Z.
-Proof. comparison_b. Qed.
-
-Lemma addwE (x y : word t) :
-  (Word.unsigned (min_word t) <= Word.unsigned x + Word.unsigned y <= Word.unsigned (max_word t))%Z ->
-  Word.unsigned (x + y) = (Word.unsigned x + Word.unsigned y)%Z.
-Proof.
-rewrite unsigned_min_word unsigned_max_word.
-move => ?.
-rewrite -{1}[x]Word.repr_unsigned -{1}[y]Word.repr_unsigned.
-rewrite addwP.
-by rewrite Word.unsigned_repr.
-Qed.
-
-Lemma oppwE (x : word t) :
-  (Word.unsigned (min_word t) <= - Word.unsigned x <= Word.unsigned (max_word t))%Z ->
-  Word.unsigned (- x) = (- Word.unsigned x)%Z.
-Proof.
-rewrite unsigned_min_word unsigned_max_word.
-move=> ?.
-rewrite -{1}[x]Word.repr_unsigned.
-rewrite oppwP.
-by rewrite Word.unsigned_repr.
-Qed.
-
-Lemma subwE (x y : word t) :
-(Word.unsigned (min_word t) <= Word.unsigned x - Word.unsigned y <= Word.unsigned (max_word t))%Z ->
-  Word.unsigned (x - y) = (Word.unsigned x - Word.unsigned y)%Z.
-Proof.
-rewrite unsigned_min_word unsigned_max_word.
-move=> ?.
-rewrite -{1}[x]Word.repr_unsigned -{1}[y]Word.repr_unsigned Word.sub_add_opp.
-rewrite oppwP addwP.
-by rewrite Word.unsigned_repr.
-Qed.
-
-End WordCompare.
 
 Section Coding.
 
@@ -482,11 +281,9 @@ Context {t : machine_types}
         {op : machine_ops t}
         {ops : machine_ops_spec op}.
 
-Local Open Scope Z.
-
 (* this is similar to (but simpler than) decode *)
-Definition Z_to_op (z : Z) : option opcode :=
-  match z with
+Definition op_of_nat (n : nat) : option opcode :=
+  match n with
   |  1 => Some NOP
   |  2 => Some CONST
   |  3 => Some MOV
@@ -514,7 +311,7 @@ Definition Z_to_op (z : Z) : option opcode :=
   | _  => None
   end.
 
-Definition op_to_Z (o : opcode) : Z :=
+Definition nat_of_op (o : opcode) : nat :=
   match o with
   | NOP        =>  1
   | CONST      =>  2
@@ -544,50 +341,38 @@ Definition op_to_Z (o : opcode) : Z :=
 
 Definition max_opcode := 24.
 
-Lemma max_opcodeP o : 0 <= op_to_Z o <= max_opcode.
-Proof. by move: o; do! case; split; apply/Z.leb_le. Qed.
+Lemma max_opcodeP o : nat_of_op o <= max_opcode.
+Proof. by move: o; do! case. Qed.
 
-Lemma op_to_ZK : pcancel op_to_Z Z_to_op.
+Lemma nat_of_opK : pcancel nat_of_op op_of_nat.
 Proof. by do! case. Qed.
 
-Lemma Z_to_opK : ocancel Z_to_op op_to_Z.
-Proof.
-  move => x. rewrite /Z_to_op.
-  repeat match goal with
-  | |- context[match ?x with _ => _ end] =>
-    destruct x; simpl; try reflexivity
-  end.
-Qed.
+Lemma op_of_natK : ocancel op_of_nat nat_of_op.
+Proof. by do !(case=> //). Qed.
 
-Definition vop_to_Z (vo : vopcode) : Z :=
+Definition nat_of_vop (vo : vopcode) : nat :=
   match vo with
-  | OP op => op_to_Z op
+  | OP op => nat_of_op op
   | SERVICE => max_opcode + 1
   end.
 
-Definition word_to_op (w : word t) : option opcode :=
-  Z_to_op (Word.unsigned w).
+Definition op_of_mword (w : mword t) : option opcode :=
+  op_of_nat (val w).
 
-Definition op_to_word (o : opcode) : word t :=
-  Word.repr (op_to_Z o).
+Definition mword_of_op (o : opcode) : mword t :=
+  as_word (nat_of_op o).
 
-Lemma op_to_wordK : pcancel op_to_word word_to_op.
+Lemma mword_of_opK : pcancel mword_of_op op_of_mword.
 Proof.
-  unfold pcancel, word_to_op, op_to_word; intros o.
-  rewrite Word.unsigned_repr ?op_to_ZK //=.
-  move: t (max_opcodeP o) => [s Hs ? ?] /= H.
-  rewrite /max_opcode in H.
-  have: Word.max_unsigned 5 <= Word.max_unsigned s.
-  { rewrite /Word.max_unsigned !Word.modulus_power.
-    suffices: two_p (Word.zwordsize 5) <= two_p (Word.zwordsize s) by move => *; omega.
-    apply Coqlib.two_p_monotone.
-    rewrite /Word.zwordsize /Word.wordsize. zify. omega. }
-  have ->: Word.max_unsigned 5 = 63 by [].
-  move => ?. omega.
+have lb : 2 ^ 7 <= 2 ^ word_size t.
+  by rewrite leq_exp2l // (word_size_lb t).
+do !case=> //=;
+by rewrite /mword_of_op /op_of_mword as_wordK ?nat_of_opK //;
+apply: leq_ltn_trans lb.
 Qed.
 
-Lemma op_to_word_inj : injective op_to_word.
-Proof. now apply (pcan_inj op_to_wordK). Qed.
+Lemma mword_of_op_inj : injective mword_of_op.
+Proof. by apply (pcan_inj mword_of_opK). Qed.
 
 End Coding.
 
@@ -641,10 +426,10 @@ Context {t : machine_types}
    code combinators can build these certificates pretty easily.) *)
 
 Definition relocatable_segment :=
-  fun Args => fun Cell => (nat * (word t -> Args -> list Cell))%type.
+  fun Args => fun Cell => (nat * (mword t -> Args -> list Cell))%type.
 
 Definition empty_relocatable_segment (Args Cell : Type) : relocatable_segment Args Cell :=
-  (0, fun (base : word t) (rest : Args) => [::]).
+  (0, fun (base : mword t) (rest : Args) => [::]).
 
 (*
 Definition concat_relocatable_segments
@@ -671,9 +456,9 @@ Definition concat_and_measure_relocatable_segments
        let: (acc,addrs) := p in
        let (l1,gen1) := acc in
        let (l2,gen2) := seg in
-       let gen := fun (base : word t) (rest : Args) =>
+       let gen := fun (base : mword t) (rest : Args) =>
                        gen1 base rest
-                    ++ gen2 (Word.add base (Word.reprn l1)) rest in
+                    ++ gen2 (addw base (as_word l1)) rest in
        let newseg := (l1+l2, gen) in
        (newseg, addrs ++ [:: l1]))
     (empty_relocatable_segment _ _, [::])
@@ -691,7 +476,7 @@ Definition map_relocatable_segment
              (seg : relocatable_segment Args Cell)
            : relocatable_segment Args Cell' :=
   let (l,gen) := seg in
-  let gen' := fun (base : word t) (rest : Args) => map f (gen base rest) in
+  let gen' := fun (base : mword t) (rest : Args) => map f (gen base rest) in
   (l, gen').
 
 Definition relocate_ignore_args
@@ -699,7 +484,7 @@ Definition relocate_ignore_args
              (seg : relocatable_segment unit Cell)
            : relocatable_segment Args Cell :=
   let (l,gen) := seg in
-  let gen' := fun (base : word t) (rest : Args) => gen base tt in
+  let gen' := fun (base : mword t) (rest : Args) => gen base tt in
   (l, gen').
 
 End Relocation.
@@ -710,197 +495,3 @@ Ltac current_instr_opcode :=
     let op := (eval compute in (opcode_of instr)) in
     op
   end.
-
-Module ZMap := FiniteMap(ZIndexed).
-
-Instance int_partial_map n : PartMaps.partial_map ZMap.t (Word.int n) := {
-  get V m k := ZMap.get (Word.unsigned k) m;
-  set V m k v := ZMap.set (Word.unsigned k) v m;
-  map_filter V1 V2 f m := ZMap.map_filter f m;
-  remove V m k := ZMap.remove (Word.unsigned k) m;
-  combine V1 V2 V3 f m1 m2 := ZMap.combine f m1 m2;
-  empty V := @ZMap.empty V;
-  is_empty V m := m == @ZMap.empty V
-}.
-
-Instance int_partial_map_axioms n : PartMaps.axioms (int_partial_map n).
-Proof.
-  constructor.
-  + (* get_set_eq *)
-    intros V mem i x. by apply ZMap.gss.
-  + (* get_set_neq *)
-    intros V mem i i' x H. apply ZMap.gso.
-    rewrite <- (Word.repr_unsigned _ i'),
-            <- (Word.repr_unsigned _ i) in H.
-    congruence.
-  + (* map_filter_correctness *)
-    intros V1 V2 f m k. by apply ZMap.gmap_filter.
-  + (* map_filter_set *)
-    intros V1 V2 f m k v1. by apply ZMap.smap_filter.
-  + (* get_remove_eq *)
-    intros V m k. by apply ZMap.grs.
-  + (* get_remove_neq *)
-    intros V m k k' H. apply ZMap.gro.
-    contradict H.
-    by apply Word.unsigned_inj.
-  + (* get_combine *)
-    intros. by apply ZMap.gcombine.
-  + (* get_empty *)
-    intros V k. by apply ZMap.gempty.
-  + (* is_emptyP *)
-    intros. exact: eqP.
-Qed.
-
-(* XXX: AAA: Weird. for some reason, declaring a global partial map
-instance for words causes it to be unfolded when applying simpl, even
-when declaring it as "simpl never", which is probably a bug.
-
-We did not encounter the same problem before (I think) because it
-occurred at places where the map type class appeared as a parameter,
-and not as a concretely defined thing. For now, we just leave this as
-opaque. *)
-
-Global Opaque int_partial_map.
-
-Inductive word_map (mt : machine_types) T :=
-  WordMap of ZMap.t T.
-
-Let wm mt T (m : word_map mt T) := let (m) := m in m.
-
-Definition word_map_eqb mt (T : eqType) (m1 m2 : word_map mt T) := wm m1 == wm m2.
-
-Lemma word_map_eqbP mt (T : eqType) : Equality.axiom (@word_map_eqb mt T).
-Proof.
-  move => [m1] [m2] /=.
-  apply: (iffP eqP); simpl; try congruence.
-Qed.
-
-Definition word_map_eqMixin mt T := EqMixin (@word_map_eqbP mt T).
-Canonical word_map_eqType mt T := Eval hnf in EqType _ (@word_map_eqMixin mt T).
-
-Inductive reg_map (mt : machine_types) T :=
-  RegMap of ZMap.t T.
-
-Let rm mt T (m : reg_map mt T) := let (m) := m in m.
-
-Definition reg_map_eqb mt (T : eqType) (m1 m2 : reg_map mt T) := rm m1 == rm m2.
-
-Lemma reg_map_eqbP mt (T : eqType) : Equality.axiom (@reg_map_eqb mt T).
-Proof.
-  move => [m1] [m2] /=.
-  apply: (iffP eqP); simpl; try congruence.
-Qed.
-
-Definition reg_map_eqMixin mt T := EqMixin (@reg_map_eqbP mt T).
-Canonical reg_map_eqType mt T := Eval hnf in EqType _ (@reg_map_eqMixin mt T).
-
-Instance word_map_class (mt : machine_types) : PartMaps.partial_map (word_map mt) (word mt) := {
-  get V m k := ZMap.get (Word.unsigned k) (wm m);
-  set V m k v := WordMap mt (ZMap.set (Word.unsigned k) v (wm m));
-  map_filter V1 V2 f m := WordMap mt (ZMap.map_filter f (wm m));
-  remove V m k := WordMap mt (ZMap.remove (Word.unsigned k) (wm m));
-  combine V1 V2 V3 f m1 m2 := WordMap mt (ZMap.combine f (wm m1) (wm m2));
-  empty V := WordMap mt (@ZMap.empty V);
-  is_empty V m := wm m == ZMap.empty V
-}.
-
-Instance word_map_axioms (mt : machine_types) : PartMaps.axioms (word_map_class mt).
-Proof.
-  constructor.
-  + (* get_set_eq *)
-    intros V mem i x. by apply ZMap.gss.
-  + (* get_set_neq *)
-    intros V mem i i' x H. apply ZMap.gso.
-    rewrite <- (Word.repr_unsigned _ i'),
-            <- (Word.repr_unsigned _ i) in H.
-    congruence.
-  + (* map_filter_correctness *)
-    intros V1 V2 f m k. by apply ZMap.gmap_filter.
-  + (* map_filter_set *)
-    intros V1 V2 f m k v1. by rewrite /funcomp /= ZMap.smap_filter.
-  + (* get_remove_eq *)
-    intros V m k. by apply ZMap.grs.
-  + (* get_remove_neq *)
-    intros V m k k' H. apply ZMap.gro.
-    contradict H.
-    by apply Word.unsigned_inj.
-  + (* get_combine *)
-    intros. by apply ZMap.gcombine.
-  + (* get_empty *)
-    intros V k. by apply ZMap.gempty.
-  + (* is_emptyP *)
-    intros. exact: eqP.
-Qed.
-
-Instance reg_map_class (mt : machine_types) : PartMaps.partial_map (reg_map mt) (reg mt) := {
-  get V m k := ZMap.get (Word.unsigned k) (rm m);
-  set V m k v := RegMap mt (ZMap.set (Word.unsigned k) v (rm m));
-  map_filter V1 V2 f m := RegMap mt (ZMap.map_filter f (rm m));
-  remove V m k := RegMap mt (ZMap.remove (Word.unsigned k) (rm m));
-  combine V1 V2 V3 f m1 m2 := RegMap mt (ZMap.combine f (rm m1) (rm m2));
-  empty V := RegMap mt (@ZMap.empty V);
-  is_empty V m := rm m == ZMap.empty V
-}.
-
-Instance reg_map_axioms (mt : machine_types) : PartMaps.axioms (reg_map_class mt).
-Proof.
-  constructor.
-  + (* get_set_eq *)
-    intros V mem i x. by apply ZMap.gss.
-  + (* get_set_neq *)
-    intros V mem i i' x H. apply ZMap.gso.
-    rewrite <- (Word.repr_unsigned _ i'),
-            <- (Word.repr_unsigned _ i) in H.
-    congruence.
-  + (* map_filter_correctness *)
-    intros V1 V2 f m k. by apply ZMap.gmap_filter.
-  + (* map_filter_set *)
-    intros V1 V2 f m k v1. by rewrite /funcomp /= ZMap.smap_filter.
-  + (* get_remove_eq *)
-    intros V m k. by apply ZMap.grs.
-  + (* get_remove_neq *)
-    intros V m k k' H. apply ZMap.gro.
-    contradict H.
-    by apply Word.unsigned_inj.
-  + (* get_combine *)
-    intros. by apply ZMap.gcombine.
-  + (* get_empty *)
-    intros V k. by apply ZMap.gempty.
-  + (* is_emptyP *)
-    intros. exact: eqP.
-Qed.
-
-Global Opaque word_map_class.
-Global Opaque reg_map_class.
-
-Module NatPMap := FiniteMap NatIndexed.
-
-Instance nat_partial_map : PartMaps.partial_map NatPMap.t nat := {
-  get V m n := NatPMap.get n m;
-  set V m n v := NatPMap.set n v m;
-  map_filter V1 V2 f m := NatPMap.map_filter f m;
-  remove V m k := NatPMap.remove k m;
-  combine V1 V2 V3 f m1 m2 := NatPMap.combine f m1 m2;
-  empty V := NatPMap.empty _;
-  is_empty V m := m == @NatPMap.empty V
-}.
-
-Instance nat_partial_map_axioms : PartMaps.axioms nat_partial_map.
-Proof.
-  constructor.
-  - (* get_set_eq *) intros V m n v. by apply NatPMap.gss.
-  - (* get_set_neq *) intros V m n1 n2 v. by apply NatPMap.gso.
-  - (* map_filter_correctness *) intros V1 V2 f m k. by apply NatPMap.gmap_filter.
-  + (* map_filter_set *)
-    intros V1 V2 f m k v1. by rewrite /funcomp /= NatPMap.smap_filter.
-  - (* get_remove_eq *)
-    intros V m k. by apply NatPMap.grs.
-  - (* get_remove_neq *)
-    intros V m k k' H. by apply NatPMap.gro.
-  - (* get_combine *)
-    intros. by apply NatPMap.gcombine.
-  - (* get_empty *) intros V k. by apply NatPMap.gempty.
-  - (* is_emptyP *) intros. exact: eqP.
-Qed.
-
-Canonical word_finType t := Eval hnf in FinType (word t) (int_finMixin _).

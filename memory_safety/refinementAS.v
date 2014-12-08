@@ -1,13 +1,10 @@
 Require Import ZArith.
 Ltac type_of x := type of x.
 
-Require Import lib.Coqlib.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import lib.utils common.common symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
-
-Require Import ordered.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

@@ -1,7 +1,5 @@
 Require Import ssreflect ssrbool eqtype seq.
 
-Require Import lib.Integers.
-Require Import lib.Coqlib.
 Require Import lib.utils.
 Require Import common.common.
 Require Import concrete.concrete.

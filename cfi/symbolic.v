@@ -1,5 +1,3 @@
-Require Import Coq.Lists.List Coq.Arith.Arith Coq.ZArith.ZArith.
-
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import lib.utils.
@@ -9,7 +7,6 @@ Require Import symbolic.exec.
 Require Import cfi.property.
 Require Import cfi.rules.
 Require Import cfi.classes.
-Require Import lib.Coqlib.
 Set Implicit Arguments.
 
 Import ListNotations.

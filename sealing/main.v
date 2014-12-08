@@ -2,8 +2,6 @@
 TODO: write better testing support -- e.g. comparing final states
 *)
 
-Require Import Coq.Bool.Bool.
-Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq.
 Require Import lib.utils common.common.
 Require Import concrete.concrete.
@@ -514,8 +512,6 @@ Definition format_whole_cache (c : Concrete.rules (word t)) :=
 
 Definition format_cache (c : Concrete.rules (word t)) :=
   format_whole_cache (take 3 c).
-
-Require Import Coqlib.
 
 Fixpoint enum (M R S : Type) s (map : M) (get : M -> Word.int s -> R) (f : R -> S) (n : nat) (i : Word.int s) :=
   match n with

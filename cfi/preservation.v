@@ -1,6 +1,6 @@
 Require Import Coq.Lists.List Coq.Bool.Bool.
 Require Import common.common.
-Require Import lib.utils lib.Coqlib.
+Require Import lib.utils.
 Require Import cfi.property.
 Require Import ssreflect ssrbool.
 

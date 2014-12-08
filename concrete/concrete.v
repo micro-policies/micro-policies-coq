@@ -1,12 +1,13 @@
-Require Import List Arith ZArith Bool. Import ListNotations.
-
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import ord word partmap.
 
 Require Import lib.utils common.common.
 
 Import DoNotation.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module Concrete.
 
@@ -42,45 +43,32 @@ Section WithClasses.
 Context (t : machine_types).
 Context (ops : machine_ops t).
 
-Let MVec := MVec (word t).
-Let RVec := RVec (word t).
-Let rule := rule (word t).
-Let rules := rules (word t).
-Let atom := atom (word t) (word t).
+Let MVec := MVec (mword t).
+Let RVec := RVec (mword t).
+Let rule := rule (mword t).
+Let rules := rules (mword t).
+Let atom := atom (mword t) (mword t).
 
 (* If we were doing good modularization, these would be abstract! *)
-Definition cache_line_addr : word t := Word.zero.
+Definition cache_line_addr : mword t := 0%w.
 (* BCP: Call it fault_handler_addr? *)
-Definition fault_handler_start : word t := Word.repr 8.
-Definition TNone   : word t := Word.repr 42.  (* Recognizable enough? *)
-Definition TKernel : word t := Word.repr 0.
+Definition fault_handler_start : mword t := as_word 8.
+Definition TNone   : mword t := as_word 8.
+Definition TKernel : mword t := as_word 8.
 
 Context {spops : machine_ops_spec ops}.
 
-Lemma store_same_tag (cmem cmem' : word_map t _) addr addr' (w tg : word t) :
-  (exists w, PartMaps.get cmem addr = Some w@tg) ->
-  PartMaps.upd cmem addr' w@tg = Some cmem' ->
-  exists w, PartMaps.get cmem' addr = Some w@tg.
-Proof.
-  move=> [w' GET] UPD.
-  have [<-|/eqP neq_addr] := altP (addr' =P addr).
-  - erewrite PartMaps.get_upd_eq; eauto.
-    apply word_map_axioms.
-  - erewrite PartMaps.get_upd_neq; eauto.
-    apply word_map_axioms.
-Qed.
+Definition Mop : mword t := (cache_line_addr + as_word 0)%w.
+Definition Mtpc : mword t := (cache_line_addr + as_word 1)%w.
+Definition Mti : mword t := (cache_line_addr + as_word 2)%w.
+Definition Mt1 : mword t := (cache_line_addr + as_word 3)%w.
+Definition Mt2 : mword t := (cache_line_addr + as_word 4)%w.
+Definition Mt3 : mword t := (cache_line_addr + as_word 5)%w.
+Definition Mtrpc : mword t := (cache_line_addr + as_word 6)%w.
+Definition Mtr : mword t := (cache_line_addr + as_word 7)%w.
 
-Definition Mop : word t := Word.add cache_line_addr (Word.repr 0).
-Definition Mtpc : word t := Word.add cache_line_addr (Word.repr 1).
-Definition Mti : word t := Word.add cache_line_addr (Word.repr 2).
-Definition Mt1 : word t := Word.add cache_line_addr (Word.repr 3).
-Definition Mt2 : word t := Word.add cache_line_addr (Word.repr 4).
-Definition Mt3 : word t := Word.add cache_line_addr (Word.repr 5).
-Definition Mtrpc : word t := Word.add cache_line_addr (Word.repr 6).
-Definition Mtr : word t := Word.add cache_line_addr (Word.repr 7).
-
-Definition mvec_fields := [Mop; Mtpc; Mti; Mt1; Mt2; Mt3].
-Definition rvec_fields := [Mtrpc; Mtr].
+Definition mvec_fields := [:: Mop; Mtpc; Mti; Mt1; Mt2; Mt3].
+Definition rvec_fields := [:: Mtrpc; Mtr].
 Definition mvec_and_rvec_fields := mvec_fields ++ rvec_fields.
 
 Definition beq_mvec (mv1 mv2 : MVec) : bool :=
@@ -119,8 +107,8 @@ Definition mask_dc (dcm : DCMask) (mv : MVec) : MVec :=
     (if dcm mvp_t2  then TNone else t2)
     (if dcm mvp_t3  then TNone else t3).
 
-Definition copy_mvec_part (mv : MVec) (tag : word t)
-    (x : option mvec_part) : word t :=
+Definition copy_mvec_part (mv : MVec) (tag : mword t)
+    (x : option mvec_part) : mword t :=
   match x with
   | Some mvp_tpc => ctpc mv
   | Some mvp_ti  => cti mv
@@ -134,18 +122,18 @@ Definition copy (mv : MVec) (rv : RVec) (ctm : CTMask) : RVec :=
   mkRVec (copy_mvec_part mv (ctrpc rv) (ct_trpc ctm))
          (copy_mvec_part mv (ctr   rv) (ct_tr   ctm)).
 
-Definition is_kernel_tag (tpc:word t) : bool := tpc == TKernel.
+Definition is_kernel_tag (tpc:mword t) : bool := tpc == TKernel.
 
 Definition cache_lookup (cache : rules)
     (masks : Masks) (mv : MVec) : option RVec :=
-  do! op <- word_to_op (cop mv);
+  do! op <- op_of_mword (cop mv);
   let mask := masks (is_kernel_tag (ctpc mv)) op in
   let masked_mv := mask_dc (dc mask) mv in
   do! rv <- assoc_list_lookup cache (beq_mvec masked_mv);
   Some (copy mv rv (ct mask)).
 
-Local Notation memory := (word_map t atom).
-Local Notation registers := (reg_map t atom).
+Local Notation memory := {partmap mword t -> atom}.
+Local Notation registers := {partmap reg t -> atom}.
 
 Record state := mkState {
   mem   : memory;
@@ -169,44 +157,42 @@ Proof. by case: cst=> ? ? ? [? ?] ?. Qed.
 (* Need to do this masking both on lookup, and on rule add, right?
    This is optional; the software could do it *)
 Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rules :=
-  do! aop   <- PartMaps.get mem Mop;
-  do! atpc  <- PartMaps.get mem Mtpc;
-  do! ati   <- PartMaps.get mem Mti;
-  do! at1   <- PartMaps.get mem Mt1;
-  do! at2   <- PartMaps.get mem Mt2;
-  do! at3   <- PartMaps.get mem Mt3;
-  do! atrpc <- PartMaps.get mem Mtrpc;
-  do! atr   <- PartMaps.get mem Mtr;
-  do! op    <- word_to_op (val aop);
+  do! aop   <- mem Mop;
+  do! atpc  <- mem Mtpc;
+  do! ati   <- mem Mti;
+  do! at1   <- mem Mt1;
+  do! at2   <- mem Mt2;
+  do! at3   <- mem Mt3;
+  do! atrpc <- mem Mtrpc;
+  do! atr   <- mem Mtr;
+  do! op    <- op_of_mword (val aop);
   let dcm := dc (masks false op) in
   Some ((mask_dc dcm (mkMVec (val aop) (val atpc)
                              (val ati) (val at1) (val at2) (val at3)),
          mkRVec (val atrpc) (val atr)) :: cache).
 
-Definition store_mvec (mem : memory) (mv : MVec) : option (memory) :=
-  PartMaps.upd_list mem
-                    [(Mop, (cop mv)@TKernel);
-                     (Mtpc, (ctpc mv)@TKernel);
-                     (Mti, (cti mv)@TKernel);
-                     (Mt1, (ct1 mv)@TKernel);
-                     (Mt2, (ct2 mv)@TKernel);
-                     (Mt3, (ct3 mv)@TKernel)].
+Definition store_mvec (mem : memory) (mv : MVec) : memory :=
+  foldl (fun mem' p => pmset mem' p.1 p.2) mem
+        [:: (Mop, (cop mv)@TKernel);
+            (Mtpc, (ctpc mv)@TKernel);
+            (Mti, (cti mv)@TKernel);
+            (Mt1, (ct1 mv)@TKernel);
+            (Mt2, (ct2 mv)@TKernel);
+            (Mt3, (ct3 mv)@TKernel)].
 
 Section ConcreteSection.
 
 Variable masks : Masks.
 
-Local Notation "x .+1" := (Word.add x Word.one).
+Local Notation "x .+1" := (x + 1)%w.
 
 (* The mvector is written at fixed locations in kernel memory where
    the fault handler can access them (using the same addresses as for
    add_rule: Mop, Mtpc, etc.) *)
-Definition miss_state (st : state) (mvec : MVec) : option state :=
-  match store_mvec (mem st) mvec with
-  | Some mem' =>
-    Some (mkState mem' (regs st) (cache st) fault_handler_start@TKernel (pc st))
-  | None => None
-  end.
+Definition miss_state (st : state) (mvec : MVec) : state :=
+  let mem' := store_mvec (mem st) mvec in
+  mkState mem' (regs st) (cache st) fault_handler_start@TKernel (pc st).
+
 
 (* The next functions build the next state by looking up on the cache,
    finding the appropriate tag values for the results and using those
@@ -220,12 +206,12 @@ Definition next_state (st : state) (mvec : MVec)
   let lookup := cache_lookup (cache st) masks mvec in
   match lookup with
   | Some rvec => k rvec
-  | None => miss_state st mvec
+  | None => Some (miss_state st mvec)
   end.
 
 Definition next_state_reg_and_pc (st : state) (mvec : MVec) (r : reg t) x pc' : option state :=
   next_state st mvec (fun rvec =>
-    do! reg' <- PartMaps.upd (regs st) r x@(ctr rvec);
+    do! reg' <- pmupd (regs st) r x@(ctr rvec);
     Some (mkState (mem st) reg' (cache st) pc'@(ctrpc rvec) (epc st))).
 
 Definition next_state_reg (st : state) (mvec : MVec) r x : option state :=
@@ -239,18 +225,18 @@ Inductive step (st st' : state) : Prop :=
 | step_nop :
     forall mem reg cache pc epc tpc i ti,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Nop _)),
-    let mvec := mkMVec (op_to_word NOP) tpc ti TNone TNone TNone in
+    let mvec := mkMVec (mword_of_op NOP) tpc ti TNone TNone TNone in
     forall (NEXT : next_state_pc st mvec (pc.+1) = Some st'),
       step st st'
 | step_const :
     forall mem reg cache pc epc n r tpc i ti old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Const n r)),
-    forall (OLD : PartMaps.get reg r = Some old@told),
-    let mvec := mkMVec (op_to_word CONST) tpc ti told TNone TNone in
+    forall (OLD : reg r = Some old@told),
+    let mvec := mkMVec (mword_of_op CONST) tpc ti told TNone TNone in
     forall (NEXT : next_state_reg st mvec r (Word.casts n) = Some st'),
       step st st'
 | step_mov :
@@ -260,7 +246,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (Mov r1 r2)),
     forall (REG1 : PartMaps.get reg r1 = Some w1@t1),
     forall (OLD : PartMaps.get reg r2 = Some old@told),
-    let mvec := mkMVec (op_to_word MOV) tpc ti t1 told TNone in
+    let mvec := mkMVec (mword_of_op MOV) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg st mvec r2 w1 = Some st'),
       step st st'
 | step_binop :
@@ -271,7 +257,7 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : PartMaps.get reg r1 = Some w1@t1),
     forall (REG2 : PartMaps.get reg r2 = Some w2@t2),
     forall (OLD : PartMaps.get reg r3 = Some old@told),
-    let mvec := mkMVec (op_to_word (BINOP op)) tpc ti t1 t2 told in
+    let mvec := mkMVec (mword_of_op (BINOP op)) tpc ti t1 t2 told in
     forall (NEXT : next_state_reg st mvec r3 (binop_denote op w1 w2) =
                    Some st'),
       step st st'
@@ -283,7 +269,7 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : PartMaps.get reg r1 = Some w1@t1),
     forall (M1 : PartMaps.get mem w1 = Some w2@t2),
     forall (OLD : PartMaps.get reg r2 = Some old@told),
-    let mvec := mkMVec (op_to_word LOAD) tpc ti t1 t2 told in
+    let mvec := mkMVec (mword_of_op LOAD) tpc ti t1 t2 told in
     forall (NEXT : next_state_reg st mvec r2 w2 = Some st'),
       step st st'
 | step_store :
@@ -294,7 +280,7 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : PartMaps.get reg r1 = Some w1@t1),
     forall (REG2 : PartMaps.get reg r2 = Some w2@t2),
     forall (M1 : PartMaps.get mem w1 = Some w3@t3),
-    let mvec := mkMVec (op_to_word STORE) tpc ti t1 t2 t3 in
+    let mvec := mkMVec (mword_of_op STORE) tpc ti t1 t2 t3 in
     forall (NEXT :
       next_state st mvec (fun rvec =>
         do! mem' <- PartMaps.upd mem w1 w2@(ctr rvec);
@@ -306,7 +292,7 @@ Inductive step (st st' : state) : Prop :=
     forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Jump r)),
     forall (REG : PartMaps.get reg r = Some w@t1),
-    let mvec := mkMVec (op_to_word JUMP) tpc ti t1 TNone TNone in
+    let mvec := mkMVec (mword_of_op JUMP) tpc ti t1 TNone TNone in
     forall (NEXT : next_state_pc st mvec w = Some st'),
       step st st'
 | step_bnz :
@@ -315,7 +301,7 @@ Inductive step (st st' : state) : Prop :=
     forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Bnz r n)),
     forall (REG : PartMaps.get reg r = Some w@t1),
-    let mvec := mkMVec (op_to_word BNZ) tpc ti t1 TNone TNone in
+    let mvec := mkMVec (mword_of_op BNZ) tpc ti t1 TNone TNone in
     let pc' := pc + if w == Word.repr 0 then Word.repr 1 else Word.casts n in
     forall (NEXT : next_state_pc st mvec pc' = Some st'),
       step st st'
@@ -326,7 +312,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (Jal r)),
     forall (REG : PartMaps.get reg r = Some w@t1),
     forall (OLD: PartMaps.get reg ra = Some old@told),
-    let mvec := mkMVec (op_to_word JAL) tpc ti t1 told TNone in
+    let mvec := mkMVec (mword_of_op JAL) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'),
       step st st'
 | step_jumpepc :
@@ -334,7 +320,7 @@ Inductive step (st st' : state) : Prop :=
     forall (ST : st = mkState mem reg cache pc@tpc w@tepc),
     forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (JumpEpc _)),
-    let mvec := mkMVec (op_to_word JUMPEPC) tpc ti tepc TNone TNone in
+    let mvec := mkMVec (mword_of_op JUMPEPC) tpc ti tepc TNone TNone in
     forall (NEXT : next_state_pc st mvec w = Some st'),
       step st st'
 | step_addrule :
@@ -343,7 +329,7 @@ Inductive step (st st' : state) : Prop :=
     forall (PC : PartMaps.get mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (AddRule _)),
     let mvec :=
-        mkMVec (op_to_word ADDRULE) tpc ti TNone TNone TNone in
+        mkMVec (mword_of_op ADDRULE) tpc ti TNone TNone TNone in
     forall (NEXT :
       next_state st mvec (fun rvec =>
         do! cache' <- add_rule cache masks mem;
@@ -356,7 +342,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (GetTag r1 r2)),
     forall (REG : PartMaps.get reg r1 = Some w@t1),
     forall (OLD : PartMaps.get reg r2 = Some old@told),
-    let mvec := mkMVec (op_to_word GETTAG) tpc ti t1 told TNone in
+    let mvec := mkMVec (mword_of_op GETTAG) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg st mvec r2 t1 = Some st'),
       step st st'
 | step_puttag :
@@ -367,7 +353,7 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : PartMaps.get reg r1 = Some w@t1),
     forall (REG2 : PartMaps.get reg r2 = Some t@t2),
     forall (OLD: PartMaps.get reg r3 = Some old@told),
-    let mvec := mkMVec (op_to_word PUTTAG) tpc ti t1 t2 told in
+    let mvec := mkMVec (mword_of_op PUTTAG) tpc ti t1 t2 told in
     forall (NEXT :
       next_state st mvec (fun rvec =>
         do! reg' <- PartMaps.upd reg r3 w@t;

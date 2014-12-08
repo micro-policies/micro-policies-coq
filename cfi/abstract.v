@@ -1,8 +1,6 @@
-Require Import Coq.Lists.List Coq.Arith.Arith.
-
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.Integers lib.utils.
+Require Import lib.utils.
 Require Import common.common.
 Require Import cfi.property.
 Require Import cfi.classes.

@@ -1,9 +1,6 @@
-Require Import Coq.Lists.List Coq.Arith.Arith Bool.
-Require Coq.Vectors.Vector.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
 Require Import lib.utils common.common symbolic.symbolic.
-Require Import lib.hlist.
 Require Import cfi.classes.
 
 Set Implicit Arguments.

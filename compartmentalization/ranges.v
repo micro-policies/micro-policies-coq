@@ -1,6 +1,5 @@
-Require Import List Bool ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import lib.Integers lib.utils common.common lib.ordered.
+Require Import lib.utils common.common.
 Set Bullet Behavior "Strict Subproofs".
 
 Section WithClasses.

@@ -1,9 +1,5 @@
 (* Instantiate the concrete machine with 32-bit integers *)
 
-Require Import ZArith.
-Require Import lib.Integers.
-Require Import Bool.
-
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils.

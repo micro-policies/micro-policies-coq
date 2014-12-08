@@ -1,5 +1,4 @@
 Require Import lib.utils.
-Require Import lib.Coqlib.
 Require Import common.common.
 Require Import symbolic.symbolic.
 Require Import symbolic.exec.
