@@ -5,8 +5,7 @@ TODO: write better testing support -- e.g. comparing final states
 Require Import Coq.Bool.Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq.
-Require Import lib.utils lib.partial_maps common.common.
-Require Import lib.FiniteMaps lib.ordered.
+Require Import lib.utils common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import concrete.exec.
@@ -20,7 +19,6 @@ Require Import symbolic.fault_handler.
 Require Import sealing.symbolic.
 Require Import sealing.abstract.
 Require Import sealing.refinementSA.
-Require Import Integers.
 Require Import Omega.
 
 Set Implicit Arguments.

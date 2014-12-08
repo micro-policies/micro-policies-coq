@@ -1,6 +1,6 @@
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype seq.
-Require Import lib.Integers lib.utils lib.ordered lib.partial_maps. Import PartMaps.
+Require Import lib.utils.
 Require Import lib.ssr_list_utils.
 Require Import common.common symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.

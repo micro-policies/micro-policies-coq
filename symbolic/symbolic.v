@@ -4,8 +4,8 @@ Require Coq.Vectors.Vector.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.Integers lib.utils lib.partial_maps common.common.
-Require Import lib.hlist lib.ssr_list_utils.
+Require Import lib.utils common.common.
+Require Import lib.ssr_list_utils.
 
 Set Implicit Arguments.
 

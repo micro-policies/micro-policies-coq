@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
 
-Require Import lib.Integers lib.utils lib.partial_maps lib.ordered common.common.
+Require Import lib.Integers lib.utils common.common.
 Require Import lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
 

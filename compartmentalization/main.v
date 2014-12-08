@@ -2,7 +2,7 @@ Require Import ZArith.
 
 Require Import ssreflect ssrfun ssrbool eqtype fintype seq finset.
 
-Require Import lib.utils lib.partial_maps lib.Coqlib lib.Integers.
+Require Import lib.utils.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.

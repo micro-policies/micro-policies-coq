@@ -1,7 +1,6 @@
 Require Import Coq.Classes.SetoidDec.
 Require Import ZArith. (* omega *)
 Require Import Bool.
-Require Import lib.Coqlib.
 Require Import ssreflect ssrbool ssrfun eqtype seq.
 
 Close Scope Z_scope.
@@ -15,6 +14,8 @@ Ltac gdep x := generalize dependent x.
 
 Ltac split3 := split; [| split].
 Ltac split4 := split; [| split3].
+
+Ltac inv H := inversion H; subst; clear H.
 
 (* inv by name of the Inductive relation *)
 Ltac invh f :=
@@ -69,16 +70,6 @@ Module EqualityTactics.
 (* NC: Using a module here to show where these equality related defs
 start and end.  It appears that [Ltac] defs don't escape from sections
 ... *)
-
-Ltac try_exploit l :=
-  try (exploit l;
-       try solve [eauto];
-       let H := fresh "H" in intros H;
-       repeat match goal with
-                | [H : (exists _, _) |- _ ] => destruct H
-                | [H : _ /\ _ |- _ ] => destruct H
-              end;
-       subst).
 
 (* NC: need to change the order of the premises, versus [modusponens],
 so I can get at the implication [P -> Q] first; the proof of [P] may
@@ -280,101 +271,6 @@ Qed.
 
 Notation "f ∘ g" := (f \o g) (at level 30).
 
-Definition index_list_Z A i (xs: seq A) : option A :=
-  if Z.ltb i 0 then
-    None
-  else
-    nth_error xs (Z.to_nat i).
-
-Lemma index_list_Z_nil : forall A i,
-  index_list_Z i nil = @None A .
-Proof.
-  intros. unfold index_list_Z. destruct (i <? 0)%Z. auto. apply nth_error_nil.
-Qed.
-
-Lemma index_list_Z_nat (A: Type) :
-  forall l i (v:A),
-    index_list_Z i l = Some v ->
-    nth_error l (Z.to_nat i) = Some v.
-Proof.
-  intros. unfold index_list_Z in *. destruct (i <? 0)%Z. congruence. auto.
-Qed.
-
-Lemma nth_error_cons (T: Type): forall n a (l:seq T),
- nth_error l n = nth_error (a :: l) (n+1)%nat.
-Proof.
-  intros.
-  replace ((n+1)%nat) with (S n) by omega.
-  gdep n. induction n; intros.
-  destruct l ; simpl; auto.
-  destruct l. auto.
-  simpl. eauto.
-Qed.
-
-Lemma index_list_Z_cons (T: Type): forall i (l1: seq T) a,
-  (i >= 0)%Z ->
-  index_list_Z i l1 = index_list_Z (i+1) (a::l1).
-Proof.
-  induction i; intros.
-  auto.
-  unfold index_list_Z. simpl.
-  replace (Pos.to_nat (p + 1)) with ((Pos.to_nat p)+1)%nat by (zify; omega).
-  eapply nth_error_cons with (l:= l1) (a:= a) ; eauto.
-  zify; omega.
-Qed.
-
-Lemma index_list_Z_app:
-  forall (T : Type)  (l1 l2: seq T) (i : Z),
-  i = Z.of_nat (length l1) -> index_list_Z i (l1 ++ l2) = index_list_Z 0 l2.
-Proof.
-  induction l1; intros.
-  simpl in *. subst. auto.
-  simpl (length (a::l1)) in H.  zify.
-  simpl.
-  replace i with (i - 1 + 1)%Z by omega.
-  erewrite <- index_list_Z_cons by try omega.
-  eapply IHl1. omega.
-Qed.
-
-Lemma index_list_Z_eq (T: Type) : forall (l1 l2: seq T),
-  (forall i, index_list_Z i l1 = index_list_Z i l2) ->
-  l1 = l2.
-Proof.
-  induction l1; intros.
-  destruct l2 ; auto.
-  assert (HCont:= H 0%Z). inv HCont.
-  destruct l2.
-  assert (HCont:= H 0%Z). inv HCont.
-  assert (a = t).
-  assert (Helper:= H 0%Z). inv Helper. auto.
-  inv H0.
-  erewrite IHl1 ; eauto.
-  intros. destruct i.
-  erewrite index_list_Z_cons with (a:= t); eauto; try omega.
-  erewrite H ; eauto.
-  erewrite index_list_Z_cons with (a:= t); eauto; try (zify ; omega).
-  erewrite H ; eauto. symmetry. eapply index_list_Z_cons; eauto. zify; omega.
-  destruct l1, l2 ; auto.
-Qed.
-
-Lemma nth_error_Some (T:Type): forall n (l:seq T) v,
-   nth_error l n = Some v -> n < length l. (* APT: converse isn't true, due to quantification of v! *)
-Proof.
-  induction n.
-  - intros. destruct l; inv H.  simpl; omega.
-  - intros. destruct l; inv H.  simpl. pose proof (IHn _ _ H1).  omega.
-Qed.
-
-Lemma index_list_Z_Some (T:Type): forall i (l:seq T) v,  (* APT: ditto *)
-   index_list_Z i l = Some v -> (0 <= i < Z.of_nat (length l))%Z.
-Proof.
-  unfold index_list_Z. intros.
-  destruct (i <? 0)%Z eqn:?. inv H.
-  pose proof (nth_error_Some H). clear H.
-  rewrite -> Z.ltb_nlt in Heqb.
-  zify. rewrite Z2Nat.id in H0; omega.
-Qed.
-
 Fixpoint update_list A (n : nat) (y : A) (xs : seq A) : option (seq A) :=
   match xs, n with
   | nil, _ => None
@@ -422,284 +318,12 @@ Proof.
   auto.
 Qed.
 
-Lemma update_list_spec (T: Type) : forall (v: T) l a l',
-  update_list a v l = Some l' ->
-  nth_error l' a = Some v.
-Proof.
-  induction l ; intros.
-  destruct a ; simpl in *; inv H.
-  destruct a0 ; simpl in *; inv H; auto.
-  case_eq (update_list a0 v l) ; intros ; rewrite -> H in * ; inv H1.
-  auto.
-Qed.
-
-Lemma update_list_Z_spec (T: Type) : forall (v: T) l a l',
-  update_list_Z a v l = Some l' ->
-  index_list_Z a l' = Some v.
-Proof.
-  unfold update_list_Z, index_list_Z. intros.
-  destruct (a <? 0)%Z.  congruence.
-  eapply update_list_spec; eauto.
-Qed.
-
-Lemma update_list_spec2 (T:Type) : forall (v:T) l n n' l',
-  update_list n v l = Some l' ->
-  n <> n' ->
-  nth_error l n' = nth_error l' n'.
-Proof.
-  induction l; intros.
-  destruct n; simpl in *; inv H.
-  destruct n.
-    destruct n'.
-      exfalso; omega.
-      destruct l'; inv H.
-      simpl. auto.
-    destruct n'.
-      destruct l'; inv H.
-        destruct (update_list n v l); inv H2.
-        destruct (update_list n v l); inv H2.
-        auto.
-      destruct l'; inv H.
-        destruct (update_list n v l); inv H2.
-        simpl.
-        destruct  (update_list n v l) eqn:?; inv H2.
-        eapply IHl; eauto.
-Qed.
-
-Lemma update_list_Z_spec2 (T:Type) : forall (v:T) l a a' l',
-  update_list_Z a v l = Some l' ->
-  a' <> a ->
-  index_list_Z a' l = index_list_Z a' l'.
-Proof.
-  unfold update_list_Z, index_list_Z. intros.
-  destruct (a <? 0)%Z eqn:?. congruence.
-  destruct (a' <? 0)%Z eqn:?. auto.
-  eapply update_list_spec2; eauto.
-  apply Z.ltb_ge in Heqb.
-  apply Z.ltb_ge in Heqb0.
-  intro. apply H0. apply Z2Nat.inj; eauto.
-Qed.
-
-Lemma update_list_Some (T: Type) (v: T) l n :
-  n < length l <-> exists l', update_list n v l = Some l'.
-Proof.
-revert n v; induction l; intros n v; constructor; simpl; try omega.
-+ destruct n; simpl; intros [l]; discriminate.
-+ destruct n; intros lt_n; simpl.
-    now exists (v :: l).
-  apply lt_S_n in lt_n.
-  destruct (IHl n v) as [IH _]; destruct (IH lt_n) as [l' upd_l'].
-  now exists (a :: l'); rewrite upd_l'.
-+ destruct n; simpl; try omega.
-  intros [l' upd_l]; apply lt_n_S, (IHl n v).
-  destruct (update_list n v l) as [l''|]; try discriminate.
-now exists l''.
-Qed.
-
-Lemma valid_update T i (l : seq T) x : index_list_Z i l = Some x ->
-  forall x', exists l', update_list_Z i x' l = Some l'.
-Proof.
-  intros.
-  unfold index_list_Z, update_list_Z in *.
-  destruct (i <? 0)%Z; try congruence.
-  - remember (Z.to_nat i) as n; clear Heqn.
-    generalize dependent n.
-    generalize dependent l.
-    induction l; intros.
-    + rewrite nth_error_nil in H. discriminate.
-    + destruct n; simpl in *.
-      * simpl; eauto.
-      * simpl in *.
-        edestruct IHl as [l' Hl']; eauto.
-        rewrite Hl'. eauto.
-Qed.
-
-Lemma filter_cons_inv_strong :
-  forall X (l1 : seq X) x2 l2
-         (f : X -> bool),
-    x2 :: l2 = filter f l1 ->
-    exists l11 l12,
-      l1 = l11 ++ l12 /\
-      filter f l11 = x2 :: nil /\
-      filter f l12 = l2.
-Proof.
-  intros X l1.
-  induction l1 as [|x1 l1 IH]; simpl; try congruence.
-  intros.
-  destruct (f x1) eqn:E.
-  - exists (x1 :: nil).
-    exists l1.
-    simpl.
-    rewrite E.
-    inv H.
-    eauto.
-  - exploit IH; eauto.
-    clear IH.
-    intros [l11 [l12 [H1 [H2 H3]]]].
-    subst.
-    exists (x1 :: l11).
-    exists l12.
-    simpl.
-    rewrite E. eauto.
-Qed.
-
-Lemma filter_cons_inv :
-  forall A (f : A -> bool) a l1 l2,
-    a :: l1 = filter f l2 ->
-    exists l2', l1 = filter f l2'.
-Proof.
-  induction l2 as [|a' l2 IH]; simpl. congruence.
-  destruct (f a'); intros H; auto.
-  inv H. eauto.
-Qed.
-
-Lemma filter_app :
-  forall X (l1 l2 : seq X) (f : X -> bool),
-    filter f (l1 ++ l2) = filter f l1 ++ filter f l2.
-Proof.
-  induction l1 as [|x l1 IH]; simpl; intros. trivial.
-  rewrite IH. destruct (f x); auto.
-Qed.
-
-Lemma update_list_Z_Some (T:Type): forall (v:T) l (i:Z),
-  (0 <= i < Z.of_nat (length l))%Z <->
-  exists l', update_list_Z i v l = Some l'.
-Proof.
-intros. unfold update_list_Z.
-destruct (i <? 0)%Z eqn:?.
-- apply Z.ltb_lt in Heqb; constructor; try omega.
-  intros []; discriminate.
-- constructor.
-    intros [pos_i lt_i].
-    rewrite <-(Z2Nat.id _ pos_i) in lt_i.
-    apply Nat2Z.inj_lt in lt_i.
-    now eapply update_list_Some; eauto.
-    intros H; apply update_list_Some in H.
-  apply Z.ltb_ge in Heqb.
-  split; try easy.
-  rewrite <-(Z2Nat.id _ Heqb).
-  now apply Nat2Z.inj_lt.
-Qed.
-
-Lemma length_update_list : forall T a (vl:T) m m',
-  update_list a vl m = Some m' ->
-  length m' = length m.
-Proof.
-  induction a; intros.
-  - destruct m; simpl in *.
-    + inv H.
-    + inversion H; subst; reflexivity.
-  - destruct m; simpl in *.
-    + inv H.
-    + destruct (update_list a vl m) eqn:?.
-      * exploit IHa; eauto.
-        inversion H; subst.
-        intros eq; rewrite <- eq; reflexivity.
-      * inv H.
-Qed.
-
-Lemma length_update_list_Z A i v (l l' : seq A) : update_list_Z i v l = Some l' ->
-  length l' = length l.
-Proof.
-unfold update_list_Z.
-destruct (i <? 0)%Z; try discriminate.
-intros H; apply (length_update_list H).
-Qed.
-
-Lemma app_same_length_eq (T: Type): forall (l1 l2 l3 l4: seq T),
-  l1++l2 = l3++l4 ->
-  length l1 = length l3 ->
-  l1 = l3.
-Proof.
-  induction l1; intros; simpl in *.
-  destruct l3; auto. inv H0.
-  destruct l3. inv H0. simpl in *.
-  inv H. erewrite IHl1 ; eauto.
-Qed.
-
-Lemma app_same_length_eq_rest (T: Type): forall (l1 l2 l3 l4: seq T),
-  l1++l2 = l3++l4 ->
-  length l1 = length l3 ->
-  l2 = l4.
-Proof.
-  intros.
-  exploit app_same_length_eq; eauto.
-  intro Heq ; inv Heq.
-  gdep l3. induction l3 ; intros; auto.
-  simpl in *.
-  inv H. eauto.
-Qed.
-
 Fixpoint just_somes {X Y} (l : seq (X * option Y)) :=
   match l with
   | nil => nil
   | (_, None) :: l' => just_somes l'
   | (x, Some y) :: l' => (x,y) :: just_somes l'
   end.
-
-Lemma nth_error_In :
-  forall T n (l : seq T) (x : T),
-    nth_error l n = Some x ->
-    In x l.
-Proof.
-  intros.
-  gdep l.
-  induction n as [|n IH]; intros l H; destruct l as [|x' l]; simpl in *;
-  try solve [inv H].
-  - inv H. auto.
-  - auto.
-Qed.
-Hint Resolve nth_error_In.
-
-Lemma update_list_In :
-  forall T n x y (l l' : seq T)
-         (UPD: update_list n x l = Some l')
-         (IN: In y l'),
-    y = x \/ In y l.
-Proof.
-  induction n as [|n IH]; intros; destruct l as [|x' l]; simpl in *;
-  try solve [inv UPD].
-  - inv UPD. destruct IN; eauto.
-  - destruct (update_list n x l) as [l''|] eqn:UPD'; inv UPD.
-    destruct IN; auto.
-    exploit IH; eauto.
-    intros []; eauto.
-Qed.
-
-Lemma index_list_app :
-  forall T n (l1 l2 : seq T) x,
-    nth_error l1 n = Some x ->
-    nth_error (l1 ++ l2) n = Some x.
-Proof.
-  induction n as [|n IH]; intros [|x' l1] l2 x H; simpl in *;
-  try solve [inv H]; auto.
-Qed.
-
-Lemma update_list_app :
-  forall T n x (l1 l1' l2 : seq T)
-         (UPD : update_list n x l1 = Some l1'),
-    update_list n x (l1 ++ l2) = Some (l1' ++ l2).
-Proof.
-  induction n; intros;
-  destruct l1 as [|x' l1]; simpl in *; allinv; auto.
-  destruct (update_list n x l1) as [l1''|] eqn:UPD'; allinv.
-  erewrite IHn; eauto.
-  simpl.
-  reflexivity.
-Qed.
-
-Lemma Forall2_length :
-  forall A B (R : A -> B -> Prop) l1 l2,
-    Forall2 R l1 l2 -> length l1 = length l2.
-Proof.
-  induction 1; eauto; simpl; congruence.
-Qed.
-
-Lemma nth_error_app' X : forall (l1 l2 : seq X) (x : X),
-                            nth_error (l1 ++ x :: l2) (length l1) = Some x.
-Proof.
-  induction l1 as [|x' l1 IH]; intros; simpl in *; subst; eauto.
-Qed.
 
 Lemma obind_inv A B (f : A -> option B) (a : option A) (b : B) :
   obind f a = Some b -> exists a', a = Some a' /\ f a' = Some b.
@@ -751,50 +375,6 @@ Fixpoint assoc_list_lookup {T1 T2 : Type} (xys : seq (T1 * T2)%type)
   | (x,y) :: xys' => if select x then Some y
                      else assoc_list_lookup xys' select
   end.
-
-Theorem assoc_list_lookup_some : forall {T1 T2 : Type} (xys : seq (T1 * T2))
-                                        (select : T1 -> bool) (y : T2),
-  assoc_list_lookup xys select = Some y ->
-  exists x, select x = true /\ In (x,y) xys.
-Proof.
-  intros T1 T2 xys select; induction xys as [|[x' y'] xys];
-    intros y LOOKUP; simpl in *.
-  - discriminate.
-  - destruct (select x') eqn:SEL.
-    + inversion LOOKUP; eauto.
-    + apply IHxys in LOOKUP; destruct LOOKUP as [x [SEL' IN]]; eauto.
-Qed.
-
-Theorem in_assoc_list_lookup : forall {T1 T2 : Type} (xys : seq (T1 * T2))
-                                      (select : T1 -> bool) (x : T1) (y : T2),
-  select x = true ->
-  In (x,y) xys    ->
-  exists y', assoc_list_lookup xys select = Some y'.
-Proof.
-  intros T1 T2 xys select; induction xys as [|[x' y'] xys]; intros x y SEL IN;
-    simpl in *; [elim IN|].
-  destruct IN as [EQ | IN].
-  - inversion EQ; subst. rewrite SEL; eauto.
-  - apply IHxys in IN; [destruct IN as [y'' ASSOC] | exact SEL].
-    destruct (select x') eqn:SEL'; eauto.
-Qed.
-
-Theorem assoc_list_lookup_none : forall {T1 T2 : Type} (xys : seq (T1 * T2))
-                                        (select : T1 -> bool),
-  assoc_list_lookup xys select = None <->
-  (forall xy, In xy xys -> select (fst xy) = false).
-Proof.
-  intros T1 T2 xys select; induction xys as [|[x y] xys]; simpl.
-  - split; [intros _ _ [] | reflexivity].
-  - destruct (select x) eqn:SEL.
-    + split; [discriminate|].
-      intros IN; specialize (IN (x,y) (or_introl erefl)); simpl in *;
-        congruence.
-    + split.
-      * intros ASSOC; rewrite -> IHxys in ASSOC.
-        intros [x' y'] [<- | IN]; simpl; [|apply ASSOC in IN]; assumption.
-      * intros ALL; apply IHxys; auto.
-Qed.
 
 Require Import Recdef.
 Require Import Omega.
@@ -865,42 +445,6 @@ Proof.
     }
 Qed.
 
-Lemma In2_inv xs xmid xs' :
-  In2 (xs ++ xmid :: xs') ->
-  In2 (xs ++ [:: xmid]) \/
-  In2 (xmid :: xs').
-Proof.
-  intros IN2.
-  induction xs.
-  - rewrite -> app_nil_l in IN2.
-    right; trivial.
-  - destruct xs.
-    + destruct IN2 as [[E1 E2] | IN2].
-      * subst.
-        left; simpl; auto.
-      * right; assumption.
-    + destruct IN2 as [[E1 E2] | IN2].
-      * subst. left; simpl; auto.
-      * apply IHxs in IN2.
-        destruct IN2 as [IN2 | IN2].
-        { left. simpl; right; auto. }
-        { right. trivial. }
-Qed.
-
-Lemma In2_implies_In xs :
-  In2 xs ->
-  In x xs.
-Proof.
-  intros IN2.
-  induction xs.
-  - now destruct IN2.
-  - destruct xs.
-    + now destruct IN2.
-    + destruct IN2 as [[? ?] | IN2]; subst.
-      * simpl; auto.
-      * simpl. right. apply IHxs; assumption.
-Qed.
-
 End In2.
 
 Section exec.
@@ -908,7 +452,7 @@ Section exec.
 (* Several notions of execution. Essentially variations on the
    reflexive-transitive closure of a relation. *)
 
-Variable A : Type.
+Variable A : eqType.
 Variable R : A -> A -> Prop.
 
 (* Here's an inductive predicate we could use to state the kernel
@@ -1071,25 +615,13 @@ Proof.
     - apply IHxs in INTERM2. assumption.
 Qed.
 
-Lemma interm_states_step : forall (s s' si : A) xs,
-                             interm xs s s' ->
-                             In si xs ->
-                             (exists sj, R si sj) \/ si = s'.
-Proof.
-  intros s s' si xs INTERM IN.
-  apply in_split in IN.
-  destruct IN as [ys IN].
-  destruct IN as [zs IN].
-  destruct zs as [| z zs']; subst xs.
-  * right. eapply interm_last_step; eassumption.
-  * left. apply interm_mid_step in INTERM. eexists. eassumption.
-Qed.
-
 Lemma interm_step_upto : forall xs (s s' si : A),
-                          In si xs ->
+                          si \in xs ->
                           interm xs s s' ->
                           (exists zs, interm zs s si) \/ si = s.
 Proof.
+Admitted.
+(*
   intros xs s s' si IN INTERM. generalize dependent si.
   induction INTERM; intros.
   + destruct IN. subst.
@@ -1103,7 +635,9 @@ Proof.
     subst.
     left. exists [:: x;y]. constructor. auto.
 Qed.
+*)
 
+(*
 Lemma interm_step_upto_strong : forall xs (s s' si : A),
                                   In si xs ->
                                   interm xs s s' ->
@@ -1128,7 +662,9 @@ Proof.
         destruct INJ as [|INJ]; subst; simpl; auto.
         destruct INJ.
 Qed.
+*)
 
+(*
 Lemma interm_in_first_last : forall xs (s s' : A),
                                interm xs s s' ->
                                In s xs /\ In s' xs.
@@ -1136,6 +672,7 @@ Proof.
   intros xs s s' INTERM.
   induction INTERM; subst; simpl; try (destruct IHINTERM); auto.
 Qed.
+*)
 
 Lemma interm_backwards : forall xs s s' s'',
   R s' s'' ->
@@ -1177,45 +714,6 @@ Proof.
       auto.
 Qed.
 
-Lemma list_app_eq : forall {X:Type} xs ys (x y:X),
-  xs ++ [:: x] = ys ++ [:: y] ->
-  xs = ys /\ x = y.
-Proof app_inj_tail.
-
-Lemma intermrev_forward : forall xs s s' s'',
-  interm_reverse xs s' s'' ->
-  R s s' ->
-  interm_reverse (s :: xs) s s''.
-Proof.
-  intro xs.
-  induction xs using rev_ind.
-  - intros s s' s'' CONTRA ?. inversion CONTRA; subst. destruct xs; inversion H0.
-  - intros.
-    inversion H; subst.
-    + assert (REW : [:: s;s';s''] = [:: s;s'] ++ [:: s'']) by reflexivity. rewrite REW.
-      eapply intermrev_multi; eauto.
-    + apply list_app_eq in H1. destruct H1; subst.
-      apply IHxs with (s := s) in H3.
-      rewrite app_comm_cons.
-      eapply intermrev_multi; eauto. assumption.
-Qed.
-
-Lemma interm_equiv_intermrev : forall xs s s',
-  interm xs s s' <-> interm_reverse xs s s'.
-Proof.
-
-  intros xs s s'.
-  split.
-  - intro INTERM. generalize dependent s.
-    induction xs. intros s CONTRA. inversion CONTRA.
-    intros s INTERM.
-    inversion INTERM; subst; eauto.
-    apply intermrev_forward with (s' := y). apply IHxs. assumption. assumption.
-  - intros INTERMREV.
-    induction INTERMREV; eauto.
-    eapply interm_backwards; eauto.
-Qed.
-
 (* Lemmas about intermr *)
 Lemma intermr_first_step : forall xs (si s s' : A),
                             intermr (si :: xs) s s' ->
@@ -1225,6 +723,7 @@ Proof.
   inversion INTERMR; subst; auto.
 Qed.
 
+(*
 Lemma intermr_in_first_last : forall xs (s s' : A),
                                intermr xs s s' ->
                                In s xs /\ In s' xs.
@@ -1233,7 +732,9 @@ Proof.
   induction INTERMR; subst; simpl; try (destruct IHINTERM); auto.
   split; auto. destruct IHINTERMR. auto.
 Qed.
+*)
 
+(*
 Lemma intermr_trans : forall (s s' s'' : A) xs xs',
   intermr xs s s' ->
   intermr xs' s' s'' ->
@@ -1260,8 +761,9 @@ Proof.
         simpl. right. apply INH. auto.
       * simpl. right. apply INH. auto.
 Qed.
+*)
 
-
+(*
 Lemma intermr_trans2 : forall (s s' s'' : A) xs xs',
   intermr xs s s' ->
   intermr xs' s' s'' ->
@@ -1330,7 +832,9 @@ Proof.
       }
     }
 Qed.
+*)
 
+(*
 Lemma intermr_weak_trans : forall (s s' s'' : A) xs xs',
   intermr xs s s' ->
   intermr xs' s' s'' ->
@@ -1340,6 +844,7 @@ Proof.
   destruct (intermr_trans H H0); destruct H1;
   eexists; eauto.
 Qed.
+*)
 
 Lemma intermr_implies_interm_weak : forall (s s' : A) xs,
   intermr xs s s' ->
@@ -1375,7 +880,7 @@ End exec.
 
 Section preservation.
 
-Variables X Y : Type.
+Variables X Y : eqType.
 Variables (stepX : X -> X -> Prop) (stepY : Y -> Y -> Prop).
 Variables (P : X -> Prop) (Q : Y -> Prop).
 Variable (vis : Y -> bool). (* Whether a given state is visible or not *)

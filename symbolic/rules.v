@@ -5,7 +5,7 @@ Require Import Arith Bool ZArith.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.partial_maps lib.hlist lib.Integers lib.utils.
+Require Import lib.utils.
 Require Import common.common concrete.concrete symbolic.symbolic.
 Import DoNotation.
 Import Concrete.

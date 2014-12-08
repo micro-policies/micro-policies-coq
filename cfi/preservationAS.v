@@ -1,6 +1,4 @@
-Require Import Coq.Lists.List.
 Require Import lib.utils.
-Require Import lib.partial_maps.
 Require Import lib.Coqlib.
 Require Import common.common.
 Require Import symbolic.symbolic.

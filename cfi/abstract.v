@@ -2,9 +2,8 @@ Require Import Coq.Lists.List Coq.Arith.Arith.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.Integers lib.utils lib.partial_maps.
+Require Import lib.Integers lib.utils.
 Require Import common.common.
-Require Import lib.Coqlib.
 Require Import cfi.property.
 Require Import cfi.classes.
 Set Implicit Arguments.

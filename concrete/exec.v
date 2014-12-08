@@ -2,8 +2,7 @@
 
 Require Import ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import lib.Integers lib.utils lib.partial_maps lib.Coqlib common.common concrete.concrete.
-Require Import List.
+Require Import lib.utils common.common concrete.concrete.
 
 Import ListNotations.
 Import Concrete. Import DoNotation.

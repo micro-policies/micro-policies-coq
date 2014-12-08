@@ -1,4 +1,4 @@
-Require Import lib.utils lib.partial_maps lib.Coqlib lib.hlist lib.Integers.
+Require Import lib.utils.
 Require Import common.common symbolic.symbolic.
 Require Import Coq.Vectors.Vector.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.

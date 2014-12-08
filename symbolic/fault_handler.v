@@ -4,7 +4,7 @@ Require Import ZArith.
 
 Require Import ssreflect eqtype ssrbool seq.
 
-Require Import lib.Integers lib.utils lib.Coqlib lib.partial_maps.
+Require Import lib.utils.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import symbolic.rules.

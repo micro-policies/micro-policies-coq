@@ -2,7 +2,7 @@ Require Import List Arith ZArith Bool. Import ListNotations.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 
-Require Import lib.Integers lib.utils lib.partial_maps common.common.
+Require Import lib.utils common.common.
 
 Import DoNotation.
 

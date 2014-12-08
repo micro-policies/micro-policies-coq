@@ -1,5 +1,5 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import lib.utils lib.partial_maps lib.ordered common.common.
+Require Import lib.utils common.common.
 Set Bullet Behavior "Strict Subproofs".
 
 Generalizable All Variables.

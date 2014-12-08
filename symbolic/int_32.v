@@ -4,8 +4,7 @@ Require Import ZArith.
 Require Import Integers.
 Require Import Bool.
 
-Require Import lib.FiniteMaps.
-Require Import lib.utils lib.Coqlib.
+Require Import lib.utils.
 Require Import common.common.
 Require Import concrete.int_32.
 Require Import concrete.concrete.
@@ -13,7 +12,6 @@ Require Import symbolic.rules.
 Require Import symbolic.fault_handler.
 Require Import symbolic.symbolic.
 Require Import eqtype seq.
-Require Import lib.partial_maps.
 
 Import DoNotation.
 Import Concrete.

@@ -1,13 +1,9 @@
 Require Import Arith ZArith Bool.
 Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
-Require Import lib.ordered.
-
+Require Import word partmap.
 Require Import lib.utils.
-Require Import lib.Integers.
-Require Import lib.Maps.
-Require Import lib.FiniteMaps.
-Require Import lib.partial_maps.
+
 
 Set Implicit Arguments.
 

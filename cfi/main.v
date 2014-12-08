@@ -1,8 +1,6 @@
 Require Import ssreflect ssrbool ssrfun eqtype seq.
 
-Require Import Coq.Lists.List.
-Require Import lib.Coqlib lib.utils.
-Require Import lib.partial_maps lib.FiniteMaps lib.ordered.
+Require Import lib.utils.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.

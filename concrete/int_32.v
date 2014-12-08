@@ -6,11 +6,7 @@ Require Import Bool.
 
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Require Import lib.Coqlib.
-Require Import lib.FiniteMaps.
 Require Import lib.utils.
-Require Import lib.partial_maps.
-Require Import lib.ordered.
 Require Import common.common common.printing.
 Require Import concrete.concrete.
 

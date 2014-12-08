@@ -1,6 +1,6 @@
 Require Import List Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import lib.Integers lib.utils lib.partial_maps lib.ordered.
+Require Import lib.utils.
 Require Import common.common memory_safety.classes.
 
 Import DoNotation.

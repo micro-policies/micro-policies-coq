@@ -1,7 +1,6 @@
 Require Import Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
-Require Import lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
-Require Import lib.hlist.
+Require Import lib.utils common.common.
 Require Import symbolic.symbolic memory_safety.classes.
 
 Import Symbolic.
