@@ -1,3 +1,0 @@
-[submodule "submodules/coq-utils"]
-	path = submodules/coq-utils
-	url = https://github.com/arthuraa/coq-utils.git
