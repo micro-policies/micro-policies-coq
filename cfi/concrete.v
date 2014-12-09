@@ -106,7 +106,7 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
                 | _ => false
               end
             | Some (Bnz r imm) =>
-              (pc_s' == pc_s .+1) || (pc_s' == pc_s + Word.casts imm)
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + swcast imm)
             | None => false
             | _ => pc_s' == pc_s .+1
           end
@@ -116,7 +116,7 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
             | Some (Jal r) =>
               false
             | Some (Bnz r imm) =>
-              (pc_s' == pc_s .+1) || (pc_s' == pc_s + Word.casts imm)
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + casts imm)
             | None => false
             | _ => pc_s' == pc_s .+1
           end

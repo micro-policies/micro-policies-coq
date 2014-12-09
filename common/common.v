@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
-Require Import div.
-Require Import word partmap ord.
+Require Import div ssrint ssralg intdiv.
+Require Import ord word partmap.
 
 Require Import lib.utils.
 
@@ -242,7 +242,7 @@ Proof.
 have lb : 1 < 2 ^ word_size t.
   rewrite -{1}(expn0 2) ltn_exp2l //.
   by have := ltn_trans _ (word_size_lb t); apply.
-rewrite -[31]/(2 ^ 5 - 1) /= ?modn_small //;
+rewrite -[31]/(2 ^ 5 - 1) /= !modz_nat !absz_nat !modn_mod ?modn_small //;
   try by rewrite subn1 prednK ?expn_gt0 // leqnn.
 apply: ltn_sub2r=> //; rewrite ltn_exp2l //.
 by have := ltn_trans _ (word_size_lb t); apply.

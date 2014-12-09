@@ -1,6 +1,3 @@
-Require Import Coq.Classes.SetoidDec.
-Require Import ZArith. (* omega *)
-Require Import Bool.
 Require Import ssreflect ssrbool ssrfun eqtype seq.
 
 Close Scope Z_scope.
@@ -120,44 +117,6 @@ Ltac exact_f_equal h :=
     cut (g = t); [ intro h_eq; rewrite h_eq; exact h | f_equal; auto ]
   end.
 
-(* A generalization of [exact_f_equal] to implications.
-
-   This is like [applys_eq] from LibTactics.v, except you do not need
-   to specify which vars you want equalities for.  See Software
-   Foundations for a description of [applys_eq]:
-   http://www.cis.upenn.edu/~bcpierce/sf/UseTactics.html#lab869
-
-*)
-Ltac apply_f_equal h :=
-  let h_specialized := fresh "h_specialized" in
-  let t := intro h_specialized; exact_f_equal h_specialized in
-  (ecut' h; [t|..]).
-
-(* Solve sub goals with [tac], using [f_equal] to make progress when
-   possible
-*)
-Ltac rec_f_equal tac :=
-  tac || (progress f_equal; rec_f_equal tac).
-
-Section Test.
-
-Open Scope nat.
-
-Lemma test_exact_f_equal: forall (n1 n2: nat) (P: nat -> nat -> Prop),
-  P (n1+1) (n1+n2) -> P (1+n1) (n2+n1).
-Proof.
-  intros ? ? ? HP. exact_f_equal HP; omega.
-Qed.
-
-Lemma test_rec_f_equal:
-  forall (n1 n2: nat) (P: seq (seq nat) -> nat -> Prop),
-  P (((n1+1)::nil)::nil) (n1+n2) -> P (((1+n1)::nil)::nil) (n2+n1).
-Proof.
-  intros ? ? ? HP. exact_f_equal HP; rec_f_equal omega.
-Qed.
-
-End Test.
-
 End EqualityTactics.
 Export EqualityTactics.
 
@@ -227,47 +186,15 @@ Ltac allinv' :=
 Ltac andb_true_split :=
   hnf;
   try match goal with
-    | [|- Is_true _]  => apply Is_true_eq_left
+    (*| [|- Is_true _]  => apply Is_true_eq_left*)
     | [|- true  =  _] => symmetry
-    | [|- false <> _] => symmetry; apply not_false_iff_true
-    | [|- _ <> false] => apply not_false_iff_true
+    (*| [|- false <> _] => symmetry; apply not_false_iff_true
+    | [|- _ <> false] => apply not_false_iff_true*)
   end;
   match goal with
-    | [|- ?b1 && ?b = true] => apply andb_true_iff; split;
+    | [|- ?b1 && ?b = true] => apply/andP; split;
                                try andb_true_split
   end.
-
-(* For when you want to subst/congruence, but you have terms relying on
-   "EqDec (eq_setoid A)" lying around. *)
-Ltac unsetoid    := repeat match goal with
-                      | H : context[complement equiv ?x ?y] |- _ =>
-                        replace (complement equiv x y) with (~ equiv x y) in *
-                          by auto
-                      | |- context[complement equiv ?x ?y] =>
-                        replace (complement equiv x y) with (~ equiv x y) in *
-                          by auto
-                    end;
-                    unfold equiv, eq_setoid in *.
-Ltac ssubst      := unsetoid; subst.
-Ltac scongruence := unsetoid; congruence.
-
-(* NC: Ltac is not exported from [Section]. This is for simplifying
-the existential in [predicted_outcome]. *)
-Ltac simpl_exists_tag :=
-  match goal with
-  | [ H: exists _, ?x = (_,_) |- _ ] => destruct H; subst x; simpl
-  end.
-
-
-(* And basic lemmas *)
-Lemma rev_nil_nil (A: Type) : forall (l: seq A),
-  rev l = nil ->
-  l = nil.
-Proof.
-  move=> l.
-  rewrite -{1}[[::]]/(rev [::]).
-  exact: (inv_inj revK).
-Qed.
 
 Notation "f ∘ g" := (f \o g) (at level 30).
 
@@ -293,29 +220,6 @@ Proof.
   destruct update_list.  inv H.
   congruence.
   congruence.
-Qed.
-
-Definition update_list_Z A i y (xs: seq A) : option (seq A) :=
-  if Z.ltb i 0 then
-    None
-  else
-    update_list (Z.to_nat i) y xs.
-
-Lemma update_Z_some_not_nil : forall A (v:A) l i l',
-  update_list_Z i v l = Some l' ->
-  l' = nil ->
-  False.
-Proof.
-  intros. unfold update_list_Z in *.  destruct (i <? 0)%Z. congruence.
-  eapply update_some_not_nil; eauto.
-Qed.
-
-Lemma update_list_Z_nat (A: Type) (v:A) l i l':
-  update_list_Z i v l = Some l' ->
-  update_list (Z.to_nat i) v l = Some l'.
-Proof.
-  intros. unfold update_list_Z in *. destruct (i <? 0)%Z. congruence.
-  auto.
 Qed.
 
 Fixpoint just_somes {X Y} (l : seq (X * option Y)) :=
@@ -982,13 +886,6 @@ Fixpoint runn {A} (step : A -> option A) (max_steps : nat) (st : A) : seq A :=
   end.
 
 Definition run {A} (step: A -> option A) (st : A) := runn step 10000 st.
-
-Instance eqType_EqDec (A : eqType) : EqDec (eq_setoid A).
-Proof.
-move=> x y.
-have [->|neq_xy] := altP (x =P y); first by left.
-by right=> eq_xy; move: neq_xy; rewrite eq_xy eqxx.
-Qed.
 
 Lemma pair2_inj (T : eqType) (S : T -> Type) (x : T) : injective (existT S x).
 Proof.

@@ -145,7 +145,7 @@ Definition format_opcode (o : opcode) :=
   end.
 
 Class printing (t : machine_types) := {
-  format_word : word t -> sstring;
+  format_word : mword t -> sstring;
   format_reg : reg t -> sstring;
   format_imm : imm t -> sstring
 }.

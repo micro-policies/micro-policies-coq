@@ -1,4 +1,4 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq ssrint.
 Require Import ord word partmap.
 
 Require Import lib.utils common.common.
@@ -11,8 +11,6 @@ Unset Printing Implicit Defensive.
 
 Module Concrete.
 
-Open Scope bool_scope.
-Open Scope Z_scope.
 Open Scope word_scope.
 
 (* CH (old): Why aren't these Ts instantiated with (word t) right away?  Is
@@ -36,7 +34,7 @@ Record RVec (T : Type) : Type := mkRVec {
 }.
 
 Definition rule T := (MVec T * RVec T)%type.
-Definition rules T := list (rule T).
+Definition rules T := seq (rule T).
 
 Section WithClasses.
 
@@ -58,8 +56,8 @@ Definition TKernel : mword t := as_word 8.
 
 Context {spops : machine_ops_spec ops}.
 
-Definition Mop : mword t := (cache_line_addr + as_word 0)%w.
-Definition Mtpc : mword t := (cache_line_addr + as_word 1)%w.
+Definition Mop : mword t := (cache_line_addr + 0)%w.
+Definition Mtpc : mword t := (cache_line_addr + 1)%w.
 Definition Mti : mword t := (cache_line_addr + as_word 2)%w.
 Definition Mt1 : mword t := (cache_line_addr + as_word 3)%w.
 Definition Mt2 : mword t := (cache_line_addr + as_word 4)%w.
@@ -237,26 +235,26 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (Const n r)),
     forall (OLD : reg r = Some old@told),
     let mvec := mkMVec (mword_of_op CONST) tpc ti told TNone TNone in
-    forall (NEXT : next_state_reg st mvec r (Word.casts n) = Some st'),
+    forall (NEXT : next_state_reg st mvec r (swcast n) = Some st'),
       step st st'
 | step_mov :
     forall mem reg cache pc epc r1 w1 r2 tpc i ti t1 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Mov r1 r2)),
-    forall (REG1 : PartMaps.get reg r1 = Some w1@t1),
-    forall (OLD : PartMaps.get reg r2 = Some old@told),
+    forall (REG1 : reg r1 = Some w1@t1),
+    forall (OLD : reg r2 = Some old@told),
     let mvec := mkMVec (mword_of_op MOV) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg st mvec r2 w1 = Some st'),
       step st st'
 | step_binop :
     forall mem reg cache pc epc op r1 r2 r3 w1 w2 tpc i ti t1 t2 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Binop op r1 r2 r3)),
-    forall (REG1 : PartMaps.get reg r1 = Some w1@t1),
-    forall (REG2 : PartMaps.get reg r2 = Some w2@t2),
-    forall (OLD : PartMaps.get reg r3 = Some old@told),
+    forall (REG1 : reg r1 = Some w1@t1),
+    forall (REG2 : reg r2 = Some w2@t2),
+    forall (OLD : reg r3 = Some old@told),
     let mvec := mkMVec (mword_of_op (BINOP op)) tpc ti t1 t2 told in
     forall (NEXT : next_state_reg st mvec r3 (binop_denote op w1 w2) =
                    Some st'),
@@ -264,61 +262,61 @@ Inductive step (st st' : state) : Prop :=
 | step_load :
     forall mem reg cache pc epc r1 r2 w1 w2 tpc i ti t1 t2 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Load r1 r2)),
-    forall (REG1 : PartMaps.get reg r1 = Some w1@t1),
-    forall (M1 : PartMaps.get mem w1 = Some w2@t2),
-    forall (OLD : PartMaps.get reg r2 = Some old@told),
+    forall (REG1 : reg r1 = Some w1@t1),
+    forall (M1 : mem w1 = Some w2@t2),
+    forall (OLD : reg r2 = Some old@told),
     let mvec := mkMVec (mword_of_op LOAD) tpc ti t1 t2 told in
     forall (NEXT : next_state_reg st mvec r2 w2 = Some st'),
       step st st'
 | step_store :
     forall mem reg cache pc epc r1 r2 w1 w2 w3 tpc i ti t1 t2 t3,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Store r1 r2)),
-    forall (REG1 : PartMaps.get reg r1 = Some w1@t1),
-    forall (REG2 : PartMaps.get reg r2 = Some w2@t2),
-    forall (M1 : PartMaps.get mem w1 = Some w3@t3),
+    forall (REG1 : reg r1 = Some w1@t1),
+    forall (REG2 : reg r2 = Some w2@t2),
+    forall (M1 : mem w1 = Some w3@t3),
     let mvec := mkMVec (mword_of_op STORE) tpc ti t1 t2 t3 in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        do! mem' <- PartMaps.upd mem w1 w2@(ctr rvec);
+        do! mem' <- pmupd mem w1 w2@(ctr rvec);
         Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc)) = Some st'),
       step st st'
 | step_jump :
     forall mem reg cache pc epc r w tpc i ti t1,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Jump r)),
-    forall (REG : PartMaps.get reg r = Some w@t1),
+    forall (REG : reg r = Some w@t1),
     let mvec := mkMVec (mword_of_op JUMP) tpc ti t1 TNone TNone in
     forall (NEXT : next_state_pc st mvec w = Some st'),
       step st st'
 | step_bnz :
     forall mem reg cache pc epc r n w tpc i ti t1,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Bnz r n)),
-    forall (REG : PartMaps.get reg r = Some w@t1),
+    forall (REG : reg r = Some w@t1),
     let mvec := mkMVec (mword_of_op BNZ) tpc ti t1 TNone TNone in
-    let pc' := pc + if w == Word.repr 0 then Word.repr 1 else Word.casts n in
+    let pc' := pc + if w == 0 then 1 else swcast n in
     forall (NEXT : next_state_pc st mvec pc' = Some st'),
       step st st'
 | step_jal :
     forall mem reg cache pc epc r w tpc i ti t1 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Jal r)),
-    forall (REG : PartMaps.get reg r = Some w@t1),
-    forall (OLD: PartMaps.get reg ra = Some old@told),
+    forall (REG : reg r = Some w@t1),
+    forall (OLD: reg ra = Some old@told),
     let mvec := mkMVec (mword_of_op JAL) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'),
       step st st'
 | step_jumpepc :
     forall mem reg cache pc tpc w tepc i ti,
     forall (ST : st = mkState mem reg cache pc@tpc w@tepc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (JumpEpc _)),
     let mvec := mkMVec (mword_of_op JUMPEPC) tpc ti tepc TNone TNone in
     forall (NEXT : next_state_pc st mvec w = Some st'),
@@ -326,7 +324,7 @@ Inductive step (st st' : state) : Prop :=
 | step_addrule :
     forall mem reg cache pc epc tpc i ti,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (AddRule _)),
     let mvec :=
         mkMVec (mword_of_op ADDRULE) tpc ti TNone TNone TNone in
@@ -338,25 +336,25 @@ Inductive step (st st' : state) : Prop :=
 | step_gettag :
     forall mem reg cache pc epc r1 r2 w tpc i ti t1 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (GetTag r1 r2)),
-    forall (REG : PartMaps.get reg r1 = Some w@t1),
-    forall (OLD : PartMaps.get reg r2 = Some old@told),
+    forall (REG : reg r1 = Some w@t1),
+    forall (OLD : reg r2 = Some old@told),
     let mvec := mkMVec (mword_of_op GETTAG) tpc ti t1 told TNone in
     forall (NEXT : next_state_reg st mvec r2 t1 = Some st'),
       step st st'
 | step_puttag :
     forall mem reg cache pc epc r1 r2 r3 w t tpc i ti t1 t2 old told,
     forall (ST : st = mkState mem reg cache pc@tpc epc),
-    forall (PC : PartMaps.get mem pc = Some i@ti),
+    forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (PutTag r1 r2 r3)),
-    forall (REG1 : PartMaps.get reg r1 = Some w@t1),
-    forall (REG2 : PartMaps.get reg r2 = Some t@t2),
-    forall (OLD: PartMaps.get reg r3 = Some old@told),
+    forall (REG1 : reg r1 = Some w@t1),
+    forall (REG2 : reg r2 = Some t@t2),
+    forall (OLD: reg r3 = Some old@told),
     let mvec := mkMVec (mword_of_op PUTTAG) tpc ti t1 t2 told in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        do! reg' <- PartMaps.upd reg r3 w@t;
+        do! reg' <- pmupd reg r3 w@t;
         Some (mkState mem reg' cache (pc.+1@(ctrpc rvec)) epc)) = Some st'),
       step st st'.
 
@@ -364,8 +362,8 @@ End ConcreteSection.
 
 End WithClasses.
 
-Notation memory t := (word_map t (atom (word t) (word t))).
-Notation registers t := (reg_map t (atom (word t) (word t))).
+Notation memory t := {partmap mword t -> atom (mword t) (mword t)}.
+Notation registers t := {partmap reg t -> atom (mword t) (mword t)}.
 
 End Concrete.
 
@@ -390,8 +388,9 @@ Proof.
   - move => [-> -> -> -> -> ->]. by rewrite !eqxx.
 Qed.
 
-Definition mvec_eqMixin T := EqMixin (mvec_eqbP T).
-Canonical mvec_eqType T := Eval hnf in EqType _ (mvec_eqMixin T).
+Definition mvec_eqMixin T := EqMixin (@mvec_eqbP T).
+Canonical mvec_eqType (T : eqType) :=
+  Eval hnf in EqType (MVec T) (@mvec_eqMixin T).
 
 Definition rvec_eqb (T : eqType) (r1 r2 : RVec T) : bool :=
   [&& ctrpc r1 == ctrpc r2 & ctr r1 == ctr r2].
@@ -405,8 +404,9 @@ Proof.
   - move => [-> ->]. by rewrite !eqxx.
 Qed.
 
-Definition rvec_eqMixin T := EqMixin (rvec_eqbP T).
-Canonical rvec_eqType T := Eval hnf in EqType _ (rvec_eqMixin T).
+Definition rvec_eqMixin T := EqMixin (@rvec_eqbP T).
+Canonical rvec_eqType (T : eqType) :=
+  Eval hnf in EqType (RVec T) (rvec_eqMixin T).
 
 Definition state_eqb mt : rel (state mt) :=
   [rel s1 s2 | [&& mem s1 == mem s2,
@@ -424,7 +424,7 @@ Proof.
 Qed.
 
 Definition state_eqMixin mt := EqMixin (@state_eqbP mt).
-Canonical state_eqType mt := EqType _ (@state_eqMixin mt).
+Canonical state_eqType mt := EqType (state mt) (@state_eqMixin mt).
 
 End Exports.
 
