@@ -8,8 +8,8 @@ Context {t : machine_types}.
 Class cfi_id := {
   id         : eqType;
 
-  word_to_id : word t -> option id;
-  id_to_word : id -> word t;
+  word_to_id : mword t -> option id;
+  id_to_word : id -> mword t;
 
   id_to_wordK : forall x, word_to_id (id_to_word x) = Some x;
   word_to_idK : forall w x, word_to_id w = Some x -> id_to_word x = w

@@ -1,12 +1,8 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import word partmap.
+Require Import lib.utils common.common cfi.property cfi.classes.
 
-Require Import lib.utils.
-Require Import common.common.
-Require Import cfi.property.
-Require Import cfi.classes.
 Set Implicit Arguments.
-
-Import ListNotations.
 
 Module Abs.
 
@@ -14,20 +10,18 @@ Open Scope bool_scope.
 
 Section WithClasses.
 
-Import PartMaps.
-
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
 
 Open Scope word_scope.
 
-Local Notation word := (word t).
-Local Notation "x .+1" := (Word.add x Word.one).
+Local Notation word := (mword t).
+Local Notation "x .+1" := (x + 1).
 
-Local Notation imemory := (word_map t word).
-Local Notation dmemory := (word_map t word).
-Local Notation registers := (reg_map t word).
+Local Notation imemory := {partmap word -> word}.
+Local Notation dmemory := {partmap word -> word}.
+Local Notation registers := {partmap reg t -> word}.
 
 Record state := State {
   imem : imemory;
@@ -37,6 +31,24 @@ Record state := State {
   cont : bool (* machine stops when this is false;
                  this starts out as true in initial state *)
 }.
+
+Definition cfi_abs_state_eq (s1 s2 : state) :=
+  [&& imem s1 == imem s2,
+      dmem s1 == dmem s2,
+      regs s1 == regs s2,
+      pc s1 == pc s2 &
+      cont s1 == cont s2].
+
+Lemma cfi_abs_state_eqP : Equality.axiom cfi_abs_state_eq.
+Proof.
+move=> [?????] [?????]; apply/(iffP idP).
+  by case/and5P=> /=; do !move => /= /eqP ->.
+by case; do !move => ->; rewrite /cfi_abs_state_eq !eqxx.
+Qed.
+
+Definition cfi_abs_state_eqMixin := EqMixin cfi_abs_state_eqP.
+Canonical cfi_abs_state_eqType :=
+  Eval hnf in EqType state cfi_abs_state_eqMixin.
 
 (* Para-virtualizing system calls, since CFI doesn't have any system
    calls of its own and dealing with them is an interesting problem *)
@@ -56,66 +68,69 @@ Variable cfg : id -> id -> bool.
 
 Definition valid_jmp := classes.valid_jmp cfg.
 
+Implicit Types imem : imemory.
+Implicit Types dmem : dmemory.
+Implicit Types reg : registers.
+
 Inductive step : state -> state -> Prop :=
 | step_nop : forall imem dmem reg pc i,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Nop _)),
              step (State imem dmem reg pc true) (State imem dmem reg pc.+1 true)
 | step_const : forall imem dmem reg reg' pc i n r,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Const n r)),
-             forall (UPD : upd reg r (Word.casts n) = Some reg'),
+             forall (UPD : updm reg r (swcast n) = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_mov : forall imem dmem reg reg' pc i r1 r2 w1,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Mov r1 r2)),
-             forall (R1W : get reg r1 = Some w1),
-             forall (UPD : upd reg r2 w1 = Some reg'),
+             forall (R1W : reg r1 = Some w1),
+             forall (UPD : updm reg r2 w1 = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_binop : forall imem dmem reg reg' pc i f r1 r2 r3 w1 w2,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Binop f r1 r2 r3)),
-             forall (R1W : get reg r1 = Some w1),
-             forall (R2W : get reg r2 = Some w2),
-             forall (UPD : upd reg r3 (binop_denote f w1 w2) = Some reg'),
+             forall (R1W : reg r1 = Some w1),
+             forall (R2W : reg r2 = Some w2),
+             forall (UPD : updm reg r3 (binop_denote f w1 w2) = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_load : forall imem dmem reg reg' pc i r1 r2 w1 w2,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Load r1 r2)),
-             forall (R1W : get reg r1 = Some w1),
-             forall (MEM1 : get imem w1 = Some w2 \/ get dmem w1 = Some w2),
-             forall (UPD : upd reg r2 w2 = Some reg'),
+             forall (R1W : reg r1 = Some w1),
+             forall (MEM1 : imem w1 = Some w2 \/ dmem w1 = Some w2),
+             forall (UPD : updm reg r2 w2 = Some reg'),
              step (State imem dmem reg pc true) (State imem dmem reg' pc.+1 true)
 | step_store : forall imem dmem dmem' reg pc i r1 r2 w1 w2,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Store r1 r2)),
-             forall (R1W : get reg r1 = Some w1),
-             forall (R2W : get reg r2 = Some w2),
-             forall (UPD : upd dmem w1 w2 = Some dmem'),
+             forall (R1W : reg r1 = Some w1),
+             forall (R2W : reg r2 = Some w2),
+             forall (UPD : updm dmem w1 w2 = Some dmem'),
              step (State imem dmem reg pc true) (State imem dmem' reg pc.+1 true)
 | step_jump : forall imem dmem reg pc i r w b,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Jump r)),
-             forall (RW : get reg r = Some w),
+             forall (RW : reg r = Some w),
              forall (VALID : valid_jmp pc w = b),
              step (State imem dmem reg pc true) (State imem dmem reg w b)
 | step_bnz : forall imem dmem reg pc i r n w,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Bnz r n)),
-             forall (RW : get reg r = Some w),
-             let pc' := Word.add pc (if w == Word.zero then Word.one
-                                     else Word.casts n) in
+             forall (RW : reg r = Some w),
+             let pc' := pc + (if w == 0 then 1 else swcast n) in
              step (State imem dmem reg pc true) (State imem dmem reg pc' true)
 | step_jal : forall imem dmem reg reg' pc i r w b,
-             forall (FETCH : get imem pc = Some i),
+             forall (FETCH : imem pc = Some i),
              forall (INST : decode_instr i = Some (Jal r)),
-             forall (RW : get reg r = Some w),
-             forall (UPD : upd reg ra (pc.+1) = Some reg'),
+             forall (RW : reg r = Some w),
+             forall (UPD : updm reg ra (pc.+1) = Some reg'),
              forall (VALID : valid_jmp pc w = b),
              step (State imem dmem reg pc true) (State imem dmem reg' w b)
 | step_syscall : forall imem dmem dmem' reg reg' pc pc' sc,
-                 forall (FETCH : get imem pc = None),
-                 forall (NOUSERM : get dmem pc = None),
+                 forall (FETCH : imem pc = None),
+                 forall (NOUSERM : dmem pc = None),
                  forall (GETCALL : get_syscall pc = Some sc),
                  forall (CALL : sem sc (State imem dmem reg pc true) =
                                 Some (State imem dmem' reg' pc' true)),
@@ -124,8 +139,8 @@ Inductive step : state -> state -> Prop :=
 
 Inductive step_a : state -> state -> Prop :=
 | step_attack : forall imem dmem dmem' reg reg' pc b
-             (MSAME: same_domain dmem dmem')
-             (RSAME: same_domain reg reg'),
+             (MSAME: dmem =i dmem')
+             (RSAME: reg =i reg'),
              step_a (State imem dmem reg pc b)
                     (State imem dmem' reg' pc b).
 
@@ -133,17 +148,17 @@ Inductive step_a : state -> state -> Prop :=
 Definition succ (st : state) (st' : state) : bool :=
   let '(State imem dmem reg pc _) := st in
   let '(State _ _ _ pc' _) := st' in
-  match (get imem pc) with
+  match (imem pc) with
     | Some i =>
       match decode_instr i with
         | Some (Jump r) => valid_jmp pc pc'
         | Some (Jal r) => valid_jmp pc pc'
-        | Some (Bnz r imm) => (pc' == pc .+1) || (pc' == pc + Word.casts imm)
+        | Some (Bnz r imm) => (pc' == pc .+1) || (pc' == pc + swcast imm)
         | None => false
         | _ => pc' == pc .+1
       end
     | None =>
-      match get dmem pc with
+      match dmem pc with
         | Some _ => false
         | None =>
           match get_syscall pc with
@@ -160,17 +175,17 @@ Definition succ (st : state) (st' : state) : bool :=
 Definition initial (s : state) :=
   cont s.
 
-Definition all_attacker (xs : list state) : Prop :=
+Definition all_attacker (xs : seq state) : Prop :=
   forall x1 x2, In2 x1 x2 xs -> step_a x1 x2.
 
-Definition all_stuck (xs : list state) : Prop :=
-  forall x, In x xs -> ~ exists s, step x s.
+Definition all_stuck (xs : seq state) : Prop :=
+  forall x, x \in xs -> ~ exists s, step x s.
 
 Definition stopping (xs : list state) : Prop :=
   all_attacker xs /\ all_stuck xs.
 
 Program Instance abstract_cfi_machine : cfi_machine := {|
-  state := state;
+  state := [eqType of state];
   initial s := initial s;
 
   step := step;
@@ -204,26 +219,11 @@ Proof.
 Qed.
 
 Lemma list_theorem {X} (x : X) xs hs y z tl x0 :
-  xs ++ [x] = hs ++ y :: z :: tl ++ [x0] ->
+  xs ++ [:: x] = hs ++ y :: z :: tl ++ [:: x0] ->
   x = x0.
 Proof.
-  intro H.
-  gdep hs. gdep y. gdep z. gdep tl.
-  induction xs.
-  - intros. simpl in H. repeat (destruct hs; inversion H).
-  - intros. destruct hs.
-    + simpl in H. inversion H. subst.
-      destruct tl.
-      * simpl in *.
-        destruct xs; simpl in H2; [inversion H2 | idtac].
-        destruct xs; simpl in *.
-        inv H2. reflexivity.
-        destruct xs; simpl in H2; inversion H2.
-      * simpl in H2.
-        specialize (IHxs tl x1 z []). apply IHxs.
-        auto.
-    + inv H.
-      eapply IHxs; eauto.
+rewrite -[[:: y, z & tl ++ [:: x0]]]/([:: y, z & tl] ++ [:: x0]) catA !cats1.
+by move/(f_equal (last x)); rewrite !last_rcons.
 Qed.
 
 Lemma all_attacker_red ast ast' axs :
@@ -243,22 +243,22 @@ Lemma all_stuck_red ast ast' axs :
 Proof.
   intros ALLS asi IN.
   unfold all_stuck in ALLS.
-  assert (IN': In asi (ast :: ast' :: axs))
-    by (simpl; right; auto).
+  have IN' : asi \in (ast :: ast' :: axs)
+    by rewrite inE IN orbT.
   auto.
 Qed.
 
 Lemma stuck_states_preserved_by_a asi tl :
   all_attacker (asi :: tl) ->
   ~~ cont asi ->
-  forall asj, In asj tl -> ~~ cont asj.
+  forall asj, asj \in tl -> ~~ cont asj.
 Proof.
   intros ALLATTACKER CONT asj IN.
-  gdep asi.
+  move: asi ALLATTACKER CONT.
   induction tl; intros.
-  - destruct IN.
-  - destruct IN as [? | IN].
-    + subst.
+  - done.
+  - rewrite !inE in IN; case/orP: IN.
+    + move=> /eqP ?; subst a.
       assert (IN2: In2 asi asj (asi :: asj :: tl))
         by (simpl; auto).
       apply ALLATTACKER in IN2.
@@ -270,25 +270,24 @@ Proof.
       assert (CONT' := step_a_violation IN2).
       rewrite CONT' in CONT.
       apply all_attacker_red in ALLATTACKER.
-      eapply IHtl; eauto.
+      move => /IHtl {IHtl} IHtl; eapply IHtl; eauto.
 Qed.
 
 Lemma stuck_trace s s' xs s'' :
   interm (cfi_step abstract_cfi_machine) (s :: xs) s s'' ->
   ~~ cont s ->
-  In s' (s :: xs) ->
+  s' \in s :: xs ->
   ~ exists s''', step s' s'''.
 Proof.
   intros INTERM CONT IN (s''' & STEP).
   induction INTERM as [? ? STEP'|? ? ? ? STEP' INTERM'].
-  - destruct IN as [? | IN]; subst.
+  - rewrite !inE in IN. case/orP: IN; move=> /eqP *; subst.
     + inv STEP; by discriminate.
-    + destruct IN as [? | IN]; [subst | inv IN].
-      destruct STEP' as [STEPA | STEPN].
+    + destruct STEP' as [STEPA | STEPN].
       * inv STEPA; simpl in *;
         inv STEP; by discriminate.
       * inv STEPN; by discriminate.
-  - destruct IN as [? | IN];
+  - rewrite !inE in IN; case/orP: IN => [/eqP ? | IN]; subst;
     [inv STEP; by discriminate | subst].
     destruct STEP' as [STEPA | STEPN].
     + inv STEPA.
@@ -319,10 +318,9 @@ Proof.
         destruct INTRACE as [[? ?]|INTRACE];
         [subst; by assumption | by (inv INTRACE)].
       * right.
-        exists s; exists s'; do 2 exists [].
+        exists s; exists s'; do 2 exists [::].
         simpl; repeat split; try (auto || intros ? ? IN2; by (destruct IN2)).
-        intros ? IN [s0 STEP].
-        destruct IN as [? | IN]; [subst | destruct IN].
+        intros ? IN [s0 STEP]; rewrite inE in IN; move/eqP in IN; subst.
         destruct (step_succ_violation SUCC STEPN) as [H1 H2].
         inv STEP; simpl in H2; by discriminate.
   - unfold trace_has_at_most_one_violation in IHINTERM.
@@ -348,7 +346,7 @@ Proof.
         + right.
           destruct xs; first (by inv INTERM).
           assert (EQ := interm_first_step INTERM); subst.
-          exists s; exists s'; exists []; exists xs.
+          exists s; exists s'; exists [::]; exists xs.
           simpl; repeat split;
           try (auto || intros ? ? IN2; by (destruct IN2)).
           { intros ? ? IN2.
@@ -389,7 +387,8 @@ Proof.
           assert (Heq: sj :: hs ++ sv1 :: sv2 :: tl = sj :: lst)
             by (rewrite Heqlst; reflexivity).
           rewrite Heq in INTERM.
-          have IN: In sv1 ((sj :: hs) ++ sv1 :: (sv2 :: tl)) by rewrite in_app_iff /=; auto.
+          have IN: sv1 \in (sj :: hs) ++ sv1 :: (sv2 :: tl).
+            by rewrite mem_cat !inE eqxx /= !orbT; auto.
           simpl ((sj :: hs) ++ sv1 :: sv2 :: tl) in IN.
           rewrite  Heq in IN.
           assert (EQ := interm_first_step INTERM); subst.
@@ -400,9 +399,9 @@ Qed.
 
 End WithClasses.
 
-Notation imemory t := (word_map t (word t)).
-Notation dmemory t := (word_map t (word t)).
-Notation registers t := (reg_map t (word t)).
+Notation imemory t := {partmap mword t -> mword t}.
+Notation dmemory t := {partmap mword t -> mword t}.
+Notation registers t := {partmap reg t -> mword t}.
 
 End Abs.
 

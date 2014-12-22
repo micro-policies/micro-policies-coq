@@ -1,20 +1,18 @@
-Require Import List.
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import word partmap.
 Require Import lib.utils common.common.
 
 Set Implicit Arguments.
-
-Import ListNotations.
 
 Section CFI.
 
 Context (t : machine_types).
 Context {ops : machine_ops t}.
 
-Local Notation word := (word t).
+Local Notation word := (mword t).
 
 Class cfi_machine := {
-  state : Type;
+  state : eqType;
   initial : state -> Prop;
 
   step : state -> state -> Prop;
@@ -53,7 +51,7 @@ Definition trace_has_at_most_one_violation (trace : list state) :=
   trace_has_cfi trace \/
   exists si sj hs tl, trace = hs ++ si :: sj :: tl
                          /\ (step si sj /\ ~~ succ si sj)
-                         /\ trace_has_cfi (hs ++ [si])
+                         /\ trace_has_cfi (rcons hs si)
                          /\ trace_has_cfi (sj :: tl)
                          /\ stopping(sj :: tl).
 

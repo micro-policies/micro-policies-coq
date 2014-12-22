@@ -1,12 +1,8 @@
-Require Import Coq.Lists.List Coq.Bool.Bool.
-Require Import common.common.
-Require Import lib.utils.
-Require Import cfi.property.
-Require Import ssreflect ssrbool.
+Require Import ssreflect ssrfun ssrbool eqtype seq.
+Require Import word partmap.
+Require Import lib.utils common.common cfi.property.
 
 Set Implicit Arguments.
-
-Import ListNotations.
 
 (* CFI preserved by refinement for two generic (cfi) machines *)
 
@@ -46,10 +42,10 @@ Class machine_refinement (amachine : cfi_machine) (cmachine : cfi_machine) := {
 Context (rf : machine_refinement amachine cmachine).
 
 Inductive refine_traces :
-  list (@state amachine) -> list (@state cmachine) -> Prop :=
+  seq (@state amachine) -> seq (@state cmachine) -> Prop :=
 | TRNil : forall ast cst,
             refine_state ast cst ->
-            refine_traces [ast] [cst]
+            refine_traces [:: ast] [:: cst]
 | TRNormal0 : forall ast cst cst' axs cxs,
     step cst cst' ->
     ~~ check cst cst' ->
@@ -74,7 +70,7 @@ Inductive refine_traces :
     refine_traces (ast :: ast' :: axs) (cst :: cst' :: cxs).
 
 Lemma refine_traces_single ast cst cst' cxs :
-  refine_traces [ast] (cst :: cst' :: cxs) ->
+  refine_traces [:: ast] (cst :: cst' :: cxs) ->
   forall csi csj,
     In2 csi csj (cst :: cst' :: cxs) ->
     ~~ check csi csj.
@@ -92,29 +88,16 @@ Proof.
 Qed.
 
 Lemma refine_traces_execution ast cst cst' cxs :
-  refine_traces [ast] (cst :: cxs) ->
-  In cst' (cst :: cxs) ->
+  refine_traces [:: ast] (cst :: cxs) ->
+  cst' \in cst :: cxs ->
   exec step cst cst'.
 Proof.
-  intros RTRACES IN.
-  gdep cst.
-  induction cxs; intros.
-  - destruct IN as [? | CONTRA]; subst.
-    + econstructor(eauto).
-    + destruct CONTRA.
-  - destruct IN as [EQ | IN]; subst.
-    + econstructor(eauto).
-    + destruct IN as [? | IN]; subst.
-      inv RTRACES.
-      eapply re_step; eauto; econstructor(auto).
-    + inv RTRACES.
-      assert (IN' : In cst' (a :: cxs)) by (right; auto).
-      specialize (IHcxs _ H8 IN').
-      eapply restricted_exec_trans; eauto.
-      eapply re_step; eauto.
-      econstructor(auto).
+elim: cxs cst => /= [|cst'' cxs IH] cst; rewrite inE.
+  by move=> ? /eqP -> {cst'}; constructor.
+move=> Href /orP [/eqP ->|Hin]; first by constructor.
+inv Href.
+by eapply re_step; eauto; apply: IH.
 Qed.
-
 
 Lemma refine_traces_astep ast ast' cst axs cxs :
   refine_traces (ast :: ast' :: axs) (cst :: cxs) ->
@@ -122,7 +105,7 @@ Lemma refine_traces_astep ast ast' cst axs cxs :
                      (step ast ast' \/ step_a ast ast' /\ step_a cst' cst'').
 Proof.
   intros RTRACE.
-  gdep cst.
+  move: cst RTRACE.
   induction cxs; intros.
   - inv RTRACE.
   - inversion RTRACE
@@ -206,15 +189,15 @@ Proof.
   - destruct (backwards_refinement_normal _ _ _ INITREF STEPN) as [VIS INVIS].
     have [CHECK|CHECK] := boolP (check cst cst').
     + destruct (VIS CHECK) as [ast' [ASTEP AREF]]. clear INVIS VIS.
-      exists [ast;ast']. split.
+      exists [:: ast;ast']. split.
       * exists ast'. eapply intermr_multi. right. eassumption. now constructor.
       * apply TRNormal1; auto.
         constructor(assumption).
     + specialize (INVIS CHECK); clear VIS.
       destruct INVIS as [ZERO | [ast' [STEP REF]]].
-      * exists [ast]; split; [exists ast; constructor | apply TRNormal0; auto].
+      * exists [:: ast]; split; [exists ast; constructor | apply TRNormal0; auto].
         now constructor(assumption).
-      * exists [ast; ast'].
+      * exists [:: ast; ast'].
         { split.
           - exists ast'.
             econstructor; first by (right; eauto).
@@ -223,7 +206,7 @@ Proof.
             by constructor. }
   - destruct STEP2 as [STEP2A | STEP2N]; [idtac | tauto].
     destruct (backwards_refinement_attacker _ _ _ INITREF STEP2A) as [ast' [STEPA REF]].
-    exists [ast;ast']; split;
+    exists [:: ast;ast']; split;
     [exists ast' | apply TRAttacker; auto; constructor(assumption)].
     eapply intermr_multi; eauto. left; eassumption. now constructor.
   }
@@ -305,8 +288,8 @@ Proof.
       destruct axs.
       + intros ? ? CONTRA; destruct CONTRA.
       + intros asi asj IN2'. unfold trace_has_cfi in TSAFE.
-        apply in2_strengthen with (ys := [ast]) in IN2'.
-        change ([ast] ++ ast' :: s :: axs )
+        apply in2_strengthen with (ys := [:: ast]) in IN2'.
+        change ([:: ast] ++ ast' :: s :: axs )
         with (ast :: ast' :: s :: axs) in IN2'.
         apply TSAFE. now assumption.
         now assumption.
@@ -316,8 +299,8 @@ Proof.
       destruct axs.
       + intros ? ? CONTRA; destruct CONTRA.
       + intros asi asj IN2'. unfold trace_has_cfi in TSAFE.
-        apply in2_strengthen with (ys := [ast]) in IN2'.
-        change ([ast] ++ ast' :: s :: axs )
+        apply in2_strengthen with (ys := [:: ast]) in IN2'.
+        change ([:: ast] ++ ast' :: s :: axs )
         with (ast :: ast' :: s :: axs) in IN2'.
         apply TSAFE. now assumption.
         now assumption.
@@ -332,12 +315,12 @@ Lemma refine_traces_split axs ahd atl asi asj cxs :
     step csi csj /\
     refine_state asi csi /\
     refine_state asj csj /\
-    refine_traces (ahd ++ [asi]) (chd ++ [csi]) /\
+    refine_traces (rcons ahd asi) (rcons chd csi) /\
     refine_traces (asj :: atl) (csj :: ctl) /\
     cxs = chd ++ csi :: csj :: ctl.
 Proof.
   intros eqaxs ref astep viol.
-  gdep viol. gdep astep. gdep ahd. gdep asi. gdep asj. gdep atl.
+  move: atl asj asi ahd eqaxs astep viol.
   induction ref; intros.
   - by repeat (destruct ahd; inversion eqaxs).
   - edestruct IHref as [chd [csi [csj [ctl [CSTEP [REFI [REFJ [RTHD [RTT CLST]]]]]]]]]; eauto.
@@ -346,7 +329,7 @@ Proof.
     rewrite CLST. reflexivity.
   - destruct ahd; simpl in *.
     + inv eqaxs. clear IHref.
-      exists []. exists cst. exists cst'. exists cxs.
+      exists [::]. exists cst. exists cst'. exists cxs.
       repeat split; eauto. by constructor(assumption).
     + inv eqaxs.
       edestruct IHref as [chd [csi [csj [ctl [CSTEP [REFI [REFJ [RTHD [RTT CLST]]]]]]]]]; eauto.
@@ -402,7 +385,7 @@ Proof.
         subst cxs.
         apply In2_inv in IN2'.
         destruct IN2' as [IN2' | [[E1 E2] | IN2']].
-        * by apply (refine_traces_preserves_cfi_trace RHT TSAFE1).
+        * by rewrite cats1 in IN2'; apply (refine_traces_preserves_cfi_trace RHT TSAFE1).
         * subst. by eauto using cfg_nocheck.
         * by apply (refine_traces_preserves_cfi_trace  RTT TSAFE2).
   }

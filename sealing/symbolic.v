@@ -1,6 +1,5 @@
-Require Import List. Import ListNotations.
-
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ord hseq word partmap.
 
 Require Import lib.utils common.common.
 Require Import symbolic.symbolic sealing.classes.
@@ -13,20 +12,19 @@ Module Sym.
 
 Section WithClasses.
 
-Import PartMaps.
-
 Context {t : machine_types}
         {ops : machine_ops t}
         {opss : machine_ops_spec ops}
         {scr : @syscall_regs t}
         {ssa : @sealing_syscall_addrs t}.
 
+Open Scope ord_scope.
+
 Class sealing_key := {
-  key : eqType;
+  key : ordType;
   max_key;
   inc_key : key -> key;
-  ord_key :> Ordered key;
-  ltb_inc : forall sk, sk <? max_key -> sk <? inc_key sk
+  ltb_inc : forall sk, sk < max_key -> sk < inc_key sk
 }.
 
 Context {sk : sealing_key}.
@@ -61,21 +59,20 @@ Definition stags : tag_kind -> eqType := fun k =>
   end.
 
 Section WithHLists.
-Import HListNotations.
 
 Definition sealing_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   match iv with
-  | mkIVec (OP NOP)       tt DATA [hl]               => Some (@mkOVec stags NOP tt tt)
-  | mkIVec (OP CONST)     tt DATA [hl _]             => Some (@mkOVec stags CONST tt DATA)
-  | mkIVec (OP MOV)       tt DATA [hl tsrc; _]       => Some (@mkOVec stags MOV tt tsrc)
-  | mkIVec (OP (BINOP o)) tt DATA [hl DATA; DATA; _] => Some (@mkOVec stags (BINOP o) tt DATA)
-  | mkIVec (OP LOAD)      tt DATA [hl DATA; tmem; _] => Some (@mkOVec stags LOAD tt tmem)
-  | mkIVec (OP STORE)     tt DATA [hl DATA; tsrc; _] => Some (@mkOVec stags STORE tt tsrc)
-  | mkIVec (OP JUMP)      tt DATA [hl DATA]          => Some (@mkOVec stags JUMP tt tt)
-  | mkIVec (OP BNZ)       tt DATA [hl DATA]          => Some (@mkOVec stags BNZ tt tt)
-  | mkIVec (OP JAL)       tt DATA [hl DATA; _]       => Some (@mkOVec stags JAL tt DATA)
-  | mkIVec SERVICE        tt _    [hl]               => Some tt
-  | mkIVec _              tt _ _                     => None
+  | mkIVec (OP NOP)       tt DATA [hseq]               => Some (@mkOVec stags NOP tt tt)
+  | mkIVec (OP CONST)     tt DATA [hseq _]             => Some (@mkOVec stags CONST tt DATA)
+  | mkIVec (OP MOV)       tt DATA [hseq tsrc; _]       => Some (@mkOVec stags MOV tt tsrc)
+  | mkIVec (OP (BINOP o)) tt DATA [hseq DATA; DATA; _] => Some (@mkOVec stags (BINOP o) tt DATA)
+  | mkIVec (OP LOAD)      tt DATA [hseq DATA; tmem; _] => Some (@mkOVec stags LOAD tt tmem)
+  | mkIVec (OP STORE)     tt DATA [hseq DATA; tsrc; _] => Some (@mkOVec stags STORE tt tsrc)
+  | mkIVec (OP JUMP)      tt DATA [hseq DATA]          => Some (@mkOVec stags JUMP tt tt)
+  | mkIVec (OP BNZ)       tt DATA [hseq DATA]          => Some (@mkOVec stags BNZ tt tt)
+  | mkIVec (OP JAL)       tt DATA [hseq DATA; _]       => Some (@mkOVec stags JAL tt DATA)
+  | mkIVec SERVICE        tt _    [hseq]               => Some tt
+  | mkIVec _              tt _ _                       => None
   end.
 
 End WithHLists.

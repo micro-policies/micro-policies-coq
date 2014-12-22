@@ -1,4 +1,6 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
+Require Import div ssrint intdiv.
+Require Import ord word partmap.
 Require Import lib.utils common.common.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -8,18 +10,11 @@ Context {t    : machine_types}
         {ops  : machine_ops t}
         {spec : machine_ops_spec ops}.
 
-Import ListNotations.
-Local Notation word := (word t).
+Local Notation word := (mword t).
 Open Scope word_scope.
+Open Scope ord_scope.
 
-Fixpoint range' (meas : nat) (l h : word) : list word :=
-  match meas , l <=> h with
-    | O       , _  => []
-    | S meas' , Lt => l :: range' meas' (l + 1) h
-    | S meas' , Eq => [l]
-    | S meas' , Gt => []
-  end.
-
+(*
 Lemma addw_succ : forall w1 w2 : word,
   w1 < w2 -> Word.unsigned (w1 + 1)%w = (Word.unsigned w1 + 1)%Z.
 Proof.
@@ -32,46 +27,31 @@ Proof.
   rewrite /Word.max_unsigned.
   omega.
 Qed.
+*)
 
-Lemma lebw_succ : forall x y : word, x < y -> x <? x + 1 = true.
+Lemma leqw_succ : forall x y : word, x < y -> x < x + 1.
 Proof.
-  move => x y /(addw_succ _) H.
-  rewrite /ltb !IntOrdered.compare_unsigned H.
-  case E: (Word.unsigned _ ?= Word.unsigned _ + _)%Z => //=.
-  - move/Z.compare_eq_iff: E => E. omega.
-  - move/Z.compare_gt_iff: E => E. omega.
+move=> [[x Px]] [[y Py]]; do !rewrite !/Ord.leq /=.
+rewrite -!ltnNge !modz_nat !absz_nat !modn_mod.
+case: (word_size t) Px Py => [|k Px Py Pxy] /=.
+  by rewrite expn0 modn1; case: x y => [|x] [|y].
+rewrite !modn_small ?(addn1, leqnn) //;
+  try by rewrite -{1}(expn0 2) ltn_exp2l.
+by apply: (@leq_trans y.+1).
 Qed.
 
-Theorem range'_elts_ok : forall meas l h e,
-  In e (range' meas l h) -> l <= e <= h.
-Proof.
-  induction meas as [|meas]; [inversion 1|].
-  simpl; intros until 0; intros IN.
-  destruct (l <=> h) eqn:CMP; simpl in *.
-  - apply compare_eq in CMP; destruct IN as [EQ|[]];
-      repeat progress subst; auto 2 with ordered.
-  - destruct IN as [EQ | IN]; subst; auto with ordered.
-    apply IHmeas in IN; destruct IN as [LT LE].
-    assert (l < l + 1) by (eapply ltb_lt,lebw_succ; eassumption).
-    split; eauto with ordered.
-  - inversion IN.
-Qed.
-
-Definition range (l h : word) :=
-  range' (Z.to_nat ((Word.unsigned h - Word.unsigned l) + 1)%Z) l h.
-
-Corollary range_elts_ok : forall l h e,
-  In e (range l h) -> l <= e <= h.
-Proof. intros until 0; apply range'_elts_ok. Qed.
+Definition range (l h : word) := [pred e | l <= e <= h].
 
 Lemma addw_le : forall x y : word,
   x < y -> x + 1 <= y.
 Proof.
-  move => x y LT.
-  rewrite /le IntOrdered.compare_unsigned (addw_succ _ _ LT).
-  move => /Z.compare_gt_iff ?.
-  rewrite /lt IntOrdered.compare_unsigned in LT.
-  move: LT => /Z.compare_lt_iff LT. omega.
+move=> [[x Px]] [[y Py]]; do !rewrite !/Ord.leq /=.
+rewrite -!ltnNge /= !modz_nat !absz_nat !modn_mod.
+case: (word_size t) Px Py => [|k Px Py Pxy] /=.
+  by rewrite expn0 modn1; case: x y => [|x] [|y].
+rewrite !modn_small ?(addn1, leqnn) //;
+  try by rewrite -{1}(expn0 2) ltn_exp2l.
+by apply: (@leq_trans y.+1).
 Qed.
 
 End WithClasses.

@@ -1,13 +1,8 @@
 Require Import ssreflect ssrbool ssrfun eqtype seq.
 
-Close Scope Z_scope.
-
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-
-(** * Useful tactics *)
-Ltac gdep x := generalize dependent x.
 
 Ltac split3 := split; [| split].
 Ltac split4 := split; [| split3].
@@ -349,7 +344,43 @@ Proof.
     }
 Qed.
 
+Lemma In2_inv xs xmid xs' :
+  In2 (xs ++ xmid :: xs') ->
+  In2 (xs ++ [:: xmid]) \/
+  In2 (xmid :: xs').
+Proof.
+  intros IN2.
+  induction xs.
+  - rewrite cat0s in IN2.
+    right; trivial.
+  - destruct xs.
+    + destruct IN2 as [[E1 E2] | IN2].
+      * subst.
+        left; simpl; auto.
+      * right; assumption.
+    + destruct IN2 as [[E1 E2] | IN2].
+      * subst. left; simpl; auto.
+      * apply IHxs in IN2.
+        destruct IN2 as [IN2 | IN2].
+        { left. simpl; right; auto. }
+        { right. trivial. }
+Qed.
+
 End In2.
+
+Lemma In2_implies_In (A : eqType) (x y : A) xs :
+  In2 x y xs ->
+  x \in xs.
+Proof.
+  intros IN2.
+  induction xs.
+  - now destruct IN2.
+  - destruct xs.
+    + now destruct IN2.
+    + destruct IN2 as [[? ?] | IN2]; subst.
+      * by rewrite inE eqxx.
+      * rewrite inE; apply/orP; right. apply IHxs; assumption.
+Qed.
 
 Section exec.
 

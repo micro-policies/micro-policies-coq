@@ -1,5 +1,5 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
-
+Require Import word partmap.
 Require Import lib.utils common.common.
 Require Import lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
@@ -8,14 +8,14 @@ Set Bullet Behavior "Strict Subproofs".
 Import DoNotation.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module Abs.
 
 Open Scope bool_scope.
 
 Section WithClasses.
-
-Import PartMaps.
 
 Context (t            : machine_types)
         {ops          : machine_ops t}
@@ -24,10 +24,10 @@ Context (t            : machine_types)
         {cmp_syscalls : compartmentalization_syscall_addrs t}.
 
 Open Scope word_scope.
-Local Notation word  := (word t).
+Local Notation word  := (mword t).
 Local Notation value := word.
-Local Notation memory := (word_map t word).
-Local Notation registers := (reg_map t word).
+Local Notation memory := {partmap word -> word}.
+Local Notation registers := {partmap reg t -> word}.
 
 Implicit Type pc : value.
 Implicit Type M : memory.
@@ -150,9 +150,9 @@ Record syscall := Syscall { address   : word
 Definition isolate_fn (MM : state) : option state :=
   let '(State pc R M C sk c) := MM in
   do! c_sys <- permitted_now_in C sk c pc;
-  do! pA <- get R syscall_arg1;
-  do! pJ <- get R syscall_arg2;
-  do! pS <- get R syscall_arg3;
+  do! pA <- R syscall_arg1;
+  do! pJ <- R syscall_arg2;
+  do! pS <- R syscall_arg3;
   let A := address_space c in
   let J := jump_targets c in
   let S := store_targets c in
@@ -166,7 +166,7 @@ Definition isolate_fn (MM : state) : option state :=
   let c_upd := <<A :\: A', J, S>> in
   let c'    := <<A',J',S'>> in
   let C'    := c_upd :: c' :: rem_all c C in
-  do! pc'    <- get R ra;
+  do! pc'    <- R ra;
   do! c_next <- in_compartment_opt C' pc';
   do! guard c_upd == c_next;
   do! guard pc' \in jump_targets c_sys;
@@ -192,11 +192,11 @@ Definition add_to_compartment_component
      should always be true, since syscalls live in one-address compartments, so
      if they're entered via a JAL from elsewhere, we're fine. *)
   do! guard c != c_sys;
-  do! p <- get R syscall_arg1;
+  do! p <- R syscall_arg1;
   do! guard p \in (address_space c :|: rd c);
   let c' := wr (p |: rd c) c in
   let C' := c' :: rem_all c C in
-  do! pc'    <- get R ra;
+  do! pc'    <- R ra;
   do! c_next <- in_compartment_opt C' pc';
   do! guard c' == c_next;
   do! guard pc' \in jump_targets c_sys;
@@ -220,11 +220,11 @@ Definition get_syscall (addr : value) : option syscall :=
   ofind (fun sc => address sc == addr) table.
 
 Definition user_address_space (M : memory) (c : compartment) : bool :=
-  [forall x in address_space c, get M x].
+  [forall x in address_space c, M x].
 Arguments user_address_space M !c /.
 
 Definition syscall_address_space (M : memory) (c : compartment) : bool :=
-  [exists sc, [&& ~~ get M sc, sc \in syscall_addrs &
+  [exists sc, [&& ~~ M sc, sc \in syscall_addrs &
                   address_space c == set1 sc] ].
 
 Arguments syscall_address_space : simpl never.
@@ -256,7 +256,7 @@ Definition good_syscall (sc : syscall) (MM : state) : bool :=
   else true.
 
 Definition decode M pc :=
-  do! pc_val <- get M pc;
+  do! pc_val <- M pc;
   decode_instr pc_val.
 
 Inductive step (MM MM' : state) : Prop :=
@@ -271,7 +271,7 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Const x rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (UPD   : upd R rdest (Word.casts x) ?= R')
+                   (UPD   : updm R rdest (swcast x) ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
@@ -279,8 +279,8 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Mov rsrc rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (GET   : get R rsrc ?= x)
-                   (UPD   : upd R rdest x ?= R')
+                   (GET   : R rsrc ?= x)
+                   (UPD   : updm R rdest x ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
@@ -288,9 +288,9 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Binop op rsrc1 rsrc2 rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (GETR1 : get R rsrc1 ?= x1)
-                   (GETR2 : get R rsrc2 ?= x2)
-                   (UPDR  : upd R rdest (binop_denote op x1 x2) ?= R')
+                   (GETR1 : R rsrc1 ?= x1)
+                   (GETR2 : R rsrc2 ?= x2)
+                   (UPDR  : updm R rdest (binop_denote op x1 x2) ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
@@ -298,9 +298,9 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Load rpsrc rdest)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (GETR  : get R rpsrc ?= p)
-                   (GETM  : get M p     ?= x)
-                   (UPDR  : upd R rdest x ?= R')
+                   (GETR  : R rpsrc ?= p)
+                   (GETM  : M p     ?= x)
+                   (UPDR  : updm R rdest x ?= R')
                    (NEXT  : MM' = State (pc + 1) R' M C INTERNAL c),
                         step MM MM'
 
@@ -308,10 +308,10 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Store rpdest rsrc)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (GETRS : get R rpdest ?= p)
-                   (GETRD : get R rsrc   ?= x)
+                   (GETRS : R rpdest ?= p)
+                   (GETRD : R rsrc   ?= x)
                    (VALID : p \in address_space c :|: store_targets c)
-                   (UPDR  : upd M p x ?= M')
+                   (UPDR  : updm M p x ?= M')
                    (NEXT  : MM' = State (pc + 1) R M' C INTERNAL c),
                         step MM MM'
 
@@ -319,18 +319,18 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Jump rtgt)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (GETR  : get R rtgt ?= pc')
+                   (GETR  : R rtgt ?= pc')
                    (NEXT  : MM' = State pc' R M C JUMPED c),
                         step MM MM'
 
 | step_bnz   :   forall pc R M C sk prev c rsrc x b
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Bnz rsrc x)
-                   (GETR  : get R rsrc ?= b)
+                   (GETR  : R rsrc ?= b)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
                    (NEXT  : MM' = State (pc + (if b == 0
                                                then 1
-                                               else Word.casts x))
+                                               else swcast x))
                                         R M C INTERNAL c),
                         step MM MM'
 
@@ -341,14 +341,14 @@ Inductive step (MM MM' : state) : Prop :=
                         (ST : MM = State pc R M C sk prev)
                    (INST  : decode M pc ?= Jal rtgt)
                    (STEP  : permitted_now_in C sk prev pc ?= c)
-                   (GETR  : get R rtgt ?= pc')
-                   (UPDR  : upd R ra (pc + 1) ?= R')
+                   (GETR  : R rtgt ?= pc')
+                   (UPDR  : updm R ra (pc + 1) ?= R')
                    (NEXT  : MM' = State pc' R' M C JUMPED c),
                         step MM MM'
 
 | step_syscall : forall pc R M C sk prev sc
                         (ST : MM = State pc R M C sk prev)
-                   (INST  : get M pc = None)
+                   (INST  : M pc = None)
                    (GETSC : get_syscall pc ?= sc)
                    (CALL  : semantics sc MM ?= MM'),
                         step MM MM'.
@@ -705,7 +705,7 @@ Lemma good_state_decomposed__previous_is_compartment : forall pc R M C sk prev,
   prev \in C.
 Proof.
   intros pc R M C sk prev;
-    apply (good_state__previous_is_compartment (State pc R M C sk prev)).
+    apply (@good_state__previous_is_compartment (State pc R M C sk prev)).
 Qed.
 (*Global*) Hint Resolve good_state_decomposed__previous_is_compartment.
 
@@ -720,7 +720,7 @@ Lemma good_state_decomposed__good_compartments : forall pc R M C sk prev,
   good_state (State pc R M C sk prev) -> good_compartments C.
 Proof.
   intros pc R M C sk prev;
-    apply (good_state__good_compartments (State pc R M C sk prev)).
+    apply (@good_state__good_compartments (State pc R M C sk prev)).
 Qed.
 (*Global*) Hint Resolve good_state_decomposed__good_compartments.
 
@@ -735,7 +735,7 @@ Lemma good_state_decomposed__syscalls_separated : forall pc R M C sk prev,
   good_state (State pc R M C sk prev) -> syscalls_separated M C.
 Proof.
   intros pc R M C sk prev;
-    apply (good_state__syscalls_separated (State pc R M C sk prev)).
+    apply (@good_state__syscalls_separated (State pc R M C sk prev)).
 Qed.
 (*Global*) Hint Resolve good_state_decomposed__syscalls_separated.
 
@@ -750,7 +750,7 @@ Lemma good_state_decomposed__syscalls_present : forall pc R M C sk prev,
   good_state (State pc R M C sk prev) -> syscalls_present C.
 Proof.
   intros pc R M C sk prev;
-    apply (good_state__syscalls_present (State pc R M C sk prev)).
+    apply (@good_state__syscalls_present (State pc R M C sk prev)).
 Qed.
 (*Global*) Hint Resolve good_state_decomposed__syscalls_present.
 
@@ -884,9 +884,9 @@ Proof.
     case/in_compartment_opt_correct/andP: ICO_sys => c_in _.
     by rewrite !in_cons in_rem_all c_in (eq_sym _ c) (introF eqP DIFF) !orbT.
   - (* non_overlapping c_upd c' *)
-    by rewrite !non_overlapping_cons (non_overlapping_rem _ _ NOL) andbT /=
+    by rewrite !non_overlapping_cons (@non_overlapping_rem _ _ NOL) andbT /=
                -setI_eq0 {1}setDE -setIA [_ :&: A']setIC setICr setI0 eqxx /=
-               (non_overlapping_replace c c_upd C IN) ?(non_overlapping_replace c c' C IN)
+               (@non_overlapping_replace c c_upd C IN) ?(@non_overlapping_replace c c' C IN)
                // def_AJS /c' /c_upd //= subsetDl.
   - unfold contained_compartments; subst c_upd c'; simpl.
     have As_same :
@@ -985,7 +985,7 @@ Proof.
     have /contained_compartments_spec CC : contained_compartments C by auto.
     let sub SS := move/subsetP/(_ a) in SS; rewrite inE in SS
     in sub SUBSET_J; sub SUBSET_S.
-    have [EQ | /eqP NEQ] := altP (c' =P d); ssubst.
+    have [EQ | /eqP NEQ] := altP (c' =P d); subst.
     + specialize (CC c a IN); simpl in CC.
       case: IN_a => IN_a;
         [apply SUBSET_J in IN_a | apply SUBSET_S in IN_a];
@@ -1030,15 +1030,15 @@ Proof.
   generalize GOOD; rewrite /good_state /= => /and4P [PREV GOODS SS SP].
   destruct (permitted_now_in _ _ _ _) as [c_sys|] eqn:PNI; [simpl|reflexivity].
   destruct (c != c_sys)               eqn:NEQ;             [simpl|reflexivity].
-  destruct (get R syscall_arg1)       as [p|];             [simpl|reflexivity].
-  destruct (p \in _)                  eqn:ELEM;            [simpl|reflexivity].
-  destruct (get R ra)                 as [pc'|];           [simpl|reflexivity].
+  destruct (R syscall_arg1)       as [p|];             [simpl|reflexivity].
+  case ELEM: (p \in _)                    ;            [simpl|reflexivity].
+  destruct (R ra)                 as [pc'|];           [simpl|reflexivity].
   rewrite <-(lock in_compartment_opt);
     destruct (in_compartment_opt _ pc') as [c_next|] eqn:ICO_pc';
     simpl; [|reflexivity].
   destruct (_ == c_next) eqn:EQ; move/eqP in EQ; simpl;
     [subst c_next | reflexivity].
-  destruct (pc' \in _) eqn:ELEM_pc'; simpl; [|reflexivity].
+  case ELEM_pc': (pc' \in _); simpl; [|reflexivity].
   assert (c_sys0 = c_sys) by
     (apply permitted_now_in__in_compartment_opt in PNI; congruence);
     subst c_sys0.
@@ -1060,8 +1060,8 @@ Proof.
              | move: ELEM;
                rewrite inE in_set1 eqRd => ELEM /orP [/eqP -> // | ->];
                rewrite orbT ].
-  - rewrite (user_address_space_same M _ c); auto.
-    rewrite (syscall_address_space_same M _ c); auto.
+  - rewrite (@user_address_space_same M _ c); auto.
+    rewrite (@syscall_address_space_same M _ c); auto.
     by move/allP/(_ _ PREV): SS.
   - apply/allP=> c''. rewrite in_rem_all=> /andP [_].
     move/allP: SS. by apply.
@@ -1136,19 +1136,19 @@ Proof.
     end;
     try match goal with
       | INST  : decode ?M ?pc ?= _,
-        INST' : get    ?M ?pc = None |- _
+        INST' : getm ?M ?pc = None |- _
         => unfold decode in INST; rewrite INST' in INST; discriminate
     end;
     repeat f_equal; try congruence.
   match goal with
-    |- (match ?b1 == 0 with true => 1 | false => Word.casts ?x1 end) =
-       (match ?b2 == 0 with true => 1 | false => Word.casts ?x2 end) =>
+    |- (match ?b1 == 0 with true => 1 | false => swcast ?x1 end) =
+       (match ?b2 == 0 with true => 1 | false => swcast ?x2 end) =>
     replace b2 with b1 by congruence; replace x2 with x1 by congruence
   end; reflexivity.
 Qed.
 
 Lemma stepping_syscall_preserves_good : forall MM MM' sc,
-  get (mem MM) (pc MM)                                    = None       ->
+  mem MM (pc MM)                                          = None       ->
   pc MM                                                   = address sc ->
   isSome (in_compartment_opt (compartments MM) (pc MM))        ->
   good_syscall sc MM                                            ->
@@ -1172,7 +1172,7 @@ Proof.
 Qed.
 
 Lemma syscall_step_preserves_good : forall MM MM' sc,
-  get (mem MM) (pc MM)  = None ->
+  mem MM (pc MM)        = None ->
   get_syscall (pc MM)  ?= sc   ->
   semantics sc MM      ?= MM'  ->
   good_state MM         ->
@@ -1239,19 +1239,19 @@ Proof.
     case: SS => [UAS | SAS]; [left | right].
     + eapply forall_impl; [| exact UAS].
       move=> /= a GET.
-      destruct (get M a) eqn:GET';
+      destruct (M a) eqn:GET';
         [clear GET; rename GET' into GET | discriminate].
-      destruct (defined_preserved GET UPDR) as [v GET'].
-      by rewrite GET'.
+      move: GET UPDR; rewrite /updm.
+      case: (M p) => [m'|] //= GET [<-].
+      rewrite getm_set GET.
+      by case: (_ == _).
     + unfold syscall_address_space in *; cbv [address_space] in *.
       move: SAS => /existsP [sc /and3P [NGET TABLED /eqP ->]].
       apply/existsP; exists sc; rewrite TABLED eq_refl !andbT.
-      move: (UPDR); rewrite /upd => SET.
-      destruct (get M p) as [old|] eqn:GET; [|discriminate].
+      move: (UPDR); rewrite /updm /= => SET.
+      destruct (M p) as [old|] eqn:GET; [|discriminate].
       assert (NEQ : sc <> p) by by intro; subst; rewrite GET in NGET.
-      assert (EQ : get M' sc = get M sc) by
-        (eapply get_upd_neq; try eassumption; apply word_map_axioms).
-      rewrite EQ; assumption.
+      by move: SET => /= [<-]; rewrite getm_set (introF eqP NEQ).
   - (* Syscall *)
     assert (GOOD' : good_state MM') by
       (apply syscall_step_preserves_good with MM sc; subst; assumption);
@@ -1422,19 +1422,20 @@ Theorem permitted_modifications : forall `(STEP : step MM MM') c,
   good_state MM        ->
   compartments MM ⊢ pc MM ∈ c ->
   forall a,
-    get (mem MM) a <> get (mem MM') a ->
+    mem MM a <> mem MM' a ->
     a \in address_space c \/ a \in store_targets c.
 Proof.
   intros MM MM' STEP c GOOD_STATE IC a DIFF; destruct STEP;
     try (subst; simpl in *; congruence).
   - (* Store *)
     subst; simpl in *.
-    have [EQ|/eqP NE] := altP (a =P p); [subst|].
+    have [EQ|NE] := altP (a =P p); [subst|].
     + apply permitted_now_in__in_compartment_opt,
             in_compartment_opt_correct
         in STEP; eauto 3.
       by rewrite inE in VALID; replace c0 with c in * by eauto 3; apply/orP.
-    + rewrite (PartMaps.get_upd_neq NE UPDR) in DIFF. by intuition.
+    + move: UPDR DIFF; rewrite /updm; case: (M p) => [?|] //= [<-].
+      by rewrite getm_set (negbTE NE).
   - (* Syscall *)
     unfold get_syscall,table in *; simpl in *.
     repeat match type of GETSC with
@@ -1461,8 +1462,8 @@ End WithClasses.
 
 Module Notations.
 (* Repeated notations *)
-Notation memory t := (word_map t (word t)).
-Notation registers t := (reg_map t (word t)).
+Notation memory t := {partmap mword t -> mword t}.
+Notation registers t := {partmap reg t -> mword t}.
 Notation "<< A , J , S >>" := (@Compartment _ A J S) (format "<< A , J , S >>").
 Notation "C ⊢ p ∈ c" := (in_compartment p C c) (at level 70).
 Notation "C ⊢ p1 , p2 , .. , pk ∈ c" :=

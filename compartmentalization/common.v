@@ -1,18 +1,17 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import word partmap.
 Require Import lib.utils common.common.
 Set Bullet Behavior "Strict Subproofs".
 
 Generalizable All Variables.
 
-Import PartMaps.
-
 Class compartmentalization_syscall_addrs (t : machine_types) := {
-  isolate_addr              : word t;
-  add_to_jump_targets_addr  : word t;
-  add_to_store_targets_addr : word t
+  isolate_addr              : mword t;
+  add_to_jump_targets_addr  : mword t;
+  add_to_store_targets_addr : mword t
 }.
 
-Definition syscall_addrs {t} {c : compartmentalization_syscall_addrs t} : seq (word t) :=
+Definition syscall_addrs {t} {c : compartmentalization_syscall_addrs t} : seq (mword t) :=
   [:: isolate_addr; add_to_jump_targets_addr; add_to_store_targets_addr].
 
 Inductive where_from :=

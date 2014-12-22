@@ -1,12 +1,10 @@
-Require Import lib.utils.
-Require Import common.common symbolic.symbolic.
-Require Import Coq.Vectors.Vector.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import hseq word partmap.
+Require Import lib.utils common.common symbolic.symbolic.
 
 Set Implicit Arguments.
 
 Import DoNotation.
-Import PartMaps.
 
 Section WithClasses.
 
@@ -16,86 +14,86 @@ Context {t : machine_types}
 
 Variable table : list (Symbolic.syscall t).
 
-Import HListNotations.
 Import Symbolic.
 
-Local Notation "x .+1" := (Word.add x Word.one).
+Local Open Scope word_scope.
+Local Notation "x .+1" := (x + 1).
 
 Definition stepf (st : state t) : option (state t) :=
   let 'State mem reg pc@tpc extra := st in
-  match PartMaps.get mem pc with
+  match mem pc with
   | Some iti =>
     let: i@ti := iti in
     do! instr <- decode_instr i;
     match instr with
     | Nop =>
-      let mvec := mkIVec NOP tpc ti [hl] in
+      let mvec := mkIVec NOP tpc ti [hseq] in
       next_state_pc st mvec (pc.+1)
     | Const n r =>
-      do! old <- PartMaps.get reg r;
+      do! old <- reg r;
       let: _@told := old in
-      let ivec := mkIVec CONST tpc ti [hl told] in
-      next_state_reg st ivec r (Word.casts n)
+      let ivec := mkIVec CONST tpc ti [hseq told] in
+      next_state_reg st ivec r (swcast n)
     | Mov r1 r2 =>
-      do! a1 <- PartMaps.get reg r1;
+      do! a1 <- reg r1;
       let: w1@t1 := a1 in
-      do! a2 <- PartMaps.get reg r2;
+      do! a2 <- reg r2;
       let: _@told := a2 in
-      let mvec := mkIVec MOV tpc ti [hl t1;told] in
+      let mvec := mkIVec MOV tpc ti [hseq t1;told] in
       next_state_reg st mvec r2 w1
     | Binop op r1 r2 r3 =>
-      do! a1 <- PartMaps.get reg r1;
+      do! a1 <- reg r1;
       let: w1@t1 := a1 in
-      do! a2 <- PartMaps.get reg r2;
+      do! a2 <- reg r2;
       let: w2@t2 := a2 in
-      do! a3 <- PartMaps.get reg r3;
+      do! a3 <- reg r3;
       let: _@told := a3 in
-      let mvec := mkIVec (BINOP op) tpc ti [hl t1;t2;told] in
+      let mvec := mkIVec (BINOP op) tpc ti [hseq t1;t2;told] in
       next_state_reg st mvec r3 (binop_denote op w1 w2)
     | Load r1 r2 =>
-      do! a1 <- PartMaps.get reg r1;
+      do! a1 <- reg r1;
       let: w1@t1 := a1 in
-      do! amem <- PartMaps.get mem w1;
+      do! amem <- mem w1;
       let: w2@t2 := amem in
-      do! a2 <- PartMaps.get reg r2;
+      do! a2 <- reg r2;
       let: _@told := a2 in
-      let mvec := mkIVec LOAD tpc ti [hl t1;t2;told] in
+      let mvec := mkIVec LOAD tpc ti [hseq t1;t2;told] in
       next_state_reg st mvec r2 w2
     | Store r1 r2 =>
-      do! a1 <- PartMaps.get reg r1;
+      do! a1 <- reg r1;
       let: w1@t1 := a1 in
-      do! amem <- PartMaps.get mem w1;
+      do! amem <- mem w1;
       let: _@told := amem in
-      do! a2 <- PartMaps.get reg r2;
+      do! a2 <- reg r2;
       let: w2@t2 := a2 in
-      let mvec := mkIVec STORE tpc ti [hl t1;t2;told] in
+      let mvec := mkIVec STORE tpc ti [hseq t1;t2;told] in
       next_state st mvec (fun ov =>
-         do! mem' <- upd mem w1 w2@(tr ov);
+         do! mem' <- updm mem w1 w2@(tr ov);
          Some (State mem' reg (pc.+1)@(trpc ov) extra))
     | Jump r =>
-      do! a <- PartMaps.get reg r;
+      do! a <- reg r;
       let: w@t1 := a in
-      let mvec := mkIVec JUMP tpc ti [hl t1] in
+      let mvec := mkIVec JUMP tpc ti [hseq t1] in
       next_state_pc st mvec w
     | Bnz r n =>
-      do! a <- PartMaps.get reg r;
+      do! a <- reg r;
       let: w@t1 := a in
-      let pc' := Word.add pc (if w == Word.zero
-                              then Word.one else Word.casts n) in
-      let ivec := mkIVec BNZ tpc ti [hl t1] in
+      let pc' := pc + (if w == 0
+                       then 1 else swcast n) in
+      let ivec := mkIVec BNZ tpc ti [hseq t1] in
       next_state_pc st ivec pc'
     | Jal r =>
-      do! a <- PartMaps.get reg r;
+      do! a <- reg r;
       let: w@t1 := a in
-      do! oldtold <- PartMaps.get reg ra;
+      do! oldtold <- reg ra;
       let: _@told := oldtold in
-      let mvec := mkIVec JAL tpc ti [hl t1; told] in
+      let mvec := mkIVec JAL tpc ti [hseq t1; told] in
       next_state_reg_and_pc st mvec ra (pc.+1) w
     | JumpEpc | AddRule | GetTag _ _ | PutTag _ _ _ | Halt =>
       None
     end
   | None =>
-    match get mem pc with
+    match mem pc with
     | None =>
       do! sc <- get_syscall table pc;
       run_syscall sc st
@@ -112,7 +110,7 @@ Proof.
   intros st st'. split; intros STEP.
   { destruct st as [mem reg [pc tpc] int].
     simpl in STEP.
-    destruct (get mem pc) as [[i ti]|] eqn:GET;
+    destruct (mem pc) as [[i ti]|] eqn:GET;
     apply obind_inv in STEP.
     - destruct STEP as (instr & INSTR & STEP).
       destruct instr; try discriminate;
@@ -148,47 +146,47 @@ Proof.
   apply (iffP eqP); by move => /stepP.
 Qed.
 
-Definition build_ivec st : option (Symbolic.IVec Symbolic.ttypes)  :=
-  match get (Symbolic.mem st) (Symbolic.pcv st) with
+Definition build_ivec st : option (IVec ttypes)  :=
+  match mem st (pcv st) with
     | Some i =>
       match decode_instr (common.val i) with
         | Some op =>
-          let part := @Symbolic.mkIVec Symbolic.ttypes (opcode_of op) (Symbolic.pct st) (common.tag i) in
-          match op return (hlist Symbolic.ttypes (Symbolic.inputs (opcode_of op)) ->
-                           Symbolic.IVec Symbolic.ttypes) -> option (Symbolic.IVec Symbolic.ttypes) with
-            | Nop => fun part => Some (part [hl])
+          let part := @mkIVec ttypes (opcode_of op) (pct st) (common.tag i) in
+          match op return (hseq ttypes (inputs (opcode_of op)) ->
+                           IVec ttypes) -> option (IVec ttypes) with
+            | Nop => fun part => Some (part [hseq])
             | Const n r => fun part =>
-                do! old <- get (Symbolic.regs st) r;
-                Some (part [hl common.tag old])
+                do! old <- regs st r;
+                Some (part [hseq common.tag old])
             | Mov r1 r2 => fun part =>
-              do! v1 <- get (Symbolic.regs st) r1;
-              do! v2 <- get (Symbolic.regs st) r2;
-              Some (part [hl (common.tag v1); (common.tag v2)])
+              do! v1 <- regs st r1;
+              do! v2 <- regs st r2;
+              Some (part [hseq (common.tag v1); (common.tag v2)])
             | Binop _ r1 r2 r3 => fun part =>
-              do! v1 <- get (Symbolic.regs st) r1;
-              do! v2 <- get (Symbolic.regs st) r2;
-              do! v3 <- get (Symbolic.regs st) r3;
-              Some (part [hl (common.tag v1); (common.tag v2); (common.tag v3)])
+              do! v1 <- regs st r1;
+              do! v2 <- regs st r2;
+              do! v3 <- regs st r3;
+              Some (part [hseq (common.tag v1); (common.tag v2); (common.tag v3)])
             | Load  r1 r2 => fun part =>
-              do! w1 <- get (Symbolic.regs st) r1;
-              do! w2 <- get (Symbolic.mem st) (common.val w1);
-              do! old <- get (Symbolic.regs st) r2;
-              Some (part [hl (common.tag w1); (common.tag w2); (common.tag old)])
+              do! w1 <- regs st r1;
+              do! w2 <- (mem st) (common.val w1);
+              do! old <- regs st r2;
+              Some (part [hseq (common.tag w1); (common.tag w2); (common.tag old)])
             | Store  r1 r2 => fun part =>
-              do! w1 <- get (Symbolic.regs st) r1;
-              do! w2 <- get (Symbolic.regs st) r2;
-              do! w3 <- get (Symbolic.mem st) (common.val w1);
-              Some (part [hl (common.tag w1); (common.tag w2); (common.tag w3)])
+              do! w1 <- regs st r1;
+              do! w2 <- regs st r2;
+              do! w3 <- mem st (common.val w1);
+              Some (part [hseq (common.tag w1); (common.tag w2); (common.tag w3)])
             | Jump  r => fun part =>
-              do! w <- get (Symbolic.regs st) r;
-              Some (part [hl common.tag w])
+              do! w <- regs st r;
+              Some (part [hseq common.tag w])
             | Bnz  r n => fun part =>
-              do! w <- get (Symbolic.regs st) r;
-              Some (part [hl common.tag w])
+              do! w <- regs st r;
+              Some (part [hseq common.tag w])
             | Jal  r => fun part =>
-              do! w <- get (Symbolic.regs st) r;
-              do! old <- get (Symbolic.regs st) ra;
-              Some (part [hl common.tag w; common.tag old])
+              do! w <- regs st r;
+              do! old <- regs st ra;
+              Some (part [hseq common.tag w; common.tag old])
             | JumpEpc => fun _ => None
             | AddRule => fun _ => None
             | GetTag _ _ => fun _ => None
@@ -198,9 +196,9 @@ Definition build_ivec st : option (Symbolic.IVec Symbolic.ttypes)  :=
         | None => None
       end
     | None =>
-      match Symbolic.get_syscall table (Symbolic.pcv st) with
+      match get_syscall table (pcv st) with
         | Some sc =>
-          Some (Symbolic.mkIVec SERVICE (Symbolic.pct st) (Symbolic.entry_tag sc) [hl])
+          Some (mkIVec SERVICE (pct st) (entry_tag sc) [hseq])
         | None => None
       end
   end.
@@ -213,7 +211,7 @@ Lemma step_build_ivec st st' :
 Proof.
   move/stepP.
   rewrite {1}(state_eta st) /= /build_ivec.
-  case: (get _ _) => [[i ti]|] //=; last first.
+  case: (getm _ _) => [[i ti]|] //=; last first.
     case: (get_syscall _ _) => [sc|] //=.
     rewrite /run_syscall /=.
     case TRANS: (transfer _) => [ovec|] //= _.

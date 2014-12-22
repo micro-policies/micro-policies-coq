@@ -112,9 +112,6 @@ Qed.
 Definition tag_eqMixin := EqMixin tag_eqP.
 Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 
-Section WithHListNotations.
-Import HListNotations.
-
 Definition ms_tags : tag_kind -> eqType := fun _ => [eqType of tag].
 
 Definition rules_normal (op : opcode) (c : color)

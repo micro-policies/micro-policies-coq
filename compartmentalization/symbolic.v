@@ -164,8 +164,7 @@ Definition stags (tk : Symbolic.tag_kind) : eqType :=
   | Symbolic.P => [eqType of pc_tag]
   end.
 
-Section WithHLists.
-Import Symbolic HListNotations.
+Import Symbolic.
 
 Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (word t) :=
   do! guard (data_tag_compartment LI == pc_tag_compartment Lpc) ||
@@ -215,8 +214,6 @@ Definition compartmentalization_handler (iv : IVec stags) : option (VOVec stags 
     | mkIVec SERVICE        Lpc LI [hl]                       => Some tt
     | mkIVec _         _   _  _                               => None
   end.
-
-End WithHLists.
 
 Record compartmentalization_internal :=
   Internal { next_id                  : word t

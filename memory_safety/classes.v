@@ -10,11 +10,11 @@ Section classes.
 Context `{t : machine_types}.
 
 Class memory_syscall_addrs := {
-  malloc_addr : word t;
-  free_addr : word t;
-  size_addr : word t;
-  base_addr : word t;
-  eq_addr : word t
+  malloc_addr : mword t;
+  free_addr : mword t;
+  size_addr : mword t;
+  base_addr : mword t;
+  eq_addr : mword t
 }.
 
 End classes.

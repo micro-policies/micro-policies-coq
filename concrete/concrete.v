@@ -170,13 +170,13 @@ Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rule
          mkRVec (val atrpc) (val atr)) :: cache).
 
 Definition store_mvec (mem : memory) (mv : MVec) : memory :=
-  foldl (fun mem' p => pmset mem' p.1 p.2) mem
-        [:: (Mop, (cop mv)@TKernel);
-            (Mtpc, (ctpc mv)@TKernel);
-            (Mti, (cti mv)@TKernel);
-            (Mt1, (ct1 mv)@TKernel);
-            (Mt2, (ct2 mv)@TKernel);
-            (Mt3, (ct3 mv)@TKernel)].
+  unionm [partmap (Mop, (cop mv)@TKernel);
+                  (Mtpc, (ctpc mv)@TKernel);
+                  (Mti, (cti mv)@TKernel);
+                  (Mt1, (ct1 mv)@TKernel);
+                  (Mt2, (ct2 mv)@TKernel);
+                  (Mt3, (ct3 mv)@TKernel)]
+         mem.
 
 Section ConcreteSection.
 
@@ -209,7 +209,7 @@ Definition next_state (st : state) (mvec : MVec)
 
 Definition next_state_reg_and_pc (st : state) (mvec : MVec) (r : reg t) x pc' : option state :=
   next_state st mvec (fun rvec =>
-    do! reg' <- pmupd (regs st) r x@(ctr rvec);
+    do! reg' <- updm (regs st) r x@(ctr rvec);
     Some (mkState (mem st) reg' (cache st) pc'@(ctrpc rvec) (epc st))).
 
 Definition next_state_reg (st : state) (mvec : MVec) r x : option state :=
@@ -281,7 +281,7 @@ Inductive step (st st' : state) : Prop :=
     let mvec := mkMVec (mword_of_op STORE) tpc ti t1 t2 t3 in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        do! mem' <- pmupd mem w1 w2@(ctr rvec);
+        do! mem' <- updm mem w1 w2@(ctr rvec);
         Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc)) = Some st'),
       step st st'
 | step_jump :
@@ -354,7 +354,7 @@ Inductive step (st st' : state) : Prop :=
     let mvec := mkMVec (mword_of_op PUTTAG) tpc ti t1 t2 told in
     forall (NEXT :
       next_state st mvec (fun rvec =>
-        do! reg' <- pmupd reg r3 w@t;
+        do! reg' <- updm reg r3 w@t;
         Some (mkState mem reg' cache (pc.+1@(ctrpc rvec)) epc)) = Some st'),
       step st st'.
 

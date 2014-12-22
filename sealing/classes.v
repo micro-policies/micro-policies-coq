@@ -6,9 +6,9 @@ Section WithClasses.
 Context {t : machine_types}.
 
 Class sealing_syscall_addrs := {
-  mkkey_addr  : word t;
-  seal_addr   : word t;
-  unseal_addr : word t
+  mkkey_addr  : mword t;
+  seal_addr   : mword t;
+  unseal_addr : mword t
 }.
 
 End WithClasses.
