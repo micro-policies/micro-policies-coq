@@ -146,13 +146,18 @@ Instance encodable_tag : @encodable t Sym.stags := {|
   decode k mem w :=
     let: [wu ut; w']%w := Word.unpack [:: 29; 1] w in
     if w' == Word.zero then None
-    else if w' == Word.one then
-      do! ut <- decode_sealing_tag ut;
-      Some (@USER Sym.stag_eqType ut)
-    else if w' == Word.repr 2 then
-      do! ut <- decode_sealing_tag ut;
-      Some (@ENTRY Sym.stag_eqType ut)
-    else None
+    else
+      match k with
+      | Symbolic.P => Some (USER tt)
+      | _ =>
+        if w' == Word.one then
+            do! ut <- decode_sealing_tag ut;
+            Some (@USER Sym.stag_eqType ut)
+        else if w' == Word.repr 2 then
+          do! ut <- decode_sealing_tag ut;
+          Some (@ENTRY Sym.stag_eqType ut)
+        else None
+      end
 |}.
 Proof.
   - by eauto.
@@ -401,7 +406,7 @@ Definition build_symbolic_sealing_machine
          user_program in
  @symbolic_initial_state (@Sym.sym_sealing sk_defs) _
                          user_mem
-                         user_memory_addr@Sym.DATA
+                         user_memory_addr@tt
                          ssa
                          user_registers
                          (common.Atom (Word.repr 0) Sym.DATA)
@@ -565,12 +570,15 @@ Definition summarize_concrete_state mem_count cache_count st :=
 (* ---------------------------------------------------------------- *)
 (* Printing symbolic states *)
 
+Definition format_symbolic_word k (pr_tag : @Symbolic.ttypes (@Sym.sym_sealing sk_defs) k -> sstring) w :=
+    match decode_instr w with
+      Some i => ss "(" +++ format_instr i +++ ss ")"
+    | None => format_word w
+    end.
+
 Definition format_symbolic_atom k (pr_tag : @Symbolic.ttypes (@Sym.sym_sealing sk_defs) k -> sstring) a :=
   let: w1@t2 := a in
-    match decode_instr w1 with
-      Some i => ss "(" +++ format_instr i +++ ss ")@" +++ pr_tag t2
-    | None => format_word w1 +++ ss "@" +++ pr_tag t2
-    end.
+  format_symbolic_word pr_tag w1 +++ ss "@" +++ pr_tag t2.
 
 Definition summarize_symbolic_state mem_count st pr_tag :=
   let mem' := just_somes
@@ -601,7 +609,7 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
     | Some i => format_symbolic_atom pr_tag i
     end in
   (to_string
-     (ss "PC=" +++ format_symbolic_atom pr_tag (Symbolic.pc st) +++ ss "  "
+     (ss "PC=" +++ format_symbolic_word pr_tag (val (Symbolic.pc st)) +++ ss "  "
                +++ current_instr +++
       ss " | " +++
       ssconcat sspace regs +++
@@ -611,7 +619,7 @@ Definition summarize_symbolic_state mem_count st pr_tag :=
 Definition format_int {n} (i : Word.int n) :=
   format_Z (Word.unsigned i).
 
-Definition format_sealing_tag k (t : @Symbolic.ttypes (@Sym.sym_sealing sk_defs) k):=
+Definition format_sealing_tag (t:Sym.stag):=
   match t with
     Sym.DATA => ss "DATA"
   | Sym.KEY k => ss "KEY(" +++ format_int k +++ ss ")"
@@ -619,7 +627,7 @@ Definition format_sealing_tag k (t : @Symbolic.ttypes (@Sym.sym_sealing sk_defs)
   end.
 
 Definition summarize_symbolic_sealing_state mem_count st :=
-  summarize_symbolic_state mem_count st (@format_sealing_tag Symbolic.M).
+  summarize_symbolic_state mem_count st format_sealing_tag.
 
 (* ---------------------------------------------------------------- *)
 (* Printing abstract states *)

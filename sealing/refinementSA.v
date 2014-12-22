@@ -85,7 +85,7 @@ Definition refine_reg : Abs.registers t -> Sym.registers t -> Prop :=
   @pointwise _ _ (reg t) _ _ _ _ refine_val_atom.
 
 (* We make no assumption about the pc tag, since it's unused in the policy *)
-Definition refine_pc (w : word t) (a : atom (word t) Sym.stag) : Prop :=
+Definition refine_pc (w : word t) (a : atom (word t) unit) : Prop :=
   w = val a.
 
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
@@ -183,18 +183,23 @@ Lemma backward_simulation : forall km ast sst sst',
     Abs.step ast ast' /\
     refine_state km' ast' sst'.
 Proof.
-Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
+  Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
     (apply refine_pc_inv in rpc; (* symmetry in rpc; *) subst;
     apply (refine_get_pointwise_inv rmem) in PC;
       destruct PC as [iv [PC riv]];
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT;
     apply refine_val_data in riv; subst).
+  Ltac destruct_pc := repeat
+    match goal with
+    | [pc:Symbolic.ttypes Symbolic.P |- _] => destruct pc
+    end.
   intros km [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
   destruct sstep; destruct sst as [smem sregs spc skey];
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
-    intros [rmem [rreg [rpc rins]]].
+    intros [rmem [rreg [rpc rins]]]; destruct tpc. (* TODO: use destruct_pc *)
   - (* NOP *)
     REFINE_INSTR PC ti rmem rpc NEXT.
+
     injection NEXT; intro H; subst; clear NEXT.
     eexists. exists km. split.
     + eapply Abs.step_nop; [reflexivity | | reflexivity].

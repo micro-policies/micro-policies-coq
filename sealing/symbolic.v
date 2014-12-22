@@ -54,24 +54,28 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Definition stags : tag_kind -> eqType := fun _ => [eqType of stag].
+Definition stags : tag_kind -> eqType := fun k =>
+  match k with
+  | P => [eqType of unit]
+  | _ => [eqType of stag]
+  end.
 
 Section WithHLists.
 Import HListNotations.
 
 Definition sealing_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   match iv with
-  | mkIVec (OP NOP)       _ DATA [hl]               => Some (@mkOVec stags NOP DATA tt)
-  | mkIVec (OP CONST)     _ DATA [hl _]             => Some (@mkOVec stags CONST DATA DATA)
-  | mkIVec (OP MOV)       _ DATA [hl tsrc; _]       => Some (@mkOVec stags MOV DATA tsrc)
-  | mkIVec (OP (BINOP o)) _ DATA [hl DATA; DATA; _] => Some (@mkOVec stags (BINOP o) DATA DATA)
-  | mkIVec (OP LOAD)      _ DATA [hl DATA; tmem; _] => Some (@mkOVec stags LOAD DATA tmem)
-  | mkIVec (OP STORE)     _ DATA [hl DATA; tsrc; _] => Some (@mkOVec stags STORE DATA tsrc)
-  | mkIVec (OP JUMP)      _ DATA [hl DATA]          => Some (@mkOVec stags JUMP DATA tt)
-  | mkIVec (OP BNZ)       _ DATA [hl DATA]          => Some (@mkOVec stags BNZ DATA tt)
-  | mkIVec (OP JAL)       _ DATA [hl DATA; _]       => Some (@mkOVec stags JAL DATA DATA)
-  | mkIVec SERVICE        _ _    [hl]               => Some tt
-  | mkIVec _              _ _ _                     => None
+  | mkIVec (OP NOP)       tt DATA [hl]               => Some (@mkOVec stags NOP tt tt)
+  | mkIVec (OP CONST)     tt DATA [hl _]             => Some (@mkOVec stags CONST tt DATA)
+  | mkIVec (OP MOV)       tt DATA [hl tsrc; _]       => Some (@mkOVec stags MOV tt tsrc)
+  | mkIVec (OP (BINOP o)) tt DATA [hl DATA; DATA; _] => Some (@mkOVec stags (BINOP o) tt DATA)
+  | mkIVec (OP LOAD)      tt DATA [hl DATA; tmem; _] => Some (@mkOVec stags LOAD tt tmem)
+  | mkIVec (OP STORE)     tt DATA [hl DATA; tsrc; _] => Some (@mkOVec stags STORE tt tsrc)
+  | mkIVec (OP JUMP)      tt DATA [hl DATA]          => Some (@mkOVec stags JUMP tt tt)
+  | mkIVec (OP BNZ)       tt DATA [hl DATA]          => Some (@mkOVec stags BNZ tt tt)
+  | mkIVec (OP JAL)       tt DATA [hl DATA; _]       => Some (@mkOVec stags JAL tt DATA)
+  | mkIVec SERVICE        tt _    [hl]               => Some tt
+  | mkIVec _              tt _ _                     => None
   end.
 
 End WithHLists.
@@ -93,7 +97,7 @@ Definition mkkey (s : state t) : option (state t) :=
     do! reg' <- upd reg syscall_ret ((max_word t)@(KEY key));
     do! ret  <- get reg ra;
     match ret with
-    | _@DATA => Some (State mem reg' ret key')
+    | pc'@DATA => Some (State mem reg' (pc'@tt) key')
     | _ => None
     end
   else
@@ -106,7 +110,7 @@ Definition seal (s : state t) : option (state t) :=
     do! reg' <- upd reg syscall_ret (payload@(SEALED key));
     do! ret  <- get reg ra;
     match ret with
-    | _@DATA => Some (State mem reg' ret next_key)
+    | pc'@DATA => Some (State mem reg' (pc'@tt) next_key)
     | _ => None
     end
   | _, _ => None
@@ -120,7 +124,7 @@ Definition unseal (s : state t) : option (state t) :=
       do! reg' <- upd reg syscall_ret (payload@DATA);
       do! ret  <- get reg ra;
       match ret with
-      | _@DATA => Some (State mem reg' ret next_key)
+      | pc'@DATA => Some (State mem reg' (pc'@tt) next_key)
       | _ => None
       end
     else None
