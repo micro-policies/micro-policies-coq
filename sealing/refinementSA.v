@@ -191,12 +191,12 @@ Proof.
     apply refine_val_data in riv; subst).
   Ltac destruct_pc := repeat
     match goal with
-    | [pc:Symbolic.ttypes Symbolic.P |- _] => destruct pc
+    | [pc: Equality.sort (Symbolic.ttypes Symbolic.P) |- _] => destruct pc
     end.
   intros km [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
   destruct sstep; destruct sst as [smem sregs spc skey];
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
-    intros [rmem [rreg [rpc rins]]]; destruct tpc. (* TODO: use destruct_pc *)
+    intros [rmem [rreg [rpc rins]]]; destruct_pc.
   - (* NOP *)
     REFINE_INSTR PC ti rmem rpc NEXT.
 
