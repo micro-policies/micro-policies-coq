@@ -1,6 +1,5 @@
-Require Import List NPeano Arith Bool.
-
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq.
+Require Import hseq word partmap.
 
 Require Import lib.utils.
 Require Import common.common.
@@ -16,8 +15,6 @@ Open Scope nat_scope.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-
-Import ListNotations.
 
 Hint Constructors restricted_exec.
 Hint Unfold exec.
@@ -59,17 +56,19 @@ Ltac contradict_in_user :=
             failwith "contradict_in_user" ]
   end.
 
+(*
 Ltac destruct_hlist :=
   repeat match goal with
   | x : hlist _ _ |- _ => simpl in x
   | x : unit |- _ => destruct x
   | x : prod _ _ |- _ => destruct x
   end.
+*)
 
 Ltac analyze_cache :=
   match goal with
   | LOOKUP : Concrete.cache_lookup ?cache _ ?mvec = Some ?rvec,
-    PC     : PartMaps.get _ ?pc = Some ?i@_,
+    PC     : getm _ ?pc = Some ?i@_,
     INST   : decode_instr ?i = Some _,
     INUSER : is_true (in_user (Concrete.mkState _ _ _ ?pc@_ _)),
     CACHE  : cache_correct ?cache ?cmem |- _ =>
@@ -83,7 +82,7 @@ Ltac analyze_cache :=
     | and4 _ _ _ _ => destruct CACHEHIT
     | False => destruct CACHEHIT
     end;
-    try contradict_in_user; match_inv; destruct_hlist; simpl in *
+    try contradict_in_user; match_inv; simpl in *
   | MISS   : Concrete.miss_state _ _ = Some ?st',
     INUSER : is_true (in_user ?st') |- _ =>
     destruct (miss_state_not_user MISS INUSER)
@@ -92,10 +91,10 @@ Ltac analyze_cache :=
 Ltac relate_register_get :=
   match goal with
   | REFR : refine_registers ?areg ?creg ?cmem,
-    GET : PartMaps.get ?creg ?r = Some _@?t,
+    GET : getm ?creg ?r = Some _@?t,
     DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
     match goal with
-    | GET' : PartMaps.get areg r = Some _ |- _ => fail 1
+    | GET' : getm areg r = Some _ |- _ => fail 1
     | |- _ => first [ pose proof (proj1 REFR _ _ _ _ DEC GET) |
                       failwith "relate_register_get" ]
     end
@@ -103,11 +102,11 @@ Ltac relate_register_get :=
 
 Ltac relate_memory_get :=
   match goal with
-  | MEM : PartMaps.get ?cmem ?addr = Some _@?t,
+  | MEM : getm ?cmem ?addr = Some _@?t,
     REFM : refine_memory ?smem ?cmem,
     DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
     match goal with
-    | _ : PartMaps.get smem addr = Some _ |- _ => fail 1
+    | _ : getm smem addr = Some _ |- _ => fail 1
     | |- _ => idtac
     end;
     first [ pose proof (proj1 REFM _ _ _ _ DEC MEM) |
@@ -116,9 +115,9 @@ Ltac relate_memory_get :=
 
 Ltac relate_register_upd :=
   match goal with
-  | GET : PartMaps.get ?reg ?r = Some _@?t,
+  | GET : getm ?reg ?r = Some _@?t,
     DEC : decode _ ?cmem ?t = Some (USER _),
-    UPD : PartMaps.upd ?reg ?r ?v@?t' = Some ?reg',
+    UPD : updm ?reg ?r ?v@?t' = Some ?reg',
     DEC' : decode _ ?cmem ?t' = Some (USER _),
     REFR : refine_registers _ ?reg ?cmem,
     KINV : kernel_invariant_statement ?ki ?cmem _ _ _ |- _ =>
@@ -129,9 +128,9 @@ Ltac relate_register_upd :=
 
 Ltac relate_memory_upd :=
   match goal with
-  | GET : PartMaps.get ?cmem ?addr = Some _@?t,
+  | GET : getm ?cmem ?addr = Some _@?t,
     DEC : decode _ ?cmem ?t = Some (USER _),
-    UPD : PartMaps.upd ?cmem ?addr _@?t' = Some _,
+    UPD : updm ?cmem ?addr _@?t' = Some _,
     DEC' : decode _ ?cmem ?t' = Some (USER _),
     CACHE : cache_correct _ ?cmem,
     REFR : refine_registers _ _ ?cmem,
@@ -147,7 +146,7 @@ Ltac relate_memory_upd :=
 Ltac update_decodings :=
   match goal with
   | DEC : decode ?k ?cmem ?ct = Some (USER ?ut),
-    UPD : PartMaps.upd ?cmem _ _ = Some ?cmem' |-
+    UPD : updm ?cmem _ _ = Some ?cmem' |-
     decode ?k ?cmem' ?ct = Some (USER ?ut) =>
     first [ solve [ rewrite -DEC; eapply decode_monotonic; eauto ] |
             failwith "update_decodings" ]
@@ -172,7 +171,6 @@ Ltac solve_step :=
       econstructor (
           solve [eauto;
                  repeat autounfold;
-                 repeat destruct_hlist;
                  repeat simplify_eqs;
                  repeat (find_and_rewrite; simpl);
                  reflexivity]
@@ -195,27 +193,30 @@ Proof.
     case: Hdec => [Hop ? Hdec_tpc Hdec_ti]. subst vop.
     rewrite (build_cmvec_ctpc Hbuild) in Hdec_tpc.
     have [i [instr [Hget Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
-    move: Hop. rewrite -{}Hop' op_to_wordK.
+    move: Hop. rewrite -{}Hop' mword_of_opK.
     case: instr Hdec_i => // /is_nopP Hdec_i _.
     have [sc Hget_sc Hsct] := wf_entry_points_only_if (rs_entry_points Href)
                                                       Hget Hdec_ti Hdec_i.
     rewrite /build_ivec (rs_pc Href).
-    case Hget': (PartMaps.get _ _) => [[i' ti']|] //=.
+    case Hget': (getm _ _) => [[i' ti']|] //=.
       have [cti] := proj2 (rs_refm Href) _ _ _ Hget'.
       rewrite Hget => Hdec_ti' [? ?]. subst i' cti.
       by rewrite Hdec_ti' in Hdec_ti.
     rewrite (rs_pct Href) in Hdec_tpc.
     case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
-    by case: ts.
+    by rewrite [in RHS]hseq_nil.
   case: Hdec => op [Hop [Hpriv Hcop Hdec_tpc Hdec_ti Hdec_ts]]. subst vop.
   rewrite (build_cmvec_ctpc Hbuild) (rs_pct Href) in Hdec_tpc.
   case: Hdec_tpc => ?. subst tpc.
   have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
-  move: Hcop. rewrite -{}Hop' op_to_wordK => [[?]]. subst op.
+  move: Hcop; rewrite -{}Hop' mword_of_opK => [[?]]; subst op.
   move: Hbuild.
   rewrite /build_cmvec /build_ivec (rs_pc Href) Hget_i Hdec_i.
   rewrite (proj1 (rs_refm Href) _ _ _ _ Hdec_ti Hget_i) Hdec_i /=.
-  destruct Href, instr, cmvec; move=> Hbuild; simpl in *; match_inv;
+  destruct Href, instr, cmvec; move=> Hbuild; simpl in *; match_inv.
+  by rewrite [in RHS]hseq_nil.
+
+
   repeat match goal with
   | x : unit |- _ => destruct x
   | x : prod _ _ |- _ => destruct x

@@ -1,5 +1,5 @@
-Require Import Arith ZArith.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
+Require Import ord word partmap.
 Require Import lib.utils common.common.
 Require Import symbolic.symbolic memory_safety.classes.
 
@@ -13,30 +13,23 @@ Import DoNotation.
 
 Module Sym.
 
-Open Scope bool_scope.
-Open Scope Z_scope.
-
 Section WithClasses.
 
 Context (t : machine_types).
 Context {ops : machine_ops t}.
-
-Import PartMaps.
-
 Context `{syscall_regs t}
         {msa : @memory_syscall_addrs t}.
 
 Open Scope word_scope.
 
-Local Notation word := (word t).
-Local Notation "x .+1" := (Word.add x Word.one).
+Local Notation word := (mword t).
+Local Notation "x .+1" := (addw x onew).
 
 Class color_class := {
-  color : eqType;
+  color : ordType;
   max_color : color;
   inc_color : color -> color;
-  ord_color :> Ordered color;
-  ltb_inc : forall col, (col <? max_color -> col <? inc_color col)%ordered
+  ltb_inc : forall col, (col < max_color -> col < inc_color col)%ord
 }.
 
 Context {cl : color_class}.

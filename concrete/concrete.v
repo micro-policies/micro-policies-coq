@@ -11,7 +11,7 @@ Unset Printing Implicit Defensive.
 
 Module Concrete.
 
-Open Scope word_scope.
+Local Open Scope word_scope.
 
 (* CH (old): Why aren't these Ts instantiated with (word t) right away?  Is
    there any other instantiation of this? If this is so general, why

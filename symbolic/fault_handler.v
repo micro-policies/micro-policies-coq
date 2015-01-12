@@ -1,8 +1,8 @@
 (* Fault handler implementation for concrete realization of symbolic machine *)
 
-Require Import ZArith.
-
-Require Import ssreflect eqtype ssrbool seq.
+Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype.
+Require Import tuple ssrint.
+Require Import word partmap.
 
 Require Import lib.utils.
 Require Import common.common.
@@ -32,7 +32,7 @@ Class fault_handler_params := {
   rtrpc : reg mt; rtr : reg mt; (* Registers for tag results *)
   raddr : reg mt; (* Addressing register *)
 
-  load_const : word mt -> reg mt -> code
+  load_const : mword mt -> reg mt -> code
 }.
 
 Context (fhp : fault_handler_params).
@@ -51,19 +51,19 @@ Definition mvec_regs := [:: rop; rtpc; rti; rt1; rt2; rt3].
 Definition kernel_regs := mvec_regs ++ [:: rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
 
 (* For debugging -- put a telltale marker in the code *)
-Definition got_here : code := [:: Const (Word.repr 999) ri5; Const Word.zero ri5].
+Definition got_here : code := [:: Const (as_word 999) ri5; Const 0%w ri5].
 
 (* TODO: Not needed anymore *)
 Definition bool_to_imm (b : bool) : imm mt :=
-  if b then Word.one else Word.zero.
+  if b then 1%w else 0%w.
 
 (* Test value in [r]. If true (i.e., not zero), execute [t]. Otherwise,
    execute [f]. Warning: overwrites ri1. *)
 Definition if_ (r : reg mt) (t f : code) : code :=
-  let lt := Word.reprn (length t + 1) in
+  let lt := as_word (length t + 1) in
   let eend := [:: Const (bool_to_imm true) ri1] ++
               [:: Bnz ri1 lt] in
-  let lf := Word.reprn (length f + length eend + 1) in
+  let lf := as_word (length f + length eend + 1) in
   [:: Bnz r lf] ++
   f ++
   eend ++
@@ -74,10 +74,10 @@ Definition if_ (r : reg mt) (t f : code) : code :=
    puts 0 in second register.  Warning: overwrites ri2.*)
 
 Definition extract_user_tag (rsrc rsucc rut : reg mt) : code :=
-  [:: Const (Word.repr 1) ri2] ++
+  [:: Const 1%w ri2] ++
   [:: Binop AND rsrc ri2 rsucc] ++
   if_ rsucc
-      ([:: Const (Word.repr 2) ri2] ++
+      ([:: Const (as_word 2) ri2] ++
        [:: Binop SHRU rsrc ri2 rut])
       [::].
 
@@ -85,31 +85,30 @@ Definition extract_user_tag (rsrc rsucc rut : reg mt) : code :=
    the encoding of [USER t] in the second register. Warning:
    overwrites ri2. *)
 Definition wrap_user_tag (rut rdst : reg mt) : code :=
-  [:: Const (Word.repr 2) ri2] ++
+  [:: Const (as_word 2) ri2] ++
   [:: Binop SHL rut ri2 ri2] ++
-  [:: Const (Word.repr 1) rdst] ++
+  [:: Const 1%w rdst] ++
   [:: Binop OR rdst ri2 rdst].
 
 (* Similar to [extract_user_tag], but for kernel entry-point tags. *)
 Definition extract_entry_tag (rsrc rsucc rut : reg mt) : code :=
-  [:: Const (Word.repr 3) ri2] ++
+  [:: Const (as_word 3) ri2] ++
   [:: Binop AND rsrc ri2 rsucc] ++
-  [:: Const (Word.repr 2) ri2] ++
+  [:: Const (as_word 2) ri2] ++
   [:: Binop EQ rsucc ri2 rsucc] ++
   if_ rsucc
-      ([:: Const (Word.repr 2) ri2] ++
+      ([:: Const (as_word 2) ri2] ++
        [:: Binop SHRU rsrc ri2 rut])
       [::].
 
 Definition load_mvec : code :=
-  fst (fold_left (fun acc r =>
+  fst (foldl (fun acc r =>
                     let '(c,addr) := acc in
                     (c ++
                      load_const addr raddr ++
                      [:: Load raddr r],
-                     addr + Word.one))%w
-                 mvec_regs
-                 ([::],Concrete.cache_line_addr _)).
+                     addr + 1))%w
+                 ([::],Concrete.cache_line_addr _) mvec_regs).
 
 (* Take as input an mvector of high-level tags (in the appropriate
    registers, as set above), and computes the policy handler on
@@ -150,10 +149,10 @@ Definition handler : code :=
                     tags in rvector. NB: system calls are now
                     required to begin with a Nop to simplify the
                     specification of the fault handler. *)
-           ([:: Const (Word.repr (op_to_Z NOP)) ri4] ++
+           ([:: Const (as_word (nat_of_op NOP)) ri4] ++
             [:: Binop EQ ri4 rop ri4] ++
             if_ ri4 [::] [:: Halt _] ++
-            [:: Const (Word.repr (vop_to_Z SERVICE)) rop] ++
+            [:: Const (as_word (nat_of_vop SERVICE)) rop] ++
             policy_handler ++
             load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
@@ -162,8 +161,8 @@ Definition handler : code :=
             if_ rb
                 (* THEN: We are in user mode: extract operand tags
                    and run policy handler *)
-                (fold_right (fun op c =>
-                               load_const (op_to_word op) ri4 ++
+                (foldr (fun op c =>
+                               load_const (mword_of_op op) ri4 ++
                                [:: Binop EQ rop ri4 rb] ++
                                if_ rb
                                   (analyze_operand_tags_for_opcode op)
@@ -198,15 +197,15 @@ Record policy_invariant : Type := {
   policy_invariant_upd_mem :
     forall mem mem' addr w1 ct ut w2 int
            (PINV : policy_invariant_statement mem int)
-           (GET : PartMaps.get mem addr = Some w1@ct)
+           (GET : mem addr = Some w1@ct)
            (DEC : decode Symbolic.M mem ct = Some (USER ut))
-           (UPD : PartMaps.upd mem addr w2 = Some mem'),
+           (UPD : updm mem addr w2 = Some mem'),
       policy_invariant_statement mem' int;
 
   policy_invariant_store_mvec :
     forall mem mem' mvec int
            (KINV : policy_invariant_statement mem int)
-           (MVEC : Concrete.store_mvec mem mvec = Some mem'),
+           (MVEC : Concrete.store_mvec mem mvec = mem'),
     policy_invariant_statement mem' int
 
 }.
@@ -215,20 +214,20 @@ Variable pinv : policy_invariant.
 
 Let invariant (mem : Concrete.memory mt)
               (regs : Concrete.registers mt)
-              (cache : Concrete.rules (word mt))
+              (cache : Concrete.rules (mword mt))
               (int : Symbolic.internal_state) : Prop :=
-  (forall addr : word mt, In addr (Concrete.rvec_fields _) ->
-                          exists w : word mt, PartMaps.get mem addr = Some w@Concrete.TKernel) /\
-  (forall addr instr,
-     nth_error handler addr = Some instr ->
-     PartMaps.get mem (Word.add (Concrete.fault_handler_start mt) (Word.reprn addr)) =
+  (forall addr : mword mt, addr \in Concrete.rvec_fields _ ->
+                          exists w : mword mt, mem addr = Some w@Concrete.TKernel) /\
+  (forall (addr : 'I_(size handler)) instr,
+     tnth (in_tuple handler) addr = instr ->
+     mem (Concrete.fault_handler_start mt + as_word addr)%w =
      Some (encode_instr instr)@Concrete.TKernel) /\
   (* FIXME:
      This really shouldn't be included here, since it doesn't mention
      either the memory or the register bank. Try to put this somewhere else. *)
   (forall addr, addr < length handler ->
-                ~ In (Word.add (Concrete.fault_handler_start mt) (Word.reprn addr))
-                     (Concrete.mvec_and_rvec_fields _)) /\
+                Concrete.fault_handler_start mt + as_word addr \notin
+                Concrete.mvec_and_rvec_fields _)%w /\
   (forall mvec rvec,
      Concrete.ctpc mvec = Concrete.TKernel ->
      Concrete.cache_lookup cache masks mvec = Some rvec ->
@@ -236,88 +235,83 @@ Let invariant (mem : Concrete.memory mt)
   (forall mvec rvec,
      Concrete.cache_lookup (ground_rules mt) masks mvec = Some rvec ->
      Concrete.cache_lookup cache masks mvec = Some rvec) /\
-  (forall r, In r kernel_regs ->
-   exists x, PartMaps.get regs r = Some x@Concrete.TKernel) /\
+  (forall r, r \in kernel_regs ->
+   exists x, regs r = Some x@Concrete.TKernel) /\
   pinv mem int.
 
 Lemma invariant_upd_mem :
   forall regs mem1 mem2 cache addr w1 ct ut w2 int
          (KINV : invariant mem1 regs cache int)
-         (GET : PartMaps.get mem1 addr = Some w1@ct)
+         (GET : mem1 addr = Some w1@ct)
          (DEC : decode Symbolic.M mem1 ct = Some (USER ut))
-         (UPD : PartMaps.upd mem1 addr w2 = Some mem2),
+         (UPD : updm mem1 addr w2 = Some mem2),
     invariant mem2 regs cache int.
 Proof.
   intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   repeat split; eauto.
   - intros addr' IN.
-    case E: (addr' == addr); move/eqP: E => E.
-    + subst addr'.
-      apply RVEC in IN. destruct IN as [w1' IN].
-      rewrite IN in GET.
-      assert (EQ : Concrete.TKernel = ct) by congruence. subst ct.
-      by rewrite decode_kernel_tag in DEC.
-    + rewrite (PartMaps.get_upd_neq E UPD).
-      now eauto.
+    move: UPD; rewrite /updm GET /= => - [<-]; rewrite getm_set.
+    move: IN; have [-> {addr'}|_] := altP (_ =P _) => IN; last by eauto.
+    apply RVEC in IN. destruct IN as [w1' IN].
+    assert (EQ : Concrete.TKernel = ct) by congruence. subst ct.
+    by rewrite decode_kernel_tag in DEC.
   - intros addr' i GET'.
-    case E: (Concrete.fault_handler_start _ + Word.reprn addr' == addr)%w; move/eqP: E => E.
-    + subst addr.
+    move: UPD; rewrite /updm GET /= => - [<-] {mem2}; rewrite getm_set.
+    have [Heq|Hne] := altP (_ =P _).
+    + rewrite -{}Heq {addr} in GET.
       specialize (@PROG _ _ GET').
       rewrite PROG in GET.
       move: GET => [_ CONTRA]. subst ct.
       by rewrite decode_kernel_tag in DEC.
-    + rewrite (PartMaps.get_upd_neq E UPD).
-      now eauto.
+    + by eauto.
   - by eapply policy_invariant_upd_mem; eauto.
 Qed.
 
 Lemma invariant_upd_reg :
   forall mem regs regs' cache r w1 ct1 ut1 w2 ct2 ut2 int
          (KINV : invariant mem regs cache int)
-         (GET : PartMaps.get regs r = Some w1@ct1)
+         (GET : regs r = Some w1@ct1)
          (DEC : decode Symbolic.R mem ct1 = Some (USER ut1))
-         (UPD : PartMaps.upd regs r w2@ct2 = Some regs')
+         (UPD : updm regs r w2@ct2 = Some regs')
          (DEC' : decode Symbolic.R mem ct2 = Some (USER ut2)),
     invariant mem regs' cache int.
 Proof.
   intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   do 6 (split; eauto).
-  intros r' IN.
-  case E: (r' == r); move/eqP: E => E.
-  - subst r'.
+  move=> r' IN; move: UPD; rewrite /updm GET /= => - [<-] {regs'}.
+  rewrite getm_set.
+  have [Heq|Hneq] := altP (_ =P _).
+  - rewrite {}Heq {r'} in IN.
     move: IN => /REGS [x GET'].
     have ? : ct1 = Concrete.TKernel by congruence. subst ct1.
     by rewrite decode_kernel_tag in DEC.
-  - rewrite (PartMaps.get_upd_neq E UPD); eauto.
+  - by eauto.
 Qed.
 
-Lemma invariant_store_mvec mem mem' mvec regs cache int :
-  forall (KINV : invariant mem regs cache int)
-         (MVEC : Concrete.store_mvec mem mvec = Some mem'),
-    invariant mem' regs cache int.
+Lemma invariant_store_mvec mem mvec regs cache int :
+  forall (KINV : invariant mem regs cache int),
+    invariant (Concrete.store_mvec mem mvec) regs cache int.
 Proof.
-  intros (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
-  do 7 (try split; eauto).
-  - intros addr IN.
-    destruct (in_dec (fun x y : word mt => @eqType_EqDec _ x y)
-                     addr (Concrete.mvec_fields mt)) as [IN' | NIN].
-    + destruct (PartMaps.get_upd_list_in MVEC IN')
-        as (v' & IN'' & GET).
-      rewrite GET. clear GET.
-      simpl in IN''.
-      repeat match goal with
-      | H : _ \/ _ |- _ =>
-        destruct H as [E | ?]; [inv E; eauto|]
-      | H : False |- _ => inversion H
-      end.
-    + rewrite (PartMaps.get_upd_list_nin MVEC NIN); eauto.
-  - intros addr instr GET.
-    rewrite (PartMaps.get_upd_list_nin MVEC); eauto.
-    intros CONTRA.
-    eapply MEM.
-    + eapply nth_error_Some; eauto.
-    + apply in_or_app. now eauto.
-  - by eapply policy_invariant_store_mvec; eauto.
+intros (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
+do 7 (try split; eauto).
+- move=> addr IN.
+  rewrite /Concrete.store_mvec getm_union.
+  set m := mkpartmap _.
+  rewrite -[isSome (m addr)]/(addr \in m) mem_mkpartmap /=.
+  have [Hin | Hnin] := boolP (addr \in Concrete.mvec_fields mt); last by eauto.
+  have: addr \in m by rewrite mem_mkpartmap.
+  rewrite inE; case Heq: (m addr)=> [v|] //= _.
+  suff: common.tag v = Concrete.TKernel.
+    by case: v {Heq} => [w t] /= ->; eauto.
+  apply/eqP; move/getm_mkpartmap': Heq.
+  rewrite -{2}[v]/((addr, v).2); move: (addr, v).
+  by apply/allP => /=; rewrite !eqxx /=.
+- move=> addr instr Hget; rewrite getm_union.
+  set m := mkpartmap _; set addr' := (_ + _)%w.
+  rewrite -[isSome (m addr')]/(addr' \in m) mem_mkpartmap /=.
+  have: addr' \notin Concrete.mvec_and_rvec_fields mt by apply: MEM.
+  by rewrite mem_cat=> /norP [/negbTE -> _]; eauto.
+- by eapply policy_invariant_store_mvec; eauto.
 Qed.
 
 Definition fault_handler_invariant : kernel_invariant := {|

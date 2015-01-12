@@ -4,7 +4,6 @@ Require Import lib.utils common.common symbolic.symbolic.
 Require Import cfi.classes.
 
 Set Implicit Arguments.
-Import HListNotations.
 Import Symbolic.
 
 Section uhandler.

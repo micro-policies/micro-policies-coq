@@ -73,11 +73,10 @@ Definition mvec_in_kernel (cmem : Concrete.memory mt) :=
     in_mvec addr ->
     exists w : mword mt, cmem addr = Some w@Concrete.TKernel.
 
-Lemma store_mvec_mvec_in_kernel cmem cmem' mvec :
-  Concrete.store_mvec cmem mvec = cmem' ->
-  mvec_in_kernel cmem'.
+Lemma store_mvec_mvec_in_kernel cmem mvec :
+  mvec_in_kernel (Concrete.store_mvec cmem mvec).
 Proof.
-move=> <- k; rewrite /Concrete.store_mvec getm_union.
+move=> k; rewrite /Concrete.store_mvec getm_union.
 set m := mkpartmap _.
 rewrite -[isSome (m k)]/(k \in m) mem_mkpartmap /in_mvec /Concrete.mvec_fields.
 move=> E; rewrite E; have: k \in m by rewrite mem_mkpartmap.
@@ -120,10 +119,10 @@ Record kernel_invariant : Type := {
       kernel_invariant_statement mem regs2 cache int;
 
   kernel_invariant_store_mvec :
-    forall mem mem' mvec regs cache int
-           (KINV : kernel_invariant_statement mem regs cache int)
-           (MVEC : Concrete.store_mvec mem mvec = mem'),
-      kernel_invariant_statement mem' regs cache int
+    forall mem mvec regs cache int
+           (KINV : kernel_invariant_statement mem regs cache int),
+      kernel_invariant_statement (Concrete.store_mvec mem mvec)
+                                 regs cache int
 }.
 
 Hint Resolve kernel_invariant_upd_mem.
@@ -573,21 +572,22 @@ Proof.
       repeat match goal with
       | H : Some _ = Some _ |- _ => inv H; simpl in *
       end; trivial.
-      rewrite /decode_ivec mword_of_opK /= => ?. match_inv.
+      rewrite /decode_ivec mword_of_opK /= => ?.
+      match_inv; simpl in *;
       repeat match goal with
-      | a : atom _ _ |- _ => destruct a; simpl in *
-      | H : OP _ = OP _ |- _ => inv H
-      end. simpl.
-      move=> H /=.
-      match_inv. rewrite hsheadE in Heqo3.
+      | H : hshead _ = _ |- _ => rewrite /hshead /hnth eq_axiomK /= in H
+      | a : atom _ _ |- _ => destruct a
+      | H : OP _ = OP _ |- _ => inversion H; subst; clear H
+      end; simpl in *; subst.
+      move=> H /=; match_inv.
       move: E1; rewrite /updm; case: (getm _ _) => /= [_|] // [<-].
-      eapply decode_monotonic; eauto. by eapply decode_monotonic; eauto.
+      by eapply decode_monotonic; eauto.
     rewrite {}Hpc_st'.
     case=> _ Hop _ _.
     move: ovec {Htrans} Hdec_o.
     rewrite {}Hop /= => [[]].
     by have [->|//] := _ =P Concrete.TKernel; auto.
-  by case: (Concrete.store_mvec _ _) => [cmem'|] // ->; auto.
+  by rewrite /= => ->; auto.
 Qed.
 
 Hint Unfold Symbolic.next_state.
@@ -601,16 +601,16 @@ Definition user_tags_unchanged cmem cmem' :=
     decode tk cmem' ctg = Some stg.
 
 Definition user_mem_unchanged (cmem cmem' : Concrete.memory mt) :=
-  forall addr (w : word mt) ct t,
+  forall addr (w : mword mt) ct t,
     decode Symbolic.M cmem ct = Some t ->
-    (PartMaps.get cmem addr = Some w@ct <->
-     PartMaps.get cmem' addr = Some w@ct).
+    (cmem addr = Some w@ct <->
+     cmem' addr = Some w@ct).
 
 Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) cmem :=
-  forall r (w : word mt) ct t,
+  forall r (w : mword mt) ct t,
     decode Symbolic.R cmem ct = Some t ->
-    (PartMaps.get cregs r = Some w@ct <->
-     PartMaps.get cregs' r = Some w@ct).
+    (cregs r = Some w@ct <->
+     cregs' r = Some w@ct).
 
 Import DoNotation.
 
@@ -633,14 +633,14 @@ Class kernel_code_fwd_correctness : Prop := {
 
 (* BCP: Added some comments -- please check! *)
   handler_correct_allowed_case_fwd :
-  forall mem mem' cmvec ivec ovec reg cache old_pc int,
+  forall mem cmvec ivec ovec reg cache old_pc int,
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
     (* and calling the handler on the current m-vector succeeds and returns rvec... *)
     decode_ivec e mem cmvec = Some ivec ->
     Symbolic.transfer ivec = Some ovec ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
-    Concrete.store_mvec mem cmvec = Some mem' ->
+    let mem' := Concrete.store_mvec mem cmvec in
     (* and the concrete rule cache is correct (in the sense that every
        rule it holds is exactly the concrete representations of
        some (mvec,rvec) pair in the relation defined by the [handler]
@@ -735,9 +735,9 @@ Class kernel_code_fwd_correctness : Prop := {
 Class kernel_code_bwd_correctness : Prop := {
 
   handler_correct_allowed_case_bwd :
-  forall mem mem' cmvec reg cache old_pc int st',
+  forall mem cmvec reg cache old_pc int st',
     ki mem reg cache int ->
-    Concrete.store_mvec mem cmvec = Some mem' ->
+    let mem' := Concrete.store_mvec mem cmvec in
     cache_correct cache mem ->
     kernel_user_exec
         (Concrete.mkState mem' reg cache
@@ -757,7 +757,7 @@ Class kernel_code_bwd_correctness : Prop := {
       ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
   handler_correct_disallowed_case :
-  forall mem mem' cmvec reg cache old_pc int st',
+  forall mem cmvec reg cache old_pc int st',
     (* If kernel invariant holds... *)
     ki mem reg cache int ->
     (* and calling the handler on mvec FAILS... *)
@@ -766,7 +766,7 @@ Class kernel_code_bwd_correctness : Prop := {
     | None => true
     end ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
-    Concrete.store_mvec mem cmvec = Some mem' ->
+    let mem' := Concrete.store_mvec mem cmvec in
     (* then if we start the concrete machine in kernel mode and let it
        run, it will never reach a user-mode state. *)
     ~~ in_kernel st' ->

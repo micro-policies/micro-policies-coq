@@ -1,5 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
+Require Import word partmap.
+
 Require Import lib.utils common.common.
 Require Import symbolic.symbolic.
 Require Import compartmentalization.common.
@@ -12,11 +14,11 @@ Set Bullet Behavior "Strict Subproofs".
 Module Sym.
 
 Inductive pc_tag (t : machine_types) :=
-| PC (F : where_from) (c : word t).
+| PC (F : where_from) (c : mword t).
 Arguments PC [t] F c.
 
 Inductive data_tag (t : machine_types) :=
-| DATA (c : word t) (I W : {set word t}).
+| DATA (c : mword t) (I W : {set mword t}).
 Arguments DATA [t] c I W.
 
 Module Exports.
@@ -127,7 +129,6 @@ End EnhancedDo.
 
 Section WithClasses.
 
-Import PartMaps.
 Import EnhancedDo.
 
 Context {t            : machine_types}
@@ -142,19 +143,19 @@ Local Notation II := Logic.I.
 Notation pc_tag := (pc_tag t).
 Notation data_tag := (data_tag t).
 
-Definition pc_tag_compartment (L : pc_tag) : word t :=
+Definition pc_tag_compartment (L : pc_tag) : mword t :=
   match L with PC _ c => c end.
 
-Definition data_tag_compartment (L : data_tag) : word t :=
+Definition data_tag_compartment (L : data_tag) : mword t :=
   match L with DATA c _ _ => c end.
 
 Definition pc_tag_source (L : pc_tag) : where_from :=
   match L with PC F _ => F end.
 
-Definition data_tag_incoming (L : data_tag) : {set word t} :=
+Definition data_tag_incoming (L : data_tag) : {set mword t} :=
   match L with DATA _ In _ => In end.
 
-Definition data_tag_writers (L : data_tag) : {set word t} :=
+Definition data_tag_writers (L : data_tag) : {set mword t} :=
   match L with DATA _ _ W => W end.
 
 Definition stags (tk : Symbolic.tag_kind) : eqType :=
@@ -166,7 +167,7 @@ Definition stags (tk : Symbolic.tag_kind) : eqType :=
 
 Import Symbolic.
 
-Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (word t) :=
+Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (mword t) :=
   do! guard (data_tag_compartment LI == pc_tag_compartment Lpc) ||
             ((pc_tag_source Lpc == JUMPED) &&
              (pc_tag_compartment Lpc \in data_tag_incoming LI));
@@ -174,12 +175,12 @@ Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (word t) :=
 
 Definition compartmentalization_rvec (op : opcode)
                                      (F : where_from)
-                                     (c : word t)
+                                     (c : mword t)
                                      (tr : type_of_result stags (outputs op)) : OVec stags op :=
   mkOVec (PC F c) tr.
 
 Definition rvec_step op
-                     (rv : word t -> option (OVec stags op))
+                     (rv : mword t -> option (OVec stags op))
                      (Lpc : pc_tag) (LI : data_tag)  : option (OVec stags op) :=
   do! c <- can_execute Lpc LI;
   rv c.
@@ -192,7 +193,7 @@ Definition rvec_next op (tr : type_of_result stags (outputs op)) : pc_tag -> dat
   rvec_simple op INTERNAL tr.
 Definition rvec_jump op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (OVec stags op) :=
   rvec_simple op JUMPED tr.
-Definition rvec_store (c : word t) (I W : {set (word t)})
+Definition rvec_store (c : mword t) (I W : {set mword t})
                       : pc_tag -> data_tag -> option (OVec stags STORE) :=
   rvec_step STORE (fun c' =>
     do! guard (c == c') || (c' \in W);
