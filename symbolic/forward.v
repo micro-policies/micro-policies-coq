@@ -299,20 +299,6 @@ Ltac solve_refine_state :=
                 no_syscall_no_entry_point
   end.
 
-Ltac analyze_syscall :=
-  match goal with
-  | H : Symbolic.run_syscall _ _ = Some ?sst' |- _ =>
-    destruct sst' as [smem' sregs' [spc' sapc'] int'];
-    exploit syscalls_correct_allowed_case_fwd; eauto;
-    intros;
-    repeat match goal with
-    | H : exists _, _ |- _ => destruct H
-    | H : _ /\ _ |- _ => destruct H
-    end;
-    eexists; split;
-    [apply user_kernel_user_step_weaken; eassumption|solve_refine_state]
-  end.
-
 Ltac analyze_cache_miss :=
   match goal with
   | PC : PartMaps.get ?cmem ?pc = Some ?i@_,
