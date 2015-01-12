@@ -270,7 +270,7 @@ Definition binop_denote (f : binop) : mword t -> mword t -> mword t :=
   | OR => orw
   | XOR => xorw
   | SHRU => addw (* FIXME: we don't have shifts right now *)
-  | SHL => addw
+  | SHL => shlw
   end.
 
 End Ops.
