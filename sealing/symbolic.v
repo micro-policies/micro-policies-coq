@@ -1,4 +1,4 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import ord hseq word partmap.
 
 Require Import lib.utils common.common.
@@ -89,10 +89,10 @@ Import DoNotation.
 
 Definition mkkey (s : state t) : option (state t) :=
   let 'State mem reg pc@pct key := s in
-  if key <? max_key then
+  if key < max_key then
     let key' := inc_key key in
-    do! reg' <- upd reg syscall_ret ((max_word t)@(KEY key));
-    do! ret  <- get reg ra;
+    do! reg' <- updm reg syscall_ret monew@(KEY key);
+    do! ret  <- reg ra;
     match ret with
     | pc'@DATA => Some (State mem reg' (pc'@tt) key')
     | _ => None
@@ -102,10 +102,10 @@ Definition mkkey (s : state t) : option (state t) :=
 
 Definition seal (s : state t) : option (state t) :=
   let 'State mem reg pc@pct next_key := s in
-  match get reg syscall_arg1, get reg syscall_arg2 with
-  | Some (payload@DATA), Some (_@(KEY key)) =>
-    do! reg' <- upd reg syscall_ret (payload@(SEALED key));
-    do! ret  <- get reg ra;
+  match reg syscall_arg1, reg syscall_arg2 with
+  | Some payload@DATA, Some _@(KEY key) =>
+    do! reg' <- updm reg syscall_ret payload@(SEALED key);
+    do! ret  <- reg ra;
     match ret with
     | pc'@DATA => Some (State mem reg' (pc'@tt) next_key)
     | _ => None
@@ -115,11 +115,11 @@ Definition seal (s : state t) : option (state t) :=
 
 Definition unseal (s : state t) : option (state t) :=
   let 'State mem reg pc@pct next_key := s in
-  match get reg syscall_arg1, get reg syscall_arg2 with
-  | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
+  match reg syscall_arg1, reg syscall_arg2 with
+  | Some payload@(SEALED key), Some _@(KEY key') =>
     if key == key' then
-      do! reg' <- upd reg syscall_ret (payload@DATA);
-      do! ret  <- get reg ra;
+      do! reg' <- updm reg syscall_ret payload@DATA;
+      do! ret  <- reg ra;
       match ret with
       | pc'@DATA => Some (State mem reg' (pc'@tt) next_key)
       | _ => None
@@ -129,9 +129,9 @@ Definition unseal (s : state t) : option (state t) :=
   end.
 
 Definition sealing_syscalls : list (syscall t) :=
-  [Syscall mkkey_addr DATA mkkey;
-   Syscall seal_addr DATA seal;
-   Syscall unseal_addr DATA unseal].
+  [:: Syscall mkkey_addr DATA mkkey;
+      Syscall seal_addr DATA seal;
+      Syscall unseal_addr DATA unseal].
 
 Definition step := step sealing_syscalls.
 

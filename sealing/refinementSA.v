@@ -1,5 +1,5 @@
-Require Import Coq.Classes.SetoidDec.
 Require Import ssreflect ssrfun ssrbool eqtype seq.
+Require Import ord word partmap.
 Require Import lib.utils.
 Require Import lib.ssr_list_utils.
 Require Import common.common symbolic.symbolic.
@@ -24,53 +24,48 @@ Context {t : machine_types}
         {ssa : @sealing_syscall_addrs t}
 
         {ssk : Sym.sealing_key}
-        {ask : Abs.sealing_key}
-
-        {key_map : Type -> Type}
-        {kmap : partial_map key_map Abs.key}
-        {kmaps : PartMaps.axioms kmap}.
+        {ask : Abs.sealing_key}.
 
 (* this is used in the unsealing case; if we were to show fwd
    refinement we would need bijectivity (a permutation on keys) *)
-Definition key_map_inj (km : key_map Sym.key) := forall ak ak' sk sk',
-  get km ak = Some sk ->
-  get km ak' = Some sk' ->
+Definition key_map_inj (km : {partmap Abs.key -> Sym.key}) := forall ak ak' sk sk',
+  km ak = Some sk ->
+  km ak' = Some sk' ->
   sk = sk' ->
   ak = ak'.
 
-Lemma fresh_set_inj : forall (km : key_map Sym.key) akey skey,
+Lemma fresh_set_inj : forall (km : {partmap Abs.key -> Sym.key}) akey skey,
   key_map_inj km ->
-  (forall ak, ~get km ak = Some skey) ->
-  key_map_inj (set km akey skey).
+  (forall ak, ~ km ak = Some skey) ->
+  key_map_inj (setm km akey skey).
 Proof.
-  move => km akey skey kmi nk ak ak' sk sk'.
-  have [eq_ak | /eqP neq_ak] := altP (ak =P akey);
-  have [eq_ak' | /eqP neq_ak'] := altP (ak' =P akey); try congruence.
-  - intros g g' e. subst. rewrite -> get_set_eq in g => //.
-    rewrite -> get_set_neq in g' => //. congruence.
-  - intros g g' e. subst. rewrite get_set_eq in g' => //.
-    rewrite get_set_neq in g => //. congruence.
-  - intros g g' e. subst.
-    rewrite get_set_neq in g => //. rewrite get_set_neq in g' => //.
-    by eauto.
+move => km akey skey kmi nk ak ak' sk sk' E1 E2 Esk.
+rewrite -{}Esk {sk'} in E2; move: E1 E2; rewrite !getm_set.
+have [-> {ak}|Hne] := altP (_ =P _).
+  move=> [<-] {sk}.
+  have [-> {ak'} //|Hne'] := altP (_ =P _).
+  by move/nk.
+have [-> {ak'} //|Hne'] := altP (_ =P _).
+  by move=> E [E']; rewrite -{}E' {sk} in E; move/nk in E.
+by move=> E1 E2; apply: kmi E1 E2 erefl.
 Qed.
 
 Section WithFixedKeyMap.
 
 (* km k returns Some sk when k is allocated and sk is the
    corresponding symbolic key *)
-Variable km : key_map Sym.key.
+Variable km : {partmap Abs.key -> Sym.key}.
 
-Local Notation smemory := (@word_map t Sym.sym_sealing).
-Local Notation sregisters := (@reg_map t Sym.sym_sealing).
+Local Notation smemory := {partmap mword t -> Sym.sym_sealing}.
+Local Notation sregisters := {partmap reg t -> Sym.sym_sealing}.
 Local Notation astate := (@Abs.state t ask).
 Local Notation sstate := (@Symbolic.state t Sym.sym_sealing).
 
 Definition refine_key (ak : Abs.key) (sk : Sym.key) : Prop :=
-  get km ak = Some sk.
+  getm km ak = Some sk.
 
 Definition refine_val_atom (v : Abs.value t)
-                           (a : atom (word t) Sym.stag) : Prop :=
+                           (a : atom (mword t) Sym.stag) : Prop :=
   match v,a with
   | Abs.VData w     , w'@(Sym.DATA)      => w = w'
   | Abs.VKey ak     ,  _@(Sym.KEY sk)    => refine_key ak sk

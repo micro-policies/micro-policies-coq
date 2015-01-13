@@ -1,5 +1,5 @@
 Require Import ssreflect ssrfun ssrbool eqtype seq.
-Require Import word partmap.
+Require Import ord word partmap.
 Require Import lib.utils common.common sealing.classes.
 
 Import DoNotation.
@@ -18,7 +18,7 @@ Context (t : machine_types)
         {ssa : @sealing_syscall_addrs t}.
 
 Class sealing_key := {
-  key       : eqType;
+  key       : ordType;
 
   (* This function is total, so key has to be infinite *)
   mkkey_f : list key -> key;

@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
-Require Import ord word partmap.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssrint.
+Require Import hseq ord word partmap.
 Require Import lib.utils common.common.
 Require Import symbolic.symbolic memory_safety.classes.
 
@@ -108,14 +108,14 @@ Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 Definition ms_tags : tag_kind -> eqType := fun _ => [eqType of tag].
 
 Definition rules_normal (op : opcode) (c : color)
-           (ts : hlist ms_tags (inputs op)) : option (OVec ms_tags op) :=
+           (ts : hseq ms_tags (inputs op)) : option (OVec ms_tags op) :=
   let ret  := fun rtpc (rt : type_of_result ms_tags (outputs op)) => Some (@mkOVec ms_tags op rtpc rt) in
   let retv := fun (rt : type_of_result ms_tags (outputs op)) => ret V(PTR c) rt in
   match op, ts, ret, retv with
   | NOP, _, ret, retv => retv tt
   | CONST, _, ret, retv => retv V(DATA)
-  | MOV, [hl V(ty); _], ret, retv => retv V(ty)
-  | BINOP bo, [hl t1; t2; _], ret, retv =>
+  | MOV, [hseq V(ty); _], ret, retv => retv V(ty)
+  | BINOP bo, [hseq t1; t2; _], ret, retv =>
     match bo with
     | ADD =>
       match t1, t2 with
@@ -147,17 +147,17 @@ Definition rules_normal (op : opcode) (c : color)
       | _, _ => None
       end
     end
-  | LOAD, [hl V(PTR b1); M(b2,ty); _], ret, retv =>
+  | LOAD, [hseq V(PTR b1); M(b2,ty); _], ret, retv =>
     if b1 == b2 then retv V(ty)
     else None
-  | STORE, [hl V(PTR b1); V(ty); M(bd,_)], ret, retv =>
+  | STORE, [hseq V(PTR b1); V(ty); M(bd,_)], ret, retv =>
     if b1 == bd then retv M(bd,ty)
     else None
-  | JUMP, [hl V(PTR b')], ret, retv =>
+  | JUMP, [hseq V(PTR b')], ret, retv =>
     ret V(PTR b') tt
-  | BNZ, [hl V(DATA)], ret, retv =>
+  | BNZ, [hseq V(DATA)], ret, retv =>
     retv tt
-  | JAL, [hl V(ty); _], ret, retv =>
+  | JAL, [hseq V(ty); _], ret, retv =>
     ret V(ty) V(PTR c)
   | _, _, _, _ => None
   end.
@@ -173,7 +173,7 @@ Definition rules (ivec : IVec ms_tags) : option (VOVec ms_tags (op ivec)) :=
       end
     | V(PTR b), M(b', DATA) =>
       if b == b' then
-        match op return hlist _ (vinputs op) -> option (VOVec ms_tags op) with
+        match op return hseq _ (vinputs op) -> option (VOVec ms_tags op) with
         | SERVICE => fun _ => None
         | OP op => rules_normal b
         end ts
@@ -182,16 +182,14 @@ Definition rules (ivec : IVec ms_tags) : option (VOVec ms_tags (op ivec)) :=
     end
   end.
 
-End WithHListNotations.
-
 Variable initial_color : color.
 
 (* Hypothesis: alloc never returns initial_color. *)
 
 Variable initial_pc : word.
-Variable initial_mem  : word_map t atom.
-Variable initial_registers : reg_map t atom.
-Hypothesis initial_ra : get initial_registers ra = Some initial_pc@V(PTR initial_color).
+Variable initial_mem  : {partmap mword t -> atom}.
+Variable initial_registers : {partmap reg t -> atom}.
+Hypothesis initial_ra : getm initial_registers ra = Some initial_pc@V(PTR initial_color).
 
 Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_color)).
 
@@ -207,12 +205,12 @@ Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=
   match n with
   | O => Some mem
   | S p => do! mem' <- write_block_rec mem base v p;
-           upd mem' (base + Word.reprn p) v
+           updm mem' (base + as_word p) v
   end.
 
-Definition write_block init base (v : atom) (sz : word) : option (Symbolic.memory t _) :=
-  if Word.unsigned base + Word.unsigned sz <=? Word.max_unsigned (word_size_minus_one t) then
-     write_block_rec init base v (Z.to_nat (Word.unsigned sz))
+Definition write_block init (base : word) (v : atom) (sz : word) : option (Symbolic.memory t _) :=
+  if eqtype.val base + eqtype.val sz <= eqtype.val (@monew (word_size t)) then
+     write_block_rec init base v (eqtype.val sz)
   else None.
 
 Definition update_block_info info x (color : color) sz :=
@@ -226,16 +224,16 @@ Definition update_block_info info x (color : color) sz :=
 
 Definition malloc_fun st : option (state t) :=
   let: (color,info) := internal st in
-  if (color <? max_color)%ordered then
-  do! sz <- get (regs st) syscall_arg1;
+  if (color < max_color)%ord then
+  do! sz <- regs st syscall_arg1;
   match sz with
     | sz@V(DATA) =>
-      if (0 <? sz)%ordered then
-          if ohead [seq x <- info | ((sz <=? block_size x) && (block_color x == None))%ordered] is Some x then
+      if (0 < sz)%ord then
+          if ohead [seq x <- info | ((sz <= block_size x) && (block_color x == None))%ord] is Some x then
           do! mem' <- write_block (mem st) (block_base x) 0@M(color,DATA) sz;
-          do! regs' <- upd (regs st) syscall_ret ((block_base x)@V(PTR color));
+          do! regs' <- updm (regs st) syscall_ret ((block_base x)@V(PTR color));
           let color' := inc_color color in
-          do! raddr <- get (regs st) ra;
+          do! raddr <- regs st ra;
           if raddr is _@V(PTR _) then
             Some (State mem' regs' raddr (color', update_block_info info x color sz))
           else None
@@ -251,17 +249,17 @@ Definition def_info : block_info :=
 (* TODO: avoid memory fragmentation *)
 Definition free_fun (st : state t) : option (state t) :=
   let: (next_color,info) := internal st in
-  do! ptr <- get (regs st) syscall_arg1;
+  do! ptr <- regs st syscall_arg1;
     (* Removing the return clause makes Coq loop... *)
   match ptr return option (state t) with
   | ptr@V(PTR color) =>
     do! x <- ohead [seq x <- info | block_color x == Some color];
     let i := index x info in
-    if (block_base x <=? ptr <? block_base x + block_size x) then
+    if (block_base x <= ptr < block_base x + block_size x)%ord then
       do! mem' <- write_block (mem st) (block_base x) 0@FREE (block_size x);
       let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
       in
-      do! raddr <- get (regs st) ra;
+      do! raddr <- regs st ra;
       if raddr is _@V(PTR _) then
         Some (State mem' (regs st) raddr (next_color,info'))
       else None

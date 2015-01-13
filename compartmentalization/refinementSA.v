@@ -1,4 +1,5 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
+Require Import word partmap.
 
 Require Import lib.utils common.common.
 Require Import symbolic.symbolic.
@@ -16,7 +17,6 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Import PartMaps.
 Import Abs.Notations.
 Import Abs.Hints.
 Import Sym.EnhancedDo.
@@ -31,7 +31,7 @@ Context
   {scr          : @syscall_regs t}
   {cmp_syscalls : compartmentalization_syscall_addrs t}.
 
-Notation word     := (word t).
+Notation word     := (mword t).
 Notation pc_tag   := (Sym.pc_tag t).
 Notation data_tag := (Sym.data_tag t).
 Notation sym_compartmentalization := (@Sym.sym_compartmentalization t).
@@ -50,9 +50,6 @@ Notation SInternal := (@Sym.Internal t).
 
 Notation astep := Abs.step.
 Notation sstep := Sym.step.
-
-Hint Immediate word_map_axioms.
-Hint Immediate reg_map_axioms.
 
 (* Avoiding some type class resolution problems *)
 

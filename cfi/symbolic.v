@@ -1,4 +1,5 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import word partmap.
 
 Require Import lib.utils.
 Require Import common.common.
@@ -9,19 +10,13 @@ Require Import cfi.rules.
 Require Import cfi.classes.
 Set Implicit Arguments.
 
-Import ListNotations.
-
 Module Sym.
-
-Open Scope bool_scope.
 
 Section WithClasses.
 
 Context {t : machine_types}.
 Context {ops : machine_ops t}.
 Context {opss : machine_ops_spec ops}.
-
-Import PartMaps.
 
 Context {ids : @classes.cfi_id t}.
 
@@ -47,18 +42,18 @@ Variable table : list (Symbolic.syscall t).
 Definition no_violation (sst : Symbolic.state t) :=
   let '(Symbolic.State mem _ pc@tpc _) := sst in
   (forall i ti src,
-    get mem pc = Some i@ti ->
+    mem pc = Some i@ti ->
     tpc = INSTR (Some src) ->
     exists dst,
         ti = INSTR (Some dst) /\ cfg src dst) /\
   (forall sc,
-     get mem pc = None ->
+     mem pc = None ->
      Symbolic.get_syscall table pc = Some sc ->
      forall src,
        tpc = INSTR (Some src) ->
        exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ cfg src dst).
 
-Inductive atom_equiv (a : atom (word t) (@cfi_tag t ids)) (a' : atom (word t) (@cfi_tag t ids)) : Prop :=
+Inductive atom_equiv (a : atom (mword t) (@cfi_tag t ids)) (a' : atom (mword t) (@cfi_tag t ids)) : Prop :=
   | data_equiv :   tag a = DATA ->
                    tag a' = DATA ->
                    atom_equiv a a'

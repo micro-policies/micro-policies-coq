@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
-Require Import word partmap.
+Require Import ord hseq word partmap.
 
 Require Import lib.utils common.common.
 Require Import symbolic.symbolic.
@@ -203,21 +203,21 @@ Definition rvec_store (c : mword t) (I W : {set mword t})
    registers are always tagged with `REG'. *)
 Definition compartmentalization_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   match iv with
-    | mkIVec (OP NOP)       Lpc LI [hl]                       => rvec_next NOP       tt  Lpc LI
-    | mkIVec (OP CONST)     Lpc LI [hl REG]                   => rvec_next CONST     REG Lpc LI
-    | mkIVec (OP MOV)       Lpc LI [hl REG; REG]              => rvec_next MOV       REG Lpc LI
-    | mkIVec (OP (BINOP b)) Lpc LI [hl REG; REG; REG]         => rvec_next (BINOP b) REG Lpc LI
-    | mkIVec (OP LOAD)      Lpc LI [hl REG; DATA _ _ _; REG]  => rvec_next LOAD      REG Lpc LI
-    | mkIVec (OP STORE)     Lpc LI [hl REG; REG; DATA c In W] => rvec_store c In W Lpc LI
-    | mkIVec (OP JUMP)      Lpc LI [hl REG]                   => rvec_jump JUMP      tt  Lpc LI
-    | mkIVec (OP BNZ)       Lpc LI [hl REG]                   => rvec_next BNZ       tt  Lpc LI
-    | mkIVec (OP JAL)       Lpc LI [hl REG; REG]              => rvec_jump JAL       REG Lpc LI
-    | mkIVec SERVICE        Lpc LI [hl]                       => Some tt
+    | mkIVec (OP NOP)       Lpc LI [hseq]                       => rvec_next NOP       tt  Lpc LI
+    | mkIVec (OP CONST)     Lpc LI [hseq REG]                   => rvec_next CONST     REG Lpc LI
+    | mkIVec (OP MOV)       Lpc LI [hseq REG; REG]              => rvec_next MOV       REG Lpc LI
+    | mkIVec (OP (BINOP b)) Lpc LI [hseq REG; REG; REG]         => rvec_next (BINOP b) REG Lpc LI
+    | mkIVec (OP LOAD)      Lpc LI [hseq REG; DATA _ _ _; REG]  => rvec_next LOAD      REG Lpc LI
+    | mkIVec (OP STORE)     Lpc LI [hseq REG; REG; DATA c In W] => rvec_store c In W Lpc LI
+    | mkIVec (OP JUMP)      Lpc LI [hseq REG]                   => rvec_jump JUMP      tt  Lpc LI
+    | mkIVec (OP BNZ)       Lpc LI [hseq REG]                   => rvec_next BNZ       tt  Lpc LI
+    | mkIVec (OP JAL)       Lpc LI [hseq REG; REG]              => rvec_jump JAL       REG Lpc LI
+    | mkIVec SERVICE        Lpc LI [hseq]                       => Some tt
     | mkIVec _         _   _  _                               => None
   end.
 
 Record compartmentalization_internal :=
-  Internal { next_id                  : word t
+  Internal { next_id                  : mword t
            ; isolate_tag              : data_tag
            ; add_to_jump_targets_tag  : data_tag
            ; add_to_store_targets_tag : data_tag }.
@@ -250,14 +250,11 @@ Instance sym_compartmentalization : Symbolic.params := {
 Local Notation memory    := (Symbolic.memory t sym_compartmentalization).
 Local Notation registers := (Symbolic.registers t sym_compartmentalization).
 
-Hint Immediate word_map_axioms.
-Hint Immediate reg_map_axioms.
-
-Definition sget (s : Symbolic.state t) (p : word t)
+Definition sget (s : Symbolic.state t) (p : mword t)
                 : option data_tag :=
   let: Symbolic.State mem _ _ si := s in
   let sctag get_tag := Some (get_tag si) in
-  match get mem p with
+  match mem p with
     | Some _@tg => Some tg
     | None   =>
       if      p == isolate_addr              then sctag isolate_tag
@@ -267,7 +264,7 @@ Definition sget (s : Symbolic.state t) (p : word t)
   end.
 Arguments sget s p : simpl never.
 
-Definition supd (s : Symbolic.state t) (p : word t) (tg : data_tag)
+Definition supd (s : Symbolic.state t) (p : mword t) (tg : data_tag)
                 : option (Symbolic.state t) :=
   let: Symbolic.State mem reg pc si := s in
   let: Internal next_id
@@ -276,7 +273,7 @@ Definition supd (s : Symbolic.state t) (p : word t) (tg : data_tag)
                 add_to_store_targets_tag :=
        si in
   let sctagged si' := Some (Symbolic.State mem reg pc si') in
-  match rep mem p (fun v => (val v)@tg) with
+  match repm mem p (fun v => (val v)@tg) with
     | Some mem' => Some (Symbolic.State mem' reg pc si)
     | None      =>
       if      p == isolate_addr
@@ -299,15 +296,15 @@ Definition supd (s : Symbolic.state t) (p : word t) (tg : data_tag)
 Arguments supd s p tg : simpl never.
 
 Definition fresh (si : compartmentalization_internal)
-                 : option (word t * compartmentalization_internal) :=
+                 : option (mword t * compartmentalization_internal) :=
   let 'Internal next iT ajtT asmT := si in
-  if next == max_word t
+  if next == monew
   then None
   else Some (next, Internal (next+1)%w iT ajtT asmT).
 
 Definition fresh' (si : compartmentalization_internal)
-                  : option (word t) :=
-  if next_id si == max_word t
+                  : option (mword t) :=
+  if next_id si == monew
   then None
   else Some (next_id si).
 
@@ -318,10 +315,10 @@ Definition bump_next_id (si : compartmentalization_internal)
            (add_to_jump_targets_tag si)
            (add_to_store_targets_tag si).
 
-Definition retag_one (ok : word t -> word t -> {set word t} -> {set word t} -> bool)
-                     (retag : word t -> word t -> {set word t} -> {set word t} -> data_tag)
+Definition retag_one (ok : mword t -> mword t -> {set mword t} -> {set mword t} -> bool)
+                     (retag : mword t -> mword t -> {set mword t} -> {set mword t} -> data_tag)
                      (s : Symbolic.state t)
-                     (p : word t)
+                     (p : mword t)
                      : option (Symbolic.state t) :=
   do!  DATA c I W <- sget s p;
   do!  guard (ok p c I W);
@@ -346,26 +343,26 @@ Proof.
   by apply Htrans; eauto.
 Qed.
 
-Definition retag_set (ok : word t -> word t -> {set (word t)} -> {set (word t)} -> bool)
-                     (retag : word t -> word t -> {set (word t)} -> {set (word t)}-> data_tag)
-                     (ps : list (word t))
+Definition retag_set (ok : mword t -> mword t -> {set mword t} -> {set mword t} -> bool)
+                     (retag : mword t -> mword t -> {set mword t} -> {set mword t}-> data_tag)
+                     (ps : seq (mword t))
                      (s : Symbolic.state t)
                      : option (Symbolic.state t) :=
   ofoldl (retag_one ok retag) s ps.
 
-Definition do_ok (cur : word t)
-                 (A J S : {set word t})
-                 (p : word t)
-                 (cid : word t) (I W : {set word t})
+Definition do_ok (cur : mword t)
+                 (A J S : {set mword t})
+                 (p : mword t)
+                 (cid : mword t) (I W : {set mword t})
                  : bool :=
   [&& (p \in A) ==> (cid == cur),
       (p \in J) ==> (cid == cur) || (cur \in I) &
       (p \in S) ==> (cid == cur) || (cur \in W) ].
 
-Definition do_retag (cur new : word t)
-                    (A J S : {set word t})
-                    (p : word t)
-                    (cid : word t) (I W : {set word t})
+Definition do_retag (cur new : mword t)
+                    (A J S : {set mword t})
+                    (p : mword t)
+                    (cid : mword t) (I W : {set mword t})
                     : data_tag :=
   let cid' := if p \in A then new      else cid in
   let I'   := if p \in J then new |: I else I   in
@@ -374,26 +371,26 @@ Definition do_retag (cur new : word t)
 
 Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
   match s with
-  | Symbolic.State M R (pc @ (PC F c)) si =>
+  | Symbolic.State MM RR (pc @ (PC F c)) si =>
     do! LI    <- sget s pc;
     do! c_sys <- can_execute (PC F c) LI;
 
     do! c'    <- fresh' si;
 
-    do! pA @ _ <- get R syscall_arg1;
-    do! pJ @ _ <- get R syscall_arg2;
-    do! pS @ _ <- get R syscall_arg3;
+    do! pA @ _ <- RR syscall_arg1;
+    do! pJ @ _ <- RR syscall_arg2;
+    do! pS @ _ <- RR syscall_arg3;
 
-    do! A' <- isolate_create_set (@val _ _) M pA;
+    do! A' <- isolate_create_set (@val _ _) MM pA;
     do! guard A' != set0;
-    do! J' : {set word t} <- isolate_create_set (@val _ _) M pJ;
-    do! S' : {set word t} <- isolate_create_set (@val _ _) M pS;
+    do! J' : {set mword t} <- isolate_create_set (@val _ _) MM pJ;
+    do! S' : {set mword t} <- isolate_create_set (@val _ _) MM pS;
 
     do! s' <- retag_set (do_ok c A' J' S')
                         (do_retag c c' A' J' S')
                         (enum (A' :|: J' :|: S')) s;
 
-    do! pc' @ _              <- get  R  ra;
+    do! pc' @ _              <- RR ra;
     do! DATA c_next I_next _ <- sget s' pc';
     do! guard c == c_next;
     do! guard c_sys \in I_next;
@@ -405,18 +402,18 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
 Definition add_to_jump_targets (s : Symbolic.state t)
                                : option (Symbolic.state t) :=
   match s with
-    | Symbolic.State M R (pc @ (PC F c)) si =>
+    | Symbolic.State MM RR (pc @ (PC F c)) si =>
       do! LI    <- sget s pc;
       do! c_sys <- can_execute (PC F c) LI;
       do! guard c != c_sys;
 
-      do! p @ _         <- get R syscall_arg1;
+      do! p @ _         <- RR syscall_arg1;
       do! DATA c' I' W' <- sget s p;
 
       do! guard (c' == c) || (c \in I');
       do! s' <- supd s p (DATA c' (c |: I') W');
 
-      do! pc' @ _              <- get R ra;
+      do! pc' @ _              <- RR ra;
       do! DATA c_next I_next _ <- sget s' pc';
       do! guard c == c_next;
       do! guard c_sys \in I_next;
@@ -428,18 +425,18 @@ Definition add_to_jump_targets (s : Symbolic.state t)
 Definition add_to_store_targets (s : Symbolic.state t)
                                 : option (Symbolic.state t) :=
   match s with
-    | Symbolic.State M R (pc @ (PC F c)) si =>
+    | Symbolic.State MM RR (pc @ (PC F c)) si =>
       do! LI    <- sget s pc;
       do! c_sys <- can_execute (PC F c) LI;
       do! guard c != c_sys;
 
-      do! p @ _         <- get R syscall_arg1;
+      do! p @ _         <- RR syscall_arg1;
       do! DATA c' I' W' <- sget s p;
 
       do! guard (c' == c) || (c \in W');
       do! s' <- supd s p (DATA c' I' (c |: W'));
 
-      do! pc' @ _              <- get R ra;
+      do! pc' @ _              <- RR ra;
       do! DATA c_next I_next _ <- sget s' pc';
       do! guard c == c_next;
       do! guard c_sys \in I_next;
@@ -449,7 +446,7 @@ Definition add_to_store_targets (s : Symbolic.state t)
   end.
 
 Definition syscalls : list (Symbolic.syscall t) :=
-  let dummy := DATA Word.zero set0 set0 in
+  let dummy := DATA 0%w set0 set0 in
   [:: Symbolic.Syscall isolate_addr              dummy isolate;
       Symbolic.Syscall add_to_jump_targets_addr  dummy add_to_jump_targets;
       Symbolic.Syscall add_to_store_targets_addr dummy add_to_store_targets].
@@ -461,7 +458,7 @@ Definition bounded_by (s : Symbolic.state t) id : Prop :=
     sget s p = Some (DATA cid I W) ->
     forall cid',
       cid' \in cid |: I :|: W ->
-      cid' <? id.
+      (cid' < id)%ord.
 
 Definition isolated_syscalls (s : Symbolic.state t) : Prop :=
   forall p sc_addr,
@@ -474,13 +471,13 @@ Definition good_internal (s : Symbolic.state t) : Prop :=
   bounded_by s (next_id (Symbolic.internal s)) /\ isolated_syscalls s.
 
 Definition good_pc_tag (s : Symbolic.state t)
-                       (pc : atom (word t) pc_tag) : Prop :=
+                       (pc : atom (mword t) pc_tag) : Prop :=
   match pc with
     | _ @ (PC _ c) => exists p I W, sget s p ?= Sym.DATA c I W
   end.
 
 Definition good_tags (s : Symbolic.state t) : Prop :=
-  let: Symbolic.State M R pc si := s in
+  let: Symbolic.State MM RR pc si := s in
   good_pc_tag s pc.
 
 Definition good_state (s : Symbolic.state t) : Prop :=
@@ -494,11 +491,11 @@ Theorem sget_supd s s' p L :
     sget s' p' = if p' == p then Some L else sget s p'.
 Proof.
   case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'].
-  rewrite /supd /= /rep /sget.
-  case GET: (get m p) => [[x L']|] /=.
+  rewrite /supd /= /repm /sget.
+  case GET: (getm m p) => [[x L']|] /=.
   - move=> {r' pc' ni'} [<- _ _ _ <- <- <-] p' /=.
-    have [{p'} ->|NE] := (p' =P p); first by rewrite get_set_eq.
-    by rewrite (get_set_neq _ _ NE).
+    rewrite getm_set.
+    by have [{p'} _|NE] := (p' =P p).
   - move: GET; have [{p} ->|NE1] := (p =P _).
     { move=> GET {r' pc' ni'} [<- _ _ _ <- <- <-] p'.
       by have [{p'} ->|_] := (p' =P _); first by rewrite GET. }
@@ -534,57 +531,57 @@ Theorem sget_supd_inv s s' p p' L :
   sget s  p'.
 Proof.
   case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'].
-  rewrite /supd /= /rep /sget.
-  case GET: (get m p) => [[v tg]|] /=.
+  rewrite /supd /= /repm /sget.
+  case GET: (getm m p) => [[v tg]|] /=.
   - move=> [<- _ _ _ <- <- <-].
-    have [{p'} ->|NE] := (p' =P p); first by rewrite GET.
-    by rewrite (get_set_neq _ _ NE).
+    rewrite getm_set.
+    by have [{p'} ->|NE] := (p' =P p); first by rewrite GET.
   - do !case: (p =P _) => ? //; subst.
     + move=> [<- _ _ _ <- <- <-].
-      case: (get m p') => //.
+      case: (getm m p') => //.
       by do !case: (p' =P _).
     + move=> [<- _ _ _ <- <- <-].
-      case: (get m p') => //.
+      case: (getm m p') => //.
       by do !case: (p' =P _).
     + move=> [<- _ _ _ <- <- <-].
-      case: (get m p') => //.
+      case: (getm m p') => //.
       by do !case: (p' =P _).
 Qed.
 
 Theorem get_supd_eq s s' p x L L' :
-  get (Symbolic.mem s) p ?= x@L ->
+  getm (Symbolic.mem s) p ?= x@L ->
   supd s p L' ?= s' ->
-  get (Symbolic.mem s') p ?= x@L'.
+  getm (Symbolic.mem s') p ?= x@L'.
 Proof.
   case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'] /=.
-  rewrite /supd /rep => -> /= [<- _ _ _ _ _ _].
-  by rewrite get_set_eq.
+  rewrite /supd /repm => -> /= [<- _ _ _ _ _ _].
+  by rewrite getm_set eqxx.
 Qed.
 
 Theorem get_supd_neq s s' p p' v :
   p' <> p ->
   supd s p v ?= s' ->
-  get (Symbolic.mem s') p' = get (Symbolic.mem s) p'.
+  Symbolic.mem s' p' = Symbolic.mem s p'.
 Proof.
   case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'] NE /=.
   rewrite /supd.
-  case REP: (rep _ _ _) => [m''|].
+  case REP: (repm _ _ _) => [m''|].
   - move=> [<- _ _ _ _ _ _].
-    by rewrite (get_rep REP) (introF (_ =P _) NE).
+    by rewrite (getm_rep REP) (introF (_ =P _) NE).
   - repeat case: (p =P _) => _ //=; congruence.
 Qed.
 
 Theorem get_supd_none s s' p p' v :
-  get (Symbolic.mem s) p = None ->
+  Symbolic.mem s p = None ->
   supd s p' v ?= s' ->
-  get (Symbolic.mem s') p = None.
+  Symbolic.mem s' p = None.
 Proof.
   case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'] /= NONE.
   rewrite /supd.
-  case REP: (rep _ _ _) => [m''|].
+  case REP: (repm _ _ _) => [m''|].
   - move=> [<- _ _ _ _ _ _].
-    rewrite (get_rep REP) NONE.
-    move: REP. rewrite /rep.
+    rewrite (getm_rep REP) NONE.
+    move: REP. rewrite /repm.
     have [{p'} <-|//] := (p =P p').
     by rewrite NONE.
   - repeat case: (p' =P _) => _; congruence.
@@ -592,16 +589,16 @@ Qed.
 
 Theorem supd_same_val s p L s' :
   supd s p L ?= s' ->
-  omap (fun x => val x) \o get (Symbolic.mem s) =1
-  omap (fun x => val x) \o get (Symbolic.mem s').
+  omap (fun x => val x) \o getm (Symbolic.mem s) =1
+  omap (fun x => val x) \o getm (Symbolic.mem s').
 Proof.
   case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'] /=.
   rewrite /supd.
-  case REP: (rep m p _) => [m''|].
+  case REP: (repm m p _) => [m''|].
   - move=> [<- _ _ _ _ _ _] p' /=.
-    rewrite (get_rep REP).
+    rewrite (getm_rep REP).
     have [->|_] := (p' =P p) => //.
-    by case: (get m p) => [[? ?]|].
+    by case: (getm m p) => [[? ?]|].
   - repeat case: (p =P _) => _; congruence.
 Qed.
 
@@ -612,7 +609,7 @@ Proof.
   move=> [mem reg pc [next iT aJT aST]] /= p v s' SUPD;
     rewrite /supd /= in SUPD.
   move: SUPD.
-  case: (rep mem p _) => [m'' [<-] //|].
+  case: (repm mem p _) => [m'' [<-] //|].
   by repeat case: (p =P _) => _ //; move=> [<-].
 Qed.
 
@@ -623,7 +620,7 @@ Proof.
   move=> [mem reg pc [next iT aJT aST]] /= p v s' SUPD;
     rewrite /supd /= in SUPD.
   move: SUPD.
-  case: (rep mem p _) => [m'' [<-] //|].
+  case: (repm mem p _) => [m'' [<-] //|].
   by repeat case: (p =P _) => _ //; move=> [<-].
 Qed.
 
@@ -635,26 +632,24 @@ Proof.
   move=> [mem reg pc [next iT aJT aST]] /= p v s' SUPD;
     rewrite /supd /= in SUPD.
   move: SUPD.
-  case: (rep mem p _) => [m'' [<-] //|].
+  case: (repm mem p _) => [m'' [<-] //|].
   by repeat case: (p =P _) => _ //; move=> [<-].
 Qed.
 
-Lemma succ_trans : forall x y,
-  y <> max_word t -> x <? y -> x <? (y + 1)%w.
+Lemma succ_trans : forall x y : mword t,
+  (y <> monew -> x < y -> x < (y + 1)%w)%ord.
 Proof.
-  move=> x y NEQ /ltb_lt LT.
-  apply/ltb_lt.
-  generalize (lew_max y) => /le_iff_lt_or_eq [] // LT_max.
-  apply lt_trans with (b := y); first by [].
-  apply ltb_lt.
-  by apply (@lebw_succ _ y (max_word t)).
+move=> x y NEQ LT.
+move: (leqw_mone y); rewrite Ord.leq_eqVlt (introF eqP NEQ) /= => H.
+apply (@Ord.lt_trans _ y); first by [].
+by apply (@leqw_succ _ y monew).
 Qed.
 Hint Resolve succ_trans.
 
 Lemma sget_lt_next s p c I W :
   good_internal s ->
   sget s p ?= DATA c I W ->
-  c <? next_id (Symbolic.internal s).
+  (c < next_id (Symbolic.internal s))%ord.
 Proof.
   move=> [Hbounds Hisolated] /Hbounds/(_ c).
   by rewrite in_setU in_setU1 eqxx /= => /(_ erefl).
@@ -664,7 +659,7 @@ Lemma sget_lt_next_I s p c I W c' :
   good_internal s ->
   sget s p ?= DATA c I W ->
   c' \in I ->
-  c' <? next_id (Symbolic.internal s).
+  (c' < next_id (Symbolic.internal s))%ord.
 Proof.
   move=> [Hbounds Hisolated] /Hbounds/(_ c') H c'_in_I.
   apply: H.
@@ -675,7 +670,7 @@ Lemma sget_lt_next_W s p c I W c' :
   good_internal s ->
   sget s p ?= DATA c I W ->
   c' \in W ->
-  c' <? next_id (Symbolic.internal s).
+  (c' < next_id (Symbolic.internal s))%ord.
 Proof.
   move=> [Hbounds Hisolated] /Hbounds/(_ c') H c'_in_W.
   apply: H.
@@ -705,14 +700,14 @@ Qed.
 
 Lemma retag_one_preserves_get_definedness ok retag s p s' :
   retag_one ok retag s p ?= s' ->
-  forall p, get (Symbolic.mem s) p = get (Symbolic.mem s') p :> bool.
+  forall p, Symbolic.mem s p = Symbolic.mem s' p :> bool.
 Proof.
   rewrite /retag_one.
   case GET: (sget _ _) => [[cid I W]|] //=.
   case: (ok _ _ _ _) => //=.
   case: (retag _ _ _ _) => [cid' I' W'] //= UPD p'.
   have [{p'} ->|NEQ] := (p' =P p).
-  - case GET': (get (Symbolic.mem s) p) => [[x L]|].
+  - case GET': (Symbolic.mem s p) => [[x L]|].
     + by rewrite (get_supd_eq _ _ _ _ _ _ GET' UPD).
     + by rewrite (get_supd_none _ _ _ _ _ GET' UPD).
   - by rewrite (get_supd_neq _ _ _ _ _ NEQ UPD).
@@ -720,11 +715,11 @@ Qed.
 
 Lemma retag_set_preserves_get_definedness ok retag ps s s' :
   retag_set ok retag ps s ?= s' ->
-  forall p, get (Symbolic.mem s) p = get (Symbolic.mem s') p :> bool.
+  Symbolic.mem s =i Symbolic.mem s'.
 Proof.
-  move=> H.
-  have := (ofoldl_preserve _ _ _ _ _ _ _ (retag_one_preserves_get_definedness ok retag) _ _ H).
-  by apply; eauto.
+move=> H.
+have := (ofoldl_preserve _ _ _ _ _ _ _ (retag_one_preserves_get_definedness ok retag) _ _ H).
+by apply; eauto.
 Qed.
 
 Lemma retag_one_preserves_registers ok retag s p s' :
@@ -874,8 +869,8 @@ Qed.
 
 Lemma retag_set_same_val ok retag ps s s' :
   retag_set ok retag ps s ?= s' ->
-  omap (fun x => val x) \o get (Symbolic.mem s) =1
-  omap (fun x => val x) \o get (Symbolic.mem s').
+  omap (fun x => val x) \o getm (Symbolic.mem s) =1
+  omap (fun x => val x) \o getm (Symbolic.mem s').
 Proof.
   rewrite /retag_set /retag_one.
   elim: ps s s' => [|p ps IH] s s' /=; first by move=> [->].
@@ -891,10 +886,10 @@ Lemma retag_set_or_ok_get : forall ok retag ps s s',
   uniq ps ->
   retag_set ok retag ps s ?= s' ->
   forall p,
-    get (Symbolic.mem s) p = get (Symbolic.mem s') p \/
-    exists x c I W, get (Symbolic.mem s) p ?= x@(DATA c I W) /\
+    getm (Symbolic.mem s) p = getm (Symbolic.mem s') p \/
+    exists x c I W, getm (Symbolic.mem s) p ?= x@(DATA c I W) /\
                     ok p c I W /\
-                    get (Symbolic.mem s') p ?= x@(retag p c I W).
+                    getm (Symbolic.mem s') p ?= x@(retag p c I W).
 Proof.
   intros ok retag ps s s' NODUP RETAG p.
   move: (retag_set_same_val _ _ _ _ _ RETAG p) => /= GET.
@@ -903,14 +898,14 @@ Proof.
   - move: EQ GET {RETAG NODUP}.
     rewrite /sget.
     case: s => m ? ? [? ? ? ?]; case: s' => m' ? ? [? ? ? ?] /=.
-    case: (get m p)  => [[v l]|];
-    case: (get m' p) => [[v' l']|] //=; last by auto.
+    case: (m p)  => [[v l]|];
+    case: (m' p) => [[v' l']|] //=; last by auto.
     by move=> [<-] [<-]; left.
   - move: GET OLD OK NEW {RETAG}.
     rewrite /sget.
     case: s => m ? ? [? ? ? ?]; case: s' => m' ? ? [? ? ? ?] /=.
-    case: (get m p)  => [[v l]|];
-    case: (get m' p) => [[v' l']|] //=; last by auto.
+    case: (m p)  => [[v l]|];
+    case: (m' p) => [[v' l']|] //=; last by auto.
     move=> [->] [->] OK [->].
     right.
     eexists v', c, I, W.
@@ -969,7 +964,7 @@ Proof.
 Qed.
 
 Lemma retag_set_preserves_bounded_by ok retag ps cnew s s' :
-  cnew <> max_word t ->
+  cnew <> monew ->
   bounded_by s cnew ->
   retag_set ok retag ps s ?= s' ->
   (forall p cid I W, data_tag_compartment (retag p cid I W) \in [:: cid; cnew]) ->
@@ -982,13 +977,9 @@ Proof.
   have {Hbounds} Hbounds : bounded_by s (cnew+1)%w.
   { move=> p cid I W /Hbounds {Hbounds} H cid' /H {H}.
     by apply: succ_trans. }
-  have Hsucc : cnew <? (cnew + 1)%w.
-  { apply: lebw_succ; first exact: max_word t.
-    apply/ltb_lt.
-    move/leb_le: (lew_max cnew).
-    rewrite leb_is_ltb_or_eq.
-    case/orP => [//|].
-    case: (SetoidDec.equiv_dec _ _) => //=. }
+  have Hsucc : (cnew < (cnew + 1)%w)%ord.
+  { apply: leqw_succ; first exact: monew.
+    by move: (leqw_mone cnew); rewrite Ord.leq_eqVlt (introF eqP Hnot_max). }
   elim: ps s Hbounds Hretag
         => [ s Hbounds [<-] //
            | p ps IH s Hbounds ].
@@ -1031,7 +1022,7 @@ Proof.
   { move=> sc cid I W sc_is_sc Hsget.
     apply/negP=> /eqP ?. subst cid.
     move: (Hbounds sc cnew I W Hsget cnew).
-    by rewrite -setUA in_setU1 eqxx /= ltb_irrefl => /(_ erefl). }
+    by rewrite -setUA in_setU1 eqxx /= Ord.leqxx => /(_ erefl). }
   elim: ps s Hpreserved Hisolated Hretag
         => [ s _ _ [<-] //
            | p ps IH ] s Hpreserved Hisolated.
@@ -1071,7 +1062,7 @@ Lemma retag_set_preserves_good_internal ok retag ps s s' pc' :
   good_internal s ->
   retag_set ok retag ps s ?= s' ->
   let cnew := next_id (Symbolic.internal s) in
-  cnew <> max_word t ->
+  cnew <> monew ->
   (forall sc cid I W,
      sc \in syscall_addrs ->
      data_tag_compartment (retag sc cid I W) = cid) ->
