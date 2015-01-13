@@ -299,8 +299,6 @@ Proof.
   eauto using kernel_user_exec_determ.
 Qed.
 
-Import Vector.VectorNotations.
-
 Lemma build_cmvec_cache_lookup_pc cst cst' cmvec crvec :
   Concrete.step _ masks cst cst' ->
   build_cmvec cst = Some cmvec ->
