@@ -176,7 +176,7 @@ Definition get_syscall (addr : word) : option syscall :=
   ofind (fun sc => address sc == addr) table.
 
 Definition run_syscall (sc : syscall) (st : state) : option state :=
-  match transfer (mkIVec SERVICE (common.tag (pc st)) (entry_tag sc) [hseq of [::]]) with
+  match transfer (mkIVec SERVICE (common.tag (pc st)) (entry_tag sc) [hseq]) with
   | Some _ => sem sc st
   | None => None
   end.
@@ -226,7 +226,7 @@ Inductive step (st st' : state) : Prop :=
     (PC   : mem pc = Some i@ti)
     (INST : decode_instr i = Some (Const n r))
     (OLD  : reg r = Some old@told),
-    let mvec := mkIVec CONST tpc ti [hseq : ttypes of told] in forall
+    let mvec := mkIVec CONST tpc ti [hseq told] in forall
     (NEXT : next_state_reg st mvec r (swcast n) = Some st'),   step st st'
 | step_mov : forall mem reg pc tpc i ti r1 w1 t1 r2 old told extra
     (ST   : st = State mem reg pc@tpc extra)
@@ -234,7 +234,7 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode_instr i = Some (Mov r1 r2))
     (R1W  : reg r1 = Some w1@t1)
     (OLD  : reg r2 = Some old@told),
-    let mvec := mkIVec MOV tpc ti [hseq : ttypes of t1; told] in forall
+    let mvec := mkIVec MOV tpc ti [hseq t1; told] in forall
     (NEXT : next_state_reg st mvec r2 w1 = Some st'),   step st st'
 | step_binop : forall mem reg pc tpc i ti op r1 r2 r3 w1 w2 t1 t2 old told extra
     (ST   : st = State mem reg pc@tpc extra)
@@ -243,7 +243,7 @@ Inductive step (st st' : state) : Prop :=
     (R1W  : reg r1 = Some w1@t1)
     (R2W  : reg r2 = Some w2@t2)
     (OLD  : reg r3 = Some old@told),
-    let mvec := mkIVec (BINOP op) tpc ti [hseq : ttypes of t1; t2; told] in forall
+    let mvec := mkIVec (BINOP op) tpc ti [hseq t1; t2; told] in forall
     (NEXT : next_state_reg st mvec r3 (binop_denote op w1 w2) = Some st'),
       step st st'
 | step_load : forall mem reg pc tpc i ti r1 r2 w1 w2 t1 t2 old told extra
@@ -253,7 +253,7 @@ Inductive step (st st' : state) : Prop :=
     (R1W  : reg r1 = Some w1@t1)
     (MEM1 : mem w1 = Some w2@t2)
     (OLD  : reg r2 = Some old@told),
-    let mvec := mkIVec LOAD tpc ti [hseq : ttypes of t1; t2; told] in forall
+    let mvec := mkIVec LOAD tpc ti [hseq t1; t2; told] in forall
     (NEXT : next_state_reg st mvec r2 w2 = Some st'),    step st st'
 | step_store : forall mem reg pc i r1 r2 w1 w2 tpc ti t1 t2 old told extra
     (ST   : st = State mem reg pc@tpc extra)
@@ -262,7 +262,7 @@ Inductive step (st st' : state) : Prop :=
     (R1W  : reg r1 = Some w1@t1)
     (R2W  : reg r2 = Some w2@t2)
     (OLD  : mem w1 = Some old@told),
-    let mvec := mkIVec STORE tpc ti [hseq : ttypes of t1; t2; told] in forall
+    let mvec := mkIVec STORE tpc ti [hseq t1; t2; told] in forall
     (NEXT : next_state st mvec (fun ov =>
                  do! mem' <- updm mem w1 w2@(tr ov);
                  Some (State mem' reg (pc.+1)@(trpc ov) extra)) = Some st'),
@@ -272,14 +272,14 @@ Inductive step (st st' : state) : Prop :=
     (PC   : mem pc = Some i@ti)
     (INST : decode_instr i = Some (Jump r))
     (RW   : reg r = Some w@t1),
-    let mvec := mkIVec JUMP tpc ti [hseq : ttypes of t1] in forall
+    let mvec := mkIVec JUMP tpc ti [hseq t1] in forall
     (NEXT : next_state_pc st mvec w = Some st'),    step st st'
 | step_bnz : forall mem reg pc i r n w tpc ti t1 extra
     (ST   : st = State mem reg pc@tpc extra)
     (PC   : mem pc = Some i@ti)
     (INST : decode_instr i = Some (Bnz r n))
     (RW   : reg r = Some w@t1),
-     let mvec := mkIVec BNZ tpc ti [hseq : ttypes of t1] in
+     let mvec := mkIVec BNZ tpc ti [hseq t1] in
      let pc' := pc + (if w == 0%w
                       then 1%w else swcast n) in forall
     (NEXT : next_state_pc st mvec pc' = Some st'),     step st st'
@@ -289,7 +289,7 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode_instr i = Some (Jal r))
     (RW : reg r = Some w@t1)
     (OLD : reg ra = Some old@told),
-     let mvec := mkIVec JAL tpc ti [hseq : ttypes of t1; told] in forall
+     let mvec := mkIVec JAL tpc ti [hseq t1; told] in forall
     (NEXT : next_state_reg_and_pc st mvec ra (pc.+1) w = Some st'), step st st'
 | step_syscall : forall mem reg pc sc tpc extra
     (ST : st = State mem reg pc@tpc extra)

@@ -98,7 +98,7 @@ Instance concrete_int_32_ops : machine_ops t := {|
   encode_instr i :=
     let op := encode_opcode (opcode_of i) in
     let args : word 27 := wcast (fields_of_opP _) (wpack (args_of_instr i)) in
-    wpack [hseq op; args];
+    @wpack [:: 5; 27] [hseq op; args];
 
   decode_instr i :=
     let i' := @wunpack [:: 5; 27] i in
@@ -114,7 +114,6 @@ Instance concrete_int_32_ops : machine_ops t := {|
 Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
 constructor=> i.
-rewrite /decode_instr /encode_instr /= wpackK.
-rewrite /hnth /tnth /= (@eq_axiomK _ 5) encode_opcodeK /=.
-by rewrite (@eq_axiomK _ 27) /= wcastK wpackK args_of_instrK.
+rewrite /decode_instr /encode_instr /= wpackK /hnth /=.
+by rewrite encode_opcodeK /= wcastK wpackK args_of_instrK.
 Qed.

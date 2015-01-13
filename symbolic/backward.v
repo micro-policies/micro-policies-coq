@@ -56,14 +56,12 @@ Ltac contradict_in_user :=
             failwith "contradict_in_user" ]
   end.
 
-(*
-Ltac destruct_hlist :=
+Ltac destruct_hseq :=
   repeat match goal with
-  | x : hlist _ _ |- _ => simpl in x
-  | x : unit |- _ => destruct x
-  | x : prod _ _ |- _ => destruct x
+  | x : hseq _ _ |- _ => simpl in x
+  | x : hseq_nil |- _ => destruct x
+  | x : hseq_cons _ _ |- _ => destruct x
   end.
-*)
 
 Ltac analyze_cache :=
   match goal with
@@ -82,10 +80,10 @@ Ltac analyze_cache :=
     | and4 _ _ _ _ => destruct CACHEHIT
     | False => destruct CACHEHIT
     end;
-    try contradict_in_user; match_inv; simpl in *
-  | MISS   : Concrete.miss_state _ _ = Some ?st',
-    INUSER : is_true (in_user ?st') |- _ =>
-    destruct (miss_state_not_user MISS INUSER)
+    try contradict_in_user; destruct_hseq; match_inv; simpl in *
+  | INUSER : is_true (in_user (Concrete.miss_state ?st ?mvec)) |- _ =>
+    first [ destruct (negP (miss_state_not_user st mvec) INUSER) |
+            failwith "analyze_cache miss" ]
   end.
 
 Ltac relate_register_get :=
@@ -148,7 +146,8 @@ Ltac update_decodings :=
   | DEC : decode ?k ?cmem ?ct = Some (USER ?ut),
     UPD : updm ?cmem _ _ = Some ?cmem' |-
     decode ?k ?cmem' ?ct = Some (USER ?ut) =>
-    first [ solve [ rewrite -DEC; eapply decode_monotonic; eauto ] |
+    first [ solve [ rewrite /= -DEC (updm_set UPD);
+                    erewrite decode_monotonic; eauto ] |
             failwith "update_decodings" ]
   end.
 
@@ -204,7 +203,7 @@ Proof.
       by rewrite Hdec_ti' in Hdec_ti.
     rewrite (rs_pct Href) in Hdec_tpc.
     case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
-    by rewrite [in RHS]hseq_nil.
+    by rewrite [in RHS]hseq0.
   case: Hdec => op [Hop [Hpriv Hcop Hdec_tpc Hdec_ti Hdec_ts]]. subst vop.
   rewrite (build_cmvec_ctpc Hbuild) (rs_pct Href) in Hdec_tpc.
   case: Hdec_tpc => ?. subst tpc.
@@ -213,13 +212,10 @@ Proof.
   move: Hbuild.
   rewrite /build_cmvec /build_ivec (rs_pc Href) Hget_i Hdec_i.
   rewrite (proj1 (rs_refm Href) _ _ _ _ Hdec_ti Hget_i) Hdec_i /=.
-  destruct Href, instr, cmvec; move=> Hbuild; simpl in *; match_inv.
-  by rewrite [in RHS]hseq_nil.
-
-
+  destruct Href, instr, cmvec; move=> Hbuild; simpl in *; match_inv;
   repeat match goal with
-  | x : unit |- _ => destruct x
-  | x : prod _ _ |- _ => destruct x
+  | x : hseq_nil |- _ => destruct x
+  | x : hseq_cons _ _ |- _ => destruct x
   | x : atom _ _ |- _ => destruct x
   | H : Some _ = Some _ |- _ => inv H
   end; simpl in *; match_inv;
@@ -231,8 +227,8 @@ Qed.
 Lemma cache_hit_simulation sst cst cst' :
   refine_state ki table sst cst ->
   hit_step cst cst' ->
-  exists sst',
-    Symbolic.step table sst sst' /\
+  exists2 sst',
+    Symbolic.step table sst sst' &
     refine_state ki table sst' cst'.
 Proof.
   case: sst => smem sregs [pc atpc] int.
@@ -256,25 +252,24 @@ Proof.
 
   try relate_memory_upd;
 
-  eexists; (split; [ solve_step | solve_refine_state ]).
+  (eexists; [ solve_step | solve_refine_state ]).
 
 Qed.
 
-Lemma initial_handler_state cst kst cmvec cmem' :
+Lemma initial_handler_state cst kst cmvec :
   forall (CMVEC : build_cmvec cst = Some cmvec)
-         (MEM : Concrete.store_mvec (Concrete.mem cst) cmvec = Some cmem')
          (MISS : Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None)
          (STEP : Concrete.step _ masks cst kst),
-      kst = Concrete.mkState cmem'
+      kst = Concrete.mkState (Concrete.store_mvec (Concrete.mem cst) cmvec)
                              (Concrete.regs cst)
                              (Concrete.cache cst)
                              (Concrete.fault_handler_start mt)@Concrete.TKernel
                              (Concrete.pc cst).
 Proof.
-  move=> BUILD MVEC LOOKUP /step_lookup_success_or_fault.
+  move=> BUILD LOOKUP /step_lookup_success_or_fault.
   rewrite BUILD.
   case=> [cmvec' [[<-]]] {cmvec'}.
-  by rewrite LOOKUP MVEC.
+  by rewrite LOOKUP.
 Qed.
 
 Lemma kernel_user_exec_determ k s1 s2 :
@@ -338,10 +333,10 @@ Proof.
   suff : false by done.
   move: {ivec E} (Symbolic.ti ivec) DECti => ti DECti.
   move: (build_cmvec_cop_cti BUILD) DECop => [i [instr [GETPC DECi <-]]].
-  rewrite op_to_wordK => [[Hinstr]].
+  rewrite mword_of_opK => [[Hinstr]].
   have {DECi Hinstr} ISNOP : is_nop i by rewrite /is_nop {}DECi; case: instr Hinstr.
   move: (wf_entry_points_only_if WFENTRYPOINTS GETPC DECti ISNOP).
-  rewrite GETSC. by case.
+  by rewrite GETSC; case.
 Qed.
 
 Lemma cache_miss_simulation sst cst cst' :
@@ -359,15 +354,14 @@ Proof.
   rewrite /Concrete.pcv /= in PC. subst pc'.
   have ISUSER' : ~~ in_kernel cst' by case: KEXEC.
   have [cmvec Hcmvec] := step_build_cmvec STEP.
-  have [cmem' Hcmem'] := mvec_in_kernel_store_mvec cmvec MVEC.
   have LOOKUP := kernel_cache_lookup_fail ISUSER KER STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT Hcmvec.
-  have H := initial_handler_state Hcmvec Hcmem' LOOKUP STEP.
+  have H := initial_handler_state Hcmvec LOOKUP STEP.
   have EXEC : exec (Concrete.step _ masks) kst cst'.
     case: KEXEC => kst' EXEC _ STEP'.
     apply restricted_exec_weaken in EXEC.
     by apply restricted_exec_trans with kst'; eauto.
   subst kst. rewrite /= in STEP KEXEC EXEC KER LOOKUP.
-  destruct (handler_correct_allowed_case_bwd KINV Hcmem' CACHECORRECT KEXEC)
+  destruct (handler_correct_allowed_case_bwd KINV CACHECORRECT KEXEC)
       as (ivec & ovec & DECivec & TRANS & CACHE' & MVEC' &
           HPCT & HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
   case: cst' {KEXEC EXEC} HPC CACHE'
@@ -395,8 +389,8 @@ Lemma syscall_simulation sst cst cst' :
   refine_state ki table sst cst ->
   cache_allows_syscall table cst ->
   user_kernel_user_step cst cst' ->
-  exists sst', Symbolic.step table sst sst' /\
-               refine_state ki table sst' cst'.
+  exists2 sst', Symbolic.step table sst sst' &
+                refine_state ki table sst' cst'.
 Proof.
   case: sst=> smem sregs [pc tpc] int.
   case: cst=> cmem cregs cache [pc' ctpc] epc.
@@ -408,14 +402,16 @@ Proof.
     case GETCALL: (Symbolic.get_syscall table pc) ALLOWED => [sc|//] ALLOWED.
     by eauto. }
   destruct cst' as [cmem' creg' cache' [cpc' ctpc'] epc'].
-  exploit syscalls_correct_allowed_case_bwd; eauto.
+  have := syscalls_correct_allowed_case_bwd KINV REFM REFR CACHE MVEC GETCALL
+                                            DEC ALLOWED STEP.
+  move/(_ kcc).
   intros (smem' & sregs' & stpc' & sint' & RUNSC &
           HPCT & REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
-  exists (Symbolic.State smem' sregs' cpc'@stpc' sint'). split.
+  exists (Symbolic.State smem' sregs' cpc'@stpc' sint').
   - eapply Symbolic.step_syscall; eauto.
     eapply wf_entry_points_if in GETCALL; last by exact WFENTRYPOINTS.
     move: GETCALL => [i [ti [GETPC DECti ISNOP]]].
-    case GET': (PartMaps.get smem pc) => [[? ?]|] //.
+    case GET': (getm smem pc) => [[? ?]|] //.
     move: (proj2 REFM _ _ _ GET') => {GET' DEC} [ctg' DEC GET'].
     rewrite GETPC in GET'.
     move: GET' => [? H]. subst i ti.
@@ -448,8 +444,8 @@ Lemma backwards_simulation sst cst cst' :
   refine_state_weak sst cst ->
   Concrete.step _ masks cst cst' ->
   refine_state_weak sst cst' \/
-  exists sst',
-    Symbolic.step table sst sst' /\
+  exists2 sst',
+    Symbolic.step table sst sst' &
     refine_state ki table sst' cst'.
 Proof.
   intros [REF | (cst0 & kst & REF & KSTEP & EXEC)] STEP.
@@ -480,8 +476,8 @@ Theorem backwards_refinement sst cst cst' :
   refine_state ki table sst cst ->
   exec (Concrete.step _ masks) cst cst' ->
   in_user cst' ->
-  exists sst',
-    exec (Symbolic.step table) sst sst' /\
+  exists2 sst',
+    exec (Symbolic.step table) sst sst' &
     refine_state ki table sst' cst'.
 Proof.
   intros REF EXEC USER'.
@@ -494,11 +490,11 @@ Proof.
     apply in_user_in_kernel in USER'.
     by rewrite EXEC in USER'.
   - move => sst REF.
-    exploit backwards_simulation; eauto.
-    intros [REF' | (sst' & SSTEP & REF')]; first by auto.
+    have [REF' | [sst' SSTEP REF']] := backwards_simulation REF STEP;
+      first by auto.
     have {REF'} REF': refine_state_weak sst' cst'' by left.
-    move: (IH USER' _ REF') => {IH USER' REF'} [sst'' [EXEC' REF']].
-    eexists. split; last by eauto.
+    move: (IH USER' _ REF') => {IH USER' REF'} [sst'' EXEC' REF'].
+    eexists; last by eauto.
     eapply re_step; trivial; eauto.
 Qed.
 

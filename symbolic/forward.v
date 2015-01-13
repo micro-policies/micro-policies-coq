@@ -198,8 +198,9 @@ Ltac match_pc_tag :=
     | |- _ => idtac
     end;
     let DECPC' := fresh "DECPC'" in
-    have DECPC' : decode Symbolic.P cmem' cpct = Some (USER spct)
-      by rewrite (decode_monotonic Symbolic.P GET DEC UPD DEC'); eauto
+    first [ have DECPC' : decode Symbolic.P cmem' cpct = Some (USER spct)
+            by rewrite (updm_set UPD) /=; erewrite decode_monotonic; eauto |
+            failwith "match_pc_tag" ]
   end.
 
 Ltac match_data :=
@@ -379,11 +380,11 @@ Proof.
          end by case: (build_cmvec cst); eauto.
   move: Hbuild.
   rewrite /build_ivec /build_cmvec /decode_ivec (rs_pc Href).
-  case Hget: (PartMaps.get _ _) => [[i ti]|] //=; last first.
+  case Hget: (getm _ _) => [[i ti]|] //=; last first.
     case Hget_sc: (Symbolic.get_syscall _ _) => [sc|] //= [<-] {ivec}.
     have [i' [cti [Hget' Hdec_cti /is_nopP Hi]]] :=
       wf_entry_points_if (rs_entry_points Href) Hget_sc.
-    rewrite Hget' Hi.
+    rewrite Hget' Hi /= mword_of_opK.
     by rewrite /decode_ivec /= (rs_pct Href) Hdec_cti.
   have [cti Hdec_cti Hget'] := proj2 (rs_refm Href) _ _ _ Hget.
   rewrite Hget' /=.
@@ -394,7 +395,7 @@ Proof.
   repeat match goal with
   | x : atom _ _ |- _ => destruct x
   end;
-  match_data; find_and_rewrite; rewrite ?op_to_wordK /= ?(rs_pct Href) //;
+  match_data; find_and_rewrite; rewrite ?mword_of_opK /= ?(rs_pct Href) //;
   find_and_rewrite; done.
 Qed.
 
@@ -412,11 +413,10 @@ Lemma forward_simulation_miss sst cst ivec ovec cmvec :
         build_cmvec cst' = Some cmvec ].
 Proof.
   move=> REF IVEC CMVEC TRANS LOOKUP.
-  have [cmem Hcmem] := mvec_in_kernel_store_mvec cmvec (rs_mvec REF).
-  have FAULT := lookup_none_step CMVEC LOOKUP Hcmem.
+  have FAULT := lookup_none_step CMVEC LOOKUP.
   have [cmvec'] := refine_ivec REF IVEC.
   rewrite CMVEC. move => [<-] {cmvec'} DEC.
-  have := handler_correct_allowed_case_fwd (Concrete.pc cst) (rs_kinv REF) DEC TRANS Hcmem
+  have := handler_correct_allowed_case_fwd (Concrete.pc cst) (rs_kinv REF) DEC TRANS
                                            (rs_cache REF) => /(_ _ _ kcc).
   case=> cst' [crvec [EXEC [CACHE [LOOKUP' [DEC' [MVEC [USERPCTAG [USERMEM [USERREGS [PC [ENTRYPOINTS KINV]]]]]]]]]]].
   exists cst', crvec.
@@ -465,7 +465,7 @@ Lemma forward_simulation_hit sst sst' cst ivec ovec cmvec crvec :
     refine_state ki table sst' cst'.
 Proof.
   move=> REF IVEC CMVEC TRANS LOOKUP /stepP STEP.
-  case GETi: (PartMaps.get (Symbolic.mem sst) (Symbolic.pcv sst)) => [[i ti]|]; last first.
+  case GETi: (getm (Symbolic.mem sst) (Symbolic.pcv sst)) => [[i ti]|]; last first.
     move: STEP ivec ovec TRANS IVEC CMVEC.
     rewrite {1}(Symbolic.state_eta sst) /build_ivec /= GETi.
     case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.

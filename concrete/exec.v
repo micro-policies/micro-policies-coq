@@ -245,17 +245,16 @@ Proof.
   simpl in *; match_inv; reflexivity.
 Qed.
 
-Lemma lookup_none_step cst cmvec cmem :
+Lemma lookup_none_step cst cmvec :
   build_cmvec cst = Some cmvec ->
   Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None ->
-  Concrete.store_mvec (Concrete.mem cst) cmvec = cmem ->
-  Concrete.step _ masks cst (Concrete.mkState cmem
+  Concrete.step _ masks cst (Concrete.mkState (Concrete.store_mvec (Concrete.mem cst) cmvec)
                                               (Concrete.regs cst)
                                               (Concrete.cache cst)
                                               (Concrete.fault_handler_start mt)@Concrete.TKernel
                                               (Concrete.pc cst)).
 Proof.
-  move=> CMVEC LOOKUP STORE.
+  move=> CMVEC LOOKUP.
   apply/stepP.
   rewrite (Concrete.state_eta cst) /=.
   move: CMVEC.

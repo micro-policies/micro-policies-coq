@@ -500,16 +500,14 @@ Proof.
   by eauto 11 using And4.
 Qed.
 
-Lemma miss_state_not_user st st' mvec :
-  Concrete.miss_state st mvec = st' ->
-  in_user st' ->
-  False.
+Lemma miss_state_not_user st mvec :
+  ~~ (in_user (Concrete.miss_state st mvec)).
 Proof.
-  intros MISS INUSER.
+  apply/negP=> INUSER.
   apply in_user_in_kernel in INUSER.
-  unfold Concrete.miss_state in MISS.
+  unfold Concrete.miss_state in INUSER.
   unfold in_kernel, Concrete.is_kernel_tag in INUSER.
-  by rewrite -MISS /= eqxx in INUSER.
+  by rewrite /= eqxx in INUSER.
 Qed.
 
 Lemma valid_initial_user_instr_tags cst cst' v ti :

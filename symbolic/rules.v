@@ -184,8 +184,8 @@ Fixpoint ensure_all_user (ks : seq Symbolic.tag_kind) :
                          option (hseq tty ks) :=
   match ks with
   | [::]      => fun _  => Some [hseq]
-  | k :: ks => fun ts => match hshead ts, ensure_all_user [hseq of behead ts] with
-                         | Some (USER t), Some ts => Some [hseq of Tagged tty t :: ts]
+  | k :: ks => fun ts => match hshead ts, ensure_all_user (hsbehead ts) with
+                         | Some (USER t), Some ts => Some (t :: ts)%hseq
                          | _, _ => None
                          end
   end.
@@ -195,12 +195,10 @@ Lemma ensure_all_user_inv (ks : seq Symbolic.tag_kind)
                           : ensure_all_user l = Some l' ->
                             l = hmap (fun k x => Some (USER x)) l'.
 Proof.
-elim: ks l l' => [|k ks IH] /= l l' => [[<-] {l'}|].
-  by rewrite [in RHS]hseq_nil hseq_nil.
-case: (hseqP l) => {l} [x l]; rewrite /= hsheadE; case: x=> [[x|x]|] //.
-case E: (ensure_all_user _) l' => [l'|] // _ [<-]; move/IH in E=> {IH}.
-apply: val_inj => /=; congr cons.
-exact: (f_equal eqtype.val E).
+elim: ks l l' => [|k ks IH] /= => [[] []|[x l] [x' l']] //=.
+case: x=> [[x|x]|] //.
+case E: (ensure_all_user _) l' => [l'|] // _ [<- <-]; move/IH in E=> {IH}.
+by rewrite E.
 Qed.
 
 Definition decode_ivec (m : {partmap mword t -> atom (mword t) (mword t)})
