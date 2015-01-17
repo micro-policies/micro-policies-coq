@@ -1,7 +1,7 @@
-Require Import ZArith.
 Ltac type_of x := type of x.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssralg.
+Require Import ord word partmap.
 Require Import lib.utils common.common symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
@@ -18,102 +18,65 @@ Ltac done :=
    | case not_locked_false_eq_true; assumption
    | match goal with H : ~ _ |- _ => solve [case H; trivial] end ].
 
-Open Scope Z_scope.
-
-Notation "x <? y <? z" := ((x <? y) && (y <? z))
-  (at level 70, y at next level, no associativity) : Z_scope.
-Notation "x <? y <=? z" := ((x <? y) && (y <=? z))
-  (at level 70, y at next level, no associativity) : Z_scope.
-Notation "x <=? y <? z" := ((x <=? y) && (y <? z))
-  (at level 70, y at next level, no associativity) : Z_scope.
-Notation "x <=? y <=? z" := ((x <=? y) && (y <=? z))
-  (at level 70, y at next level, no associativity) : Z_scope.
-
-Lemma leltP a b c : reflect (a <= b < c) (a <=? b <? c).
-Proof.
-apply/(iffP idP).
-  by case/andP=> /Z.leb_le ? /Z.ltb_lt; split.
-case=> ? ?; apply/andP; split; first exact/Z.leb_le.
-exact/Z.ltb_lt.
-Qed.
-
 Section refinement.
-
 
 Open Scope word_scope.
 
 Import Sym.Notations.
 
-Variable block : eqType.
+Variable block : ordType.
 
 Context {mt : machine_types}
         {cl : Sym.color_class}
         {ops : machine_ops mt}
 
-        {color_map : Type -> Type}
-        {cmap : PartMaps.partial_map color_map Sym.color}
-        {cmaps : PartMaps.axioms cmap}
+        {opss : machine_ops_spec ops}.
 
-        {opss : machine_ops_spec ops}
-        {ap : Abstract.abstract_params block}
-        {aps : Abstract.params_spec ap}.
-
-Context `{syscall_regs mt} `{a_alloc : @Abstract.allocator mt block ap}
+Context `{syscall_regs mt} `{a_alloc : @Abstract.allocator mt block}
          {a_allocP : Abstract.allocator_spec a_alloc}
         `{@memory_syscall_addrs mt}.
 
-Definition meminj := color_map (block * word mt (* base *)).
+Definition meminj := {partmap Sym.color -> block * mword mt (* base *)}.
 
-Lemma binop_addDl : forall x y z : word mt,
+Lemma binop_addDl : forall x y z : mword mt,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
-Proof.
-  move => x y z /=.
-  by rewrite Word.add_assoc.
-Qed.
+Proof. by move => x y z /=; by rewrite addwA. Qed.
 
-Lemma binop_addDr : forall x y z : word mt,
+Lemma binop_addDr : forall x y z : mword mt,
   binop_denote ADD x (y + z) = y + (binop_denote ADD x z).
 Proof.
-  move => x y z /=.
-  rewrite -Word.add_assoc.
-  rewrite (Word.add_commut _ x y).
-  by rewrite Word.add_assoc.
+move => x y z /=.
+by rewrite addwA (addwC x) addwA.
 Qed.
 
-Lemma binop_subDl : forall x y z : word mt,
+Lemma binop_subDl : forall x y z : mword mt,
   binop_denote SUB (x + y) z = x + (binop_denote SUB y z).
 Proof.
-  move => x y z /=.
-  by rewrite !Word.sub_add_opp Word.add_assoc.
+move => x y z /=.
+by rewrite !/subw addwA.
 Qed.
 
-Lemma binop_sub_add2l : forall x y z : word mt,
+Lemma binop_sub_add2l : forall x y z : mword mt,
   binop_denote SUB (x + y) (x + z) = (binop_denote SUB y z).
 Proof.
-  move => x y z /=.
-  rewrite (Word.add_commut _ x y) (Word.add_commut _ x z).
-  by apply Word.sub_shifted.
+move => x y z /=.
+rewrite /subw -[- (x + z)]/(- (x + z))%R GRing.opprD addwA.
+rewrite (addwC (x + y)) [x + y]/(x + y)%R /=; congr addw.
+exact: GRing.addKr.
 Qed.
 
-Lemma binop_eq_add2l : forall x y z : word mt,
+Lemma binop_eq_add2l : forall x y z : mword mt,
   binop_denote EQ (x + y) (x + z) = binop_denote EQ y z.
 Proof.
-  move => x y z /=.
-  by rewrite (Word.add_commut _ x y) (Word.add_commut _ x z) /eq_op /=
-             Word.translate_eq.
+move => x y z /=; congr bool_to_word.
+rewrite inj_eq //; exact: GRing.addrI.
 Qed.
 
-Lemma leZ_min (w : word mt) : Word.unsigned (min_word mt) <= Word.unsigned w.
-Proof.
-rewrite /Z.le -IntOrdered.compare_unsigned.
-exact: lew_min.
-Qed.
+Lemma leZ_min (w : mword mt) : 0 <= eqtype.val w.
+Proof. by []. Qed.
 
-Lemma leZ_max (w : word mt) : Word.unsigned w <= Word.unsigned (max_word mt).
-Proof.
-rewrite /Z.le -IntOrdered.compare_unsigned.
-exact: lew_max.
-Qed.
+Lemma leZ_max (w : mword mt) : eqtype.val w <= eqtype.val (monew : mword mt).
+Proof. exact: leqw_mone. Qed.
 
 (* How to make w explicit ??? *)
 (* TODO: File a bug report *)
@@ -121,14 +84,14 @@ Arguments leZ_min.
 Arguments leZ_max.
 
 Notation inbounds base size w :=
-  (Word.unsigned base <= Word.unsigned w < Word.unsigned base + Word.unsigned size).
+  (eqtype.val base <= eqtype.val w < eqtype.val base + eqtype.val size).
 
 Section memory_injections.
 
-Record meminj_spec (amem : Abstract.memory mt) (mi : meminj) := {
+Record meminj_spec (amem : Abstract.memory mt block) (mi : meminj) := {
     miIr : forall b col col' base base',
-                PartMaps.get mi col = Some (b, base) ->
-                PartMaps.get mi col' = Some (b, base') ->
+                mi col = Some (b, base) ->
+                mi col' = Some (b, base') ->
                 col = col'
   }.
 
@@ -137,7 +100,7 @@ Lemma meminj_update mi amem amem' b off fr fr' x :
   meminj_spec amem mi ->
   PartMaps.get amem b = Some fr ->
   update_list_Z off x fr = Some fr' ->
-  PartMaps.upd amem b fr' = Some amem' ->
+  updm amem b fr' = Some amem' ->
   meminj_spec amem' mi.
 Proof.
 move=> miP get_b upd_off upd_b.
