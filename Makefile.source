@@ -4,6 +4,7 @@ lib/utils.v
 lib/haskell_notation.v
 lib/ssr_list_utils.v
 lib/ssr_set_utils.v
+lib/partmap_utils.v
 
 common/common.v
 common/printing.v
