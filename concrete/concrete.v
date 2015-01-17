@@ -52,7 +52,7 @@ Definition cache_line_addr : mword t := 0%w.
 (* BCP: Call it fault_handler_addr? *)
 Definition fault_handler_start : mword t := as_word 8.
 Definition TNone   : mword t := as_word 8.
-Definition TKernel : mword t := as_word 8.
+Definition TKernel : mword t := 0.
 
 Context {spops : machine_ops_spec ops}.
 
