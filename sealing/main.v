@@ -2,7 +2,8 @@
 TODO: write better testing support -- e.g. comparing final states
 *)
 
-Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq.
+Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq ssrint.
+Require Import ord word.
 Require Import lib.utils common.common.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
@@ -39,14 +40,14 @@ Instance fhp : fault_handler_params t := concrete_int_32_fh.
 (* ---------------------------------------------------------------- *)
 (* Generic definitions for building concrete machine instances *)
 
-Definition ruser1 : reg t := Word.repr 20.
-Definition ruser2 : reg t := Word.repr 21.
-Definition ruser3 : reg t := Word.repr 22.
-Definition ruser4 : reg t := Word.repr 23.
+Definition ruser1 : reg t := as_word 20.
+Definition ruser2 : reg t := as_word 21.
+Definition ruser3 : reg t := as_word 22.
+Definition ruser4 : reg t := as_word 23.
 Definition user_registers :=
   [:: ra; syscall_ret; syscall_arg1; syscall_arg2; syscall_arg3; ruser1;
       ruser2; ruser3; ruser4].
-Definition user_reg_max := last (Word.repr 0) user_registers.
+Definition user_reg_max := last 0%w user_registers.
 
 Definition kernel_data {X} l : @relocatable_segment t X w :=
  (length l, fun _ _ => l).
@@ -76,10 +77,9 @@ Definition kernel_code {X} l : @relocatable_segment t X w :=
 *)
 
 Instance sk_defs : Sym.sealing_key := {|
- key := [eqType of Word.int 27];
- max_key := Word.repr (Word.max_unsigned 27);
- inc_key := fun x => Word.add x Word.one;
- ord_key := IntOrdered.int_ordered 27
+ key := [ordType of word 28];
+ max_key := monew;
+ inc_key := fun x => (x + 1)%w
 |}.
 Proof.
   rewrite /ordered.ltb /IntOrdered.int_ordered -(lock (IntOrdered.int_ordered_def _))

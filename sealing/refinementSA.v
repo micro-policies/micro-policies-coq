@@ -1,7 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype seq.
 Require Import ord word partmap.
 Require Import lib.utils.
-Require Import lib.ssr_list_utils.
+Require Import lib.ssr_list_utils lib.partmap_utils.
 Require Import common.common symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
@@ -77,16 +77,16 @@ Definition refine_mem : Abs.memory t -> Sym.memory t -> Prop :=
   pointwise refine_val_atom.
 
 Definition refine_reg : Abs.registers t -> Sym.registers t -> Prop :=
-  @pointwise _ _ (reg t) _ _ _ _ refine_val_atom.
+  pointwise refine_val_atom.
 
 (* We make no assumption about the pc tag, since it's unused in the policy *)
-Definition refine_pc (w : word t) (a : atom (word t) unit) : Prop :=
+Definition refine_pc (w : mword t) (a : atom (mword t) unit) : Prop :=
   w = val a.
 
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
 Definition refine_ins (akeys : seq Abs.key) (next_skey : Sym.key) : Prop :=
-  (forall ak, ak \notin akeys -> get km ak = None) /\
-  (forall ak sk, get km ak = Some sk -> (sk <? next_skey)%ordered) /\
+  (forall ak, ak \notin akeys -> km ak = None) /\
+  (forall ak sk, km ak = Some sk -> (sk < next_skey)%ord) /\
   (key_map_inj km).
 
 Definition refine_state (ast : astate) (sst : sstate) : Prop :=
@@ -112,13 +112,11 @@ Proof.
   intros v w ref. destruct v; simpl in ref; try tauto; subst; reflexivity.
 Qed.
 
-(* helping the type class resolution a bit seems needed *)
 Definition refine_upd_reg (aregs : Abs.registers t) (sregs : Sym.registers t) :=
-  @refine_upd_pointwise _ _ _ _ [eqType of reg t] _ _ _ _ refine_val_atom aregs sregs.
+  @refine_upd_pointwise _ _ _ refine_val_atom aregs sregs.
 
-(* not yet used, but it should be helpful for store *)
 Definition refine_upd_mem (amem : Abs.memory t) (smem : Sym.memory t) :=
-  @refine_upd_pointwise _ _ _ _ [eqType of word t] _ _ _ _ refine_val_atom amem smem.
+  @refine_upd_pointwise _ _ _ refine_val_atom amem smem.
 
 End WithFixedKeyMap.
 
@@ -130,19 +128,18 @@ Ltac unfold_next_state_in H :=
 
 (* We show that refinement relations are closed under key map extension *)
 Lemma refine_key_set_km : forall km ak sk akey skey,
-  get km akey = None ->
+  getm km akey = None ->
   refine_key km ak sk ->
-  refine_key (set km akey skey) ak sk.
+  refine_key (setm km akey skey) ak sk.
 Proof.
-  unfold refine_key. intros.
-  have [eq_ak | /eqP neq_ak] := altP (ak =P akey). congruence.
-  by rewrite -> get_set_neq.
+  unfold refine_key. intros. rewrite getm_set.
+  by have [eq_ak | /eqP neq_ak] := altP (ak =P akey); congruence.
 Qed.
 
 Lemma refine_val_atom_set_km : forall km v a akey skey,
-  get km akey = None ->
+  getm km akey = None ->
   refine_val_atom km v a ->
-  refine_val_atom (set km akey skey) v a.
+  refine_val_atom (setm km akey skey) v a.
 Proof.
   move => km v [w tg] akey skey anew rva.
   destruct v; destruct tg; simpl in * => //=;
@@ -151,22 +148,22 @@ Qed.
 
 (* Instantiation of refine_extend_map not so simple *)
 Lemma refine_reg_set_km : forall km aregs sregs akey skey,
-  get km akey = None ->
+  getm km akey = None ->
   refine_reg km aregs sregs ->
-  refine_reg (set km akey skey) aregs sregs.
+  refine_reg (setm km akey skey) aregs sregs.
 Proof.
   intros. eapply refine_extend_map with
-            (f := fun km k1 k2 => get km k1 = None) => //.
+            (f := fun km k1 k2 => getm km k1 = None) => //.
   intros. by apply refine_val_atom_set_km.
 Qed.
 
 Lemma refine_mem_set_km : forall km amem smem akey skey,
-  get km akey = None ->
+  getm km akey = None ->
   refine_mem km amem smem ->
-  refine_mem (set km akey skey) amem smem.
+  refine_mem (setm km akey skey) amem smem.
 Proof.
   intros. eapply refine_extend_map with
-            (f := fun km k1 k2 => get km k1 = None) => //.
+            (f := fun km k1 k2 => getm km k1 = None) => //.
   intros. by apply refine_val_atom_set_km.
 Qed.
 
@@ -188,7 +185,7 @@ Proof.
     match goal with
     | [pc: Equality.sort (Symbolic.ttypes Symbolic.P) |- _] => destruct pc
     end.
-  intros km [amem aregs apc akeys] sst sst' ref sstep. gdep ref.
+  intros km [amem aregs apc akeys] sst sst' ref sstep. move: ref.
   destruct sstep; destruct sst as [smem sregs spc skey];
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
     intros [rmem [rreg [rpc rins]]]; destruct_pc.
@@ -205,7 +202,7 @@ Proof.
     apply obind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= Abs.VData (Word.casts n)). reflexivity.
+    instantiate (1:= Abs.VData (swcast n)). reflexivity.
     eexists. exists km. split.
     + eapply Abs.step_const; [reflexivity | | | reflexivity]. (* extra goal *)
       unfold Abs.decode. rewrite PC. now apply INST.
@@ -330,7 +327,7 @@ Proof.
   - (* system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
-    erewrite (@pointwise_none _ _ _ _ _ _ _ _ amem smem apc rmem) in PC.
+    erewrite (@pointwise_none _ _ _ _ amem smem apc rmem) in PC.
     simpl in GETCALL.
     rewrite /Symbolic.get_syscall /= in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
@@ -340,7 +337,7 @@ Proof.
     + {(* mkkey *)
     apply obind_inv in CALL. destruct CALL as [_ [_ CALL]].
     simpl in CALL; move: CALL.
-    case lt_skey : (skey <? Sym.max_key) => // CALL.
+    case lt_skey : (skey < Sym.max_key)%ord => // CALL.
     apply obind_inv in CALL. destruct CALL as [sreg' [upd CALL]].
     apply obind_inv in CALL. destruct CALL as [ret [GET CALL]].
     destruct ret as [ret [| |]]; try done.
@@ -349,14 +346,14 @@ Proof.
     move: GET => [v1 [GET REF]].
     apply refine_val_data in REF. subst v1.
 
-    assert(refine_val_atom (set km (Abs.mkkey_f akeys) skey)
+    assert(refine_val_atom (setm km (Abs.mkkey_f akeys) skey)
               (Abs.VKey t (Abs.mkkey_f akeys))
-              ((max_word t)@(Sym.KEY skey))) as rva.
-      unfold refine_val_atom, refine_key. by rewrite get_set_eq.
+              (monew@(Sym.KEY skey))) as rva.
+      unfold refine_val_atom, refine_key. by rewrite getm_set eqxx.
 
     (* need to show freshness for new abstract key to be able to use
        refine...set lemmas to port refinements to the extended km *)
-    assert (get km (Abs.mkkey_f akeys) = None).
+    assert (getm km (Abs.mkkey_f akeys) = None).
     - pose proof Abs.mkkey_fresh.
       destruct rins as [rins1 _]. by apply rins1.
 
@@ -364,7 +361,7 @@ Proof.
     edestruct refine_upd_reg as [aregs' [G1 G2]]; [| exact rva | eassumption |].
     apply refine_reg_set_km; eassumption.
 
-    eexists. exists (set km (Abs.mkkey_f akeys) skey). split.
+    eexists. exists (setm km (Abs.mkkey_f akeys) skey). split.
     + eapply Abs.step_mkkey; [reflexivity | | |eassumption | reflexivity].
       unfold Abs.decode. now rewrite PC.
       eassumption.
@@ -376,24 +373,23 @@ Proof.
         have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)).
         + subst. apply False_ind. by rewrite inE eqxx in ninak.
         + simpl in ninak.
-          rewrite -> get_set_neq => //.
+          rewrite getm_set (introF eqP neq_ak).
           destruct rins as [rins1 _]. apply rins1. by case/norP: ninak.
       - (* symbolic keys *)
         move => ak sk /=.
         have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)) => hsk.
-        + subst. rewrite -> get_set_eq in hsk => //.
+        + subst. rewrite getm_set eqxx in hsk => //.
           injection hsk => hsk'. clear hsk.
           rewrite hsk'.
           by rewrite Sym.ltb_inc -?hsk' ?lt_skey //.
-        + rewrite -> get_set_neq in hsk => //.
-          destruct rins as [_ [rins2 _]]. eapply ltb_trans. eapply rins2.
+        + rewrite getm_set (introF eqP neq_ak) in hsk => //.
+          destruct rins as [_ [rins2 _]]. eapply Ord.lt_trans. eapply rins2.
           eassumption.
-          by rewrite Sym.ltb_inc ?lt_skey.
+          by rewrite /= Sym.ltb_inc ?lt_skey.
       - (* injectivity *)
         apply fresh_set_inj. by destruct rins as [_ [_ rins3]].
         destruct rins as [_ [rins2 _]].
-        intros ? Hc. apply rins2 in Hc. rewrite ltb_irrefl in Hc.
-        discriminate Hc.
+        intros ? Hc. apply rins2 in Hc. by rewrite Ord.leqxx in Hc.
     }
     + {(* seal *)
     (* break up the effects of the system call *)
@@ -484,10 +480,10 @@ Definition forward_simulation := forall km ast ast' sst,
   (* ... or the symbolic machine gets stuck on a failed key generation *)
   ((forall sst', ~Sym.step sst sst')
    /\
-   (exists (i : word t) (r : reg t) (ti t1 : Sym.stag) (sc : Symbolic.syscall t),
-      (get (Symbolic.mem sst) (val (Symbolic.pc sst)) = Some i@ti) /\
+   (exists (i : mword t) (r : reg t) (ti t1 : Sym.stag) (sc : Symbolic.syscall t),
+      (getm (Symbolic.mem sst) (val (Symbolic.pc sst)) = Some i@ti) /\
       (decode_instr i = Some (Jal r)) /\
-      (get (Symbolic.regs sst) r = Some mkkey_addr@t1) /\
+      (getm (Symbolic.regs sst) r = Some mkkey_addr@t1) /\
       (Symbolic.get_syscall Sym.sealing_syscalls mkkey_addr = Some sc) /\
       (Symbolic.sem sc sst = None))
   ).

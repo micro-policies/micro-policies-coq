@@ -2,7 +2,7 @@ Require Import ssreflect ssrbool ssrfun eqtype.
 Require Import ord partmap.
 
 Set Implicit Arguments.
-Set Strict Implicit.
+Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
 Section Pointwise.
@@ -75,3 +75,30 @@ by move/(_ k'): pm1m2; rewrite !getm_set; case: (_ == _).
 Qed.
 
 End Pointwise.
+
+Section PartMapExtend.
+(* We show that if P km is closed under a key map transformation
+   (e.g. extension) then so is any pointwise (P km) *)
+
+Variables K K1 K2 : ordType.
+Variables V1 V2 : Type.
+Variable P : {partmap K1 -> K2} -> V1 -> V2 -> Prop.
+Variable f : {partmap K1 -> K2} -> K1 -> K2 -> Prop. (* condition on key_map (e.g. freshness) *)
+Variable g : {partmap K1 -> K2} -> K1 -> K2 -> {partmap K1 -> K2}. (* key_map operation ( e.g. set) *)
+
+Hypothesis p_extend_map : forall km k1 k2 v1 v2,
+  f km k1 k2 ->
+  P km v1 v2 ->
+  P (g km k1 k2) v1 v2.
+
+Lemma refine_extend_map km (m1 : {partmap K -> V1}) m2 k1 k2 :
+  f km k1 k2 ->
+  pointwise (P km) m1 m2 ->
+  pointwise (P (g km k1 k2)) m1 m2.
+Proof.
+  move => cond ref k. specialize (ref k).
+  destruct (getm m1 k); destruct (getm m2 k) => //.
+  by auto using p_extend_map.
+Qed.
+
+End PartMapExtend.
