@@ -261,6 +261,6 @@ End WithClasses.
 
 End Abstract.
 
-Arguments Abstract.state t {_}.
-Arguments Abstract.memory t {_}.
-Arguments Abstract.registers t {_}.
+Arguments Abstract.state t block.
+Arguments Abstract.memory t block.
+Arguments Abstract.registers t block.
