@@ -34,6 +34,25 @@ Inductive value :=
 | VKey    :            key -> value
 | VSealed : mword t -> key -> value.
 
+Definition value_eq (v1 v2 : value) : bool :=
+  match v1, v2 with
+  | VData x1, VData x2 => x1 == x2
+  | VKey k1, VKey k2 => k1 == k2
+  | VSealed x1 k1, VSealed x2 k2 => (x1 == x2) && (k1 == k2)
+  | _, _ => false
+  end.
+
+Lemma value_eqP : Equality.axiom value_eq.
+Proof.
+move=> v1 v2; apply/(iffP idP)=> [|<- {v2}].
+  by case: v1 v2 => [x1|k1|x1 k1] [x2|k2|x2 k2] //=
+                 => [/eqP ->|/eqP ->|/andP [/eqP -> /eqP ->]].
+by case: v1=> * /=; rewrite !eqxx.
+Qed.
+
+Definition value_eqMixin := EqMixin value_eqP.
+Canonical value_eqType := EqType value value_eqMixin.
+
 Local Notation memory := {partmap mword t -> value}.
 Local Notation registers := {partmap reg t -> value}.
 
@@ -47,6 +66,20 @@ Record state := State {
   pc : mword t;
   keys : seq key
 }.
+
+Definition state_eq (s1 s2 : state) :=
+  [&& mem s1 == mem s2, regs s1 == regs s2,
+      pc s1 == pc s2 & keys s1 == keys s2].
+
+Lemma state_eqP : Equality.axiom state_eq.
+Proof.
+move=> s1 s2; apply/(iffP idP) => [|<- {s2}].
+  by case: s1 s2=> [????] [????] /and4P [/= /eqP -> /eqP -> /eqP -> /eqP ->].
+by case: s1 => [????]; rewrite /state_eq !eqxx.
+Qed.
+
+Definition state_eqMixin := EqMixin state_eqP.
+Canonical state_eqType := EqType state state_eqMixin.
 
 Definition syscall_addrs := [:: mkkey_addr; seal_addr; unseal_addr].
 
@@ -264,3 +297,6 @@ Notation registers t := {partmap reg t -> @value t _}.
 End Abs.
 
 Arguments Abs.state t {_}.
+
+Canonical Abs.value_eqType.
+Canonical Abs.state_eqType.
