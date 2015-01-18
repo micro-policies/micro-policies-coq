@@ -1,6 +1,7 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import ord word partmap.
 
-Require Import lib.utils.
+Require Import lib.utils lib.partmap_utils.
 Require Import common.common.
 Require Import concrete.concrete.
 Require Import symbolic.symbolic.
@@ -12,7 +13,6 @@ Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 
 Set Implicit Arguments.
-Open Scope Z_scope.
 
 Module Conc.
 Section ConcreteSection.
@@ -21,8 +21,6 @@ Context {t : machine_types}
         {ops : machine_ops t}
         {ids : @classes.cfi_id t}
         {e : rules.fencodable t cfi_tags}.
-
-Import PartMaps.
 
 Variable cfg : id -> id -> bool.
 
@@ -34,13 +32,13 @@ Definition valid_jmp := classes.valid_jmp cfg.
 Definition no_violation (cst : Concrete.state t) :=
   let '(Concrete.mkState mem _  _ pc@tpc _) := cst in
   (forall i cti ti src,
-    get mem pc = Some i@cti ->
+    getm mem pc = Some i@cti ->
     @fdecode _ _ e Symbolic.M cti = Some (USER ti) ->
     @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
     exists dst,
         ti = INSTR (Some dst) /\ cfg src dst) /\
   (forall i cti ti src,
-     get mem pc = Some i@cti ->
+     getm mem pc = Some i@cti ->
      @fdecode _ _ e Symbolic.M cti = Some (ENTRY ti) ->
      @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
      exists dst,
@@ -50,7 +48,7 @@ Definition no_violation (cst : Concrete.state t) :=
 (* TODO: as a sanity check, please prove reflexivity for this and
    the other attacker relations. That will ensure that the attacker
    can at least keep things the same. *)
-Inductive atom_equiv k (a : atom (word t) (word t)) (a' : atom (word t) (word t)) : Prop :=
+Inductive atom_equiv k (a : atom (mword t) (mword t)) (a' : atom (mword t) (mword t)) : Prop :=
   | user_equiv : forall v v' ct ut ct' ut',
                    a = v@ct ->
                    @fdecode _ _ e k ct = Some (USER ut) ->
@@ -67,8 +65,8 @@ Definition equiv (mem mem' : Concrete.memory t) :=
 
 Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t) :=
   forall r, exists x x',
-    PartMaps.get regs r = Some x /\
-    PartMaps.get regs' r = Some x' /\
+    getm regs r = Some x /\
+    getm regs' r = Some x' /\
     atom_equiv Symbolic.R x x'.
 
 Inductive step_a : Concrete.state t ->
@@ -80,21 +78,21 @@ Inductive step_a : Concrete.state t ->
                   step_a (Concrete.mkState mem reg cache pc@tpc epc)
                          (Concrete.mkState mem' reg' cache pc@tpc epc).
 
-Local Notation "x .+1" := (Word.add x Word.one).
+Local Notation "x .+1" := (x + 1)%w.
 Local Open Scope word_scope.
 
 Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
   let pc_s := common.val (Concrete.pc st) in
   let pc_s' := common.val (Concrete.pc st') in
   if in_kernel st || in_kernel st' then true else
-  match (get (Concrete.mem st) pc_s) with
+  match (getm (Concrete.mem st) pc_s) with
     | Some i =>
       match (@fdecode _ _ e Symbolic.M (common.tag i)) with
         | Some (USER (INSTR (Some src))) =>
           match decode_instr (common.val i) with
             | Some (Jump r)
             | Some (Jal r) =>
-              match (get (Concrete.mem st) pc_s') with
+              match (getm (Concrete.mem st) pc_s') with
                 | Some i' =>
                   match (@fdecode _ _ e Symbolic.M (common.tag i')) with
                     | Some (USER (INSTR (Some dst))) =>
@@ -116,7 +114,7 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
             | Some (Jal r) =>
               false
             | Some (Bnz r imm) =>
-              (pc_s' == pc_s .+1) || (pc_s' == pc_s + casts imm)
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + swcast imm)
             | None => false
             | _ => pc_s' == pc_s .+1
           end
@@ -141,8 +139,6 @@ Definition cinitial (cs : Concrete.state t) :=
 
 Variable masks : Concrete.Masks.
 
-Import ListNotations.
-
 Definition all_attacker (xs : list (Concrete.state t)) : Prop :=
   forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~ Concrete.step _ masks x1 x2.
 
@@ -158,15 +154,15 @@ Proof.
 Qed.
 
 Definition stopping (ss : list (Concrete.state t)) : Prop :=
-  (all_attacker ss /\ forallb in_user ss)
+  (all_attacker ss /\ all in_user ss)
   \/
   (exists user kernel,
     ss = user ++ kernel /\
-    all_attacker user /\ forallb in_user user /\
-    forallb in_kernel kernel).
+    all_attacker user /\ all in_user user /\
+    all in_kernel kernel).
 
 Program Instance concrete_cfi_machine : cfi_machine := {|
-  state := Concrete.state t;
+  state := [eqType of Concrete.state t];
   initial s := cinitial s;
 
   step s1 s2 := Concrete.step ops masks s1 s2;

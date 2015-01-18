@@ -7,7 +7,7 @@ Unset Printing Implicit Defensive.
 
 Section Pointwise.
 
-Variables (T : ordType) (S1 S2 : Type).
+Variables (T : ordType) (S1 S2 S3 : Type).
 
 Definition pointwise (P : S1 -> S2 -> Prop)
                      (m1 : {partmap T -> S1})
@@ -18,9 +18,6 @@ Definition pointwise (P : S1 -> S2 -> Prop)
     | Some v1, Some v2 => P v1 v2
     | _      , _       => False
     end.
-
-(* FIXME: replace by =i *)
-Definition same_domain := pointwise (fun _ _ => True).
 
 Lemma refine_get_pointwise_inv : forall P m1 m2 v2 k,
   pointwise P m1 m2 ->
@@ -40,11 +37,11 @@ move=> P m1 m2 k /(_ k) ref.
 by split=> H; rewrite H in ref; move: ref; case: (getm _ _).
 Qed.
 
-Lemma pointwise_same_domain : forall P m1 m2,
+Lemma pointwise_same_domain P m1 m2 :
   pointwise P m1 m2 ->
-  same_domain m1 m2.
+  m1 =i m2.
 Proof.
-unfold same_domain, pointwise. intros. specialize (H k).
+move=> H k; move: {H} (H k); rewrite !inE.
 destruct (getm m1 k) eqn:?; destruct (getm m2 k) eqn:?; tauto.
 Qed.
 
@@ -76,6 +73,22 @@ Qed.
 
 End Pointwise.
 
+Section SameDomain.
+
+Variables (T : ordType) (S1 S2 S3 : Type).
+
+Lemma same_domain_trans (m : {partmap T -> S1}) (m' : {partmap T -> S2}) (m'' : {partmap T -> S3}) :
+  m =i m' ->
+  m' =i m'' ->
+  m =i m''.
+Proof. by move=> h1 h2 k; rewrite -h2. Qed.
+
+Lemma same_domain_comm (m : {partmap T -> S1}) (m' : {partmap T -> S2}) :
+  m =i m' -> m' =i m.
+Proof. by move=> h k; rewrite h. Qed.
+
+End SameDomain.
+
 Section PartMapExtend.
 (* We show that if P km is closed under a key map transformation
    (e.g. extension) then so is any pointwise (P km) *)
@@ -102,3 +115,59 @@ Proof.
 Qed.
 
 End PartMapExtend.
+
+Section General.
+
+Variables (T : ordType) (S : Type).
+
+Implicit Type m : {partmap T -> S}.
+
+Lemma updm_defined m key val val' :
+  m key = Some val ->
+  exists m',
+    updm m key val' = Some m'.
+Proof. rewrite /updm. move => -> /=. by eauto. Qed.
+
+Lemma updm_inv m key val' m' :
+  updm m key val' = Some m' ->
+  exists val,
+    m key = Some val.
+Proof.
+rewrite /updm; case: (m key) => [val _|//].
+by eauto.
+Qed.
+
+Lemma getm_upd_eq m m' key val :
+  updm m key val = Some m' ->
+  m' key = Some val.
+Proof.
+rewrite /updm; case: (m key) => [val' [<-]|//].
+by rewrite getm_set eqxx.
+Qed.
+
+Lemma getm_upd_neq m m' (key key' : T) (val : S) :
+  key' <> key ->
+  updm m key val = Some m' ->
+  m' key' = m key'.
+Proof.
+rewrite /updm; case: (m key) => [val'|] //= NEQ [<-].
+by rewrite getm_set (introF eqP NEQ).
+Qed.
+
+Lemma filter_domains (f : S -> bool) m m' :
+  m =i m' ->
+  (forall k, match getm m k, getm m' k with
+               | Some v, Some v' => f v = f v'
+               | None, None => True
+               | _, _ => False
+             end) ->
+  (filterm f m : {partmap T -> S}) =i (filterm f m' : {partmap T -> S}).
+Proof.
+move => SAME E k; rewrite !inE; do! rewrite getm_filter /=.
+case GET: (getm m k) (E k) => [v|] {E} E;
+case GET': (getm m' k) E => [v'|] E //=.
+rewrite E.
+by case: (f v').
+Qed.
+
+End General.
