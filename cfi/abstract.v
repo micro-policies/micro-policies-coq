@@ -408,3 +408,5 @@ End Abs.
 Arguments Abs.state t.
 Arguments Abs.State {_} _ _ _ _ _.
 Arguments Abs.syscall t.
+
+Canonical Abs.cfi_abs_state_eqType.
