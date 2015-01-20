@@ -129,11 +129,24 @@ Fixpoint in_compartment_opt (C : list compartment)
 Record state := State { pc           : value
                       ; regs         : registers
                       ; mem          : memory
-                      ; compartments : list compartment
+                      ; compartments : seq compartment
                       ; step_kind    : where_from
                       ; previous     : compartment }.
                         (* Initially, step_kind should be INTERNAL and previous
                            should just be the initial main compartment *)
+
+Definition tuple_of_state s :=
+  (pc s, regs s, mem s, compartments s, step_kind s, previous s).
+
+Definition state_of_tuple s : state :=
+  let: (pc, regs, mem, compartments, step_kind, previous) := s in
+  State pc regs mem compartments step_kind previous.
+
+Lemma tuple_of_stateK : cancel tuple_of_state state_of_tuple.
+Proof. by case. Qed.
+
+Definition state_eqMixin := CanEqMixin tuple_of_stateK.
+Canonical state_eqType := Eval hnf in EqType state state_eqMixin.
 
 Definition permitted_now_in (C : list compartment)
                             (sk : where_from)
@@ -1515,3 +1528,5 @@ Module Hints.
 End Hints.
 
 End Abs.
+
+Canonical Abs.state_eqType.

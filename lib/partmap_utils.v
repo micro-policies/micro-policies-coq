@@ -154,6 +154,16 @@ rewrite /updm; case: (m key) => [val'|] //= NEQ [<-].
 by rewrite getm_set (introF eqP NEQ).
 Qed.
 
+Lemma getm_upd m m' k v :
+  updm m k v = Some m' ->
+  forall k', m' k' = if k' == k then Some v else m k'.
+Proof.
+move=> Hupd k'.
+have [-> {k'}|Hneq] := k' =P k.
+  by rewrite (getm_upd_eq Hupd).
+by rewrite (getm_upd_neq Hneq Hupd).
+Qed.
+
 Lemma filter_domains (f : S -> bool) m m' :
   m =i m' ->
   (forall k, match getm m k, getm m' k with
