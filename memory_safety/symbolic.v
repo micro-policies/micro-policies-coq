@@ -209,7 +209,7 @@ Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=
   end.
 
 Definition write_block init (base : word) (v : atom) (sz : word) : option (Symbolic.memory t _) :=
-  if eqtype.val base + eqtype.val sz <= eqtype.val (@monew (word_size t)) then
+  if base + sz < 2 ^ (word_size t) then
      write_block_rec init base v (eqtype.val sz)
   else None.
 
@@ -271,12 +271,12 @@ Definition free_fun (st : state t) : option (state t) :=
 Definition ptr_fun (st : state t)
     (f : block_info -> color -> atom) : option (state t) :=
   let: (next_color,inf) := internal st in
-  do! ptr <- get (regs st) syscall_arg1;
+  do! ptr <- regs st syscall_arg1;
   match ptr return option (state t) with
   | ptr@V(PTR color) =>
     do! x <- ohead [seq x <- inf | block_color x == Some color];
-    do! regs' <- upd (regs st) syscall_ret (f x color);
-    do! raddr <- get (regs st) ra;
+    do! regs' <- updm (regs st) syscall_ret (f x color);
+    do! raddr <- regs st ra;
     if raddr is _@V(PTR _) then
       Some (State (mem st) regs' raddr (next_color,inf))
     else None
@@ -292,14 +292,14 @@ Definition basep_fun (st : state t) : option (state t) :=
 
 Definition eqp_fun (st : state t) : option (state t) :=
   let: (next_color,inf) := internal st in
-  do! ptr1 <- get (regs st) syscall_arg1;
-  do! ptr2 <- get (regs st) syscall_arg2;
+  do! ptr1 <- regs st syscall_arg1;
+  do! ptr2 <- regs st syscall_arg2;
   match ptr1, ptr2 return option (state t) with
   | ptr1@V(PTR color1), ptr2@V(PTR color2) =>
-    let b := if (color1 == color2) && (ptr1 == ptr2) then Word.one
-             else Word.zero in
-    do! regs' <- upd (regs st) syscall_ret b@V(DATA);
-    do! raddr <- get (regs st) ra;
+    let b := if (color1 == color2) && (ptr1 == ptr2) then 1%w
+             else 0%w in
+    do! regs' <- updm (regs st) syscall_ret b@V(DATA);
+    do! raddr <- regs st ra;
     if raddr is _@V(PTR _) then
       Some (State (mem st) regs' raddr (next_color,inf))
     else None

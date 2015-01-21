@@ -26,6 +26,23 @@ Inductive value :=
 | VData : mword t -> value
 | VPtr : pointer -> value.
 
+Definition value_eq v1 v2 :=
+  match v1, v2 with
+  | VData w1, VData w2 => w1 == w2
+  | VPtr p1, VPtr p2 => p1 == p2
+  | _, _ => false
+  end.
+
+Lemma value_eqP : Equality.axiom value_eq.
+Proof.
+move=> [w1|p1] [w2|p2] /=; try by constructor.
+  apply/(iffP eqP); congruence.
+apply/(iffP eqP); congruence.
+Qed.
+
+Definition value_eqMixin := EqMixin value_eqP.
+Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
+
 Definition frame := seq value.
 
 Definition memory := {partmap block -> frame}.
@@ -42,6 +59,20 @@ Record state := mkState {
   blocks: seq block;
   pc : value
 }.
+
+Definition state_eq s1 s2 :=
+  [&& mem s1 == mem s2, regs s1 == regs s2,
+      blocks s1 == blocks s2 & pc s1 == pc s2].
+
+Lemma state_eqP : Equality.axiom state_eq.
+Proof.
+case=> [m1 r1 b1 pc1] [m2 r2 b2 pc2] /=; apply/(iffP and4P) => /=.
+  by case; do 4!move/eqP => ->.
+by case; do 4!move=> ->; rewrite !eqxx.
+Qed.
+
+Definition state_eqMixin := EqMixin state_eqP.
+Canonical state_eqType := Eval hnf in EqType state state_eqMixin.
 
 Implicit Type reg : registers.
 
@@ -137,13 +168,6 @@ Definition lift_binop (f : binop) (x y : value) :=
          | VData w1, VData w2 => Some (VData (binop_denote f w1 w2))
          | _, _ => None
          end
-  end.
-
-Definition value_eq (x y : value) : bool :=
-  match x, y with
-    | VData w1, VData w2 => w1 == w2
-    | VPtr(b1,o1), VPtr (b2,o2) => (b1 == b2) && (o1 == o2)
-    | _, _ => false
   end.
 
 Inductive step : state -> state -> Prop :=
@@ -264,3 +288,5 @@ End Abstract.
 Arguments Abstract.state t block.
 Arguments Abstract.memory t block.
 Arguments Abstract.registers t block.
+
+Canonical Abstract.state_eqType.

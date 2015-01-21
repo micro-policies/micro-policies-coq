@@ -1,8 +1,9 @@
 Ltac type_of x := type of x.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssralg.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
+Require Import ssrint ssralg.
 Require Import ord word partmap.
-Require Import lib.utils common.common symbolic.symbolic.
+Require Import lib.utils lib.partmap_utils common.common symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
 
@@ -72,11 +73,11 @@ move => x y z /=; congr bool_to_word.
 rewrite inj_eq //; exact: GRing.addrI.
 Qed.
 
-Lemma leZ_min (w : mword mt) : 0 <= eqtype.val w.
+Lemma leZ_min (w : mword mt) : 0 <= w.
 Proof. by []. Qed.
 
-Lemma leZ_max (w : mword mt) : eqtype.val w <= eqtype.val (monew : mword mt).
-Proof. exact: leqw_mone. Qed.
+Lemma leZ_max (w : mword mt) : w < 2 ^ word_size mt.
+Proof. exact: (valP (w : ordinal _)). Qed.
 
 (* How to make w explicit ??? *)
 (* TODO: File a bug report *)
@@ -84,7 +85,7 @@ Arguments leZ_min.
 Arguments leZ_max.
 
 Notation inbounds base size w :=
-  (eqtype.val base <= eqtype.val w < eqtype.val base + eqtype.val size).
+  (base <= w < base + size).
 
 Section memory_injections.
 
@@ -96,20 +97,18 @@ Record meminj_spec (amem : Abstract.memory mt block) (mi : meminj) := {
   }.
 
 (* We could generalize update_list_Z to any size-preserving operator *)
-Lemma meminj_update mi amem amem' b off fr fr' x :
+Lemma meminj_update mi amem amem' ptr x :
   meminj_spec amem mi ->
-  PartMaps.get amem b = Some fr ->
-  update_list_Z off x fr = Some fr' ->
-  updm amem b fr' = Some amem' ->
+  Abstract.updv amem ptr x = Some amem' ->
   meminj_spec amem' mi.
 Proof.
-move=> miP get_b upd_off upd_b.
+move=> miP upd_b.
 constructor; first exact: miIr miP.
 Qed.
 
 Hint Resolve meminj_update.
 
-Variable amem : Abstract.memory mt.
+Variable amem : Abstract.memory mt block.
 Variable mi : meminj.
 
 Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
@@ -119,15 +118,15 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
     | _,      _      => False
   end.
 
-Inductive refine_val : Abstract.value mt block -> word mt -> Sym.type -> Prop :=
+Inductive refine_val : Abstract.value mt block -> mword mt -> Sym.type -> Prop :=
   | RefineData : forall w, refine_val (Abstract.VData _ w) w DATA
-  | RefinePtr : forall b base col off, PartMaps.get mi col = Some (b,base) ->
+  | RefinePtr : forall b base col off, mi col = Some (b,base) ->
                 refine_val (Abstract.VPtr (b,off)) (base + off) (PTR col).
 
 Lemma refine_ptr_inv w col b b' off base :
   meminj_spec amem mi ->
   refine_val (Abstract.VPtr (b,off)) w (PTR col) ->
-  PartMaps.get mi col = Some (b', base) ->
+  mi col = Some (b', base) ->
   w = (base + off)%w.
 Proof.
 move=> miP rpt mi_b.
@@ -137,78 +136,78 @@ Qed.
 
 Definition refine_memory amem (smem : Sym.memory mt) :=
   meminj_spec amem mi /\ forall w1 w2 col ty,
-  PartMaps.get smem w1 = Some w2@M(col,ty) ->
-  if PartMaps.get mi col is Some (b,base) then
+  smem w1 = Some w2@M(col,ty) ->
+  if mi col is Some (b,base) then
   if Abstract.getv amem (b, w1 - base) is Some v then
   refine_val v w2 ty else False else False.
 
-Lemma refine_memory_get_int qamem (w1 w2 : word mt) col pt :
+Lemma refine_memory_get_int qamem (w1 w2 : mword mt) col pt :
          refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR col) ->
-         PartMaps.get qamem w1 = Some w2@M(col,DATA) ->
+         qamem w1 = Some w2@M(col,DATA) ->
          Abstract.getv amem pt = Some (Abstract.VData _ w2).
 Proof.
 move=> [miP rmem] rpt get_w1.
 move/(_ _ _ _ _ get_w1): rmem.
 inversion rpt.
-rewrite H4.
-rewrite Word.sub_add_l Word.sub_idem Word.add_zero_l.
+rewrite H4 (addwC base).
+rewrite (_ : off + base - base = off); try exact: GRing.addrK.
 case: (Abstract.getv amem (b, off)) => // v rvw3.
 by inversion rvw3.
 Qed.
 
 Lemma getv_mem base off v : Abstract.getv amem (base, off) = Some v ->
-  exists fr, PartMaps.get amem base = Some fr
-  /\ index_list_Z (Word.unsigned off) fr = Some v.
+  exists fr, amem base = Some fr
+  /\ nth (Abstract.VData block 0) fr (ord_of_word off) = v.
 Proof.
 unfold Abstract.getv; simpl.
-destruct (PartMaps.get amem base) as [fr|]; try discriminate.
-by intros index_fr; exists fr; split.
+destruct (amem base) as [fr|]; try discriminate.
+by case: (_ < _) => // - [<-]; eauto.
 Qed.
 
-Lemma get_mem_memv base off v fr : PartMaps.get amem base = Some fr ->
-  index_list_Z (Word.unsigned off) fr = Some v ->
+Lemma get_mem_memv base off v fr : amem base = Some fr ->
+  nth (Abstract.VData block 0) fr (ord_of_word off) = v ->
+  ord_of_word off < size fr ->
   Abstract.getv amem (base,off) = Some v.
 Proof.
-intros get_base index_off.
+intros get_base index_off bound.
 unfold Abstract.getv.
-by simpl; rewrite get_base.
+by rewrite /= get_base bound index_off.
 Qed.
 
-Lemma refine_memory_get smem (w1 w2 : word mt) col pt ty :
+Lemma refine_memory_get smem (w1 w2 : mword mt) col pt ty :
          refine_memory amem smem -> refine_val (Abstract.VPtr pt) w1 (PTR col) ->
-         PartMaps.get smem w1 = Some (w2@M(col,ty)) ->
-         exists fr x, PartMaps.get amem (fst pt) = Some fr
-         /\ index_list_Z (Word.unsigned (snd pt)) fr = Some x
+         smem w1 = Some (w2@M(col,ty)) ->
+         exists fr x, amem (fst pt) = Some fr
+         /\ nth (Abstract.VData block 0) fr (ord_of_word pt.2) = x
+         /\ ord_of_word pt.2 < size fr
          /\ refine_val x w2 ty.
 Proof.
 move=> [miP rmem] rpt get_w1.
 move/(_ _ _ _ _ get_w1): rmem.
 inversion rpt.
-rewrite H4.
-rewrite Word.sub_add_l Word.sub_idem Word.add_zero_l.
+rewrite H4 (addwC base).
+rewrite (_ : off + base - base = off); last exact: GRing.addrK.
 rewrite /Abstract.getv.
-case: (PartMaps.get amem b) => // fr get_off.
+case: (amem b) => //= fr get_off.
 exists fr; move: get_off.
-case: (index_list_Z (Word.unsigned off) fr) => // v rvw3.
-by exists v.
+by case: (_ < _) => //; eauto.
 Qed.
 
-Definition bounded_add (w1 w2 : word mt) :=
-  0 <= Word.unsigned w1 /\ 0 < Word.unsigned w2 /\
-  Word.unsigned (min_word mt) <= Word.unsigned w1 + Word.unsigned w2 <= Word.unsigned (max_word mt).
+Definition bounded_add (w1 w2 : mword mt) :=
+  0 < w2 /\ w1 + w2 < 2 ^ word_size mt.
 
 Inductive block_info_spec (smem : Sym.memory mt) (bi : Sym.block_info mt) : Prop :=
 | BlockInfoLive : forall col b, Sym.block_color bi = Some col ->
   bounded_add (Sym.block_base bi) (Sym.block_size bi) ->
-  PartMaps.get mi col = Some (b, Sym.block_base bi) ->
-  (forall off, 0 <= Word.unsigned off < Word.unsigned (Sym.block_size bi) ->
-     exists v ty, PartMaps.get smem (Sym.block_base bi + off) = Some v@M(col,ty)) ->
+  mi col = Some (b, Sym.block_base bi) ->
+  (forall off : mword mt, off < Sym.block_size bi ->
+     exists v ty, smem (Sym.block_base bi + off) = Some v@M(col,ty)) ->
   block_info_spec smem bi
 | BlockInfoFree :
   Sym.block_color bi = None ->
   bounded_add (Sym.block_base bi) (Sym.block_size bi) ->
-  (forall off, 0 <= Word.unsigned off < Word.unsigned (Sym.block_size bi) ->
-    exists v, PartMaps.get smem (Sym.block_base bi + off) = Some v@FREE) ->
+  (forall off : mword mt, off < Sym.block_size bi ->
+    exists v, smem (Sym.block_base bi + off) = Some v@FREE) ->
   block_info_spec smem bi.
 
 Lemma block_info_bounds smem bi :
@@ -222,37 +221,38 @@ Qed.
 Canonical Sym.block_info_eqType.
 
 Definition fresh_color col :=
-  forall col' b base, PartMaps.get mi col' = Some (b,base) ->
-  (col' < col)%ordered.
+  forall col' b base, mi col' = Some (b,base) ->
+  (col' < col)%ord.
 
-Definition overlap (bi1 bi2 : Sym.block_info mt) (w : word mt) :=
+Definition overlap (bi1 bi2 : Sym.block_info mt) (w : mword mt) :=
   inbounds (Sym.block_base bi1) (Sym.block_size bi1) w /\
   inbounds (Sym.block_base bi2) (Sym.block_size bi2) w.
 
 Definition cover (smem : Sym.memory mt) (info : list (Sym.block_info mt)) :=
-  forall w v, PartMaps.get smem w = Some v ->
+  forall w v, smem w = Some v ->
   exists bi, bi \in info /\ inbounds (Sym.block_base bi) (Sym.block_size bi) w.
 
 Definition refine_internal_state (bl : list block) smem (ist : Sym.color * list (Sym.block_info mt)) :=
   let: (col, info) := ist in
   fresh_color col /\
-  (forall col b base, PartMaps.get mi col = Some (b,base) -> b \in bl) /\
+  (forall col b base, mi col = Some (b,base) -> b \in bl) /\
   (forall i j def w, i < size info -> j < size info ->
      overlap (nth def info i) (nth def info j) w -> i = j)%N /\
   cover smem info /\
   forall bi, bi \in info -> block_info_spec smem bi.
 
+(*
 Lemma refine_memory_upd bl smem smem' ist old
                         w1 w2 pt ty ty' n fr fr' x :
   refine_memory amem smem ->
   refine_internal_state bl smem ist ->
   refine_val (Abstract.VPtr pt) w1 (PTR n) ->
-  PartMaps.get smem w1 = Some old@M(n, ty') ->
-  PartMaps.upd smem w1 w2@M(n, ty) = Some smem' ->
-  PartMaps.get amem pt.1 = Some fr ->
+  smem w1 = Some old@M(n, ty') ->
+  updm smem w1 w2@M(n, ty) = Some smem' ->
+  amem pt.1 = Some fr ->
   update_list_Z (Word.unsigned pt.2) x fr = Some fr' ->
   refine_val x w2 ty ->
-    exists amem', [/\ PartMaps.upd amem pt.1 fr' = Some amem',
+    exists amem', [/\ updm amem pt.1 fr' = Some amem',
       refine_memory amem' smem' & refine_internal_state bl smem' ist].
 Proof.
 case: ist => nextcol info.
@@ -324,7 +324,7 @@ have [->|neq_coln] := altP (col =P n).
     rewrite -eq_off Word.add_commut in H3.
     by rewrite -Word.sub_add_l Word.add_commut Word.sub_add_l Word.sub_idem Word.add_zero_l in H3.
   by rewrite (update_list_Z_spec2 update_pt neq_off).
-case mi_col: (PartMaps.get mi col) => [[b' base']|] //.
+case mi_col: (mi col) => [[b' base']|] //.
 rewrite /Abstract.getv /=.
 have neq_b: b' <> b.
   move=> eq_bb'.
@@ -332,99 +332,98 @@ have neq_b: b' <> b.
   by rewrite (miIr miP mi_col H4) eqxx in neq_coln.
 by rewrite (PartMaps.get_upd_neq neq_b upd_pt).
 Qed.
+*)
 
 Definition mi_malloc b base col : meminj :=
-  PartMaps.set mi col (b,base).
+  setm mi col (b,base).
 
-Lemma get_write_block_rec (base : word mt) (v : atom (word mt) Sym.tag) : forall n init (w : word mt) mem',
+Lemma get_write_block_rec (base : mword mt) (v : atom (mword mt) Sym.tag) : forall n init (w : mword mt) mem',
   Sym.write_block_rec init base v n = Some mem' ->
-  Z.of_nat n <= Word.max_unsigned (word_size_minus_one mt) ->
-  Word.unsigned base + Z.of_nat n <= Word.max_unsigned (word_size_minus_one mt) ->
-  PartMaps.get mem' w =
-  if (Word.unsigned base <=? Word.unsigned w <? Word.unsigned base + (Z.of_nat n))%Z then Some v else PartMaps.get init w.
+  n < 2 ^ word_size mt ->
+  base + n < 2 ^ word_size mt ->
+  mem' w =
+  if (base <= w < base + n) then Some v else init w.
 Proof.
-(*have min_bound: Word.min_unsigned (word_size_minus_one mt) <= 0.
-  move: (proj1 (Word.unsigned_range (word_size_minus_one mt) Word.zero)).
-  by rewrite Word.unsigned_zero.*)
-have max_bound: 31 <= Word.max_unsigned (word_size_minus_one mt).
-  case: mt => [s Hs ? ?] /=.
-  rewrite /Word.max_unsigned Word.modulus_power /Word.zwordsize /Word.wordsize.
-  have ->: 31 = (two_p (Z.of_nat 5) - 1)%Z by [].
-  suffices: two_p (Z.of_nat 5) <= two_p (Z.of_nat s.+1) by (move => *; omega).
-  apply two_p_monotone. zify. omega.
-have [? _] := Word.unsigned_range base.
-elim=> [init w mem' [<-] ? ?|n IHn init w mem'] /=.
-  by rewrite Z.add_0_r; case: leltP=> // ?; omega.
-case write_block: (Sym.write_block_rec init base v n)=> //= upd.
-rewrite Zpos_P_of_succ_nat => ? ?.
-have [->|neq_w] := w =P base + Word.reprn n.
-  rewrite (PartMaps.get_upd_eq upd).
-  case: leltP => // [[]].
-  rewrite /Word.reprn addwE Word.unsigned_repr ?unsigned_min_word ?unsigned_max_word; omega.
-rewrite (PartMaps.get_upd_neq neq_w upd).
-rewrite (IHn init) => // ; [|omega|omega].
-case: leltP=> ?; case: leltP=> ? //; try omega.
-case: neq_w.
-apply: Word.unsigned_inj.
-rewrite /Word.reprn addwE Word.unsigned_repr ?unsigned_min_word ?unsigned_max_word; omega.
+have max_bound := max_word_bound mt.
+elim=> [init w mem' [<-] ? ?|n IHn init w mem'].
+  by rewrite addn0; case: leqP.
+rewrite [in X in X -> _]/=.
+case write_block: (Sym.write_block_rec init base v n)=> // upd.
+rewrite /= in upd => Hn Hbn.
+move/ltnW in Hn; rewrite addnS in Hbn; move/ltnW in Hbn.
+have [->|neq_w] := altP (w =P base + as_word n).
+  rewrite (getm_upd_eq upd) valw_add as_wordK // (leqNgt (2 ^ _)) Hbn /=.
+  by rewrite mul0n subn0 addnS leqnn leq_addr.
+rewrite (getm_upd_neq (elimN eqP neq_w) upd) (IHn init _ _ write_block) //.
+rewrite (_ : (w < base + n) = (w < base + n.+1)) //.
+apply/(sameP idP)/(iffP idP) => Hw; last by rewrite addnS ltnS ltnW.
+move: neq_w; rewrite ltnNge; apply: contra.
+rewrite addnS ltnS in Hw => Hw'.
+apply/eqP/val_inj/val_inj/anti_leq.
+rewrite (lock addw) /= -lock valw_add !as_wordK //.
+by rewrite [in X in _ <= X <= _]leqNgt Hbn /= mul0n subn0 Hw Hw'.
 Qed.
 
-Lemma get_write_block: forall smem base (sz : word mt) (v : atom (word mt) Sym.tag) (w : word mt) mem',
+Lemma get_write_block: forall smem base (sz : mword mt) (v : atom (mword mt) Sym.tag) (w : mword mt) mem',
   Sym.write_block smem base v sz = Some mem' ->
-  0 <= Word.unsigned sz ->
-  PartMaps.get mem' w = if Word.unsigned base <=? Word.unsigned w <? Word.unsigned base + Word.unsigned sz then Some v else PartMaps.get smem w.
+  mem' w = if base <= w < base + sz then Some v else smem w.
 Proof.
-move=> smem base sz v w mem' write_block nneg_sz.
-have HH := @leZ_max sz.
-rewrite unsigned_max_word in HH.
-move: write_block; rewrite /Sym.write_block.
-case: ifP => // /Z.leb_le ? write_block.
-rewrite (get_write_block_rec _ write_block) Z2Nat.id; try omega.
-reflexivity.
+move=> smem base sz v w mem'.
+rewrite /Sym.write_block.
+have [bound write_block|//] := boolP (_ <= _).
+by rewrite (get_write_block_rec _ write_block).
 Qed.
+
+(* TODO: move *)
+Lemma valw_sub (w1 w2 : mword mt) :
+  w2 <= w1 ->
+  (w1 - w2)%w = (w1 - w2)%N :> nat.
+Proof. admit. Qed.
 
 Lemma block_color_uniq (smem : Sym.memory mt) bi info bl nc col b w1 w2 ty :
   refine_memory amem smem ->
   refine_internal_state bl smem (nc, info) ->
   bi \in info ->
-  PartMaps.get mi col = Some (b, Sym.block_base bi) ->
+  mi col = Some (b, Sym.block_base bi) ->
   Sym.block_color bi = Some col ->
-  PartMaps.get smem w1 = Some w2@M(col, ty) ->
+  smem w1 = Some w2@M(col, ty) ->
   inbounds (Sym.block_base bi) (Sym.block_size bi) w1.
 Proof.
-generalize (@min_word_bound mt) => min_bound.
 move=> rmem rist in_bi mi_col color_bi get_w1.
 case: rist => _ [_ [no_overlap [cover_info biP]]].
 case/cover_info: (get_w1) => bi' [in_bi' bounds_bi'].
 have eq_base: Sym.block_base bi' = Sym.block_base bi.
   pose (off := w1 - Sym.block_base bi').
+  have hoff : off < Sym.block_size bi'.
+    have hw1: Sym.block_base bi' <= w1 by case/andP: bounds_bi'.
+    rewrite /off valw_sub // -(leq_add2r (Sym.block_base bi')).
+    rewrite [in X in _ <= X]addnC addSn /= subnK //.
+    by case/andP: bounds_bi'.
   case/(_ bi' in_bi'): biP.
-    move=> col' ? _ [? ?] mi_col' /(_ off) [|v [ty']].
-      rewrite /off subwE; omega.
-    rewrite /off Word.sub_add_opp [_ + - _]addwC addwA subww add0w get_w1 => [[_ eq_col _]].
+    move=> col' ? _ [? ?] mi_col' /(_ off) [|v [ty']] //.
+    rewrite /off /subw addwA (addwC _ w1) -addwA addwN addwC add0w get_w1 => [[_ eq_col _]].
     by move: mi_col; rewrite eq_col mi_col' => [[]].
-  move=> _ [? ?] /(_ off) [|v].
-    by rewrite /off subwE; omega.
-  by rewrite /off Word.sub_add_opp [_ + - _]addwC addwA subww add0w get_w1.
+  move=> _ [? ?] /(_ off) [|v] //.
+  by rewrite /off /subw addwA (addwC _ w1) -addwA addwN addwC add0w get_w1.
 have<-//: bi' = bi.
 rewrite -(nth_index bi' in_bi') -(nth_index bi' in_bi).
 have->//: index bi' info = index bi info.
 apply: (no_overlap _ _ bi (Sym.block_base bi)).
 + by rewrite index_mem.
 + by rewrite index_mem.
-rewrite !nth_index //.
-split; first by rewrite -eq_base; omega.
-split; try omega.
-case/(_ bi in_bi)/block_info_bounds: biP => [? ?].
-omega.
+rewrite !nth_index //; split; rewrite ?eq_base ?leqnn /=.
+  case/(_ bi' in_bi')/block_info_bounds: biP => [biP ?].
+  by rewrite -[X in X < _]addn0 ltn_add2l.
+case/(_ bi in_bi)/block_info_bounds: biP => [biP ?].
+by rewrite -[X in X < _]addn0 ltn_add2l.
 Qed.
 
-Lemma refine_memory_free (amem' : Abstract.memory mt) (smem smem' : Sym.memory mt) bl nc info b bi col :
+Lemma refine_memory_free (amem' : Abstract.memory mt block) (smem smem' : Sym.memory mt) bl nc info b bi col :
   refine_memory amem smem ->
   refine_internal_state bl smem (nc, info) ->
   bi \in info ->
   Sym.block_color bi = Some col ->
-  PartMaps.get mi col = Some (b, Sym.block_base bi) ->
+  mi col = Some (b, Sym.block_base bi) ->
   Abstract.free_fun amem b = Some amem' ->
   Sym.write_block smem (Sym.block_base bi) 0@FREE (Sym.block_size bi) = Some smem' ->
   refine_memory amem' smem' /\
@@ -439,19 +438,19 @@ Proof.
 move=> rmem rist in_bi color_bi mi_col free_b write_block.
 have ? := @leZ_min (Sym.block_base bi).
 case: (rist) => fresh_color [in_bl [no_overlap [cover_info biP]]].
-move/(_ bi in_bi)/block_info_bounds: (biP)=> [? [? ?]].
+move/(_ bi in_bi)/block_info_bounds: (biP) => [? ?].
 case: (rmem) => miP get_smem; split.
   split; first by constructor; apply miP.
   move=> w1 w2 col' ty.
-  rewrite (get_write_block _ write_block); last omega.
+  rewrite (get_write_block _ write_block).
   case: ifP => // bounds get_w1; move/get_smem: (get_w1).
-  case mi_col': (PartMaps.get mi col') => // [[b' ?]].
+  case mi_col': (mi col') => // [[b' ?]].
   have neq_b: b != b'.
     apply/eqP => eq_bb'; rewrite eq_bb' in mi_col.
     have eq_col := miIr miP mi_col' mi_col.
     rewrite eq_col in get_w1.
     move/(block_color_uniq rmem rist in_bi mi_col color_bi): get_w1.
-    by apply/leltP; rewrite bounds.
+    by rewrite bounds.
   rewrite /Abstract.getv.
   by rewrite (Abstract.free_get free_b neq_b).
 set newbi := Sym.mkBlockInfo _ _ _.
@@ -472,8 +471,8 @@ do !split=> //.
     by rewrite nth_index.
   exact: no_overlap.
 + move=> w v.
-  rewrite (get_write_block _ write_block); last omega.
-  case: leltP => bounds_w.
+  rewrite (get_write_block _ write_block).
+  have [bounds_w|bounds_w]:= boolP (inbounds _ _ _).
     move=> _; exists newbi; split=> //.
     apply/(nthP (Sym.def_info mt)).
     exists (index bi info); first by rewrite size_set_nth (maxn_idPr _) ?index_mem.
@@ -486,105 +485,108 @@ do !split=> //.
   have [eq_index|] := index bi' info =P index bi info; last by rewrite nth_index.
   have eq_bi: bi' = bi.
     by rewrite -(nth_index bi in_bi) -(nth_index bi in_bi') eq_index.
-  by rewrite eq_bi in bounds_bi'.
+  by rewrite eq_bi in bounds_bi'; rewrite bounds_bi' in bounds_w.
 move=> bi'.
 case/(nthP (Sym.def_info mt))=> i.
 rewrite size_set_nth (maxn_idPr _) ?index_mem // => lt_i.
 rewrite nth_set_nth /=.
 have [_ <-|neq_i <-] := i =P index bi info.
-  move/(_ bi in_bi)/block_info_bounds: biP => [? ?].
+  move/(_ bi in_bi)/block_info_bounds: biP => [? ubound].
   apply: BlockInfoFree=> //.
   move=> off /= bounds_off; exists 0.
-  rewrite (get_write_block _ write_block); last omega.
-  case: leltP=> //.
-  rewrite addwE; try omega. simpl.
-  by move=> ?; omega.
+  rewrite (get_write_block _ write_block) valw_add (leqNgt (2 ^ _)).
+  rewrite (ltn_trans _ ubound) ?ltn_add2l //= mul0n subn0.
+  by rewrite leq_addr ltn_add2l bounds_off.
 move {bi'}.
 set bi' := nth _ _ _.
 have ? := @leZ_min (Sym.block_base bi').
 move/(_ bi'): biP.
 rewrite mem_nth //.
-case/(_ erefl)=> [? ? ? [? ?] ? get_bi'|? [? ?] get_bi'].
+case/(_ erefl)=> [? ? ? [? ubound] ? get_bi'|? [? ubound] get_bi'].
   apply: BlockInfoLive=> //.
   move=> off bounds_off.
   case: {get_bi'} (get_bi' off bounds_off)=> w [ty get_bi'].
   exists w; exists ty.
-  rewrite (get_write_block _ write_block); last omega.
-  case: leltP=> //.
-  rewrite addwE; last omega.
-  move => bounds_bi.
+  rewrite (get_write_block _ write_block).
+  have off_in_bounds : inbounds (Sym.block_base bi') (Sym.block_size bi')
+                                (Sym.block_base bi' + off)%w.
+    rewrite valw_add (leqNgt (2 ^ _)).
+    rewrite (ltn_trans _ ubound) ?ltn_add2l //= mul0n subn0.
+    by rewrite leq_addr ltn_add2l bounds_off.
+  have [off_in_bounds'|//] := boolP (inbounds _ _ _).
   case: neq_i.
   apply: (no_overlap _ _ (Sym.def_info mt) (Sym.block_base bi' + off)) => //.
     by rewrite index_mem.
-  unfold bi' in *; rewrite nth_index // /overlap.
-  by rewrite addwE; omega.
+  by unfold bi' in *; rewrite nth_index // /overlap.
 apply: BlockInfoFree=> //.
 move=> off bounds_off.
 case: {get_bi'} (get_bi' off bounds_off)=> w get_bi'.
 exists w.
-rewrite (get_write_block _ write_block); last omega.
-case: leltP=> //.
-rewrite addwE; last omega.
-move => bounds_bi.
+rewrite (get_write_block _ write_block).
+have off_in_bounds : inbounds (Sym.block_base bi') (Sym.block_size bi')
+                              (Sym.block_base bi' + off)%w.
+  rewrite valw_add (leqNgt (2 ^ _)).
+  rewrite (ltn_trans _ ubound) ?ltn_add2l //= mul0n subn0.
+  by rewrite leq_addr ltn_add2l bounds_off.
+have [off_in_bounds'|//] := boolP (inbounds _ _ _).
 case: neq_i.
 apply: (no_overlap _ _ (Sym.def_info mt) (Sym.block_base bi' + off)) => //.
   by rewrite index_mem.
-unfold bi' in *; rewrite nth_index // /overlap.
-by rewrite addwE; omega.
+by unfold bi' in *; rewrite nth_index // /overlap.
 Qed.
 
 Definition refine_reg_val v a :=
  match a with w@V(ty) => refine_val v w ty | _ => False end.
 
-Definition refine_registers (aregs : Abstract.registers mt)
+Definition refine_registers (aregs : Abstract.registers mt block)
                             (qaregs : Sym.registers mt) :=
-  PartMaps.pointwise refine_reg_val aregs qaregs.
+  pointwise refine_reg_val aregs qaregs.
 
 Lemma refine_registers_val aregs qaregs r v : refine_registers aregs qaregs ->
-  PartMaps.get qaregs r = Some v ->
+  qaregs r = Some v ->
   exists w ty, v = w@V(ty).
 Proof.
 intros rregs get_r; specialize (rregs r); revert rregs.
-rewrite get_r; destruct (PartMaps.get aregs r); try easy.
+rewrite get_r; destruct (aregs r); try easy.
 by destruct v as [w [ty | |]]; try easy; exists w; exists ty.
 Qed.
 
 Lemma refine_registers_get aregs qaregs (n : common.reg mt) w ty :
   refine_registers aregs qaregs ->
-  PartMaps.get qaregs n = Some w@V(ty) ->
-  exists x, refine_val x w ty /\ PartMaps.get aregs n = Some x.
+  qaregs n = Some w@V(ty) ->
+  exists x, refine_val x w ty /\ aregs n = Some x.
 Proof.
 intros rregs qa_get.
 generalize (rregs n).
 rewrite qa_get.
-destruct (PartMaps.get aregs n); try easy.
+destruct (aregs n); try easy.
 simpl; intros rvx.
 by exists v; split.
 Qed.
 
 Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
   refine_registers aregs qaregs ->
-  PartMaps.get qaregs n = Some w@V(DATA) ->
+  qaregs n = Some w@V(DATA) ->
     refine_val (Abstract.VData _ w) w DATA /\
-    PartMaps.get aregs n = Some (Abstract.VData _ w).
+    aregs n = Some (Abstract.VData _ w).
 Proof.
 intros rregs get_n.
 specialize (rregs n).
 rewrite get_n in rregs.
-destruct (PartMaps.get aregs n); try contradiction.
+destruct (aregs n); try contradiction.
 by inversion rregs; split; first by constructor.
 Qed.
 
 Lemma refine_registers_get_ptr aregs qaregs (n : common.reg mt) w b :
   refine_registers aregs qaregs ->
-  PartMaps.get qaregs n = Some w@V(PTR b) ->
+  qaregs n = Some w@V(PTR b) ->
   exists pt, refine_val (Abstract.VPtr pt) w (PTR b) /\
-    PartMaps.get aregs n = Some (Abstract.VPtr pt).
+    aregs n = Some (Abstract.VPtr pt).
 Proof.
 intros rregs qa_get.
 generalize (rregs n).
 rewrite qa_get.
-destruct (PartMaps.get aregs n); try easy.
+destruct (aregs n); try easy.
 simpl; intros rvx.
 destruct v as [|pt].
   by inversion rvx.
@@ -594,28 +596,28 @@ Qed.
 Lemma refine_registers_upd aregs qaregs qaregs' r v w ty :
   refine_registers aregs qaregs ->
   refine_val v w ty ->
-  PartMaps.upd qaregs r w@V(ty) = Some qaregs' ->
+  updm qaregs r w@V(ty) = Some qaregs' ->
   exists areg',
-    PartMaps.upd aregs r v = Some areg' /\
+    updm aregs r v = Some areg' /\
     refine_registers areg' qaregs'.
 Proof.
 intros rregs rvw upd_r_qa.
 assert (ref_r := rregs r).
-destruct (PartMaps.upd_inv upd_r_qa) as [v' get_r_qa].
+destruct (updm_inv upd_r_qa) as [v' get_r_qa].
 rewrite get_r_qa in ref_r.
-destruct (PartMaps.get aregs r) as [w'|] eqn:get_r_a; try contradiction.
-destruct (PartMaps.upd_defined v get_r_a) as [aregs' upd_r_a].
+destruct (aregs r) as [w'|] eqn:get_r_a; try contradiction.
+destruct (updm_defined v get_r_a) as [aregs' upd_r_a].
 exists aregs'; split; try easy.
 intros r'.
 have [->|/eqP neq_rr'] := altP (r' =P r).
-  rewrite (PartMaps.get_upd_eq upd_r_a).
-  by rewrite (PartMaps.get_upd_eq upd_r_qa).
-rewrite (PartMaps.get_upd_neq neq_rr' upd_r_a).
-rewrite (PartMaps.get_upd_neq neq_rr' upd_r_qa).
+  rewrite (getm_upd_eq upd_r_a).
+  by rewrite (getm_upd_eq upd_r_qa).
+rewrite (getm_upd_neq neq_rr' upd_r_a).
+rewrite (getm_upd_neq neq_rr' upd_r_qa).
 by apply rregs.
 Qed.
 
-Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
+Definition refine_state (ast : Abstract.state mt block) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
   let '(Abstract.mkState amem aregs bl apc) := ast in
   match sst with
   | Symbolic.State smem sregs w@V(ty) ist =>
@@ -636,8 +638,8 @@ Proof.
 move=> fresh_col malloc [w'|b base' col' off mi_b]; first by constructor.
 constructor.
 have neq_col: col' <> col.
-  by move=> eq_col; move/fresh_col: mi_b; rewrite eq_col; apply: lt_irrefl.
-by rewrite (PartMaps.get_set_neq _ _ neq_col).
+  by move=> eq_col; move/fresh_col: mi_b; rewrite eq_col Ord.leqxx.
+by rewrite getm_set (introF eqP neq_col).
 Qed.
 
 
@@ -649,7 +651,7 @@ Lemma refine_registers_malloc mi aregs sregs amem amem' bl sz newb base col :
 Proof.
   intros.
   unfold refine_registers. unfold mi_malloc.
-  eapply PartMaps.refine_extend_map with
+  eapply refine_extend_map with
     (P := refine_reg_val)
     (f := fun mi' col' nb' => mi = mi' /\ col = col' /\ (newb,base) = nb'); auto.
   intros ? ? ? ? ? [E1 [E2 [R]]]. subst k1 km.
@@ -667,67 +669,64 @@ move=> [fresh_col [in_bl rist]] malloc miP.
 constructor => b col' col'' base' base''.
 have [->|/eqP neq_col'] := altP (col' =P col);
 have [-> //|/eqP neq_col''] := altP (col'' =P col).
-+ rewrite (PartMaps.get_set_neq _ _ neq_col'').
-  rewrite PartMaps.get_set_eq => [[<- _]] /in_bl.
++ rewrite !getm_set eqxx (introF eqP neq_col'') => [[<- _]] /in_bl.
   by rewrite (negbTE (Abstract.malloc_fresh malloc)).
-+ rewrite (PartMaps.get_set_neq _ _ neq_col').
-  rewrite PartMaps.get_set_eq => get_col' [eq_b _].
++ rewrite !getm_set eqxx (introF eqP neq_col') => get_col' [eq_b _].
   move/in_bl: get_col'.
   by rewrite -eq_b (negbTE (Abstract.malloc_fresh malloc)).
-+ rewrite (PartMaps.get_set_neq _ _ neq_col') (PartMaps.get_set_neq _ _ neq_col'').
++ rewrite !getm_set (introF eqP neq_col') (introF eqP neq_col'').
 exact: (miIr miP).
 Qed.
 
 Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col smem' :
   refine_memory mi amem smem ->
-  0 <= Word.unsigned sz ->
   refine_internal_state mi bl smem (col, info) ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   Sym.write_block smem base 0@M(col, DATA) sz = Some smem' ->
   refine_memory (mi_malloc mi newb base col) amem' smem'.
 Proof.
-case=> miP rmem sznneg rist malloc.
+case=> miP rmem rist malloc.
 case: (rist) => [fresh_col [in_bl [no_overlap biP]]].
 split; first exact: (meminj_spec_malloc _ rist malloc).
 move=> w1 w2 col' ty.
 rewrite (get_write_block _ H1) => //.
-have [/andP [/Z.leb_le ? /Z.ltb_lt ?] [<- <- <-]|_ /rmem get_w1] :=
-  boolP (Word.unsigned base <=? Word.unsigned w1 <? Word.unsigned base + Word.unsigned sz)%Z.
-  rewrite PartMaps.get_set_eq (Abstract.malloc_get malloc); last first.
-  have ? := @leZ_max sz.
-  generalize (@min_word_bound mt) => min_bound.
-  by apply/word_unsigned_lt; rewrite subwE; omega.
+have [/andP [? ?] [<- <- <-]|_ /rmem get_w1] :=
+  boolP (inbounds base sz w1).
+  rewrite getm_set eqxx (Abstract.malloc_get malloc); last first.
+    rewrite -2!val_ordE (lock subw) /= -lock valw_sub // /Ord.leq /= -ltnNge.
+    by rewrite -(ltn_add2r base) subnK // addnC.
   apply: (refine_val_malloc _ fresh_col malloc).
   by constructor.
 have neq_col: col' <> col.
   move=> eq_col.
   move: get_w1; rewrite eq_col.
   move: (fresh_col col).
-  case: (PartMaps.get mi col) => // [[b' base']] /(_ b' base' erefl) lt_col.
-  by apply lt_irrefl in lt_col.
+  case: (mi col) => // [[b' base']] /(_ b' base' erefl) lt_col.
+  by rewrite Ord.leqxx in lt_col.
 
 move: get_w1.
 set mi' := mi_malloc _ _ _ _.
 have mi'P := (meminj_spec_malloc base rist malloc miP).
-have eq_mi: PartMaps.get mi' col' = PartMaps.get mi col'.
-  by rewrite (PartMaps.get_set_neq _ _ neq_col).
+have eq_mi: mi' col' = mi col'.
+  by rewrite getm_set (introF eqP neq_col).
 rewrite eq_mi; move: eq_mi.
-case: (PartMaps.get mi col') => // [[b' base']] mi'_col'.
+case: (mi col') => // [[b' base']] mi'_col'.
 have neq_b': b' <> newb.
   move=> eq_b'; rewrite eq_b' in mi'_col'.
-  have mi'_col: PartMaps.get mi' col = Some (newb, base).
-    by rewrite PartMaps.get_set_eq.
+  have mi'_col: mi' col = Some (newb, base).
+    by rewrite getm_set eqxx.
   exact/neq_col/(miIr mi'P mi'_col' mi'_col).
 rewrite /Abstract.getv (Abstract.malloc_get_neq malloc neq_b').
-case: (PartMaps.get amem b') => // fr.
-case: (index_list_Z (Word.unsigned (w1 - base'))) => // v.
-by move=> rvw2; apply: (refine_val_malloc _ fresh_col malloc).
+case: (amem b') => // fr.
+rewrite (lock subw) /= -lock.
+case: (_ < _) => [rvw2|//].
+by apply: (refine_val_malloc _ fresh_col malloc).
 Qed.
 
-Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color smem' :
-  (0 < Word.unsigned sz <= Word.unsigned (Sym.block_size bi)) ->
+Lemma refine_internal_state_malloc mi amem amem' bl smem info (sz : mword mt) newb bi color smem' :
+  sz <= Sym.block_size bi ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
-  (color < Sym.max_color)%ordered ->
+  (color < Sym.max_color)%ord ->
   Sym.block_color bi = None ->
   bi \in info ->
   refine_internal_state mi bl smem (color, info) ->
@@ -735,27 +734,27 @@ Lemma refine_internal_state_malloc mi amem amem' bl smem info sz newb bi color s
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
     (newb :: bl) smem' (Sym.inc_color color, Sym.update_block_info info bi color sz).
 Proof.
-move=> [nneg_sz le_sz] malloc lt_color color_bi in_bi.
+move=> le_sz malloc lt_color color_bi in_bi.
 case=> [fresh_color [in_bl [no_overlap [cover_info biP]]]] write_bi.
 have [? ?] := block_info_bounds (biP _ in_bi).
 have ? := @leZ_min (Sym.block_base bi).
 have ? := @leZ_max (Sym.block_size bi).
-generalize (@min_word_bound mt) => min_bound.
-generalize (max_word_bound mt) => max_bound.
+(*generalize (@min_word_bound mt) => min_bound.
+generalize (max_word_bound mt) => max_bound.*)
 split. (* freshness of color *)
   rewrite /refinement.fresh_color.
   move=> col b base.
   have [-> _|neq_col] := col =P color.
-    exact/ltb_lt/Sym.ltb_inc/ltb_lt.
-  rewrite (PartMaps.get_set_neq _ _ neq_col).
+    exact/Sym.ltb_inc.
+  rewrite getm_set (introF eqP neq_col).
   move/fresh_color => lt_col.
-  apply: (lt_trans col color) => //.
-  exact/ltb_lt/Sym.ltb_inc/ltb_lt.
+  apply: (@Ord.lt_trans _ color col) => //=.
+  exact/Sym.ltb_inc.
 split. (* list of block is complete *)
   move=> col b base.
   have [->|neq_col] := col =P color.
-    by rewrite PartMaps.get_set_eq => [[<- _]]; rewrite inE eqxx.
-  by rewrite (PartMaps.get_set_neq _ _ neq_col) inE => /in_bl ->; rewrite orbT.
+    by rewrite getm_set eqxx => [[<- _]]; rewrite inE eqxx.
+  by rewrite getm_set (introF eqP neq_col) inE => /in_bl ->; rewrite orbT.
 split. (* no overlap *)
   move=> i j def w.
   rewrite /Sym.update_block_info.
@@ -778,49 +777,64 @@ split. (* no overlap *)
   rewrite /= !size_set_nth (maxn_idPr _) ?index_mem // => lt_i lt_j.
   rewrite !(set_nth_default newbi) /= ?size_set_nth ?(maxn_idPr _) ?index_mem //.
   case: i lt_i => [|i] lt_i; case: j lt_j => [|j] lt_j //=;
-  rewrite !nth_set_nth /overlap (lock Word.unsigned) /= -(lock _).
-  + have [->|neq_j] := j =P index bi info.
-      rewrite (lock Word.unsigned) /= -(lock _).
-      case=> [[ge_w _] [_ lt_w]].
-      rewrite addwE in ge_w; omega.
-    rewrite (lock Word.unsigned) /= -lock.
-    case=> [[ge_w lt_w] ?].
-    rewrite addwE in ge_w; last omega.
+  rewrite !nth_set_nth /overlap.
+  + rewrite (lock addw) (lock subw) /= -!lock.
+    have [->|neq_j] := j =P index bi info.
+      case=> [/andP [ge_w _] /andP [_ lt_w]].
+      rewrite -(leq_add2l (Sym.block_base bi)) in le_sz.
+      rewrite valw_add (leqNgt (2 ^ _)) (leq_ltn_trans le_sz) //= in ge_w.
+      rewrite mul0n subn0 in ge_w.
+      by rewrite ltnNge ge_w in lt_w.
+    case=> [/andP [ge_w lt_w] ?].
+    rewrite valw_sub // in lt_w.
+    move: (le_sz); rewrite -(leq_add2l (Sym.block_base bi)) => le_sz'.
+    rewrite valw_add (leqNgt (2 ^ _)) in ge_w lt_w.
+    rewrite (leq_ltn_trans le_sz') {le_sz'} //= mul0n subn0 in ge_w lt_w.
     case: neq_j; apply: (no_overlap _ _ newbi w) => //.
       by rewrite index_mem.
     rewrite nth_index // /overlap; split=> //.
-    rewrite addwE ?subwE in lt_w; omega.
-  + have [->|neq_i] := i =P index bi info.
-      rewrite /overlap (lock Word.unsigned) /= -lock.
-      case=> [[_ lt_w] [ge_w _]].
-      by rewrite addwE in ge_w; omega.
-    rewrite (lock Word.unsigned) /= -lock.
-    case=> [? [ge_w lt_w]].
+    rewrite -addnA (addnC sz) subnK // in lt_w; rewrite {}lt_w andbT.
+    by rewrite (@leq_trans (Sym.block_base bi + sz)) // leq_addr.
+  + rewrite (lock addw) (lock subw) /= -!lock.
+    rewrite valw_add valw_sub // (leqNgt (2 ^ _)) (_: _ < 2 ^ _); last first.
+      apply: (@leq_ltn_trans (Sym.block_base bi + Sym.block_size bi)) => //.
+      by rewrite leq_add2l.
+    rewrite /= mul0n subn0.
+    have [->|neq_i] := i =P index bi info.
+      by rewrite [in X in _ /\ X]leqNgt => - [/andP [_ ->]].
+    case=> [? /andP [ge_w lt_w]].
     case: neq_i; apply: (no_overlap _ _ newbi w) => //.
       by rewrite index_mem.
     rewrite nth_index // /overlap; split=> //.
-    rewrite addwE in ge_w; last omega.
-    by rewrite addwE ?subwE in lt_w; omega.
-  + have [->|neq_i] := i =P index bi info;
+    rewrite -addnA (addnC sz) subnK // in lt_w.
+    rewrite lt_w andbT.
+    by eapply leq_trans; eauto using leq_addr.
+  + simpl; have [->|neq_i] := i =P index bi info;
     have [->|neq_j] := j =P index bi info => //=.
     * case=> /= [in_newbi in_j].
       congr S.
       apply: (no_overlap _ _ newbi w) => //.
         by rewrite index_mem.
-      rewrite nth_index //; split=> //; omega.
+      rewrite nth_index //; split=> //.
+      case/andP: in_newbi => [-> gt_w] /=.
+      eapply leq_trans; first exact: gt_w.
+      by rewrite leq_add2l.
     * case=> /= [in_i in_newbi]; congr S.
       apply: (no_overlap _ _ newbi w) => //.
         by rewrite index_mem.
-      rewrite nth_index //; split=> //; omega.
+      rewrite nth_index //; split=> //.
+      case/andP: in_newbi => [-> gt_w] /=.
+      eapply leq_trans; first exact: gt_w.
+      by rewrite leq_add2l.
     * by move/(no_overlap _ _ _ _ lt_i lt_j)->.
 split. (* cover *)
   rewrite /Sym.update_block_info.
   set newbi := Sym.mkBlockInfo _ _ _.
   move=> w v.
-  rewrite (get_write_block _ write_bi); last omega.
+  rewrite (get_write_block _ write_bi).
   have [eq_sz|_] := sz =P Sym.block_size bi.
     (* first case: sizes are equal, the covering block_infos remain the same *)
-    case: leltP=> [bounds_bi _| bounds_bi].
+    have [bounds_bi|bounds_bi] := boolP (inbounds _ _ _).
       (* area covered by the new block_info *)
       exists newbi; split=> //.
       apply/(nthP newbi).
@@ -837,32 +851,39 @@ split. (* cover *)
     have eq_bi: bi' = bi.
       by rewrite -(nth_index bi in_bi) -(nth_index bi in_bi') eq_index.
     rewrite eq_bi in bounds_bi'; rewrite eq_sz in bounds_bi.
-    omega.
+    by rewrite bounds_bi' in bounds_bi.
   (* second case: different sizes. The old block_info is now covered by two block_infos *)
   set newbi2 := Sym.mkBlockInfo _ _ _.
 
-  have [?|] := leltP (Word.unsigned (Sym.block_base bi)) (Word.unsigned w)
-                     (Word.unsigned (Sym.block_base bi) + Word.unsigned (Sym.block_size bi)).
+  have [bounds_bi|bounds_bi] :=
+    boolP (inbounds (Sym.block_base bi) (Sym.block_size bi) w).
     (* We are in the old block *)
-    have [/Z.ltb_lt lt_w_sz|le_sz_w] := boolP (Word.unsigned w <? Word.unsigned (Sym.block_base bi) + Word.unsigned sz).
+    have [lt_w_sz|le_sz_w] := boolP (w < Sym.block_base bi + sz).
       (* We are in the lower part of the old block *)
       rewrite andbT.
-      have->: Word.unsigned (Sym.block_base bi) <=? Word.unsigned w by apply/Z.leb_le; omega.
+      have->: Sym.block_base bi <= w by case/andP: bounds_bi.
       move=> _; exists newbi; split.
         apply/(nthP newbi); exists (index bi info).+1.
           by rewrite /= size_set_nth (maxn_idPr _) ?index_mem // ltnS index_mem.
         by rewrite /= nth_set_nth /= eqxx.
-      by rewrite /newbi /=; omega.
+      rewrite /newbi /= lt_w_sz andbT.
+      by case/andP: bounds_bi.
     (* We are in the higher part of the old block *)
     rewrite andbF; exists newbi2; split.
       by apply/(nthP newbi); exists 0%N.
-    rewrite -Z.leb_antisym in le_sz_w.
-    rewrite addwE ?subwE; try omega.
-    split; try omega.
-    exact/Z.leb_le.
+    rewrite -leqNgt in le_sz_w.
+    rewrite /newbi2 (lock addw) (lock subw) /= -!lock.
+    rewrite valw_add valw_sub // (leqNgt (2 ^ _)).
+    rewrite (_ : Sym.block_base bi + _ < 2 ^ _) /=; last first.
+      rewrite -(leq_add2l (Sym.block_base bi)) in le_sz.
+      by apply: (leq_ltn_trans le_sz).
+    rewrite mul0n subn0 le_sz_w /= -addnA (addnC sz) subnK //.
+    by case/andP: bounds_bi.
   (* We are in another block *)
-  move=> ?.
-  case: leltP=> ?; first by omega.
+  have /negbTE -> : ~~ inbounds (Sym.block_base bi) sz w.
+    move: bounds_bi; apply: contra => /andP [-> bounds_bi] /=.
+    apply: (leq_trans bounds_bi).
+    by rewrite leq_add2l.
   case/cover_info=> bi' [in_bi' bounds_bi']; exists bi'; split=> //.
   apply/(nthP newbi).
   rewrite /= size_set_nth (maxn_idPr _) ?index_mem //.
@@ -871,7 +892,7 @@ split. (* cover *)
   have [eq_index|] := index bi' info =P index bi info; last by rewrite nth_index.
   have eq_bi: bi' = bi.
     by rewrite -(nth_index bi in_bi) -(nth_index bi in_bi') eq_index.
-  by rewrite eq_bi in bounds_bi'.
+  by rewrite eq_bi (negbTE bounds_bi) in bounds_bi'.
 
 rewrite /Sym.update_block_info.
 move=> bi'.
@@ -886,16 +907,18 @@ have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
   have [eq_i <-|neq_i] := i =P index bi info.
     (* Showing invariant for the new block *)
     apply: (@BlockInfoLive _ _ _ color newb) => //.
-    * rewrite /bounded_add (lock Word.unsigned) /= -lock; omega.
-    * by rewrite PartMaps.get_set_eq.
-    * move=> off /= lt_off.
-    rewrite (get_write_block _ write_bi); last omega.
-  have [/Z.leb_le -> /Z.ltb_lt -> /=]:
-    Word.unsigned (Sym.block_base bi) <=
-         Word.unsigned (Sym.block_base bi + off) <
-         (Word.unsigned (Sym.block_base bi) + Word.unsigned sz)%Z.
-    by split; rewrite addwE; omega.
-  by eexists; eexists.
+    * by rewrite /bounded_add /= eq_sz.
+    * by rewrite getm_set eqxx.
+    move=> off /= lt_off.
+    rewrite (get_write_block _ write_bi).
+    suff ->: inbounds (Sym.block_base bi) sz (Sym.block_base bi + off)%w.
+      by eexists; eexists.
+    rewrite valw_add (leqNgt (2 ^ _)).
+    have -> /= : Sym.block_base bi + off < 2 ^ word_size mt.
+      rewrite -(ltn_add2l (Sym.block_base bi)) in lt_off.
+      apply: (ltn_trans lt_off).
+      by rewrite eq_sz.
+    by rewrite subn0 leq_addr ltn_add2l.
   (* Showing that invariant is preserved for other blocks *)
   move=> nth_i; move: (biP bi'); rewrite -nth_i mem_nth // nth_i.
   move/(_ erefl) => bi'P.
@@ -903,101 +926,113 @@ have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
     move=> col b color_bi' [? ?] mi_col get_bi'.
     apply: (@BlockInfoLive _ _ _ col b) => //.
       have neq_col: col <> color.
-        by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col; apply: lt_irrefl.
-      by rewrite (PartMaps.get_set_neq _ _ neq_col).
+        by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.leqxx.
+      by rewrite getm_set (introF eqP neq_col).
     move=> off lt_off.
-    rewrite (get_write_block _ write_bi); last omega.
-    have [/andP [/Z.leb_le ? /Z.ltb_lt ?]|] :=
-      boolP (Word.unsigned (Sym.block_base bi) <=?
-             Word.unsigned (Sym.block_base bi' + off) <?
-             Word.unsigned (Sym.block_base bi) + Word.unsigned sz).
+    rewrite (get_write_block _ write_bi).
+    have [bounds_bi|] := boolP (inbounds _ _ _).
       case: neq_i; apply: (no_overlap _ _ newbi (Sym.block_base bi' + off) lt_i).
         by rewrite index_mem.
-      rewrite nth_i nth_index //; split.
-        by rewrite addwE; omega.
-      rewrite -eq_sz.
-      omega.
+      rewrite nth_i nth_index //; split; last by rewrite -eq_sz.
+      rewrite valw_add (leqNgt (2 ^ _)).
+      move: (lt_off).
+      rewrite -(ltn_add2l (Sym.block_base bi')) => /ltn_trans -> //.
+      by rewrite subn0 leq_addr ltn_add2l.
     by move=> _; apply: get_bi'.
   move=> color_bi' [? ?] get_bi'.
   apply: BlockInfoFree => //.
   move=> off bounds_off.
-  rewrite (get_write_block _ write_bi); last omega.
-  have [/andP [/Z.leb_le ? /Z.ltb_lt ?]|] :=
-      boolP (Word.unsigned (Sym.block_base bi) <=?
-             Word.unsigned (Sym.block_base bi' + off) <?
-             Word.unsigned (Sym.block_base bi) + Word.unsigned sz).
+  rewrite (get_write_block _ write_bi).
+  have [bounds_bi|] := boolP (inbounds _ _ _).
     case: neq_i; apply: (no_overlap _ _ newbi (Sym.block_base bi' + off) lt_i).
       by rewrite index_mem.
-    rewrite nth_i nth_index //; split.
-      by rewrite addwE; omega.
-    rewrite -eq_sz.
-    omega.
+    rewrite nth_i nth_index //; split; last by rewrite -eq_sz.
+    rewrite valw_add (leqNgt (2 ^ _)).
+    move: (bounds_off).
+    rewrite -(ltn_add2l (Sym.block_base bi')) => /ltn_trans -> //.
+    by rewrite subn0 leq_addr ltn_add2l.
   by move=> _; apply: get_bi'.
-have lt_sz: Word.unsigned sz < Word.unsigned (Sym.block_size bi).
-  by apply/Z.le_neq; split=> // /Word.unsigned_inj.
+have lt_sz: sz < Sym.block_size bi.
+  by rewrite ltn_neqAle (introN eqP neq_sz).
 case/(nthP newbi) => i.
 rewrite /= size_set_nth (maxn_idPr _) ?index_mem // => lt_i.
 case: i lt_i => [|i] lt_i /=.
   move=> <-.
   constructor=> //.
-  rewrite /bounded_add (lock Word.unsigned) /= -lock subwE ?addwE; omega.
+    rewrite /bounded_add (lock addw) (lock subw) /= -!lock.
+    rewrite valw_sub // ltn_subRL addn0; split=> //.
+    rewrite valw_add (leqNgt (2 ^ _)).
+    move: (lt_sz).
+    rewrite -(ltn_add2l (Sym.block_base bi)) => /ltn_trans -> //.
+    by rewrite subn0 -addnA (addnC sz) subnK.
   move=> off bounds_off.
-  rewrite (get_write_block _ write_bi); last omega.
-  rewrite subwE in bounds_off; last omega.
-  have [/andP [/Z.leb_le le_bi /Z.ltb_lt le_biD]|_] :=
-      boolP (Word.unsigned (Sym.block_base bi) <=?
-             Word.unsigned (Sym.block_base bi + sz + off) <?
-             Word.unsigned (Sym.block_base bi) + Word.unsigned sz).
-    by rewrite !addwE in le_bi le_biD; omega.
+  rewrite (get_write_block _ write_bi).
+  rewrite (lock subw) /= -lock valw_sub // ltn_subRL in bounds_off.
+  rewrite (lock addw) (lock subw) /= -!lock.
+  have [bounds_bi|_] := boolP (inbounds _ _ _).
+    rewrite !valw_add !(leqNgt (2 ^ _)) in bounds_bi.
+    have bsz : Sym.block_base bi + sz < 2 ^ word_size mt.
+      rewrite -(leq_add2l (Sym.block_base bi)) in le_sz.
+      by apply: (leq_ltn_trans le_sz).
+    rewrite {}bsz subn0 in bounds_bi.
+    rewrite -(leq_add2l (Sym.block_base bi)) addnS addnA in bounds_off.
+    rewrite (ltn_trans bounds_off) // subn0 in bounds_bi.
+    suff : Sym.block_base bi + sz < Sym.block_base bi + sz by rewrite ltnn.
+    case/andP: bounds_bi => [_].
+    by apply: leq_ltn_trans; apply: leq_addr.
   have [|_ _ get_bi] := biP bi in_bi; first by rewrite color_bi.
   rewrite -addwA.
   apply: get_bi.
-  by rewrite addwE; omega.
+  rewrite valw_add (leqNgt (2 ^ _)) (ltn_trans bounds_off) //.
+  by rewrite subn0.
 rewrite !nth_set_nth /=.
 have [eq_i <-|neq_i] := i =P index bi info.
   apply: (@BlockInfoLive _ _ _ color newb) => //.
-  * by rewrite /= /bounded_add; omega.
-  * by rewrite PartMaps.get_set_eq.
-  * move=> off /= lt_off.
-  rewrite (get_write_block _ write_bi); last omega.
-  have [/Z.leb_le -> /Z.ltb_lt -> /=]:
-    Word.unsigned (Sym.block_base bi) <=
-         Word.unsigned (Sym.block_base bi + off) <
-         (Word.unsigned (Sym.block_base bi) + Word.unsigned sz)%Z.
-    by split; rewrite addwE; omega.
-  by eexists; eexists.
+  * rewrite /= /bounded_add; split=> //.
+      admit.
+    rewrite -(leq_add2l (Sym.block_base bi)) in le_sz.
+    by rewrite (leq_ltn_trans le_sz).
+  * by rewrite getm_set eqxx.
+  move=> off /= lt_off.
+  rewrite (get_write_block _ write_bi).
+  suff ->: inbounds (Sym.block_base bi) sz (Sym.block_base bi + off)%w
+    by eexists; eexists.
+  rewrite valw_add (leqNgt (2 ^ _)).
+  move: (ltn_trans lt_off lt_sz).
+  rewrite -(ltn_add2l (Sym.block_base bi)) => /ltn_trans -> //.
+  by rewrite subn0 leq_addr ltn_add2l.
 move=> nth_i; move: (biP bi'); rewrite -nth_i mem_nth // nth_i.
 case=> //.
   move=> col b color_bi' [? ?] mi_col get_bi'.
   apply: (@BlockInfoLive _ _ _ col b) => //.
     have neq_col: col <> color.
-      by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col; apply: lt_irrefl.
-    by rewrite (PartMaps.get_set_neq _ _ neq_col).
+      by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.leqxx.
+    by rewrite getm_set (introF eqP neq_col).
   move=> off lt_off.
-  rewrite (get_write_block _ write_bi); last omega.
-  have [/andP [/Z.leb_le ? /Z.ltb_lt ?]|] :=
-      boolP (Word.unsigned (Sym.block_base bi) <=?
-             Word.unsigned (Sym.block_base bi' + off) <?
-             Word.unsigned (Sym.block_base bi) + Word.unsigned sz).
+  rewrite (get_write_block _ write_bi).
+  have [/andP [lbbi ubbi]|] := boolP (inbounds _ _ _).
     case: neq_i; apply: (no_overlap _ _ newbi (Sym.block_base bi' + off) lt_i).
       by rewrite index_mem.
     rewrite nth_i nth_index //; split.
-      by rewrite addwE; omega.
-    omega.
+      rewrite valw_add (leqNgt (2 ^ _)).
+      rewrite (_ : _ < _ = true) ?subn0 ?leq_addr ?ltn_add2l //.
+      rewrite -(ltn_add2l (Sym.block_base bi')) in lt_off.
+      by rewrite (ltn_trans lt_off).
+    by rewrite lbbi (ltn_trans ubbi) // ltn_add2l.
   by move=> _; apply: get_bi'.
 move=> color_bi' [? ?] get_bi'.
 apply: BlockInfoFree => //.
 move=> off bounds_off.
-rewrite (get_write_block _ write_bi); last omega.
-have [/andP [/Z.leb_le ? /Z.ltb_lt ?]|] :=
-      boolP (Word.unsigned (Sym.block_base bi) <=?
-             Word.unsigned (Sym.block_base bi' + off) <?
-             Word.unsigned (Sym.block_base bi) + Word.unsigned sz).
+rewrite (get_write_block _ write_bi).
+have [/andP [lbbi ubbi]|] := boolP (inbounds _ _ _).
   case: neq_i; apply: (no_overlap _ _ newbi (Sym.block_base bi' + off) lt_i).
     by rewrite index_mem.
   rewrite nth_i nth_index //; split.
-    by rewrite addwE; omega.
-  omega.
+    rewrite valw_add (leqNgt (2 ^ _)).
+    rewrite (_ : _ < _ = true) ?subn0 ?leq_addr ?ltn_add2l //.
+    rewrite -(ltn_add2l (Sym.block_base bi')) in bounds_off.
+    by rewrite (ltn_trans bounds_off).
+  by rewrite lbbi (ltn_trans ubbi) // ltn_add2l.
 by move=> _; apply: get_bi'.
 Qed.
 
@@ -1007,7 +1042,7 @@ Hint Resolve meminj_update.
 
 Lemma refine_pc_inv mi col apcb apci pc :
   refine_val mi (Abstract.VPtr (apcb, apci)) pc (PTR col) ->
-  exists base, PartMaps.get mi col = Some (apcb,base) /\ (base + apci)%w = pc.
+  exists base, mi col = Some (apcb,base) /\ (base + apci)%w = pc.
 Proof.
 intros rpc; inversion rpc.
 by exists base; split.
@@ -1018,7 +1053,7 @@ Ltac subst_beq :=
   | EQ : (?x == ?y) = true |- _ => (move/eqP: EQ => EQ; subst) || fail 2
   end.
 
-Definition lift_binop (f : binop) (x y : atom (word mt) Sym.tag) :=
+Definition lift_binop (f : binop) (x y : atom (mword mt) Sym.tag) :=
   match f with
   | ADD => match x, y with
            | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
@@ -1108,7 +1143,7 @@ try have [rpcb [mi_apcb rpci]] := refine_pc_inv rpc;
 try match goal with
 | GETCALL : Symbolic.get_syscall _ _ = Some _,
   CALL : Symbolic.run_syscall _ _ = Some _,
-  PC : PartMaps.get _ ?pc = None |- _ =>
+  PC : getm _ ?pc = None |- _ =>
   (move: GETCALL CALL;
   case: extra rist => color info rist;
   rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=;
@@ -1127,7 +1162,7 @@ try match goal with
 end;
 
 repeat match goal with
-  | GET : PartMaps.get ?reg ?r = Some ?v@V(?ty),
+  | GET : getm ?reg ?r = Some ?v@V(?ty),
     rregs : refine_registers _ _ ?reg |- _ =>
     match ty with
     | DATA => eapply (refine_registers_get_int rregs) in GET; destruct GET as [? ?]
@@ -1142,8 +1177,8 @@ repeat match goal with
   end;
 
 match goal with
-| GET : PartMaps.get ?mem ?w1 = Some _@M(?w2,?ty),
-  UPD : PartMaps.upd ?mem ?w1 _@_ = Some _,
+| GET : getm ?mem ?w1 = Some _@M(?w2,?ty),
+  UPD : updm ?mem ?w1 _@_ = Some _,
   rmem : refine_memory _ _ ?mem |- _ =>
     move: (GET) => GET2;
     eapply (refine_memory_get rmem) in GET; [|by eauto]; destruct GET as (? & ? & ? & ? & ?)
@@ -1152,10 +1187,10 @@ end;
 
 match goal with
 | IDX : index_list_Z _ _ = Some _,
-  UPD : PartMaps.upd ?mem ?w1 ?v@_ = Some _,
+  UPD : updm ?mem ?w1 ?v@_ = Some _,
   rmem : refine_memory _ _ ?mem,
   rv : refine_val mi ?x ?v _,
-  GET : PartMaps.get ?mem ?w1 = Some _ |- _ =>
+  GET : getm ?mem ?w1 = Some _ |- _ =>
     destruct (valid_update IDX x) as (? & ?);
     eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?);
     clear GET
@@ -1163,7 +1198,7 @@ match goal with
 end;
 
 repeat match goal with
-  | GET : PartMaps.get ?mem ?w1 = Some ?v@M(_,?ty),
+  | GET : getm ?mem ?w1 = Some ?v@M(_,?ty),
     rmem : refine_memory _ _ ?mem |- _ =>
     match ty with
     | DATA => (eapply (refine_memory_get_int rmem) in GET; [|by eauto])
@@ -1183,7 +1218,7 @@ try match goal with
 end;
 
 match goal with
-  | UPD : PartMaps.upd ?reg ?r ?v = Some _,
+  | UPD : updm ?reg ?r ?v = Some _,
     rreg : refine_registers _ _ ?reg |- _ =>
     (eapply (refine_registers_upd rregs) in UPD; [|by eauto]; destruct UPD as (? & ? & ?)) (* || let op := current_instr_opcode in fail 3 "refine_registers_upd" op UPD *)
   | |- _ => idtac
@@ -1274,13 +1309,13 @@ by solve_pc rpci.
     rewrite -addwE; last omega.
     exact/word_unsigned_lt/ltb_lt.
 
-  have [fr get_b]: exists fr, PartMaps.get a_mem b = Some fr.
+  have [fr get_b]: exists fr, a_mem b = Some fr.
     case/(_ (val - Sym.block_base x)): get_x => [|w' [ty]].
     rewrite subwE; omega.
     case: rmem => _ rmem.
     move/rmem.
     rewrite mi_col /Abstract.getv /=.
-    by case: (PartMaps.get a_mem b) => // fr _; exists fr.
+    by case: (a_mem b) => // fr _; exists fr.
   have eq_col: col = s by congruence.
   have eq_s4b: s2 = b.
     inversion H3.
