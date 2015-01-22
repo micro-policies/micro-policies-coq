@@ -1250,10 +1250,10 @@ by solve_pc rpci.
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ bi _).
   have: bi \in [seq x <- info
-              | (val <=? Sym.block_size x)%ordered
+              | (val <= Sym.block_size x)%ord
               & Sym.block_color x == None].
     case: [seq x <- info
-              | (val <=? Sym.block_size x)%ordered
+              | (val <= Sym.block_size x)%ord
               & Sym.block_color x == None] Heqo => //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/andP [lt_val /eqP color_bi in_bi]].
@@ -1266,7 +1266,7 @@ by solve_pc rpci.
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
   have rnewb: refine_val mi' (Abstract.VPtr (newb, 0)) (Sym.block_base bi) (PTR color).
     rewrite -[Sym.block_base bi]addw0; constructor.
-    by rewrite /mi' /mi_malloc PartMaps.get_set_eq.
+    by rewrite /mi' /mi_malloc getm_set eqxx.
 
   move/(refine_registers_malloc (Sym.block_base bi) fresh_color malloc): rregs => rregs.
   eapply (refine_registers_upd rregs rnewb) in E2.
@@ -1279,25 +1279,15 @@ by solve_pc rpci.
   by eauto.
   by eauto.
 
-  move/ltb_lt: E => E.
-  move/ltb_lt: E1 => E1.
-  move/leb_le: lt_val => lt_val.
-  move: (lt__le _ _ E1) => /word_unsigned_le nneg_val.
-  rewrite Word.unsigned_zero in nneg_val.
-
   split; try eassumption.
-  exact: (refine_memory_malloc rmem nneg_val rist malloc).
+  exact: (refine_memory_malloc rmem rist malloc).
   exact: (refine_val_malloc _ fresh_color malloc).
-  have in_bounds: 0 < Word.unsigned val <= Word.unsigned (Sym.block_size bi).
-    split; first by move/word_unsigned_lt: E1; rewrite Word.unsigned_zero.
-    exact/word_unsigned_le.
-
-  exact: (refine_internal_state_malloc in_bounds malloc).
+  exact: (refine_internal_state_malloc lt_val malloc).
 
 (* Free *)
 
-  generalize (@min_word_bound mt) => min_bound.
-  generalize (@max_word_bound mt) => max_bound.
+  (*generalize (@min_word_bound mt) => min_bound.
+  generalize (@max_word_bound mt) => max_bound.*)
   have ? := @leZ_max (Sym.block_size x).
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ x _).
@@ -1308,16 +1298,15 @@ by solve_pc rpci.
   rewrite in_x => /(_ erefl) biP.
   case: biP E E0 E1 color_x in_x => [|->] //.
   move=> col b color_bi [? ?] mi_col get_x E E0 E1 color_x in_x.
-  case/andP: E1 => ? ?.
-  have [E1 E2]: Word.unsigned (Sym.block_base x) <= Word.unsigned val <
-            Word.unsigned (Sym.block_base x) + (Word.unsigned (Sym.block_size x)).
-    split; first exact/word_unsigned_le/leb_le.
-    rewrite -addwE; last omega.
-    exact/word_unsigned_lt/ltb_lt.
-
+  case/andP: E1 => lb_val ub_val.
+  rewrite (lock addw) /= -!val_ordE /= /Ord.leq /= -lock in ub_val.
+  rewrite valw_add' // -ltnNge in ub_val.
+  have /andP [E1 E2]:
+    Sym.block_base x <= val < Sym.block_base x + Sym.block_size x.
+    by apply/andP.
   have [fr get_b]: exists fr, a_mem b = Some fr.
     case/(_ (val - Sym.block_base x)): get_x => [|w' [ty]].
-    rewrite subwE; omega.
+      by rewrite valw_sub // -(ltn_add2r (Sym.block_base x)) subnK // addnC.
     case: rmem => _ rmem.
     move/rmem.
     rewrite mi_col /Abstract.getv /=.
@@ -1387,10 +1376,14 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
 
   have [eq_arg1b|neq_arg1b] := altP (arg1b =P s).
     move: H4 H8; rewrite eq_arg1b => -> [-> ->].
-    by rewrite eqxx (inj_eq (@addwI _ base0)) => upd_ret.
+    have -> /= : (base0 + off == base0 + off0) = (off == off0).
+      by apply/inj_eq/GRing.addrI.
+    rewrite [in bool_to_word _]eqE /= eqxx /=.
+    by case: (_ == _).
+  rewrite [in bool_to_word _]eqE /=.
   have/negbTE->//: b != b0.
-  apply/eqP=> eq_b; rewrite eq_b in H4 H8.
-  by rewrite (miIr miP H4 H8) eqxx in neq_arg1b.
+    apply/eqP=> eq_b; rewrite eq_b in H4 H8.
+    by rewrite (miIr miP H4 H8) eqxx in neq_arg1b.
   by eauto.
 
   by split; eassumption.
