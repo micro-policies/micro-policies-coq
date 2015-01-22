@@ -88,8 +88,8 @@ Class allocator := {
 Definition getv (mem : memory) (ptr : pointer) :=
   match mem ptr.1 with
   | None => None
-  | Some fr => if eqtype.val ptr.2 < size fr then
-                 Some (nth (VData 0) fr (eqtype.val ptr.2))
+  | Some fr => if ptr.2 < size fr then
+                 Some (nth (VData 0) fr ptr.2)
                else
                  None
   end.
@@ -98,13 +98,11 @@ Definition updv (mem : memory) (ptr : pointer) (v : value) :=
   match mem ptr.1 with
   | None => None
   | Some fr =>
-    let off := eqtype.val ptr.2 in
-    if off < size fr then
-      let fr' := take off fr ++ v :: drop off.+1%N fr in
+    if ptr.2 < size fr then
+      let fr' := take ptr.2 fr ++ v :: drop ptr.2.+1%N fr in
       Some (setm mem ptr.1 fr')
     else None
   end.
-
 
 Class allocator_spec (alloc : allocator) := {
 

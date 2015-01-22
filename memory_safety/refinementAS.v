@@ -177,10 +177,9 @@ Qed.
 Lemma refine_memory_get smem (w1 w2 : mword mt) col pt ty :
          refine_memory amem smem -> refine_val (Abstract.VPtr pt) w1 (PTR col) ->
          smem w1 = Some (w2@M(col,ty)) ->
-         exists fr x, amem (fst pt) = Some fr
-         /\ nth (Abstract.VData block 0) fr (ord_of_word pt.2) = x
-         /\ ord_of_word pt.2 < size fr
-         /\ refine_val x w2 ty.
+         exists2 x,
+           Abstract.getv amem pt = Some x &
+           refine_val x w2 ty.
 Proof.
 move=> [miP rmem] rpt get_w1.
 move/(_ _ _ _ _ get_w1): rmem.
@@ -188,8 +187,7 @@ inversion rpt.
 rewrite H4 (addwC base).
 rewrite (_ : off + base - base = off); last exact: GRing.addrK.
 rewrite /Abstract.getv.
-case: (amem b) => //= fr get_off.
-exists fr; move: get_off.
+case: (amem b) => //= get_off.
 by case: (_ < _) => //; eauto.
 Qed.
 
@@ -241,98 +239,112 @@ Definition refine_internal_state (bl : list block) smem (ist : Sym.color * list 
   cover smem info /\
   forall bi, bi \in info -> block_info_spec smem bi.
 
-(*
+(* TODO: move *)
+Lemma valw_sub (w1 w2 : mword mt) :
+  w2 <= w1 ->
+  (w1 - w2)%w = (w1 - w2)%N :> nat.
+Proof. admit. Qed.
+
 Lemma refine_memory_upd bl smem smem' ist old
-                        w1 w2 pt ty ty' n fr fr' x :
+                        w1 w2 pt ty ty' n x :
   refine_memory amem smem ->
   refine_internal_state bl smem ist ->
   refine_val (Abstract.VPtr pt) w1 (PTR n) ->
   smem w1 = Some old@M(n, ty') ->
   updm smem w1 w2@M(n, ty) = Some smem' ->
-  amem pt.1 = Some fr ->
-  update_list_Z (Word.unsigned pt.2) x fr = Some fr' ->
   refine_val x w2 ty ->
-    exists amem', [/\ updm amem pt.1 fr' = Some amem',
-      refine_memory amem' smem' & refine_internal_state bl smem' ist].
+    exists amem',
+      [/\ Abstract.updv amem pt x = Some amem',
+          refine_memory amem' smem' &
+          refine_internal_state bl smem' ist].
 Proof.
 case: ist => nextcol info.
 move=> [miP rmem] [freshcol [in_bl [no_overlap [cover_info rist]]]] rpt get_w1 upd_w1.
-move=> get_pt update_pt rx.
-destruct (PartMaps.upd_defined fr' get_pt) as [amem' upd_pt].
-exists amem'; split => //; last first.
-  repeat split => //.
-    move=> w v.
-    have [->|neq_ww1] := w =P w1.
-      by case: (cover_info _ _ get_w1) => bi ? _; exists bi.
-    by rewrite (PartMaps.get_upd_neq neq_ww1 upd_w1); apply: cover_info.
-  case=> bi_base bi_size [bi_col in_bi|in_bi]; last first.
-    move/(_ _ in_bi): rist => biP.
-    inversion biP => //.
-    apply: BlockInfoFree => //=.
-    move=> off lt_off.
-    case/(_ off lt_off): H3 => v /=.
-    have [->|/eqP neq_w1] := altP (bi_base + off =P w1).
-       by rewrite get_w1.
-    by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1); move => ?; exists v.
-  have [eq_coln|neq_coln] := altP (bi_col =P n).
-    rewrite eq_coln in in_bi *.
-    move/(_ _ in_bi): rist => biP.
-    inversion biP => //.
-    case: H1 => eq_col.
-    rewrite -eq_col in H3 H4.
-    apply: (BlockInfoLive _ H2 H3) => //=.
-    move=> off lt_off.
-    case/(_ off lt_off): H4 => v [ty''].
-    destruct pt as [pt_b pt_off].
-    rewrite (refine_ptr_inv miP rpt H3) in get_w1 upd_w1.
-    have [->|/eqP neq_off] := altP (off =P pt_off).
-      by move=> _; rewrite (PartMaps.get_upd_eq upd_w1); eexists; eexists.
-    have neq_w1 : bi_base + off <> bi_base + pt_off.
-      move => eq_off. apply neq_off.
-      by rewrite -[off]Word.add_zero_l -[pt_off]Word.add_zero_l
-                 -(Word.sub_idem _ bi_base) -!Word.sub_add_l eq_off.
-    by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1) => ?; eexists; eexists.
+move=> rx.
+have [base hn hw1]: exists2 base,
+                    mi n = Some (pt.1, base) &
+                    w1 = base + pt.2.
+  by inversion rpt; subst; simpl; eauto.
+subst w1.
+move: (rmem _ _ _ _ get_w1); rewrite hn addwC.
+have -> : pt.2 + base - base = pt.2 by exact: GRing.addrK.
+rewrite -surjective_pairing.
+rewrite /Abstract.updv /Abstract.getv.
+case get_pt: (amem pt.1) => [fr|//].
+have [gt_pt rold|//] := boolP (pt.2 < _).
+eexists; split; first by []; do!split=> //.
+- exact: miIr miP.
+- move=> w1' x' n' tx'; rewrite (getm_upd upd_w1).
+  have [{w1' x' n' tx'}-> [<- <- <-]|neq_w1'] := altP (_ =P _).
+    rewrite hn /Abstract.getv.
+    have -> /=: base + pt.2 - base = pt.2.
+      rewrite addwC; exact: GRing.addrK.
+    rewrite getm_set eqxx size_cat /= size_take size_drop gt_pt.
+    rewrite addnS -addSn addnC subnK // gt_pt.
+    by rewrite nth_cat size_take gt_pt ltnn subnn /=.
+  have [{n'}-> /rmem|neq_n] := altP (n' =P n).
+    rewrite hn.
+    have {neq_w1'} : w1' - base != pt.2.
+      apply: contra neq_w1'=> /eqP <-.
+      rewrite addwC; apply/eqP/esym.
+      exact: GRing.subrK.
+    move: {w1'}(w1' - base) => w1' neq_w1'.
+    rewrite /Abstract.getv /= get_pt getm_set eqxx.
+    rewrite size_cat size_take /= size_drop gt_pt.
+    rewrite addnS -addSn addnC subnK //.
+    have [lt_w1'|//] := boolP (w1' < _).
+    rewrite nth_cat size_take gt_pt.
+    case: (ltngtP w1' pt.2)=> [gt_w1'|gt_w1'|/val_inj/val_inj eq_w1'] /=.
+    + by rewrite nth_take.
+    + have -> /=: (w1' - pt.2)%N = (w1' - pt.2.+1).+1.
+        by rewrite subnS prednK // ltn_subRL addn0.
+      by rewrite nth_drop addnC subnK.
+    by rewrite eq_w1' eqxx in neq_w1'.
+  move/rmem; case hn': (mi n') => [[b base']|//].
+  rewrite /Abstract.getv (lock subw) /= -lock getm_set.
+  case hb: (amem b) => [fr'|] //.
+  suff /negbTE -> : b != pt.1 by [].
+  apply: contra neq_n => /eqP ?; subst b.
+  by rewrite (miIr miP hn hn') eqxx.
+- move=> w1' v; rewrite (getm_upd upd_w1).
+  have [{w1' v}-> _|_] := altP (_ =P _); by eauto.
+case=> bi_base bi_size [bi_col in_bi|in_bi]; last first.
   move/(_ _ in_bi): rist => biP.
-  inversion biP => //=.
+  inversion biP => //.
+  apply: BlockInfoFree => //=.
+  move=> off lt_off.
+  case/(_ off lt_off): H3 => v /=.
+  have [->|/eqP neq_w1] := altP (bi_base + off =P base + pt.2).
+     by rewrite get_w1.
+  by rewrite (getm_upd_neq neq_w1 upd_w1); move => ?; exists v.
+have [eq_coln|neq_coln] := altP (bi_col =P n).
+  rewrite eq_coln in in_bi *.
+  move/(_ _ in_bi): rist => biP.
+  inversion biP => //.
   case: H1 => eq_col.
   rewrite -eq_col in H3 H4.
-  apply: (BlockInfoLive _ H2 H3) => //.
+  apply: (BlockInfoLive _ H2 H3) => //=.
   move=> off lt_off.
   case/(_ off lt_off): H4 => v [ty''].
-  have [->|/eqP neq_w1] := altP (bi_base + off =P w1).
-    by rewrite get_w1 => [[_ eq_coln _]]; rewrite eq_coln eqxx in neq_coln.
-  by rewrite (PartMaps.get_upd_neq neq_w1 upd_w1); move => ?; eexists; eexists.
-split; first by constructor; case: miP.
-move=> w0 w3 col ?.
-have [->|/eqP neq_w0w1] := altP (w0 =P w1).
-  rewrite (PartMaps.get_upd_eq upd_w1) => [[<- <- <-]].
-  inversion rpt.
-  rewrite H4 Word.sub_add_l Word.sub_idem Word.add_zero_l H1.
-  rewrite /Abstract.getv.
-  rewrite (PartMaps.get_upd_eq upd_pt).
-  by rewrite (update_list_Z_spec update_pt).
-rewrite (PartMaps.get_upd_neq neq_w0w1 upd_w1).
-move=> get_w0.
-move/(_ _ _ _ _ get_w0): rmem.
-inversion rpt.
-rewrite -H1 /= in get_pt upd_pt update_pt.
-have [->|neq_coln] := altP (col =P n).
-  rewrite H4 /Abstract.getv /=.
-  rewrite get_pt (PartMaps.get_upd_eq upd_pt).
-  have neq_off: Word.unsigned (w0 - base) <> Word.unsigned off.
-    move/Word.unsigned_inj => eq_off.
-    rewrite -eq_off Word.add_commut in H3.
-    by rewrite -Word.sub_add_l Word.add_commut Word.sub_add_l Word.sub_idem Word.add_zero_l in H3.
-  by rewrite (update_list_Z_spec2 update_pt neq_off).
-case mi_col: (mi col) => [[b' base']|] //.
-rewrite /Abstract.getv /=.
-have neq_b: b' <> b.
-  move=> eq_bb'.
-  rewrite eq_bb' in mi_col.
-  by rewrite (miIr miP mi_col H4) eqxx in neq_coln.
-by rewrite (PartMaps.get_upd_neq neq_b upd_pt).
+  destruct pt as [pt_b pt_off].
+  rewrite (refine_ptr_inv miP rpt H3) in get_w1 upd_w1.
+  have [->|/eqP neq_off] := altP (off =P pt_off).
+    by move=> _; rewrite (getm_upd_eq upd_w1); eexists; eexists.
+  have neq_w1 : bi_base + off <> bi_base + pt_off.
+    move => eq_off.
+    by apply: neq_off; apply: (can_inj (GRing.addKr bi_base)).
+  by rewrite (getm_upd_neq neq_w1 upd_w1) => ?; eexists; eexists.
+move/(_ _ in_bi): rist => biP.
+inversion biP => //=.
+case: H1 => eq_col.
+rewrite -eq_col in H3 H4.
+apply: (BlockInfoLive _ H2 H3) => //.
+move=> off lt_off.
+case/(_ off lt_off): H4 => v [ty''].
+have [->|/eqP neq_w1] := altP (bi_base + off =P base + pt.2).
+  by rewrite get_w1 => [[_ eq_coln _]]; rewrite eq_coln eqxx in neq_coln.
+by rewrite (getm_upd_neq neq_w1 upd_w1); move => ?; eexists; eexists.
 Qed.
-*)
 
 Definition mi_malloc b base col : meminj :=
   setm mi col (b,base).
@@ -373,12 +385,6 @@ rewrite /Sym.write_block.
 have [bound write_block|//] := boolP (_ <= _).
 by rewrite (get_write_block_rec _ write_block).
 Qed.
-
-(* TODO: move *)
-Lemma valw_sub (w1 w2 : mword mt) :
-  w2 <= w1 ->
-  (w1 - w2)%w = (w1 - w2)%N :> nat.
-Proof. admit. Qed.
 
 Lemma block_color_uniq (smem : Sym.memory mt) bi info bl nc col b w1 w2 ty :
   refine_memory amem smem ->
@@ -1181,18 +1187,18 @@ match goal with
   UPD : updm ?mem ?w1 _@_ = Some _,
   rmem : refine_memory _ _ ?mem |- _ =>
     move: (GET) => GET2;
-    eapply (refine_memory_get rmem) in GET; [|by eauto]; destruct GET as (? & ? & ? & ? & ?)
+    eapply (refine_memory_get rmem) in GET; [|by eauto]; destruct GET as [? ? ?]
   | |- _ => idtac
 end;
 
 match goal with
-| IDX : index_list_Z _ _ = Some _,
-  UPD : updm ?mem ?w1 ?v@_ = Some _,
+| UPD : updm ?mem ?w1 ?v@_ = Some _,
   rmem : refine_memory _ _ ?mem,
   rv : refine_val mi ?x ?v _,
   GET : getm ?mem ?w1 = Some _ |- _ =>
-    destruct (valid_update IDX x) as (? & ?);
-    eapply (refine_memory_upd rmem) in UPD; [|by eauto|by eauto|by eauto|by eauto|by eauto|by eauto]; destruct UPD as (? & ? & ?);
+    eapply (refine_memory_upd rmem) in UPD;
+    [|by eauto|by eauto|by eauto|by eauto];
+    destruct UPD as [? [? ? ?]];
     clear GET
   | |- _ => idtac
 end;
@@ -1204,7 +1210,7 @@ repeat match goal with
     | DATA => (eapply (refine_memory_get_int rmem) in GET; [|by eauto])
                     || fail 5 "refine_memory_get_int"
     | _ =>
-    (eapply (refine_memory_get rmem) in GET; [|by eauto]; destruct GET as (? & ? & ? & ? & ?)) || let op := current_instr_opcode in
+    (eapply (refine_memory_get rmem) in GET; [|by eauto]; destruct GET as [? ? ?]) || let op := current_instr_opcode in
             fail 5 "refine_memory_get" op GET
     end
   end;
