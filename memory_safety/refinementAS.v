@@ -724,7 +724,7 @@ by apply: (refine_val_malloc _ fresh_col malloc).
 Qed.
 
 Lemma refine_internal_state_malloc mi amem amem' bl smem info (sz : mword mt) newb bi color smem' :
-  sz <= Sym.block_size bi ->
+  0 < sz <= Sym.block_size bi ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   (color < Sym.max_color)%ord ->
   Sym.block_color bi = None ->
@@ -734,7 +734,7 @@ Lemma refine_internal_state_malloc mi amem amem' bl smem info (sz : mword mt) ne
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
     (newb :: bl) smem' (Sym.inc_color color, Sym.update_block_info info bi color sz).
 Proof.
-move=> le_sz malloc lt_color color_bi in_bi.
+move=> /andP [nneg_sz le_sz] malloc lt_color color_bi in_bi.
 case=> [fresh_color [in_bl [no_overlap [cover_info biP]]]] write_bi.
 have [? ?] := block_info_bounds (biP _ in_bi).
 have ? := @leZ_min (Sym.block_base bi).
@@ -989,7 +989,6 @@ rewrite !nth_set_nth /=.
 have [eq_i <-|neq_i] := i =P index bi info.
   apply: (@BlockInfoLive _ _ _ color newb) => //.
   * rewrite /= /bounded_add; split=> //.
-      admit.
     rewrite -(leq_add2l (Sym.block_base bi)) in le_sz.
     by rewrite (leq_ltn_trans le_sz).
   * by rewrite getm_set eqxx.
@@ -1240,7 +1239,7 @@ by solve_pc rpci.
 (* Syscall *)
 
 (* Malloc *)
-  move: b Heqo E0 E2 => bi Heqo E0 E2.
+  move: b Heqo E0 E1 E2 => bi Heqo E0 E1 E2.
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ bi _).
   have: bi \in [seq x <- info
@@ -1276,12 +1275,11 @@ by solve_pc rpci.
   split; try eassumption.
   exact: (refine_memory_malloc rmem rist malloc).
   exact: (refine_val_malloc _ fresh_color malloc).
-  exact: (refine_internal_state_malloc lt_val malloc).
+  have int_val : 0 < val <= Sym.block_size bi by apply/andP; split; eauto.
+  exact: (refine_internal_state_malloc int_val malloc).
 
 (* Free *)
 
-  (*generalize (@min_word_bound mt) => min_bound.
-  generalize (@max_word_bound mt) => max_bound.*)
   have ? := @leZ_max (Sym.block_size x).
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ x _).

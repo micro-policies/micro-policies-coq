@@ -228,7 +228,7 @@ Definition malloc_fun st : option (state t) :=
   do! sz <- regs st syscall_arg1;
   match sz with
     | sz@V(DATA) =>
-      if (0 < sz)%ord then
+      if 0 < (sz : word) then
           if ohead [seq x <- info | ((sz <= block_size x) && (block_color x == None))%ord] is Some x then
           do! mem' <- write_block (mem st) (block_base x) 0@M(color,DATA) sz;
           do! regs' <- updm (regs st) syscall_ret ((block_base x)@V(PTR color));
