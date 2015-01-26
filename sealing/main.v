@@ -141,10 +141,7 @@ Instance encodable_tag : @encodable t Sym.stags := {|
 |}.
 Proof.
   by eauto.
-set ws := wunpack _.
-suff -> : ws = [hseq 0; 0]%w by move=> tk _; rewrite !eqxx.
-rewrite {}/ws /wunpack bits_zero.
-admit.
+by move=> tk _; rewrite 2!wunpackS /=.
 Qed.
 
 Definition DATA : mword t := 0%w.

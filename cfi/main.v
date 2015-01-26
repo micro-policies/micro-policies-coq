@@ -121,7 +121,7 @@ Instance encodable_tag : encodable t cfi_tags := {|
 |}.
 Proof.
   - by eauto.
-  - admit.
+  - by move=> tk _; rewrite 2!wunpackS.
 Qed.
 
 Section Refinement.

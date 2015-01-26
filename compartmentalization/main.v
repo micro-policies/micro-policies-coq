@@ -117,8 +117,7 @@ Lemma decode_data_tag_user_inv mem tg ut :
   ~~ Concrete.is_kernel_tag tg.
 Proof.
 move=> Hdec; apply/negP => /eqP E; move: Hdec.
-rewrite {}E /decode_data_tag.
-admit.
+by rewrite {}E /decode_data_tag 2!wunpackS.
 Qed.
 
 Definition decode_pc_tag (mem : Concrete.memory t) (tg : mword t) : option (tag (Sym.pc_tag t)) :=
@@ -164,7 +163,10 @@ Proof.
     case: (_ || _) => //.
     case: (wunpack _) => [wf [cid_addr []]].
     by rewrite (read_kernel_word_monotonic _ Hget Hnk Hnk').
-- admit.
+- move=> [] m /=.
+  + by rewrite /decode_reg_tag 2!wunpackS.
+  + by rewrite /decode_data_tag 2!wunpackS.
+  by rewrite /decode_pc_tag 2!wunpackS.
 Qed.
 
 Context {monitor_invariant : kernel_invariant}

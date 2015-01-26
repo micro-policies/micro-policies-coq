@@ -159,7 +159,7 @@ Instance enc: encodable t Sym.ms_tags := {|
 |}.
 Proof.
   - move=> * ?. reflexivity.
-  - admit.
+  - by move=> tk _; rewrite 2!wunpackS.
 Qed.
 
 Instance sp : Symbolic.params := Sym.sym_memory_safety t.
