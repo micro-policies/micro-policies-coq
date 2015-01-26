@@ -239,12 +239,6 @@ Definition refine_internal_state (bl : list block) smem (ist : Sym.color * list 
   cover smem info /\
   forall bi, bi \in info -> block_info_spec smem bi.
 
-(* TODO: move *)
-Lemma valw_sub (w1 w2 : mword mt) :
-  w2 <= w1 ->
-  (w1 - w2)%w = (w1 - w2)%N :> nat.
-Proof. admit. Qed.
-
 Lemma refine_memory_upd bl smem smem' ist old
                         w1 w2 pt ty ty' n x :
   refine_memory amem smem ->
