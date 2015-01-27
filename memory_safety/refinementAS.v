@@ -215,9 +215,6 @@ Proof.
 by case.
 Qed.
 
-(* TODO: export from Sym in symbolic.v *)
-Canonical Sym.block_info_eqType.
-
 Definition fresh_color col :=
   forall col' b base, mi col' = Some (b,base) ->
   (col' < col)%ord.

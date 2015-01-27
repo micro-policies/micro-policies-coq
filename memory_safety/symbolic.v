@@ -335,3 +335,5 @@ End Notations.
 Arguments def_info t {_}.
 
 End Sym.
+
+Canonical Sym.block_info_eqType.
