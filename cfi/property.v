@@ -31,8 +31,6 @@ Definition intermstep := interm cfi_step.
 
 Definition intermrstep := intermr cfi_step.
 
-Definition zero_one_step := zero_one cfi_step.
-
 (* Old definition of CFI (Abadi)
 Definition trace_has_cfi' (trace : list state) :=
   forall (si sj : state)

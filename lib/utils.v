@@ -89,94 +89,8 @@ Ltac ecut' x :=
  || refine (cut' _ _ _ (x _))
  || refine (cut' _ _ _ (x)).
 
-(* Like [exact H], but allow indexes to be definitionally different if
-   they are provably equal.
-
-   For example, a goal
-
-     H : T a1 ... an
-     ---------------
-     T b1 ... bn
-
-   is reduced to proving
-
-     a1 = b1, ..., an = bn
-
-   by [exact_f_equal H].
-*)
-Ltac exact_f_equal h :=
-  let h_eq := fresh "h_eq" in
-  let t := type of h in
-  match goal with
-  | [ |- ?g ] =>
-    cut (g = t); [ intro h_eq; rewrite h_eq; exact h | f_equal; auto ]
-  end.
-
 End EqualityTactics.
 Export EqualityTactics.
-
-(* Borrowed from CPDT *)
-(* Instantiate a quantifier in a hypothesis [H] with value [v], or,
-if [v] doesn't have the right type, with a new unification variable.
-Also prove the lefthand sides of any implications that this exposes,
-simplifying [H] to leave out those implications. *)
-
-Ltac guess v H :=
- repeat match type of H with
-          | forall x : ?T, _ =>
-            match type of T with
-              | Prop =>
-                (let H' := fresh "H'" in
-                  assert (H' : T); [
-                    solve [ eauto 6 ]
-                    | specialize (H H'); clear H' ])
-                || fail 1
-              | _ =>
-                specialize (H v)
-                || let x := fresh "x" in
-                  evar (x : T);
-                  let x' := eval unfold x in x in
-                    clear x; specialize (H x')
-            end
-        end.
-
-
-Ltac eq_H_intros :=
-  repeat
-    (match goal with
-      | [  |- _ = _ -> _ ] =>
-        intros ?Heq
-    end).
-
-Ltac eq_H_getrid :=
-  repeat
-    (match goal with
-       | [  |- _ = _ -> _ ] =>
-         intros _
-     end).
-
-Ltac decEq :=
-  match goal with
-  | [ |- _ = _ ] => f_equal
-  | [ |- (?X ?A <> ?X ?B) ] =>
-      cut (A <> B); [intro; congruence | try discriminate]
-  end.
-
-Ltac allinv :=
-  repeat
-    match goal with
-      | [ H: Some _ = Some _ |- _ ] => inv H
-      | [ H: Some _ = None |- _ ] => inv H
-      | [ H: None = Some _ |- _ ] => inv H
-      | _ => idtac
-    end.
-
-Ltac allinv' :=
-  allinv ;
-    (match goal with
-       | [ H1:  ?f _ _ = _ ,
-           H2:  ?f _ _ = _ |- _ ] => rewrite H1 in H2 ; inv H2
-     end).
 
 Ltac andb_true_split :=
   hnf;
@@ -192,37 +106,6 @@ Ltac andb_true_split :=
   end.
 
 Notation "f ∘ g" := (f \o g) (at level 30).
-
-Fixpoint update_list A (n : nat) (y : A) (xs : seq A) : option (seq A) :=
-  match xs, n with
-  | nil, _ => None
-  | _ :: xs', 0 => Some (y :: xs')
-  | a :: xs', S n' =>
-    match update_list n' y xs' with
-      | None => None
-      | Some l => Some (a::l)
-    end
-  end.
-
-Lemma update_some_not_nil : forall A (v:A) l a l',
-  update_list a v l = Some l' ->
-  l' = nil ->
-  False.
-Proof.
-  destruct l; intros.
-  destruct a ; simpl in * ; congruence.
-  destruct a0 ; simpl in *. congruence.
-  destruct update_list.  inv H.
-  congruence.
-  congruence.
-Qed.
-
-Fixpoint just_somes {X Y} (l : seq (X * option Y)) :=
-  match l with
-  | nil => nil
-  | (_, None) :: l' => just_somes l'
-  | (x, Some y) :: l' => (x,y) :: just_somes l'
-  end.
 
 Lemma obind_inv A B (f : A -> option B) (a : option A) (b : B) :
   obind f a = Some b -> exists a', a = Some a' /\ f a' = Some b.
@@ -275,9 +158,6 @@ Fixpoint assoc_list_lookup {T1 T2 : Type} (xys : seq (T1 * T2)%type)
                      else assoc_list_lookup xys' select
   end.
 
-Require Import Recdef.
-Require Import Omega.
-
 Section In2.
 
 Variable A : Type.
@@ -306,15 +186,6 @@ Proof.
   simpl. right. auto.
 Qed.
 
-Lemma in2_strengthen' :
-  forall zs ys,
-    In2 zs ->
-    In2 (zs ++ ys).
-Proof.
-  induction zs as [|z1 [|z2 zs]]; try solve [inversion 1].
-  intros ys [[-> ->] | IN2]; [left | right]; auto.
-Qed.
-
 Lemma in2_trivial : forall xs ys,
   In2 (xs ++ x :: y :: ys).
 Proof.
@@ -322,26 +193,6 @@ Proof.
   simpl.
   destruct (xs ++ x :: y :: ys). inversion IHxs.
   right; assumption.
-Qed.
-
-Lemma in2_reverse : forall xs i j,
-  In2 (xs ++ [:: i;j]) ->
-  In2 (xs ++ [:: i]) \/ i = x /\ j = y.
-Proof.
-  intros xs i j IN2.
-  induction xs.
-  - right. simpl in IN2; destruct IN2 as [[EQ1 EQ2] | CONTRA]; [auto | inversion CONTRA].
-  - destruct xs. simpl in IN2.
-    { destruct IN2 as [[EQ1 EQ2] | [[EQ1 EQ2] | CONTRA]]; subst.
-      *  left. simpl; auto.
-      * right; auto.
-      * destruct CONTRA. }
-    { destruct IN2 as [[EQ1 EQ2] | IN2]; subst.
-      * left; simpl; auto.
-      * destruct (IHxs IN2) as [IN2' | [EQ1 EQ2]].
-        + left. simpl. right. auto.
-        + right; auto.
-    }
 Qed.
 
 Lemma In2_inv xs xmid xs' :
@@ -390,14 +241,6 @@ Section exec.
 Variable A : eqType.
 Variable R : A -> A -> Prop.
 
-(* Here's an inductive predicate we could use to state the kernel
-   correctness theorem in a non-deterministic setting: *)
-Inductive nexec (P Q : A -> Prop) (x : A) : Prop :=
-| ne_stop : ~ P x -> Q x -> nexec P Q x
-| ne_step : forall x', R x x' -> P x ->
-                       (forall x', R x x' -> nexec P Q x') ->
-                       nexec P Q x.
-
 Inductive restricted_exec (P : A -> Prop) : A -> A -> Prop :=
 | re_refl (x : A) : P x -> restricted_exec P x x
 | re_step (x y z : A) : P x -> R x y ->
@@ -422,25 +265,6 @@ Hint Resolve restricted_exec_trans.
 
 Inductive exec_until (P Q : A -> Prop) x y : Prop :=
 | eu_intro (z : A) : restricted_exec P x z -> Q y -> R z y -> exec_until P Q x y.
-
-Lemma nexec_exists_exec_until P Q x :
-  nexec P Q x ->
-  P x ->
-  exists x', exec_until P (fun x => ~ P x) x x' /\
-             Q x'.
-Proof.
-  intros EXEC H.
-  induction EXEC as [ | x x' STEP Hx' EXEC IH ]; try tauto.
-  specialize (EXEC x' STEP). specialize (IH x' STEP).
-  inversion EXEC as [HNP HQ|x'' STEP' HP EXEC']; subst; clear EXEC.
-  - exists x'. split; eauto. econstructor; eauto.
-  - specialize (IH HP). destruct IH as (x''' & EXEC & POST).
-    eexists x'''. split; eauto.
-    destruct EXEC.
-    econstructor; trivial.
-    * eapply re_step; eauto.
-    * trivial.
-Qed.
 
 Hypothesis determ : forall s s1 s2, R s s1 -> R s s2 -> s1 = s2.
 
@@ -485,11 +309,6 @@ Proof.
   - eapply exec_one. trivial.
 Qed.
 
-Inductive zero_one : A -> A -> Prop :=
-  | zero_one_refl : forall x, zero_one x x
-  | zero_one_single : forall (x y : A), R x y -> zero_one x y.
-Hint Constructors zero_one.
-
 (* Capture steps from s to s' (with s') *)
 Inductive interm : seq A -> A -> A -> Prop :=
   | interm_single : forall (x y : A), R x y -> interm [:: x;y] x y
@@ -523,56 +342,6 @@ Proof.
   inversion INTERM; subst; auto.
 Qed.
 
-Lemma interm_last_step : forall xs (si s s' : A),
-                           interm (xs ++ [:: si]) s s' ->
-                           si = s'.
-Proof.
-  intros xs si s s' INTERM.
-  generalize dependent s.
-  induction xs; intros s INTERM.
-  * simpl in *. inversion INTERM as [? ? STEP|? ? ? ? STEP INTERM2]; subst. inversion INTERM2.
-  * inversion INTERM as [? ? STEP |? ? ? ? STEP INTERM2]; subst.
-    - destruct xs; simpl. inversion H1 as [EQ]. reflexivity. destruct xs; inversion H1.
-    - apply IHxs in INTERM2. assumption.
-Qed.
-
-Lemma interm_mid_step : forall xs ys (si sj s s' : A),
-                           interm (xs ++ si :: sj :: ys) s s' ->
-                           R si sj.
-Proof.
-  intros xs ys si sj s s' INTERM.
-  generalize dependent s.
-  induction xs; intros s INTERM.
-  * simpl in *. inversion INTERM as [? ? STEP |? ? ? ? STEP INTERM2]; subst. assumption.
-    inversion INTERM2; subst; assumption.
-  * inversion INTERM as [? ? STEP|? ? ? ? STEP INTERM2]; subst.
-    - destruct xs; inversion H1; subst. destruct xs; inversion H1.
-    - apply IHxs in INTERM2. assumption.
-Qed.
-
-Lemma interm_backwards : forall xs s s' s'',
-  R s' s'' ->
-  interm xs s s' ->
-  interm (xs ++ [:: s'']) s s''.
-Proof.
-  intros xs s s' s'' STEP INTERM.
-  induction INTERM.
-  - simpl. eapply interm_multi. eauto.
-    eapply interm_single; eauto.
-  - eapply interm_multi; eauto.
-Qed.
-
-Lemma interm_destruct_last : forall xs s s',
-  interm xs s s' ->
-  exists ys, interm (ys ++ [:: s']) s s'.
-Proof.
-  intros xs s s' INTERM.
-  induction INTERM.
-  - exists [:: x]; constructor(assumption).
-  - destruct (IHINTERM) as [ys INTERM'].
-    exists (x::ys). eapply interm_multi; eauto.
-Qed.
-
 Lemma interm_in2_step : forall xs s s' si sj,
   interm xs s s' ->
   In2 si sj xs ->
@@ -599,142 +368,6 @@ Proof.
   inversion INTERMR; subst; auto.
 Qed.
 
-(*
-Lemma intermr_in_first_last : forall xs (s s' : A),
-                               intermr xs s s' ->
-                               In s xs /\ In s' xs.
-Proof.
-  intros xs s s' INTERMR.
-  induction INTERMR; subst; simpl; try (destruct IHINTERM); auto.
-  split; auto. destruct IHINTERMR. auto.
-Qed.
-*)
-
-(*
-Lemma intermr_trans : forall (s s' s'' : A) xs xs',
-  intermr xs s s' ->
-  intermr xs' s' s'' ->
-  exists xs'', intermr xs'' s s'' /\
-               forall x, (In x xs \/ In x xs'-> In x xs'').
-Proof.
-  intros s s' s'' xs xs' INTERMR INTERMR'.
-  induction INTERMR as [s | s y s' xs'' SSTEP INTERMR IHINTERMR].
-  + eexists; split. eauto.
-    intros x H.
-    destruct H as [IN | IN].
-    - destruct IN as [H | H]; subst.
-      apply intermr_in_first_last in INTERMR'. destruct INTERMR'; auto.
-      inversion H.
-    - assumption.
-  + destruct (IHINTERMR INTERMR') as [zs [INTERMR'' INH]].
-    exists (s :: zs).
-    split.
-    - eapply intermr_multi; eauto.
-    - intros x H.
-      destruct H as [IN | IN].
-      * destruct IN as [IN | IN]; subst.
-        simpl; auto.
-        simpl. right. apply INH. auto.
-      * simpl. right. apply INH. auto.
-Qed.
-*)
-
-(*
-Lemma intermr_trans2 : forall (s s' s'' : A) xs xs',
-  intermr xs s s' ->
-  intermr xs' s' s'' ->
-  exists xs'', intermr xs'' s s'' /\
-               forall x y, (In2 x y xs \/ In2 x y xs' -> In2 x y xs'') /\
-               forall x, (In x xs \/ In x xs' -> In x xs'').
-Proof.
-  intros s s' s'' xs xs' INTERMR INTERMR'.
-  induction INTERMR as [s | s y s' xs'' SSTEP INTERMR IHINTERMR].
-  + eexists; split. eauto. intros. split. intro H. destruct H; [destruct H | assumption].
-    intros x0 H. destruct H as [H | H];
-                 [destruct H as [|CONTRA];
-                   [subst; inversion INTERMR'; subst; simpl; auto | destruct CONTRA] | assumption].
-  + destruct xs''; inversion INTERMR; subst.
-    { destruct (IHINTERMR INTERMR') as [zs [INTERMR'' INH]].
-      exists (s :: zs). split.
-      - eapply intermr_multi; eauto.
-      - intros x' y'.
-        split.
-        { (* In2 *)
-          intros H.
-          destruct H as [H | H].
-          destruct zs. inversion INTERMR''. inversion INTERMR''; subst.
-          assumption.
-          destruct H as [[EQ1 EQ2] | CONTRA]; subst. simpl; auto.
-          destruct CONTRA.
-          assert (H' : In2 x' y' [:: s'] \/ In2 x' y' xs') by auto.
-          apply INH in H'.
-          assert (H0: (s :: zs) = [:: s] ++ zs) by reflexivity. rewrite H0.
-          apply in2_strengthen; assumption.
-         }
-        { (*In*)
-          intros x H.
-          destruct (INH x' y') as [? IN].
-          destruct H as [H | H].
-          - destruct H as [H | H]; subst.
-            * simpl; auto.
-            * simpl; right; apply IN; auto.
-          - simpl; right; apply IN; auto.
-        }
-    }
-    { destruct (IHINTERMR INTERMR') as [zs [INTERMR'' IH]].
-      exists (s :: zs); split.
-      eapply intermr_multi; eauto.
-      intros x' y'. split.
-      { (*In2*)
-        intros H.
-        assert (EQ : s :: zs = [:: s] ++ zs) by reflexivity.
-        destruct H as [H | H].
-      - destruct H as [[EQ1 EQ2] | H]; subst.
-        * inversion INTERMR''; subst; simpl; auto.
-        * rewrite EQ;
-          apply in2_strengthen; apply IH; auto.
-      - rewrite EQ;
-        apply in2_strengthen; apply IH; auto.
-      }
-      { (*In1*)
-        intros x H.
-        destruct (IH x' y') as [? IN].
-        destruct H as [H | H].
-        - destruct H as [| H]; subst.
-          * simpl; auto.
-          * destruct H as [|H]; subst;
-            simpl; right; apply IN; left; simpl; auto.
-        - simpl; right; apply IN; auto.
-      }
-    }
-Qed.
-*)
-
-(*
-Lemma intermr_weak_trans : forall (s s' s'' : A) xs xs',
-  intermr xs s s' ->
-  intermr xs' s' s'' ->
-  exists xs'', intermr xs'' s s''.
-Proof.
-  intros;
-  destruct (intermr_trans H H0); destruct H1;
-  eexists; eauto.
-Qed.
-*)
-
-Lemma intermr_implies_interm_weak : forall (s s' : A) xs,
-  intermr xs s s' ->
-  (exists xs', interm xs' s s') \/ s = s'.
-Proof.
-  intros s s' xs INTERMR.
-  induction INTERMR.
-  * right. reflexivity.
-  * destruct IHINTERMR as [[zs INTERM] | EQ]; subst.
-    + left. assert (interm (x::zs) x z) by eauto.
-      eexists; eassumption.
-    + left. exists [:: x;z]. constructor. assumption.
-Qed.
-
 Lemma intermr_implies_interm : forall (s s' : A) xs,
   intermr xs s s' ->
   interm xs s s' \/ (s = s' /\ xs = [:: s]).
@@ -754,70 +387,9 @@ Qed.
 
 End exec.
 
-Section preservation.
-
-Variables X Y : eqType.
-Variables (stepX : X -> X -> Prop) (stepY : Y -> Y -> Prop).
-Variables (P : X -> Prop) (Q : Y -> Prop).
-Variable (vis : Y -> bool). (* Whether a given state is visible or not *)
-Variable (ref : X -> Y -> Prop).
-
-Hypothesis ref_single :
-  forall x y y',
-    vis y = true -> vis y' = true ->
-    stepY y y' ->
-    ref x y ->
-    exists x', stepX x x' /\ ref x' y'.
-
-Hypothesis ref_mult :
-  forall x y yk yk' y',
-    vis y = true -> vis y' = true ->
-    stepY y yk ->
-    restricted_exec stepY (fun y => vis y = false) yk yk' ->
-    stepY yk' y' ->
-    ref x y ->
-    ref x y' \/
-    exists x', stepX x x' /\ ref x' y'.
-
-Hypothesis preservation :
-  forall x x', P x -> stepX x x' -> P x'.
-
-Hypothesis compatible :
-  forall x y, ref x y -> (P x <-> Q y).
-
-Hypothesis ref_vis : forall x y, ref x y -> vis y = true.
-
-Definition ref_weak x y :=
-  ref x y \/
-  exists y0 yk,
-    ref x y0 /\
-    stepY y0 yk /\
-    restricted_exec stepY (fun y => vis y = false) yk y.
-
-End preservation.
-
-Section vectors.
-
-Definition caseS A n (T : Vector.t A (S n) -> Type)
-                     (H : forall a v, T (Vector.cons A a n v))
-                     (v : Vector.t A (S n)) : T v :=
-  match v in Vector.t _ n'
-          return match n' return Vector.t A n' -> Type with
-                 | 0 => fun _ => unit
-                 | S n => fun v => forall (T : Vector.t A (S n) -> Type)
-                                          (H : forall a v, T (Vector.cons _ a _ v)),
-                                     T v
-                 end v
-  with
-  | Vector.nil => tt
-  | Vector.cons a n v => fun T H => H a v
-  end T H.
-
-End vectors.
-
 Ltac single_match_inv :=
   match goal with
-  | H : ssrfun.obind (fun x : _ => _) _ = Some _ |- _ =>
+  | H : obind (fun x : _ => _) _ = Some _ |- _ =>
     apply obind_inv in H;
     let x := fresh x in
     let E := fresh "E" in

@@ -96,7 +96,7 @@ Record meminj_spec (amem : Abstract.memory mt block) (mi : meminj) := {
                 col = col'
   }.
 
-(* We could generalize update_list_Z to any size-preserving operator *)
+(* We could generalize updv to any size-preserving operator *)
 Lemma meminj_update mi amem amem' ptr x :
   meminj_spec amem mi ->
   Abstract.updv amem ptr x = Some amem' ->
