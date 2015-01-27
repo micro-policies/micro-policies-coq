@@ -256,16 +256,14 @@ Context {t : machine_types}
         {op : machine_ops t}
         {ops : machine_ops_spec op}.
 
-Definition bool_to_word (b : bool) : mword t := as_word b.
-
 Definition binop_denote (f : binop) : mword t -> mword t -> mword t :=
   match f with
   | ADD => addw
   | SUB => subw
   | MUL => mulw
-  | EQ  => fun w1 w2 => bool_to_word (w1 == w2)
-  | LEQ => fun w1 w2 => bool_to_word (w1 <= w2)%ord (* FIXME: we don't have signed comparison right now *)
-  | LEQU => fun w1 w2 => bool_to_word (w1 <= w2)%ord
+  | EQ  => fun w1 w2 => as_word (w1 == w2)
+  | LEQ => fun w1 w2 => as_word (w1 <= w2)%ord (* FIXME: we don't have signed comparison right now *)
+  | LEQU => fun w1 w2 => as_word (w1 <= w2)%ord
   | AND => andw
   | OR => orw
   | XOR => xorw

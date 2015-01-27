@@ -53,15 +53,11 @@ Definition kernel_regs := mvec_regs ++ [:: rb; ri1; ri2; ri3; ri4; ri5; rtrpc; r
 (* For debugging -- put a telltale marker in the code *)
 Definition got_here : code := [:: Const (as_word 999) ri5; Const 0%w ri5].
 
-(* TODO: Not needed anymore *)
-Definition bool_to_imm (b : bool) : imm mt :=
-  if b then 1%w else 0%w.
-
 (* Test value in [r]. If true (i.e., not zero), execute [t]. Otherwise,
    execute [f]. Warning: overwrites ri1. *)
 Definition if_ (r : reg mt) (t f : code) : code :=
   let lt := as_word (length t + 1) in
-  let eend := [:: Const (bool_to_imm true) ri1] ++
+  let eend := [:: Const (as_word true) ri1] ++
               [:: Bnz ri1 lt] in
   let lf := as_word (length f + length eend + 1) in
   [:: Bnz r lf] ++

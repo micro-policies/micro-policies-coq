@@ -69,7 +69,7 @@ Qed.
 Lemma binop_eq_add2l : forall x y z : mword mt,
   binop_denote EQ (x + y) (x + z) = binop_denote EQ y z.
 Proof.
-move => x y z /=; congr bool_to_word.
+move => x y z /=; congr as_word.
 rewrite inj_eq //; exact: GRing.addrI.
 Qed.
 
@@ -1367,9 +1367,9 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
     move: H4 H8; rewrite eq_arg1b => -> [-> ->].
     have -> /= : (base0 + off == base0 + off0) = (off == off0).
       by apply/inj_eq/GRing.addrI.
-    rewrite [in bool_to_word _]eqE /= eqxx /=.
+    rewrite [in as_word _]eqE /= eqxx /=.
     by case: (_ == _).
-  rewrite [in bool_to_word _]eqE /=.
+  rewrite [in as_word _]eqE /=.
   have/negbTE->//: b != b0.
     apply/eqP=> eq_b; rewrite eq_b in H4 H8.
     by rewrite (miIr miP H4 H8) eqxx in neq_arg1b.

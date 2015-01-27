@@ -1,4 +1,4 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssrint.
 Require Import ord word partmap.
 Require Import lib.utils.
 Require Import common.common memory_safety.classes.
@@ -253,7 +253,7 @@ Inductive step : state -> state -> Prop :=
 | step_eq : forall mem reg reg' v1 v2 bl pc'
     (V1   : reg syscall_arg1 = Some v1)
     (V2   : reg syscall_arg2 = Some v2),
-    let v := VData (bool_to_word (value_eq v1 v2)) in forall
+    let v := VData (as_word (value_eq v1 v2)) in forall
     (UPD  : updm reg syscall_ret v = Some reg')
     (RA   : reg ra = Some (VPtr pc')),
     step (mkState mem reg bl (VData eq_addr)) (mkState mem reg' bl (VPtr pc')).
