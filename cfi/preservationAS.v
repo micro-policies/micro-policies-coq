@@ -2,7 +2,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import ord word partmap.
 
 Require Import lib.utils.
-Require Import common.common.
+Require Import common.types.
 Require Import symbolic.symbolic.
 Require Import symbolic.exec.
 Require Import cfi.classes.
@@ -129,7 +129,7 @@ Proof.
 Qed.
 
 Definition is_instr (a : atom (mword t) cfi_tag) :=
-  match common.tag a with
+  match types.tag a with
     | INSTR _ => true
     | DATA => false
   end.

@@ -2,7 +2,7 @@ Require Import ssreflect ssrfun ssrbool eqtype seq.
 Require Import ord word partmap.
 Require Import lib.utils.
 Require Import lib.ssr_list_utils lib.partmap_utils.
-Require Import common.common symbolic.symbolic.
+Require Import common.types symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
 Set Implicit Arguments.

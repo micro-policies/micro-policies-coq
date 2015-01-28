@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
 Require Import word partmap.
-Require Import lib.utils common.common.
+Require Import lib.utils common.types.
 Require Import lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
 

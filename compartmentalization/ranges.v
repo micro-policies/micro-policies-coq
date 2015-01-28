@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import ord word.
-Require Import common.common.
+Require Import common.types.
 
 Section WithClasses.
 

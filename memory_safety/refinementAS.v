@@ -3,7 +3,7 @@ Ltac type_of x := type of x.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
 Require Import ssrint ssralg.
 Require Import ord word partmap.
-Require Import lib.utils lib.partmap_utils common.common symbolic.symbolic.
+Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
 
@@ -548,7 +548,7 @@ rewrite get_r; destruct (aregs r); try easy.
 by destruct v as [w [ty | |]]; try easy; exists w; exists ty.
 Qed.
 
-Lemma refine_registers_get aregs qaregs (n : common.reg mt) w ty :
+Lemma refine_registers_get aregs qaregs (n : types.reg mt) w ty :
   refine_registers aregs qaregs ->
   qaregs n = Some w@V(ty) ->
   exists x, refine_val x w ty /\ aregs n = Some x.
@@ -561,7 +561,7 @@ simpl; intros rvx.
 by exists v; split.
 Qed.
 
-Lemma refine_registers_get_int aregs qaregs (n : common.reg mt) w :
+Lemma refine_registers_get_int aregs qaregs (n : types.reg mt) w :
   refine_registers aregs qaregs ->
   qaregs n = Some w@V(DATA) ->
     refine_val (Abstract.VData _ w) w DATA /\
@@ -574,7 +574,7 @@ destruct (aregs n); try contradiction.
 by inversion rregs; split; first by constructor.
 Qed.
 
-Lemma refine_registers_get_ptr aregs qaregs (n : common.reg mt) w b :
+Lemma refine_registers_get_ptr aregs qaregs (n : types.reg mt) w b :
   refine_registers aregs qaregs ->
   qaregs n = Some w@V(PTR b) ->
   exists pt, refine_val (Abstract.VPtr pt) w (PTR b) /\

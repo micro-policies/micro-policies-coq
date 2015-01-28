@@ -2,7 +2,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import ord word partmap.
 
 Require Import lib.utils lib.partmap_utils.
-Require Import common.common.
+Require Import common.types.
 Require Import symbolic.symbolic.
 Require Import symbolic.exec.
 Require Import cfi.property.
@@ -87,10 +87,10 @@ Local Notation "x .+1" := (x + 1)%w.
 Open Scope word_scope.
 
 Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
-  let pc_t := common.tag (Symbolic.pc st) in
-  let pc_t' := common.tag (Symbolic.pc st') in
-  let pc_s := common.val (Symbolic.pc st) in
-  let pc_s' := common.val (Symbolic.pc st') in
+  let pc_t := types.tag (Symbolic.pc st) in
+  let pc_t' := types.tag (Symbolic.pc st') in
+  let pc_s := types.val (Symbolic.pc st) in
+  let pc_s' := types.val (Symbolic.pc st') in
   match (getm (Symbolic.mem st) pc_s) with
     | Some i@DATA => false
     | Some i@(INSTR (Some src)) =>
@@ -703,7 +703,7 @@ Proof.
 Qed.
 
 Definition initial (s : Symbolic.state t) :=
-  (common.tag (Symbolic.pc s)) = DATA /\
+  (types.tag (Symbolic.pc s)) = DATA /\
   invariants s.
 
 Definition all_attacker xs : Prop :=
@@ -760,10 +760,10 @@ Import DoNotation.
 Import Vector.VectorNotations.
 
 Definition get_ti sst :=
-  match getm (Symbolic.mem sst) (common.val (Symbolic.pc sst)) with
+  match getm (Symbolic.mem sst) (types.val (Symbolic.pc sst)) with
     | Some i@ti => Some ti
     | None =>
-      match Symbolic.get_syscall table (common.val (Symbolic.pc sst)) with
+      match Symbolic.get_syscall table (types.val (Symbolic.pc sst)) with
         | Some sc => Some (Symbolic.entry_tag sc)
         | None => None
       end

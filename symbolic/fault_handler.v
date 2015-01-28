@@ -5,7 +5,7 @@ Require Import tuple ssrint.
 Require Import word partmap.
 
 Require Import lib.utils.
-Require Import common.common.
+Require Import common.types.
 Require Import concrete.concrete.
 Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
@@ -301,7 +301,7 @@ do 7 (try split; eauto).
   have [Hin | Hnin] := boolP (addr \in Concrete.mvec_fields mt); last by eauto.
   have: addr \in m by rewrite mem_mkpartmap.
   rewrite inE; case Heq: (m addr)=> [v|] //= _.
-  suff: common.tag v = Concrete.TKernel.
+  suff: types.tag v = Concrete.TKernel.
     by case: v {Heq} => [w t] /= ->; eauto.
   apply/eqP; move/getm_mkpartmap': Heq.
   rewrite -{2}[v]/((addr, v).2); move: (addr, v).

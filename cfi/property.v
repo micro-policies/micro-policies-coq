@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import word partmap.
-Require Import lib.utils common.common.
+Require Import lib.utils common.types.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

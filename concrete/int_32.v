@@ -5,7 +5,7 @@ Require Import ssrint tuple.
 Require Import hseq ord word partmap.
 
 Require Import lib.utils.
-Require Import common.common common.printing.
+Require Import common.types common.printing.
 Require Import concrete.concrete.
 
 Set Implicit Arguments.

@@ -1,7 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq ssrint.
 Require Import ord word partmap.
 
-Require Import lib.utils common.common.
+Require Import lib.utils common.types.
 
 Import DoNotation.
 

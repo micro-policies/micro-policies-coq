@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import hseq word partmap.
-Require Import lib.utils common.common symbolic.symbolic.
+Require Import lib.utils common.types symbolic.symbolic.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -119,7 +119,7 @@ Proof.
           repeat match goal with
              | STEP : (do! x <- ?t; _) = Some _ |- _ =>
                destruct t eqn:?; simpl in STEP; try discriminate
-             | x : common.atom _ _ |- _ =>
+             | x : atom _ _ |- _ =>
                destruct x; simpl in *
              | rv : OVec _ |- _ =>
                destruct rv; simpl in *
@@ -151,44 +151,44 @@ Qed.
 Definition build_ivec st : option (IVec ttypes)  :=
   match mem st (pcv st) with
     | Some i =>
-      match decode_instr (common.val i) with
+      match decode_instr (types.val i) with
         | Some op =>
-          let part := @mkIVec ttypes (opcode_of op) (pct st) (common.tag i) in
+          let part := @mkIVec ttypes (opcode_of op) (pct st) (types.tag i) in
           match op return (hseq ttypes (inputs (opcode_of op)) ->
                            IVec ttypes) -> option (IVec ttypes) with
             | Nop => fun part => Some (part [hseq])
             | Const n r => fun part =>
                 do! old <- regs st r;
-                Some (part [hseq common.tag old])
+                Some (part [hseq types.tag old])
             | Mov r1 r2 => fun part =>
               do! v1 <- regs st r1;
               do! v2 <- regs st r2;
-              Some (part [hseq (common.tag v1); (common.tag v2)])
+              Some (part [hseq (types.tag v1); (types.tag v2)])
             | Binop _ r1 r2 r3 => fun part =>
               do! v1 <- regs st r1;
               do! v2 <- regs st r2;
               do! v3 <- regs st r3;
-              Some (part [hseq (common.tag v1); (common.tag v2); (common.tag v3)])
+              Some (part [hseq (types.tag v1); (types.tag v2); (types.tag v3)])
             | Load  r1 r2 => fun part =>
               do! w1 <- regs st r1;
-              do! w2 <- (mem st) (common.val w1);
+              do! w2 <- (mem st) (types.val w1);
               do! old <- regs st r2;
-              Some (part [hseq (common.tag w1); (common.tag w2); (common.tag old)])
+              Some (part [hseq (types.tag w1); (types.tag w2); (types.tag old)])
             | Store  r1 r2 => fun part =>
               do! w1 <- regs st r1;
               do! w2 <- regs st r2;
-              do! w3 <- mem st (common.val w1);
-              Some (part [hseq (common.tag w1); (common.tag w2); (common.tag w3)])
+              do! w3 <- mem st (types.val w1);
+              Some (part [hseq (types.tag w1); (types.tag w2); (types.tag w3)])
             | Jump  r => fun part =>
               do! w <- regs st r;
-              Some (part [hseq common.tag w])
+              Some (part [hseq types.tag w])
             | Bnz  r n => fun part =>
               do! w <- regs st r;
-              Some (part [hseq common.tag w])
+              Some (part [hseq types.tag w])
             | Jal  r => fun part =>
               do! w <- regs st r;
               do! old <- regs st ra;
-              Some (part [hseq common.tag w; common.tag old])
+              Some (part [hseq types.tag w; types.tag old])
             | JumpEpc => fun _ => None
             | AddRule => fun _ => None
             | GetTag _ _ => fun _ => None

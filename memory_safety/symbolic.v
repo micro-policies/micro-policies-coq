@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssrint.
 Require Import hseq ord word partmap.
-Require Import lib.utils common.common.
+Require Import lib.utils common.types.
 Require Import symbolic.symbolic memory_safety.classes.
 
 Import Symbolic.

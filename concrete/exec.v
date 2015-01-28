@@ -1,16 +1,14 @@
 (* Executable formulation of concrete machine semantics *)
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat ssrint.
+Require Import ssreflect ssrfun ssrbool ssrnat eqtype ssrint.
 Require Import word partmap.
-Require Import lib.utils common.common concrete.concrete.
+Require Import lib.utils common.types concrete.concrete.
 
 Import Concrete. Import DoNotation.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-
-Open Scope Z_scope.
 
 Section Masks.
 
@@ -156,46 +154,46 @@ Definition build_cmvec st : option (Concrete.MVec (mword mt)) :=
       match decode_instr (val i) with
         | Some op =>
           let part := @Concrete.mkMVec (mword mt) (word_of_op (opcode_of op))
-                                       (Concrete.pct st) (common.tag i) in
+                                       (Concrete.pct st) (types.tag i) in
           match op  with
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
             | Const n r =>
               fun part =>
                 do! old <- (Concrete.regs st) r;
-                  Some (part (common.tag old) Concrete.TNone Concrete.TNone)
+                  Some (part (types.tag old) Concrete.TNone Concrete.TNone)
             | Mov r1 r2 =>
               fun part =>
                 do! v1 <- (Concrete.regs st) r1;
                 do! v2 <- (Concrete.regs st) r2;
-                  Some (part (common.tag v1) (common.tag v2) Concrete.TNone)
+                  Some (part (types.tag v1) (types.tag v2) Concrete.TNone)
             | Binop _ r1 r2 r3 => fun part =>
               do! v1 <- (Concrete.regs st) r1;
               do! v2 <- (Concrete.regs st) r2;
               do! v3 <- (Concrete.regs st) r3;
-                Some (part (common.tag v1) (common.tag v2) (common.tag v3))
+                Some (part (types.tag v1) (types.tag v2) (types.tag v3))
             | Load r1 r2 => fun part =>
               do! w1 <- (Concrete.regs st) r1;
               do! w2 <- Concrete.mem st (val w1);
               do! old <- (Concrete.regs st) r2;
-                Some (part (common.tag w1) (common.tag w2) (common.tag old))
+                Some (part (types.tag w1) (types.tag w2) (types.tag old))
             | Store r1 r2 => fun part =>
               do! w1 <- (Concrete.regs st) r1;
               do! w2 <- (Concrete.regs st) r2;
                 do! w3 <- Concrete.mem st (val w1);
-                Some (part (common.tag w1) (common.tag w2) (common.tag w3))
+                Some (part (types.tag w1) (types.tag w2) (types.tag w3))
             | Jump r => fun part =>
               do! w <- (Concrete.regs st) r;
-                Some (part (common.tag w) Concrete.TNone Concrete.TNone)
+                Some (part (types.tag w) Concrete.TNone Concrete.TNone)
             | Bnz r n => fun part =>
               do! w <- (Concrete.regs st) r;
-                Some (part (common.tag w) Concrete.TNone Concrete.TNone)
+                Some (part (types.tag w) Concrete.TNone Concrete.TNone)
             | Jal r => fun part =>
               do! w <- (Concrete.regs st) r;
               do! old <- (Concrete.regs st) ra;
-                Some (part (common.tag w) (common.tag old) Concrete.TNone)
+                Some (part (types.tag w) (types.tag old) Concrete.TNone)
             | JumpEpc =>
               fun part =>
-                Some (part (common.tag (Concrete.epc st)) Concrete.TNone Concrete.TNone)
+                Some (part (types.tag (Concrete.epc st)) Concrete.TNone Concrete.TNone)
             | AddRule =>
               fun part =>
                 Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
@@ -203,13 +201,13 @@ Definition build_cmvec st : option (Concrete.MVec (mword mt)) :=
               fun part =>
                 do! w1 <- (Concrete.regs st) r1;
                 do! old <- (Concrete.regs st) r2;
-                Some (part (common.tag w1) (common.tag old) Concrete.TNone)
+                Some (part (types.tag w1) (types.tag old) Concrete.TNone)
             | PutTag r1 r2 r3 =>
               fun part =>
                 do! w1 <- (Concrete.regs st) r1;
                 do! w2 <- (Concrete.regs st) r2;
                 do! old <- (Concrete.regs st) r3;
-                Some (part (common.tag w1) (common.tag w2) (common.tag old))
+                Some (part (types.tag w1) (types.tag w2) (types.tag old))
             | Halt => fun _ => None
           end part
         | None => None

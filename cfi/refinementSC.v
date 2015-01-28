@@ -2,7 +2,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import ord word partmap.
 
 Require Import lib.utils lib.partmap_utils.
-Require Import common.common.
+Require Import common.types.
 Require Import symbolic.symbolic.
 Require Import symbolic.exec.
 Require Import concrete.concrete.
@@ -83,12 +83,12 @@ Definition refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
   Sym.invariants stable sst.
 
 Definition is_user k (x : atom (mword mt) (mword mt)) :=
-  oapp (fun t => rules.is_user t) false (@rules.fdecode _ _ e k (common.tag x)).
+  oapp (fun t => rules.is_user t) false (@rules.fdecode _ _ e k (types.tag x)).
 
 Definition coerce k (x : atom (mword mt) (mword mt)) : atom (mword mt) (cfi_tag) :=
-  match rules.fdecode k (common.tag x) with
-    | Some (rules.USER tg) => (common.val x)@tg
-    | _ => (common.val x)@DATA (*this is unreachable in our case, dummy value*)
+  match rules.fdecode k (types.tag x) with
+    | Some (rules.USER tg) => (types.val x)@tg
+    | _ => (types.val x)@DATA (*this is unreachable in our case, dummy value*)
   end.
 
 Lemma mem_refinement_equiv :
@@ -541,7 +541,7 @@ Qed.
 Lemma in_user_ctpc cst :
   refinement_common.in_user cst ->
   exists ut,
-    rules.fdecode Symbolic.P (common.tag (Concrete.pc cst)) = Some (rules.USER ut).
+    rules.fdecode Symbolic.P (types.tag (Concrete.pc cst)) = Some (rules.USER ut).
 Proof.
   rewrite /in_user /=.
   by case: (rules.fdecode _ _) => [[?|?]|] //=; eauto.

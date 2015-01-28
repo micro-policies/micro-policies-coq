@@ -1,7 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset ssrint.
 Require Import word partmap.
 
-Require Import lib.utils common.common.
+Require Import lib.utils common.types.
 Require Import compartmentalization.ranges.
 
 Set Bullet Behavior "Strict Subproofs".

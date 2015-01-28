@@ -2,7 +2,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import ord word partmap.
 
 Require Import lib.utils lib.partmap_utils.
-Require Import common.common.
+Require Import common.types.
 Require Import symbolic.symbolic.
 Require Import cfi.abstract.
 Require Import cfi.symbolic.
@@ -52,9 +52,9 @@ Definition refine_registers (areg : Abs.registers t)
 Definition refine_pc
            (apc : mword t)
            (spc : atom (mword t) (Symbolic.ttypes Symbolic.P)) :=
-  apc = common.val spc /\
-  (common.tag spc = DATA \/
-   exists id, common.tag spc = INSTR (Some id)).
+  apc = types.val spc /\
+  (types.tag spc = DATA \/
+   exists id, types.tag spc = INSTR (Some id)).
 
 Lemma refine_memory_total aimem admem smem :
   refine_imemory aimem smem ->
@@ -679,7 +679,7 @@ Proof.
   }
 Qed.
 
-Definition untag_atom (a : atom (mword t) cfi_tag) := common.val a.
+Definition untag_atom (a : atom (mword t) cfi_tag) := types.val a.
 
 Lemma reg_refinement_preserved_by_equiv :
   forall areg reg reg',
@@ -750,7 +750,7 @@ Proof.
 Qed.
 
 Definition is_data (a : atom (mword t) cfi_tag) :=
-  match common.tag a with
+  match types.tag a with
     | DATA => true
     | INSTR _ => false
   end.

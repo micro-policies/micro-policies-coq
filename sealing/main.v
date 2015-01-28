@@ -1,7 +1,7 @@
 Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq choice fintype.
 Require Import ssrint.
 Require Import ord word partmap hseq.
-Require Import lib.utils lib.word_utils common.common.
+Require Import lib.utils lib.word_utils common.types common.segment.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import concrete.exec.
@@ -379,14 +379,14 @@ Definition build_symbolic_sealing_machine
     user code *)
  let user_mem : @relocatable_segment t _ _ :=
        map_relocatable_segment
-         ((fun v => common.Atom v Sym.DATA) ∘ encode_instr)
+         ((fun v => types.Atom v Sym.DATA) ∘ encode_instr)
          user_program in
  @symbolic_initial_state (@Sym.sym_sealing sk_defs) _
                          user_mem
                          user_memory_addr@tt
                          ssa
                          user_registers
-                         (common.Atom (as_word 0) Sym.DATA)
+                         (types.Atom (as_word 0) Sym.DATA)
                          (as_word 0).
 
 (* ---------------------------------------------------------------- *)

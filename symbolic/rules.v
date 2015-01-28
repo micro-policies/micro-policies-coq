@@ -5,7 +5,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import hseq word partmap.
 
 Require Import lib.utils.
-Require Import common.common concrete.concrete symbolic.symbolic.
+Require Import common.types concrete.concrete symbolic.symbolic.
 Import DoNotation.
 Import Concrete.
 

@@ -1,6 +1,6 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import word partmap.
-Require Import lib.utils common.common cfi.property cfi.classes.
+Require Import lib.utils common.types cfi.property cfi.classes.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

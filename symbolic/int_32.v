@@ -1,7 +1,7 @@
 (* Specializing protected kernel for symbolic machine to 32 bits *)
 
 Require Import lib.utils.
-Require Import common.common.
+Require Import common.types common.segment.
 Require Import concrete.int_32.
 Require Import concrete.concrete.
 Require Import symbolic.rules.
@@ -85,8 +85,8 @@ Definition kernelize_tags
      fault_handler.v -- probably better to write it there rather than here *)
   (l,
    fun b rest =>
-     map (fun x => Atom (common.val x)
-                        (kernelize_user_tag (common.tag x))) (gen b rest)).
+     map (fun x => Atom (types.val x)
+                        (kernelize_user_tag (types.tag x))) (gen b rest)).
 
 (* Build the basic monitor memory on top of which we will put user
    programs. Returns a triple with the monitor memory, the base user
@@ -162,7 +162,7 @@ Program Definition concrete_initial_state
 
 Context {sp: Symbolic.params}.
 
-Let sym_atom k := @common.atom (mword t) (@Symbolic.ttypes sp k).
+Let sym_atom k := atom (mword t) (@Symbolic.ttypes sp k).
 
 Program Definition symbolic_initial_state
       {Addrs}
@@ -173,12 +173,12 @@ Program Definition symbolic_initial_state
       (initial_internal_state : Symbolic.internal_state)
       : @Symbolic.state t sp :=
   let (_, gen) := user_mem in
-  let mem_contents := gen (common.val base_addr) syscall_addrs in
+  let mem_contents := gen (types.val base_addr) syscall_addrs in
   let mem :=
     snd (foldl
       (fun x c => let: (i,m) := x in
                   (i + 1, setm m i c)%w)
-      ((common.val base_addr), emptym) mem_contents) in
+      ((types.val base_addr), emptym) mem_contents) in
   let regs :=
         foldl
           (fun regs r => setm regs r initial_reg_value)

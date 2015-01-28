@@ -2,7 +2,7 @@ Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq.
 Require Import hseq word partmap.
 
 Require Import lib.utils.
-Require Import common.common.
+Require Import common.types.
 Require Import concrete.concrete.
 Require Import concrete.exec.
 Require Import symbolic.symbolic.
@@ -297,7 +297,7 @@ Lemma build_cmvec_cache_lookup_pc cst cst' cmvec crvec :
   Concrete.step _ masks cst cst' ->
   build_cmvec cst = Some cmvec ->
   Concrete.cache_lookup (Concrete.cache cst) masks cmvec = Some crvec ->
-  common.tag (Concrete.pc cst') = Concrete.ctrpc crvec.
+  types.tag (Concrete.pc cst') = Concrete.ctrpc crvec.
 Proof.
   move=> STEP BUILD LOOKUP.
   move/step_lookup_success_or_fault: STEP.

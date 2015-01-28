@@ -1,11 +1,10 @@
-Require Import common.common.
+Require Import common.types.
 Require Import String.
 Require Import Ascii.
 Require Import ZArith.
 Require Import NPeano.
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
-Import common.
 Import String.
 
 Set Implicit Arguments.

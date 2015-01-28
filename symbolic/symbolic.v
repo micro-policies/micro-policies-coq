@@ -1,7 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import hseq word partmap.
 
-Require Import lib.utils common.common.
+Require Import lib.utils common.types.
 Require Import lib.ssr_list_utils.
 
 Set Implicit Arguments.
@@ -178,7 +178,7 @@ Definition get_syscall (addr : word) : option syscall :=
   ofind (fun sc => address sc == addr) table.
 
 Definition run_syscall (sc : syscall) (st : state) : option state :=
-  match transfer (mkIVec SERVICE (common.tag (pc st)) (entry_tag sc) [hseq]) with
+  match transfer (mkIVec SERVICE (types.tag (pc st)) (entry_tag sc) [hseq]) with
   | Some _ => sem sc st
   | None => None
   end.

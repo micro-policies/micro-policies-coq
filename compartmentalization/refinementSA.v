@@ -1,7 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 Require Import ord word partmap.
 
-Require Import lib.utils lib.partmap_utils common.common.
+Require Import lib.utils lib.partmap_utils common.types.
 Require Import symbolic.symbolic.
 Require Import lib.haskell_notation.
 Require Import lib.ssr_list_utils.
@@ -40,7 +40,7 @@ Notation spcatom := (atom word pc_tag).
 Notation smatom  := (atom word data_tag).
 Notation sratom  := (atom word unit).
 Notation svalue  := (@val word _).
-Notation slabel  := (@common.tag word _).
+Notation slabel  := (@types.tag word _).
 
 Notation astate    := (@Abs.state t).
 Notation sstate    := (@Symbolic.state t sym_compartmentalization).
@@ -2009,7 +2009,7 @@ Lemma prove_permitted_now_in AR AM AC Ask Aprev mem reg pc extra c i cid cid' ci
   let sst := SState mem reg pc@(Sym.PC F cid') extra in
   Abs.good_state ast ->
   Sym.good_state sst ->
-  getm (Symbolic.mem sst) (common.val (Symbolic.pc sst)) ?= i@(Sym.DATA cid'' II WW) ->
+  getm (Symbolic.mem sst) (types.val (Symbolic.pc sst)) ?= i@(Sym.DATA cid'' II WW) ->
   (do! guard (cid'' == cid') || (F == JUMPED) && (cid' \in II);
    Some cid'') ?= cid ->
   refine_previous_b (Abs.step_kind ast) (Abs.previous ast) sst ->
@@ -2017,8 +2017,8 @@ Lemma prove_permitted_now_in AR AM AC Ask Aprev mem reg pc extra c i cid cid' ci
   well_defined_ids sst AC ->
   unique_ids sst AC ->
   well_formed_jump_targets sst AC ->
-  Abs.in_compartment_opt (Abs.compartments ast) (common.val (Symbolic.pc sst)) ?= c ->
-  Abs.permitted_now_in (Abs.compartments ast) (Abs.step_kind ast) (Abs.previous ast) (common.val (Symbolic.pc sst)) ?= c.
+  Abs.in_compartment_opt (Abs.compartments ast) (types.val (Symbolic.pc sst)) ?= c ->
+  Abs.permitted_now_in (Abs.compartments ast) (Abs.step_kind ast) (Abs.previous ast) (types.val (Symbolic.pc sst)) ?= c.
 Proof.
   rewrite /=.
   move=> AGOOD SGOOD PC def_cid RPREV COMPSWD IDSWD IDSU JTWF COMP.

@@ -1,5 +1,5 @@
 Require Import lib.utils.
-Require Import common.common.
+Require Import common.types.
 Require Import concrete.concrete.
 Require Import symbolic.symbolic.
 

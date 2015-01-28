@@ -2,7 +2,7 @@ Require Import ssreflect ssrbool eqtype seq ssrint.
 Require Import hseq ord word partmap.
 
 Require Import lib.utils lib.word_utils.
-Require Import common.common.
+Require Import common.types.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import symbolic.symbolic.

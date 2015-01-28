@@ -2,7 +2,7 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
 Require Import ord hseq word partmap.
 
-Require Import lib.utils lib.word_utils common.common.
+Require Import lib.utils lib.word_utils common.types.
 Require Import symbolic.symbolic.
 Require Import compartmentalization.common.
 Require Import compartmentalization.isolate_sets compartmentalization.ranges.

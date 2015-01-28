@@ -1,7 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import hseq.
 
-Require Import lib.utils common.common symbolic.symbolic.
+Require Import lib.utils common.types symbolic.symbolic.
 Require Import cfi.classes.
 
 Import Symbolic.
