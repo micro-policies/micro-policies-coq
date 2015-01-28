@@ -150,14 +150,6 @@ Notation "'do!' 'guard?' ocond ; rest" :=
 
 End DoNotation.
 
-Fixpoint assoc_list_lookup {T1 T2 : Type} (xys : seq (T1 * T2)%type)
-    (select : T1 -> bool) : option T2 :=
-  match xys with
-  | [::] => None
-  | (x,y) :: xys' => if select x then Some y
-                     else assoc_list_lookup xys' select
-  end.
-
 Section In2.
 
 Variable A : Type.
