@@ -77,7 +77,7 @@ Instance sk_defs : Sym.sealing_key := {|
  key := [ordType of word 28];
  max_key := monew;
  inc_key x := (x + 1)%w;
- ltb_inc sk := leqw_succ _ sk monew
+ ltb_inc sk := @leqw_succ _ sk monew
 |}.
 
 Definition encode_sealing_tag (t : Sym.stag) : word 30 :=
@@ -229,7 +229,7 @@ Definition transfer_function : list (instr t) :=
  ([:: Halt _])))))))))))))))))))).
 
 Definition fault_handler : @relocatable_segment t w w :=
- kernel_code (fault_handler.handler t fhp transfer_function).
+ kernel_code (fault_handler.handler fhp transfer_function).
 
 Definition extra_state : @relocatable_segment t w w :=
  kernel_data [:: as_word 13].
@@ -524,9 +524,9 @@ Section Refinement.
 
 Instance sp : Symbolic.params := @Sym.sym_sealing sk_defs.
 
-Context {sealing_invariant : policy_invariant t}.
+Context {sealing_invariant : @policy_invariant t _ _}.
 
-Let monitor_invariant := fault_handler_invariant t ops fhp transfer_function sealing_invariant.
+Let monitor_invariant := fault_handler_invariant ops fhp transfer_function sealing_invariant.
 
 Context {implementation_correct : kernel_code_bwd_correctness monitor_invariant Sym.sealing_syscalls}.
 

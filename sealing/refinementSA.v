@@ -5,6 +5,10 @@ Require Import lib.ssr_list_utils lib.partmap_utils.
 Require Import common.common symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 (* Give up any hope of forward simulation?
    + we could consider a weakened version of forwards simulation
      that only holds up to a failed symbolic key generation
@@ -12,10 +16,6 @@ Require Import sealing.classes sealing.symbolic sealing.abstract.
 *)
 
 Section RefinementSA.
-
-Set Implicit Arguments.
-Unset Strict Implicit.
-Unset Printing Implicit Defensive.
 
 Context {t : machine_types}
         {ops : machine_ops t}

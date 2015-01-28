@@ -8,6 +8,9 @@ Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Import common.
 Import String.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Open Scope char_scope.
 Open Scope Z_scope.
@@ -47,8 +50,6 @@ Definition format_Z z rest :=
   | Zpos _ => format_Z_aux (S (Z.to_nat (Z.log2 z))) z rest
   | Zneg _ => String.append "-" (format_Z_aux (S (Z.to_nat (Z.log2 z))) (Z.abs z) rest)
   end.
-
-Set Implicit Arguments.
 
 (* ------------------------------------------------------------------- *)
 (* Append-list strings *)

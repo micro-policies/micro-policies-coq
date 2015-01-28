@@ -16,6 +16,10 @@ Require Import cfi.symbolic.
 Require Import cfi.abstract.
 Require Import cfi.refinementAS.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Module CFIInstances.
 
 Section WithClasses.
@@ -211,7 +215,7 @@ have [ast' [STEPA REF']] :=
                                     syscall_preserves_register_tags
                                     syscall_preserves_jump_tags
                                     syscall_preserves_jal_tags
-                                    _ REF STEPS.
+                                    REF STEPS.
 by have [ast'' [EXECA REF'']] := IH ast' REF'; eauto 7.
 Qed.
 
@@ -225,7 +229,7 @@ Lemma backwards_refinement (ast : Abs.state t) (cst cst' : Concrete.state t) :
 Proof.
 move => [sst SC AS] EXECC INUSER.
 have [sst' EXECS SC'] := backward.backwards_refinement SC EXECC INUSER.
-by have [ast' [EXECA AS']] := backwards_refinement_as _ _ _ AS EXECS; eauto.
+by have [ast' [EXECA AS']] := backwards_refinement_as AS EXECS; eauto.
 Qed.
 
 End Refinement.

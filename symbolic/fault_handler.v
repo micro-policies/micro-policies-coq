@@ -11,6 +11,10 @@ Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 Require Import symbolic.symbolic.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Section fault_handler.
 
 Context (mt : machine_types)

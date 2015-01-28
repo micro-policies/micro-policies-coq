@@ -3,6 +3,8 @@ Require Import word partmap.
 Require Import lib.utils common.common cfi.property cfi.classes.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module Abs.
 
@@ -274,7 +276,7 @@ Proof.
 Qed.
 
 Lemma stuck_trace s s' xs s'' :
-  interm (cfi_step abstract_cfi_machine) (s :: xs) s s'' ->
+  interm (@cfi_step abstract_cfi_machine) (s :: xs) s s'' ->
   ~~ cont s ->
   s' \in s :: xs ->
   ~ exists s''', step s' s'''.

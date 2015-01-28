@@ -452,7 +452,7 @@ Proof.
           unfold Symbolic.next_state_reg in H
         | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
           unfold Symbolic.next_state_reg_and_pc in H
-        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+        | [H: Symbolic.next_state _ _ = Some _ |- _] =>
           unfold Symbolic.next_state in H; simpl in H; match_inv
       end); subst;
    unfold Sym.ssucc in SUCC; simpl in SUCC;
@@ -885,7 +885,7 @@ Lemma violation_implies_kexec sst cst cst' umvec sxs cxs :
 Proof.
   move=> VIOLATION UMVEC USER NUSER' STEP REF RTRACE.
   rewrite /check USER /= in NUSER'.
-  assert (UHANDLER := Sym.is_violation_implies_stop stable sst VIOLATION UMVEC).
+  assert (UHANDLER := Sym.is_violation_implies_stop VIOLATION UMVEC).
   assert (KERNEL := user_into_kernel_wrapped USER REF STEP NUSER').
   rewrite /= KERNEL /=.
   apply/allP=> kst /(refine_traces_kexec RTRACE KERNEL)
@@ -1302,7 +1302,7 @@ Proof.
        clear RTRACES RTRACE'.
        destruct IH' as [[asj' [RTRACE AEXEC]]| [asi' [asj' [atl RTRACE]]]].
        { (*non-contradictory case, we took some attacker steps at first*)
-         assert (VIOLATION' := Sym.violation_preserved_by_exec_a _ VIOLATION AEXEC).
+         assert (VIOLATION' := Sym.violation_preserved_by_exec_a VIOLATION AEXEC).
          clear VIOLATION.
          right.
          rewrite CLST.
@@ -1348,7 +1348,7 @@ Proof.
          * assert (IN: asi' \in (asi' :: asj' :: atl))
              by (rewrite !inE eqxx; auto).
            apply ALLS' in IN. by eauto.
-           assert (VIOLATION' := Sym.violation_preserved_by_exec_a _ VIOLATION AEXEC).
+           assert (VIOLATION' := Sym.violation_preserved_by_exec_a VIOLATION AEXEC).
            clear VIOLATION.
            assert (USERI' : in_user csi').
            { destruct chd.

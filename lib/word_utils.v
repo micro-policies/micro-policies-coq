@@ -1,6 +1,10 @@
 Require Import ssreflect ssrbool ssrfun eqtype ssrnat div ssrint intdiv.
 Require Import ord word.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Section WordUtils.
 
 Local Open Scope word_scope.

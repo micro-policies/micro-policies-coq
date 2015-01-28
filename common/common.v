@@ -5,6 +5,8 @@ Require Import ord word partmap.
 Require Import lib.utils.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 (* Warning: extending binop here requires to add corresponding ground rules *)
 Inductive binop : predArgType :=
@@ -455,7 +457,7 @@ Record atom V T := Atom { val : V; tag : T }.
 Definition atom_eqb (V T : eqType) : rel (atom V T) :=
   [rel a1 a2 | [&& val a1 == val a2 & tag a1 == tag a2] ].
 
-Lemma atom_eqbP V T : Equality.axiom (atom_eqb V T).
+Lemma atom_eqbP V T : Equality.axiom (@atom_eqb V T).
 Proof.
   move => [v1 t1] [v2 t2] /=.
   apply (iffP andP); simpl.
@@ -463,7 +465,7 @@ Proof.
   - move => [-> ->]. by rewrite !eqxx.
 Qed.
 
-Definition atom_eqMixin V T := EqMixin (atom_eqbP V T).
+Definition atom_eqMixin V T := EqMixin (@atom_eqbP V T).
 Canonical atom_eqType V T := Eval hnf in EqType _ (atom_eqMixin V T).
 
 Notation "x @ t" := (Atom x t) (at level 5, format "x '@' t").

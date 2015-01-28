@@ -33,7 +33,7 @@ Instance col : Sym.color_class := {|
   color := color;
   max_color := monew;
   inc_color := inc_color;
-  ltb_inc col := leqw_succ _ col monew
+  ltb_inc col := @leqw_succ _ col monew
 |}.
 
 (* Encoding scheme

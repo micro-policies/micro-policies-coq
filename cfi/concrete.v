@@ -13,6 +13,8 @@ Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module Conc.
 Section ConcreteSection.

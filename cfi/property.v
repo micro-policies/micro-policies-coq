@@ -3,6 +3,8 @@ Require Import word partmap.
 Require Import lib.utils common.common.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Section CFI.
 

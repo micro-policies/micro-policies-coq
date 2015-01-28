@@ -14,6 +14,10 @@ Require Import word partmap.
 Import DoNotation.
 Import Concrete.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Section WithClasses.
 
 Let t := concrete_int_32_t.
@@ -140,7 +144,7 @@ Program Definition concrete_initial_state
         foldl
           (fun regs r =>
              setm regs r zerow@(Concrete.TKernel:w))
-          emptym (kernel_regs t concrete_int_32_fh) in
+          emptym (kernel_regs concrete_int_32_fh) in
   let regs :=
         foldl
           (fun regs r =>

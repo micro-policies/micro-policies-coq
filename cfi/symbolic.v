@@ -8,7 +8,10 @@ Require Import symbolic.exec.
 Require Import cfi.property.
 Require Import cfi.rules.
 Require Import cfi.classes.
+
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module Sym.
 
@@ -227,7 +230,7 @@ Proof.
             unfold Symbolic.next_state_reg in H
           | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
-          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          | [H: Symbolic.next_state _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
         end); match_inv; subst; try (simpl; assumption).
   + simpl in E. simpl. unfold instructions_tagged.
@@ -261,7 +264,7 @@ Proof.
             unfold Symbolic.next_state_reg in H
           | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
-          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          | [H: Symbolic.next_state _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
         end); match_inv; subst; try (simpl; assumption).
   + simpl in E. simpl. unfold valid_jmp_tagged.
@@ -347,7 +350,7 @@ Proof.
             unfold Symbolic.next_state_reg in H
           | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
-          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          | [H: Symbolic.next_state _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
         end); match_inv; subst; try (simpl; assumption).
   + simpl in E. simpl.
@@ -387,7 +390,7 @@ Proof.
           unfold Symbolic.next_state_reg in H
         | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
           unfold Symbolic.next_state_reg_and_pc in H
-        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+        | [H: Symbolic.next_state _ _ = Some _ |- _] =>
           unfold Symbolic.next_state in H; simpl in H
         | [H: Symbolic.run_syscall _ _ = _ |- _] =>
           unfold Symbolic.run_syscall in H; simpl in H
@@ -438,7 +441,7 @@ Proof.
             unfold Symbolic.next_state_reg in H
           | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
-          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          | [H: Symbolic.next_state _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
         end); match_inv; subst; try (simpl; assumption).
   + simpl in E. simpl. unfold jumps_tagged.
@@ -481,7 +484,7 @@ Proof.
             unfold Symbolic.next_state_reg in H
           | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
-          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          | [H: Symbolic.next_state _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
         end); match_inv; subst; try (simpl; assumption).
   + simpl in E. simpl. unfold jals_tagged.
@@ -852,7 +855,7 @@ Proof.
           unfold Symbolic.next_state_reg in H
         | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
           unfold Symbolic.next_state_reg_and_pc in H
-        | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+        | [H: Symbolic.next_state _ _ = Some _ |- _] =>
           unfold Symbolic.next_state in H; simpl in H
       end); subst; match_inv; simpl in SUCC;
   try match goal with

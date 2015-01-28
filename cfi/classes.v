@@ -1,6 +1,10 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
 Require Import common.common.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Section WithClasses.
 
 Context {t : machine_types}.

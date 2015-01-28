@@ -10,8 +10,6 @@ Require Import symbolic.exec.
 Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 
-Open Scope nat_scope.
-
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.

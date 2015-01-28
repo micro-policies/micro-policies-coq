@@ -3,6 +3,8 @@ Require Import hseq word partmap.
 Require Import lib.utils common.common symbolic.symbolic.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Import DoNotation.
 
@@ -67,7 +69,7 @@ Definition stepf (st : state t) : option (state t) :=
       do! a2 <- reg r2;
       let: w2@t2 := a2 in
       let mvec := mkIVec STORE tpc ti [hseq t1;t2;told] in
-      next_state st mvec (fun ov =>
+      @next_state _ _ st mvec (fun ov =>
          do! mem' <- updm mem w1 w2@(tr ov);
          Some (State mem' reg (pc.+1)@(trpc ov) extra))
     | Jump r =>

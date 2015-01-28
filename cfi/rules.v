@@ -4,8 +4,11 @@ Require Import hseq.
 Require Import lib.utils common.common symbolic.symbolic.
 Require Import cfi.classes.
 
-Set Implicit Arguments.
 Import Symbolic.
+
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Section uhandler.
 

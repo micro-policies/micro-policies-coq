@@ -13,6 +13,8 @@ Require Import cfi.refinementAS.
 Require Import cfi.rules.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Section Refinement.
 
@@ -310,12 +312,12 @@ Next Obligation.
   [intros;
     destruct (backwards_simulation syscall_preserves_register_tags
                                    syscall_preserves_jump_tags
-                                   syscall_preserves_jal_tags _ REF STEP)
+                                   syscall_preserves_jal_tags REF STEP)
     as [? [? ?]];
    eexists; split; eauto | discriminate].
 Qed.
 Next Obligation.
-  destruct (RefinementAS.backwards_simulation_attacker stable ast REF STEPA);
+  destruct (RefinementAS.backwards_simulation_attacker REF STEPA);
   eexists; eauto.
 Qed.
 
@@ -363,7 +365,7 @@ Next Obligation.
       destruct CONTRA.
     + move=> csi'; rewrite inE => /eqP {csi'}->.
       intros (? & CONTRA).
-      destruct (backwards_refinement_normal _ _ _ REF CONTRA) as [VIS CLEAN].
+      destruct (backwards_refinement_normal REF CONTRA) as [VIS CLEAN].
       clear CLEAN.
       unfold check in VIS. simpl in VIS.
       destruct (VIS erefl) as [ast' [ASTEP REF']].
@@ -384,7 +386,7 @@ Next Obligation.
     }
     { move=> csi'; rewrite inE => /orP [/eqP ? | IN]; subst.
       - intros (? & CONTRA).
-        destruct (backwards_refinement_normal _ _ _ REF CONTRA) as [CONTRA' H'].
+        destruct (backwards_refinement_normal REF CONTRA) as [CONTRA' H'].
         clear H'.
         simpl in CONTRA'.
         destruct (CONTRA' erefl) as [ast'' [ASTEP REF'']].

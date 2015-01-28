@@ -9,8 +9,9 @@ Require Import cfi.symbolic.
 Require Import cfi.rules.
 Require Import cfi.classes.
 
-
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module RefinementAS.
 
@@ -430,7 +431,7 @@ Proof.
             unfold Symbolic.next_state_reg in H
           | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
-          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          | [H: Symbolic.next_state _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
         end); match_inv;
     repeat match goal with
@@ -444,7 +445,7 @@ Proof.
                 H1 : refine_dmemory _ ?Mem,
                      H2: getm ?Mem ?Addr = Some _ |- _] =>
             simpl in H;
-          destruct (refine_memory_upd Addr V H1 H2 H) as [dmem' [? ?]]
+          destruct (refine_memory_upd H1 H2 H) as [dmem' [? ?]]
         end);
     (*switch memory and register reads to abstract*)
     try match goal with
@@ -472,7 +473,7 @@ Proof.
            | [H: refine_registers _ _, H1: getm _ ?R = Some _,
                                            H2: updm _ ?R ?V'@_ = Some _ |- _] =>
              try (unfold default_rtag in H2; simpl in H2);
-               destruct (refine_registers_upd R V' H H1 H2) as [aregs' [? ?]]
+               destruct (refine_registers_upd H H1 H2) as [aregs' [? ?]]
            end;
     (*do refinements*)
     repeat match goal with
@@ -499,14 +500,14 @@ Proof.
           assert (REF: refine_state (Abs.State imem dmem aregs pc true)
                                     (Symbolic.State mem reg pc@tpc extra))
             by (repeat (split; auto));
-          destruct (syscalls_backwards_simulation (Abs.State imem dmem aregs pc true)
-                                                  (@Symbolic.State _ sym_params mem reg pc@tpc extra)
-                                                  W
+          destruct (syscalls_backwards_simulation (*(Abs.State imem dmem aregs pc true)*)
+                                                  (*@Symbolic.State _ sym_params mem reg pc@tpc extra*)
+                                                  (*W*)
                                                   refine_syscalls_correct H1
                                                   REF CALL) as
               [ac [ast' [GETCALL' [CALL' FINALREF]]]];
           destruct ast' as [imem' dmem' aregs' apc' b];
-          destruct (syscall_sem ac (Abs.State imem dmem aregs pc true) CALL') as
+          destruct (syscall_sem CALL') as
               [? ?];
           subst
         ) || fail 4 "Couldn't analyze syscall"
@@ -576,7 +577,7 @@ Proof.
            end;
      try match goal with
           | [H: is_true (Abs.valid_jmp _ _ _) |- _] =>
-            destruct (valid_jmp_true _ _ _ H) as [? [? [? ?]]]
+            destruct (valid_jmp_true H) as [? [? [? ?]]]
         end;
     repeat match goal with
              | [H: word_to_id ?Pc = _ , H1: word_to_id ?Pc = _
@@ -656,7 +657,7 @@ Proof.
             unfold Symbolic.next_state_reg in H
           | [H: Symbolic.next_state_reg_and_pc _ _ _ _ _ = _ |- _] =>
             unfold Symbolic.next_state_reg_and_pc in H
-          | [H: Symbolic.next_state _ _ _ = Some _ |- _] =>
+          | [H: Symbolic.next_state _ _ = Some _ |- _] =>
             unfold Symbolic.next_state in H; simpl in H
           | [H: Symbolic.run_syscall _ _ = Some _ |- _] =>
             unfold Symbolic.run_syscall in H;

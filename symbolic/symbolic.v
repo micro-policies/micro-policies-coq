@@ -5,6 +5,8 @@ Require Import lib.utils common.common.
 Require Import lib.ssr_list_utils.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Import DoNotation.
 
@@ -98,7 +100,7 @@ Record IVec : Type := mkIVec {
 }.
 
 Lemma ivec_eq_inv op op' tpc tpc' ti ti' ts ts'
-                  (p : mkIVec op tpc ti ts = mkIVec op' tpc' ti' ts') :
+                  (p : @mkIVec op tpc ti ts = @mkIVec op' tpc' ti' ts') :
   [/\ op = op', tpc = tpc', ti = ti' &
       existT (hseq tag_type \o vinputs) op ts = existT _ op' ts'].
 Proof. inversion p. by constructor. Qed.
@@ -188,7 +190,7 @@ Definition next_state (st : state) (iv : IVec ttypes)
 
 Definition next_state_reg_and_pc (st : state) (iv : @IVec ttypes)
   (r : reg t) (x : word) (pc' : word) : option state :=
-  next_state st iv (
+  next_state st (
     match op iv as o return VOVec _ o -> option state with
     | OP op => fun ov =>
       match outputs op as o return (type_of_result _ o -> option state) with
@@ -206,7 +208,7 @@ Definition next_state_reg (st : state) (mvec : @IVec ttypes) r x : option state 
 
 Definition next_state_pc (st : state) (iv : @IVec ttypes)
   (x : word) : option state :=
-  next_state st iv (
+  next_state st (
     match op iv as o return VOVec _ o -> option state with
     | OP op => fun ov =>
                  Some (State (mem st) (regs st) x@(trpc ov) (internal st))
@@ -263,7 +265,7 @@ Inductive step (st st' : state) : Prop :=
     (R2W  : reg r2 = Some w2@t2)
     (OLD  : mem w1 = Some old@told),
     let mvec := mkIVec STORE tpc ti [hseq t1; t2; told] in forall
-    (NEXT : next_state st mvec (fun ov =>
+    (NEXT : @next_state st mvec (fun ov =>
                  do! mem' <- updm mem w1 w2@(tr ov);
                  Some (State mem' reg (pc.+1)@(trpc ov) extra)) = Some st'),
               step st st'
