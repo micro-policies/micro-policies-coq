@@ -145,10 +145,10 @@ Definition handler : code :=
                     tags in rvector. NB: system calls are now
                     required to begin with a Nop to simplify the
                     specification of the fault handler. *)
-           ([:: Const (as_word (nat_of_op NOP)) ri4] ++
+           ([:: Const (word_of_op NOP) ri4] ++
             [:: Binop EQ ri4 rop ri4] ++
             if_ ri4 [::] [:: Halt _] ++
-            [:: Const (as_word (nat_of_vop SERVICE)) rop] ++
+            [:: Const (as_word (pickle SERVICE)) rop] ++
             policy_handler ++
             load_const Concrete.TKernel rtrpc ++
             load_const Concrete.TKernel rtr)
@@ -158,12 +158,12 @@ Definition handler : code :=
                 (* THEN: We are in user mode: extract operand tags
                    and run policy handler *)
                 (foldr (fun op c =>
-                               load_const (mword_of_op op) ri4 ++
+                               load_const (word_of_op op) ri4 ++
                                [:: Binop EQ rop ri4 rb] ++
                                if_ rb
                                   (analyze_operand_tags_for_opcode op)
                                   c)
-                            [::] opcodes ++
+                            [::] (enum opcode) ++
                  policy_handler ++
                  (* Wrap RVec *)
                  wrap_user_tag rtrpc rtrpc ++

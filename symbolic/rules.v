@@ -204,7 +204,7 @@ Qed.
 Definition decode_ivec (m : {partmap mword t -> atom (mword t) (mword t)})
                        (mvec : Concrete.MVec (mword t))
                        : option (Symbolic.IVec tty) :=
-  do! op  <- op_of_mword (Concrete.cop mvec);
+  do! op  <- op_of_word (Concrete.cop mvec);
   match decode Symbolic.P m (Concrete.ctpc mvec) with
   | Some (USER tpc) =>
     match decode Symbolic.M m (Concrete.cti mvec) with
@@ -256,7 +256,7 @@ Definition decode_ovec op (m : {partmap mword t -> atom (mword t) (mword t)})
 Let TCopy : mword t := TNone.
 
 Definition ground_rules : Concrete.rules (mword t) :=
-  let mk op := Concrete.mkMVec (mword_of_op op) TKernel TKernel
+  let mk op := Concrete.mkMVec (word_of_op op) TKernel TKernel
                                TNone TNone TNone in
   [::
    (mk NOP, Concrete.mkRVec TCopy TNone);
@@ -287,19 +287,19 @@ Lemma decode_ivec_inv mvec m ivec :
   (exists op,
     [/\ Symbolic.op ivec = OP op &
     [/\ ~~ Symbolic.privileged_op op,
-        op_of_mword (Concrete.cop mvec) = Some op,
+        op_of_word (Concrete.cop mvec) = Some op,
         decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)),
         decode Symbolic.M m (Concrete.cti mvec) = Some (USER (Symbolic.ti ivec)) &
         decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
         Some (hmap (fun k x => Some (USER x)) (Symbolic.ts ivec)) ]]) \/
-  [/\ op_of_mword (Concrete.cop mvec) = Some NOP ,
+  [/\ op_of_word (Concrete.cop mvec) = Some NOP ,
       Symbolic.op ivec = SERVICE ,
       decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)) &
       decode Symbolic.M m (Concrete.cti mvec) = Some (ENTRY (Symbolic.ti ivec)) ].
 Proof.
   case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts].
   rewrite /decode_ivec (lock Symbolic.privileged_op) /=.
-  case: (op_of_mword cop) => [op'|] //=.
+  case: (op_of_word cop) => [op'|] //=.
   case: (decode _ m ctpc) => [[tpc'|?]|] //=.
   case: (decode _ m cti) => [[ti'|ti']|] //=; last first.
     case: op' => //= [] [? ? ?]. subst op tpc' ti'. right.
@@ -325,7 +325,7 @@ Proof.
   move=> Hget Hdec Hdec' [cop ctpc cti ct1 ct2 ct3].
   have Hdec_eq := decode_monotonic _ _ Hget Hdec Hdec'.
   rewrite /decode_ivec /=.
-  case: (op_of_mword cop) => [op|] //=.
+  case: (op_of_word cop) => [op|] //=.
   by destruct op; simpl; rewrite !Hdec_eq.
 Qed.
 

@@ -1,8 +1,5 @@
-(*
-TODO: write better testing support -- e.g. comparing final states
-*)
-
-Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq ssrint.
+Require Import ssreflect ssrfun eqtype ssrnat ssrbool seq choice fintype.
+Require Import ssrint.
 Require Import ord word partmap hseq.
 Require Import lib.utils lib.word_utils common.common.
 Require Import concrete.concrete.
@@ -153,12 +150,12 @@ Definition transfer_function : list (instr t) :=
                         if_ ri1 [::] [:: Halt _]
    in
  (* entry points for system calls *)
- ([:: Const (as_word (nat_of_vop SERVICE)) ri1;
+ ([:: Const (as_word (pickle SERVICE)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     [::]
  (* NOP *)
- ([:: Const (as_word (nat_of_op NOP)) ri1;
+ ([:: Const (as_word (pickle NOP)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
@@ -166,7 +163,7 @@ Definition transfer_function : list (instr t) :=
          Const (swcast DATA) rtr
      ])
  (* CONST *)
- ([:: Const (as_word (nat_of_op CONST)) ri1;
+ ([:: Const (as_word (pickle CONST)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
@@ -174,7 +171,7 @@ Definition transfer_function : list (instr t) :=
          Const (swcast DATA) rtr
      ])
  (* MOV *)
- ([:: Const (as_word (nat_of_op MOV)) ri1;
+ ([:: Const (as_word (pickle MOV)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
@@ -182,8 +179,8 @@ Definition transfer_function : list (instr t) :=
       Mov rt1 rtr
      ])
  (* BINOPs *)
- (let binop cont b :=
-        [:: Const (as_word (nat_of_op (BINOP b))) ri1;
+ (let do_binop cont b :=
+        [:: Const (as_word (pickle (BINOP b))) ri1;
             Binop EQ rop ri1 ri1 ] ++
         (if_ ri1
           (assert_DATA rtpc ++ assert_DATA rti ++
@@ -192,9 +189,9 @@ Definition transfer_function : list (instr t) :=
                Const (swcast DATA) rtr
            ])
           cont) in
-   foldl binop [::] binops ++
+   foldl do_binop [::] (enum binop) ++
  (* LOAD *)
- ([:: Const (as_word (nat_of_op LOAD)) ri1;
+ ([:: Const (as_word (pickle LOAD)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
@@ -202,7 +199,7 @@ Definition transfer_function : list (instr t) :=
       Mov rt2 rtr
      ])
  (* STORE *)
- ([:: Const (as_word (nat_of_op STORE)) ri1;
+ ([:: Const (as_word (pickle STORE)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
@@ -210,19 +207,19 @@ Definition transfer_function : list (instr t) :=
          Mov rt2 rtr
      ])
  (* JUMP *)
- ([:: Const (as_word (nat_of_op JUMP)) ri1;
+ ([:: Const (as_word (pickle JUMP)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++
      [:: Const (swcast DATA) rtrpc])
  (* BNZ *)
- ([:: Const (as_word (nat_of_op BNZ)) ri1;
+ ([:: Const (as_word (pickle BNZ)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++
      [:: Const (swcast DATA) rtrpc])
  (* JAL *)
- ([:: Const (as_word (nat_of_op JAL)) ri1;
+ ([:: Const (as_word (pickle JAL)) ri1;
       Binop EQ rop ri1 ri1 ] ++
   (if_ ri1
     (assert_DATA rtpc ++ assert_DATA rti ++ assert_DATA rt1 ++

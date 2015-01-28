@@ -467,7 +467,7 @@ Lemma analyze_cache cache cmem cmvec crvec op :
   cache_correct cache cmem ->
   Concrete.cache_lookup cache masks cmvec = Some crvec ->
   oapp (fun x => is_user x) false (decode Symbolic.P cmem (Concrete.ctpc cmvec)) ->
-  Concrete.cop cmvec = mword_of_op op ->
+  Concrete.cop cmvec = word_of_op op ->
   if Symbolic.privileged_op op then False else
   exists tpc : Symbolic.ttypes Symbolic.P, decode _ cmem (Concrete.ctpc cmvec) = Some (USER tpc) /\
   ((exists (ti : Symbolic.ttypes Symbolic.M)

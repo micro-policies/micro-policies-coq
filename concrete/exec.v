@@ -28,7 +28,7 @@ Definition step (st : state mt) : option (state mt) :=
   let 'mkState mem reg cache pc@tpc epc := st in
   do! i <- mem pc;
   do! instr <- decode_instr (val i);
-  let mvec := mkMVec (mword_of_op (opcode_of instr)) tpc (tag i) in
+  let mvec := mkMVec (word_of_op (opcode_of instr)) tpc (tag i) in
   match instr with
   | Nop =>
     let mvec := mvec TNone TNone TNone in
@@ -155,7 +155,7 @@ Definition build_cmvec st : option (Concrete.MVec (mword mt)) :=
     | Some i =>
       match decode_instr (val i) with
         | Some op =>
-          let part := @Concrete.mkMVec (mword mt) (mword_of_op (opcode_of op))
+          let part := @Concrete.mkMVec (mword mt) (word_of_op (opcode_of op))
                                        (Concrete.pct st) (common.tag i) in
           match op  with
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
@@ -234,7 +234,7 @@ Lemma step_lookup_success_or_fault cst cst' :
 Proof.
   move => STEP.
   rewrite /build_cmvec.
-  inv STEP; subst; simpl;
+  inv STEP; subst; rewrite /pct /=;
   repeat match goal with
   | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
   end;
@@ -242,7 +242,10 @@ Proof.
   subst mvec;
   unfold next_state_reg, next_state_pc,
          next_state_reg_and_pc, next_state, miss_state, pct in *;
-  simpl in *; match_inv; reflexivity.
+  simpl in *; match_inv;
+  repeat match goal with
+  | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
+  end; reflexivity.
 Qed.
 
 Lemma lookup_none_step cst cmvec :
@@ -296,7 +299,7 @@ Lemma build_cmvec_cop_cti cst cmvec :
     [/\ (Concrete.mem cst) (Concrete.pcv cst) =
         Some i@(Concrete.cti cmvec),
         decode_instr i = Some instr &
-        mword_of_op (opcode_of instr) = Concrete.cop cmvec].
+        word_of_op (opcode_of instr) = Concrete.cop cmvec].
 Proof.
   rewrite /build_cmvec.
   case: (getm _ _) => [[i ti]|] //= MVEC. exists i. move: MVEC.

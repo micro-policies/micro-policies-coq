@@ -1,7 +1,7 @@
 (* Instantiate the concrete machine with 32-bit integers *)
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssrint.
-Require Import tuple.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype.
+Require Import ssrint tuple.
 Require Import hseq ord word partmap.
 
 Require Import lib.utils.
@@ -21,15 +21,6 @@ Program Definition concrete_int_32_t : machine_types := {|
 |}.
 
 Local Notation t := concrete_int_32_t.
-
-Definition encode_opcode (o : opcode) : word 5 :=
-  as_word (nat_of_op o).
-
-Definition decode_opcode (o : word 5) : option opcode :=
-  op_of_nat (ord_of_word o).
-
-Lemma encode_opcodeK o : decode_opcode (encode_opcode o) = Some o.
-Proof. case o; try case; reflexivity. Qed.
 
 Definition fields_of_op op : seq nat :=
   match op with
@@ -96,14 +87,14 @@ Qed.
 
 Instance concrete_int_32_ops : machine_ops t := {|
   encode_instr i :=
-    let op := encode_opcode (opcode_of i) in
+    let op := word_of_op (opcode_of i) in
     let args : word 27 := wcast (fields_of_opP _) (wpack (args_of_instr i)) in
     @wpack [:: 5; 27] [hseq op; args];
 
   decode_instr i :=
     let i' := @wunpack [:: 5; 27] i in
     let op := [hnth i' 0] in
-    do! op <- decode_opcode op;
+    do! op <- op_of_word op;
     let args := wcast (esym (fields_of_opP op)) [hnth i' 1] in
     Some (instr_of_args (wunpack args));
 
@@ -115,5 +106,5 @@ Instance concrete_int_32_ops_spec : machine_ops_spec concrete_int_32_ops.
 Proof.
 constructor=> i.
 rewrite /decode_instr /encode_instr /= wpackK /hnth /=.
-by rewrite encode_opcodeK /= wcastK wpackK args_of_instrK.
+by rewrite word_of_opK //= wcastK wpackK args_of_instrK.
 Qed.
