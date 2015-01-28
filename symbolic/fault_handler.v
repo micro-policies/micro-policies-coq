@@ -214,7 +214,7 @@ Variable pinv : policy_invariant.
 
 Let invariant (mem : Concrete.memory mt)
               (regs : Concrete.registers mt)
-              (cache : Concrete.rules (mword mt))
+              (cache : Concrete.rules mt)
               (int : Symbolic.internal_state) : Prop :=
   (forall addr : mword mt, addr \in Concrete.rvec_fields _ ->
                           exists w : mword mt, mem addr = Some w@Concrete.TKernel) /\

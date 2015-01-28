@@ -147,12 +147,12 @@ Proof.
   apply (iffP eqP); by move => /stepP.
 Qed.
 
-Definition build_cmvec st : option (Concrete.MVec (mword mt)) :=
+Definition build_cmvec st : option (Concrete.MVec mt) :=
   match Concrete.mem st (Concrete.pcv st) with
     | Some i =>
       match decode_instr (vala i) with
         | Some op =>
-          let part := @Concrete.mkMVec (mword mt) (word_of_op (opcode_of op))
+          let part := @Concrete.mkMVec mt (word_of_op (opcode_of op))
                                        (Concrete.pct st) (taga i) in
           match op  with
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)

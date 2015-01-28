@@ -202,7 +202,7 @@ by rewrite E.
 Qed.
 
 Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
-                       (mvec : Concrete.MVec (mword mt))
+                       (mvec : Concrete.MVec mt)
                        : option (Symbolic.IVec tty) :=
   do! op  <- op_of_word (Concrete.cop mvec);
   match decode Symbolic.P m (Concrete.ctpc mvec) with
@@ -227,7 +227,7 @@ Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
   end.
 
 Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
-                       (rvec : Concrete.RVec (mword mt))
+                       (rvec : Concrete.RVec mt)
                        : option (Symbolic.VOVec tty op) :=
   match op return option (Symbolic.VOVec tty op) with
   | OP op =>
@@ -255,7 +255,7 @@ Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
 (* Just for clarity *)
 Let TCopy : mword mt := TNone.
 
-Definition ground_rules : Concrete.rules (mword mt) :=
+Definition ground_rules : Concrete.rules mt :=
   let mk op := Concrete.mkMVec (word_of_op op) TKernel TKernel
                                TNone TNone TNone in
   [::

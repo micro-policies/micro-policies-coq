@@ -13,38 +13,32 @@ Module Concrete.
 
 Local Open Scope word_scope.
 
-(* CH (old): Why aren't these Ts instantiated with (word t) right away?  Is
-   there any other instantiation of this? If this is so general, why
-   doesn't it replace the MVec and RVec in fault_handler_spec.v?  (we
-   would need to distinguish between the type of tags and the type of
-   opcodes for that) *)
-(* CH (new): to me it seems we should just replace T by (word t) *)
-Record MVec (T : Type) : Type := mkMVec {
-  cop  : T;
-  ctpc : T;
-  cti  : T;
-  ct1  : T;
-  ct2  : T;
-  ct3  : T
+Record MVec (mt : machine_types) : Type := mkMVec {
+  cop  : mword mt;
+  ctpc : mword mt;
+  cti  : mword mt;
+  ct1  : mword mt;
+  ct2  : mword mt;
+  ct3  : mword mt
 }.
 
-Record RVec (T : Type) : Type := mkRVec {
-  ctrpc : T;
-  ctr   : T
+Record RVec (mt : machine_types) : Type := mkRVec {
+  ctrpc : mword mt;
+  ctr   : mword mt
 }.
 
-Definition rule T := (MVec T * RVec T)%type.
-Definition rules T := seq (rule T).
+Definition rule mt := (MVec mt * RVec mt)%type.
+Definition rules mt := seq (rule mt).
 
 Section WithClasses.
 
 Context (mt : machine_types).
 Context (ops : machine_ops mt).
 
-Let MVec := MVec (mword mt).
-Let RVec := RVec (mword mt).
-Let rule := rule (mword mt).
-Let rules := rules (mword mt).
+Let MVec := MVec mt.
+Let RVec := RVec mt.
+Let rule := rule mt.
+Let rules := rules mt.
 Let atom := atom (mword mt) (mword mt).
 
 (* If we were doing good modularization, these would be abstract! *)
@@ -372,14 +366,14 @@ Module Exports.
 Import Concrete.
 Require Import seq.
 
-Definition mvec_eqb (T : eqType) (m1 m2 : MVec T) : bool :=
+Definition mvec_eqb mt (m1 m2 : MVec mt) : bool :=
   [&& cop m1 == cop m2,
       ctpc m1 == ctpc m2,
       cti m1 == cti m2,
       ct1 m1 == ct1 m2 &
       ct2 m1 == ct2 m2] && (ct3 m1 == ct3 m2).
 
-Lemma mvec_eqbP T : Equality.axiom (@mvec_eqb T).
+Lemma mvec_eqbP mt : Equality.axiom (@mvec_eqb mt).
 Proof.
   move => m1 m2.
   case: m1 => *. case: m2 => *.
@@ -388,14 +382,14 @@ Proof.
   - move => [-> -> -> -> -> ->]. by rewrite !eqxx.
 Qed.
 
-Definition mvec_eqMixin T := EqMixin (@mvec_eqbP T).
-Canonical mvec_eqType (T : eqType) :=
-  Eval hnf in EqType (MVec T) (@mvec_eqMixin T).
+Definition mvec_eqMixin mt := EqMixin (@mvec_eqbP mt).
+Canonical mvec_eqType mt :=
+  Eval hnf in EqType (MVec mt) (@mvec_eqMixin mt).
 
-Definition rvec_eqb (T : eqType) (r1 r2 : RVec T) : bool :=
+Definition rvec_eqb mt (r1 r2 : RVec mt) : bool :=
   [&& ctrpc r1 == ctrpc r2 & ctr r1 == ctr r2].
 
-Lemma rvec_eqbP T : Equality.axiom (@rvec_eqb T).
+Lemma rvec_eqbP mt : Equality.axiom (@rvec_eqb mt).
 Proof.
   move => r1 r2.
   case: r1 => *. case: r2 => *.
@@ -404,9 +398,9 @@ Proof.
   - move => [-> ->]. by rewrite !eqxx.
 Qed.
 
-Definition rvec_eqMixin T := EqMixin (@rvec_eqbP T).
-Canonical rvec_eqType (T : eqType) :=
-  Eval hnf in EqType (RVec T) (rvec_eqMixin T).
+Definition rvec_eqMixin mt := EqMixin (@rvec_eqbP mt).
+Canonical rvec_eqType mt :=
+  Eval hnf in EqType (RVec mt) (rvec_eqMixin mt).
 
 Definition state_eqb mt : rel (state mt) :=
   [rel s1 s2 | [&& mem s1 == mem s2,

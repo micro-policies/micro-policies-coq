@@ -98,7 +98,7 @@ Qed.
 Record kernel_invariant : Type := {
   kernel_invariant_statement :> Concrete.memory mt ->
                                 Concrete.registers mt ->
-                                Concrete.rules (mword mt) ->
+                                Concrete.rules mt ->
                                 Symbolic.internal_state -> Prop;
 
   kernel_invariant_upd_mem :
