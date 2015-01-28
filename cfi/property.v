@@ -8,10 +8,10 @@ Unset Printing Implicit Defensive.
 
 Section CFI.
 
-Context (t : machine_types).
-Context {ops : machine_ops t}.
+Context (mt : machine_types).
+Context {ops : machine_ops mt}.
 
-Local Notation word := (mword t).
+Local Notation word := (mword mt).
 
 Class cfi_machine := {
   state : eqType;

@@ -21,7 +21,7 @@ Unset Printing Implicit Defensive.
 
 Section Refinement.
 
-Let t := concrete_int_32_t.
+Let mt := concrete_int_32_mt.
 Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
 
@@ -145,7 +145,7 @@ Proof.
     by move => H [<-].
 Qed.
 
-Instance enc: encodable t Sym.ms_tags := {|
+Instance enc: encodable mt Sym.ms_tags := {|
   decode k m w :=
     let: [hseq ut; w']%w := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
@@ -162,15 +162,15 @@ Proof.
   - by move=> tk _; rewrite 2!wunpackS.
 Qed.
 
-Instance sp : Symbolic.params := Sym.sym_memory_safety t.
+Instance sp : Symbolic.params := Sym.sym_memory_safety mt.
 
 Context {monitor_invariant : @kernel_invariant _ _ enc}
-        {syscall_addrs : @memory_syscall_addrs t}
-        {alloc : @Abstract.allocator t color}
+        {syscall_addrs : @memory_syscall_addrs mt}
+        {alloc : @Abstract.allocator mt color}
         {allocspec : Abstract.allocator_spec alloc}.
 
-Inductive refine_state (ast : Abstract.state t color) (cst : Concrete.state t) : Prop :=
-| rs_intro : forall (sst : Symbolic.state t) m,
+Inductive refine_state (ast : Abstract.state mt color) (cst : Concrete.state mt) : Prop :=
+| rs_intro : forall (sst : Symbolic.state mt) m,
                refinement_common.refine_state monitor_invariant (@Sym.memsafe_syscalls _ _ _ _ _) sst cst ->
                refinementAS.refine_state m ast sst ->
                refine_state ast cst.
@@ -195,7 +195,7 @@ Proof.
   eauto 7.
 Qed.
 
-Lemma backwards_refinement (ast : Abstract.state t color) (cst cst' : Concrete.state t) :
+Lemma backwards_refinement (ast : Abstract.state mt color) (cst cst' : Concrete.state mt) :
   refine_state ast cst ->
   exec (Concrete.step _ masks) cst cst' ->
   in_user cst' ->

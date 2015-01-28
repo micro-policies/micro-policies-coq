@@ -10,18 +10,18 @@ Import DoNotation.
 
 Section WithClasses.
 
-Context {t : machine_types}
-        {ops : machine_ops t}
+Context {mt : machine_types}
+        {ops : machine_ops mt}
         {sp : Symbolic.params}.
 
-Variable table : list (Symbolic.syscall t).
+Variable table : list (Symbolic.syscall mt).
 
 Import Symbolic.
 
 Local Open Scope word_scope.
 Local Notation "x .+1" := (x + 1).
 
-Definition stepf (st : state t) : option (state t) :=
+Definition stepf (st : state mt) : option (state mt) :=
   let 'State mem reg pc@tpc extra := st in
   match mem pc with
   | Some iti =>

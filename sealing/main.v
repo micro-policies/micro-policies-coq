@@ -30,26 +30,26 @@ Section WithClasses.
 (* ---------------------------------------------------------------- *)
 (* int32 instance *)
 
-Definition t := concrete_int_32_t.
-Instance ops : machine_ops t := concrete_int_32_ops.
-Instance fhp : fault_handler_params t := concrete_int_32_fh.
+Definition mt := concrete_int_32_mt.
+Instance ops : machine_ops mt := concrete_int_32_ops.
+Instance fhp : fault_handler_params mt := concrete_int_32_fh.
 
 (* ---------------------------------------------------------------- *)
 (* Generic definitions for building concrete machine instances *)
 
-Definition ruser1 : reg t := as_word 20.
-Definition ruser2 : reg t := as_word 21.
-Definition ruser3 : reg t := as_word 22.
-Definition ruser4 : reg t := as_word 23.
+Definition ruser1 : reg mt := as_word 20.
+Definition ruser2 : reg mt := as_word 21.
+Definition ruser3 : reg mt := as_word 22.
+Definition ruser4 : reg mt := as_word 23.
 Definition user_registers :=
   [:: ra; syscall_ret; syscall_arg1; syscall_arg2; syscall_arg3; ruser1;
       ruser2; ruser3; ruser4].
 Definition user_reg_max := last 0%w user_registers.
 
-Definition kernel_data {X} l : @relocatable_segment t X w :=
+Definition kernel_data {X} l : @relocatable_segment mt X w :=
  (length l, fun _ _ => l).
 
-Definition kernel_code {X} l : @relocatable_segment t X w :=
+Definition kernel_code {X} l : @relocatable_segment mt X w :=
  (length l,
   fun _ _ => map encode_instr l).
 
@@ -119,7 +119,7 @@ Proof.
   by move => H [<-].
 Qed.
 
-Instance encodable_tag : @encodable t Sym.stags := {|
+Instance encodable_tag : @encodable mt Sym.stags := {|
   decode k mem w :=
     let: [hseq ut; w'] := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
@@ -141,9 +141,9 @@ Proof.
 by move=> tk _; rewrite 2!wunpackS /=.
 Qed.
 
-Definition DATA : mword t := 0%w.
+Definition DATA : mword mt := 0%w.
 
-Definition transfer_function : list (instr t) :=
+Definition transfer_function : list (instr mt) :=
  let assert_DATA r := [::
    Const (swcast DATA) ri1;
    Binop EQ r ri1 ri1 ] ++
@@ -228,17 +228,17 @@ Definition transfer_function : list (instr t) :=
  (* Unknown opcode: Halt *)
  ([:: Halt _])))))))))))))))))))).
 
-Definition fault_handler : @relocatable_segment t w w :=
+Definition fault_handler : @relocatable_segment mt w w :=
  kernel_code (fault_handler.handler fhp transfer_function).
 
-Definition extra_state : @relocatable_segment t w w :=
+Definition extra_state : @relocatable_segment mt w w :=
  kernel_data [:: as_word 13].
 
-Definition gen_syscall_code gen : @relocatable_segment t w w :=
+Definition gen_syscall_code gen : @relocatable_segment mt w w :=
  (length (gen (as_word 0) (as_word 0)),
   fun b w => map encode_instr (gen b w)).
 
-Definition mkkey_segment : @relocatable_segment t w w :=
+Definition mkkey_segment : @relocatable_segment mt w w :=
  gen_syscall_code (fun _ (extra : w) =>
         [:: Const (swcast extra) ri1; (* load next key *)
             Load ri1 ri5;
@@ -255,7 +255,7 @@ Definition mkkey_segment : @relocatable_segment t w w :=
             Jump ra
          ]).
 
-Definition seal_segment : @relocatable_segment t w w :=
+Definition seal_segment : @relocatable_segment mt w w :=
  gen_syscall_code (fun _ (extra : w) =>
        (* Ensure that first argument is tagged DATA, halting otherwise *)
        [:: GetTag syscall_arg1 ri3] ++
@@ -287,7 +287,7 @@ Definition seal_segment : @relocatable_segment t w w :=
        if_ ri5 [:: Jump ra] [:: Halt _]
  ).
 
-Definition unseal_segment : @relocatable_segment t w w :=
+Definition unseal_segment : @relocatable_segment mt w w :=
  gen_syscall_code (fun _ (extra : w) =>
        (* Ensure that second argument is tagged KEY, halting otherwise *)
        [:: GetTag syscall_arg2 ri4] ++
@@ -324,7 +324,7 @@ Definition unseal_segment : @relocatable_segment t w w :=
 ).
 
 Definition concrete_sealing_monitor :
-  Concrete.memory t * w * @classes.sealing_syscall_addrs t :=
+  Concrete.memory mt * w * @classes.sealing_syscall_addrs mt :=
   let syscalls := [:: mkkey_segment; seal_segment; unseal_segment] in
   let res := build_monitor_memory extra_state fault_handler syscalls in
   let monitor_memory := fst (fst res) in
@@ -343,12 +343,12 @@ Definition concrete_sealing_monitor_memory :=
 Definition user_memory_addr :=
   snd (fst concrete_sealing_monitor).
 
-Instance ssa : @classes.sealing_syscall_addrs t :=
+Instance ssa : @classes.sealing_syscall_addrs mt :=
   snd concrete_sealing_monitor.
 
 Definition build_concrete_sealing_machine
-    (user_program : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t))
-  : Concrete.state concrete_int_32_t
+    (user_program : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt))
+  : Concrete.state concrete_int_32_mt
      :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
@@ -372,12 +372,12 @@ Definition build_concrete_sealing_machine
 (* Symbolic machine *)
 
 Definition build_symbolic_sealing_machine
-    (user_program : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t))
-  : @Symbolic.state concrete_int_32_t (@Sym.sym_sealing sk_defs) :=
+    (user_program : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt))
+  : @Symbolic.state concrete_int_32_mt (@Sym.sym_sealing sk_defs) :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
- let user_mem : @relocatable_segment t _ _ :=
+ let user_mem : @relocatable_segment mt _ _ :=
        map_relocatable_segment
          ((fun v => types.Atom v Sym.DATA) ∘ encode_instr)
          user_program in
@@ -425,8 +425,8 @@ Global Instance sk : Abs.sealing_key := {|
   a different order from Int32PMap.get and Int32PMap.set?? *)
 
 Definition build_abstract_sealing_machine
-    (user_program : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t))
-  : @Abs.state concrete_int_32_t sk :=
+    (user_program : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt))
+  : @Abs.state concrete_int_32_mt sk :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
@@ -441,22 +441,22 @@ Definition build_abstract_sealing_machine
     base_addr
     user_registers.
 
-Definition user_code (f : w -> @classes.sealing_syscall_addrs t -> list (instr t))
-                  : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t) :=
+Definition user_code (f : w -> @classes.sealing_syscall_addrs mt -> list (instr mt))
+                  : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt) :=
  (size (f user_memory_addr ssa), f).
 
-Definition hello_world0 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
+Definition hello_world0 : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt) :=
   user_code (fun _ _ => [::
      Const (as_word 2) ruser1
   ]).
 
-Definition hello_world1 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
+Definition hello_world1 : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt) :=
   user_code (fun _ _ => [::
     Const (as_word 2) ruser1;
     Binop ADD ruser1 ruser1 ruser2
   ]).
 
-Definition hello_world2 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr t) :=
+Definition hello_world2 : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt) :=
   user_code (fun _ _ =>
         [::
           Const (swcast classes.mkkey_addr) ruser1;
@@ -469,7 +469,7 @@ Definition hello_world2 : @relocatable_segment t (@classes.sealing_syscall_addrs
       ).
 
 (* double seal: should fail *)
-Definition hello_world3 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
+Definition hello_world3 : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt) :=
   user_code (fun _ _ =>
         [::
           Const (swcast classes.mkkey_addr) ruser1;
@@ -484,7 +484,7 @@ Definition hello_world3 : @relocatable_segment t (@classes.sealing_syscall_addrs
   ).
 
 (* Test seal-then-unseal *)
-Definition hello_world4 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
+Definition hello_world4 : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt) :=
   user_code (fun _ _ =>
         [::
           Const (swcast classes.mkkey_addr) ruser1;
@@ -500,7 +500,7 @@ Definition hello_world4 : @relocatable_segment t (@classes.sealing_syscall_addrs
   ).
 
 (* Test store and load *)
-Definition hello_world5 : @relocatable_segment t (@classes.sealing_syscall_addrs t) (instr concrete_int_32_t) :=
+Definition hello_world5 : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt) :=
   user_code (fun base _ =>
     let data := swcast (base + 0)%w in
         [::
@@ -524,21 +524,21 @@ Section Refinement.
 
 Instance sp : Symbolic.params := @Sym.sym_sealing sk_defs.
 
-Context {sealing_invariant : @policy_invariant t _ _}.
+Context {sealing_invariant : @policy_invariant mt _ _}.
 
 Let monitor_invariant := fault_handler_invariant ops fhp transfer_function sealing_invariant.
 
 Context {implementation_correct : kernel_code_bwd_correctness monitor_invariant Sym.sealing_syscalls}.
 
-Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
+Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
 | rs_intro : forall sst m,
                refinement_common.refine_state monitor_invariant Sym.sealing_syscalls sst cst ->
-               @refinementSA.refine_state t sk_defs sk m ast sst ->
+               @refinementSA.refine_state mt sk_defs sk m ast sst ->
                refine_state ast cst.
 Hint Constructors refine_state.
 
 Lemma backwards_refinement_as ast sst sst' m :
-  @refinementSA.refine_state t sk_defs sk m ast sst ->
+  @refinementSA.refine_state mt sk_defs sk m ast sst ->
   exec (Symbolic.step Sym.sealing_syscalls) sst sst' ->
   exists ast' m',
     exec (fun ast ast' => Abs.step ast ast') ast ast' /\

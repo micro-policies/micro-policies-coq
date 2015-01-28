@@ -10,8 +10,8 @@ Unset Printing Implicit Defensive.
 
 Section Preservation.
 
-Context {t : machine_types}
-        {ops : machine_ops t}
+Context {mt : machine_types}
+        {ops : machine_ops mt}
         {opss : machine_ops_spec ops}.
 
 Variable amachine : cfi_machine.

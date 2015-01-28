@@ -15,21 +15,21 @@ Set Bullet Behavior "Strict Subproofs".
 
 Module Sym.
 
-Inductive pc_tag (t : machine_types) :=
-| PC (F : where_from) (c : mword t).
-Arguments PC [t] F c.
+Inductive pc_tag (mt : machine_types) :=
+| PC (F : where_from) (c : mword mt).
+Arguments PC [mt] F c.
 
-Inductive data_tag (t : machine_types) :=
-| DATA (c : mword t) (I W : {set mword t}).
-Arguments DATA [t] c I W.
+Inductive data_tag (mt : machine_types) :=
+| DATA (c : mword mt) (I W : {set mword mt}).
+Arguments DATA [mt] c I W.
 
 Module Exports.
 
 Section Equality.
 
-Context (t : machine_types).
+Context (mt : machine_types).
 
-Definition pc_tag_eq (t1 t2 : pc_tag t) : bool :=
+Definition pc_tag_eq (t1 t2 : pc_tag mt) : bool :=
   match t1, t2 with
   | PC F1 c1, PC F2 c2 => (F1 == F2) && (c1 == c2)
   end.
@@ -44,7 +44,7 @@ Qed.
 Definition pc_tag_eqMixin := EqMixin pc_tag_eqP.
 Canonical pc_tag_eqType := Eval hnf in EqType _ pc_tag_eqMixin.
 
-Definition data_tag_eq (t1 t2 : data_tag t) : bool :=
+Definition data_tag_eq (t1 t2 : data_tag mt) : bool :=
   match t1, t2 with
   | DATA c1 I1 W1, DATA c2 I2 W2 =>
     [&& c1 == c2, I1 == I2 & W1 == W2]
@@ -133,31 +133,31 @@ Section WithClasses.
 
 Import EnhancedDo.
 
-Context {t            : machine_types}
-        {ops          : machine_ops t}
+Context {mt           : machine_types}
+        {ops          : machine_ops mt}
         {spec         : machine_ops_spec ops}
-        {scr          : @syscall_regs t}
-        {cmp_syscalls : compartmentalization_syscall_addrs t}.
+        {scr          : syscall_regs mt}
+        {cmp_syscalls : compartmentalization_syscall_addrs mt}.
 
 (* I want to use I as a variable. *)
 Local Notation II := Logic.I.
 
-Notation pc_tag := (pc_tag t).
-Notation data_tag := (data_tag t).
+Notation pc_tag := (pc_tag mt).
+Notation data_tag := (data_tag mt).
 
-Definition pc_tag_compartment (L : pc_tag) : mword t :=
+Definition pc_tag_compartment (L : pc_tag) : mword mt :=
   match L with PC _ c => c end.
 
-Definition data_tag_compartment (L : data_tag) : mword t :=
+Definition data_tag_compartment (L : data_tag) : mword mt :=
   match L with DATA c _ _ => c end.
 
 Definition pc_tag_source (L : pc_tag) : where_from :=
   match L with PC F _ => F end.
 
-Definition data_tag_incoming (L : data_tag) : {set mword t} :=
+Definition data_tag_incoming (L : data_tag) : {set mword mt} :=
   match L with DATA _ In _ => In end.
 
-Definition data_tag_writers (L : data_tag) : {set mword t} :=
+Definition data_tag_writers (L : data_tag) : {set mword mt} :=
   match L with DATA _ _ W => W end.
 
 Definition stags (tk : Symbolic.tag_kind) : eqType :=
@@ -169,7 +169,7 @@ Definition stags (tk : Symbolic.tag_kind) : eqType :=
 
 Import Symbolic.
 
-Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (mword t) :=
+Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (mword mt) :=
   do! guard (data_tag_compartment LI == pc_tag_compartment Lpc) ||
             ((pc_tag_source Lpc == JUMPED) &&
              (pc_tag_compartment Lpc \in data_tag_incoming LI));
@@ -177,12 +177,12 @@ Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (mword t) :=
 
 Definition compartmentalization_rvec (op : opcode)
                                      (F : where_from)
-                                     (c : mword t)
+                                     (c : mword mt)
                                      (tr : type_of_result stags (outputs op)) : OVec stags op :=
   mkOVec (PC F c) tr.
 
 Definition rvec_step op
-                     (rv : mword t -> option (OVec stags op))
+                     (rv : mword mt -> option (OVec stags op))
                      (Lpc : pc_tag) (LI : data_tag)  : option (OVec stags op) :=
   do! c <- can_execute Lpc LI;
   rv c.
@@ -195,7 +195,7 @@ Definition rvec_next op (tr : type_of_result stags (outputs op)) : pc_tag -> dat
   rvec_simple INTERNAL tr.
 Definition rvec_jump op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (OVec stags op) :=
   rvec_simple JUMPED tr.
-Definition rvec_store (c : mword t) (I W : {set mword t})
+Definition rvec_store (c : mword mt) (I W : {set mword mt})
                       : pc_tag -> data_tag -> option (OVec stags STORE) :=
   rvec_step (fun c' =>
     do! guard (c == c') || (c' \in W);
@@ -219,7 +219,7 @@ Definition compartmentalization_handler (iv : IVec stags) : option (VOVec stags 
   end.
 
 Record compartmentalization_internal :=
-  Internal { next_id                  : mword t
+  Internal { next_id                  : mword mt
            ; isolate_tag              : data_tag
            ; add_to_jump_targets_tag  : data_tag
            ; add_to_store_targets_tag : data_tag }.
@@ -249,10 +249,10 @@ Instance sym_compartmentalization : Symbolic.params := {
   internal_state := compartmentalization_internal_eqType
 }.
 
-Local Notation memory    := (Symbolic.memory t sym_compartmentalization).
-Local Notation registers := (Symbolic.registers t sym_compartmentalization).
+Local Notation memory    := (Symbolic.memory mt sym_compartmentalization).
+Local Notation registers := (Symbolic.registers mt sym_compartmentalization).
 
-Definition sget (s : Symbolic.state t) (p : mword t)
+Definition sget (s : Symbolic.state mt) (p : mword mt)
                 : option data_tag :=
   let: Symbolic.State mem _ _ si := s in
   let sctag get_tag := Some (get_tag si) in
@@ -266,8 +266,8 @@ Definition sget (s : Symbolic.state t) (p : mword t)
   end.
 Arguments sget s p : simpl never.
 
-Definition supd (s : Symbolic.state t) (p : mword t) (tg : data_tag)
-                : option (Symbolic.state t) :=
+Definition supd (s : Symbolic.state mt) (p : mword mt) (tg : data_tag)
+                : option (Symbolic.state mt) :=
   let: Symbolic.State mem reg pc si := s in
   let: Internal next_id
                 isolate_tag
@@ -298,14 +298,14 @@ Definition supd (s : Symbolic.state t) (p : mword t) (tg : data_tag)
 Arguments supd s p tg : simpl never.
 
 Definition fresh (si : compartmentalization_internal)
-                 : option (mword t * compartmentalization_internal) :=
+                 : option (mword mt * compartmentalization_internal) :=
   let 'Internal next iT ajtT asmT := si in
   if next == monew
   then None
   else Some (next, Internal (next+1)%w iT ajtT asmT).
 
 Definition fresh' (si : compartmentalization_internal)
-                  : option (mword t) :=
+                  : option (mword mt) :=
   if next_id si == monew
   then None
   else Some (next_id si).
@@ -317,11 +317,11 @@ Definition bump_next_id (si : compartmentalization_internal)
            (add_to_jump_targets_tag si)
            (add_to_store_targets_tag si).
 
-Definition retag_one (ok : mword t -> mword t -> {set mword t} -> {set mword t} -> bool)
-                     (retag : mword t -> mword t -> {set mword t} -> {set mword t} -> data_tag)
-                     (s : Symbolic.state t)
-                     (p : mword t)
-                     : option (Symbolic.state t) :=
+Definition retag_one (ok : mword mt -> mword mt -> {set mword mt} -> {set mword mt} -> bool)
+                     (retag : mword mt -> mword mt -> {set mword mt} -> {set mword mt} -> data_tag)
+                     (s : Symbolic.state mt)
+                     (p : mword mt)
+                     : option (Symbolic.state mt) :=
   do!  DATA c I W <- sget s p;
   do!  guard (ok p c I W);
   supd s p (retag p c I W).
@@ -345,33 +345,33 @@ Proof.
   by apply Htrans; eauto.
 Qed.
 
-Definition retag_set (ok : mword t -> mword t -> {set mword t} -> {set mword t} -> bool)
-                     (retag : mword t -> mword t -> {set mword t} -> {set mword t}-> data_tag)
-                     (ps : seq (mword t))
-                     (s : Symbolic.state t)
-                     : option (Symbolic.state t) :=
+Definition retag_set (ok : mword mt -> mword mt -> {set mword mt} -> {set mword mt} -> bool)
+                     (retag : mword mt -> mword mt -> {set mword mt} -> {set mword mt}-> data_tag)
+                     (ps : seq (mword mt))
+                     (s : Symbolic.state mt)
+                     : option (Symbolic.state mt) :=
   ofoldl (retag_one ok retag) s ps.
 
-Definition do_ok (cur : mword t)
-                 (A J S : {set mword t})
-                 (p : mword t)
-                 (cid : mword t) (I W : {set mword t})
+Definition do_ok (cur : mword mt)
+                 (A J S : {set mword mt})
+                 (p : mword mt)
+                 (cid : mword mt) (I W : {set mword mt})
                  : bool :=
   [&& (p \in A) ==> (cid == cur),
       (p \in J) ==> (cid == cur) || (cur \in I) &
       (p \in S) ==> (cid == cur) || (cur \in W) ].
 
-Definition do_retag (cur new : mword t)
-                    (A J S : {set mword t})
-                    (p : mword t)
-                    (cid : mword t) (I W : {set mword t})
+Definition do_retag (cur new : mword mt)
+                    (A J S : {set mword mt})
+                    (p : mword mt)
+                    (cid : mword mt) (I W : {set mword mt})
                     : data_tag :=
   let cid' := if p \in A then new      else cid in
   let I'   := if p \in J then new |: I else I   in
   let W'   := if p \in S then new |: W else W   in
   DATA cid' I' W'.
 
-Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
+Definition isolate (s : Symbolic.state mt) : option (Symbolic.state mt) :=
   match s with
   | Symbolic.State MM RR (pc @ (PC F c)) si =>
     do! LI    <- sget s pc;
@@ -385,8 +385,8 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
 
     do! A' <- isolate_create_set vala MM pA;
     do! guard A' != set0;
-    do! J' : {set mword t} <- isolate_create_set vala MM pJ;
-    do! S' : {set mword t} <- isolate_create_set vala MM pS;
+    do! J' : {set mword mt} <- isolate_create_set vala MM pJ;
+    do! S' : {set mword mt} <- isolate_create_set vala MM pS;
 
     do! s' <- retag_set (do_ok c A' J' S')
                         (do_retag c c' A' J' S')
@@ -401,8 +401,8 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
     Some (Symbolic.State M' R' (pc' @ (PC JUMPED c_sys)) (bump_next_id si'))
   end.
 
-Definition add_to_jump_targets (s : Symbolic.state t)
-                               : option (Symbolic.state t) :=
+Definition add_to_jump_targets (s : Symbolic.state mt)
+                               : option (Symbolic.state mt) :=
   match s with
     | Symbolic.State MM RR (pc @ (PC F c)) si =>
       do! LI    <- sget s pc;
@@ -424,8 +424,8 @@ Definition add_to_jump_targets (s : Symbolic.state t)
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
   end.
 
-Definition add_to_store_targets (s : Symbolic.state t)
-                                : option (Symbolic.state t) :=
+Definition add_to_store_targets (s : Symbolic.state mt)
+                                : option (Symbolic.state mt) :=
   match s with
     | Symbolic.State MM RR (pc @ (PC F c)) si =>
       do! LI    <- sget s pc;
@@ -447,7 +447,7 @@ Definition add_to_store_targets (s : Symbolic.state t)
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
   end.
 
-Definition syscalls : list (Symbolic.syscall t) :=
+Definition syscalls : list (Symbolic.syscall mt) :=
   let dummy := DATA 0%w set0 set0 in
   [:: Symbolic.Syscall isolate_addr              dummy isolate;
       Symbolic.Syscall add_to_jump_targets_addr  dummy add_to_jump_targets;
@@ -455,34 +455,34 @@ Definition syscalls : list (Symbolic.syscall t) :=
 
 Definition step := Symbolic.step syscalls.
 
-Definition bounded_by (s : Symbolic.state t) id : Prop :=
+Definition bounded_by (s : Symbolic.state mt) id : Prop :=
   forall p cid I W,
     sget s p = Some (DATA cid I W) ->
     forall cid',
       cid' \in cid |: I :|: W ->
       (cid' < id)%ord.
 
-Definition isolated_syscalls (s : Symbolic.state t) : Prop :=
+Definition isolated_syscalls (s : Symbolic.state mt) : Prop :=
   forall p sc_addr,
     sc_addr \in syscall_addrs ->
     omap data_tag_compartment (sget s p) =
     omap data_tag_compartment (sget s sc_addr) ->
     p = sc_addr.
 
-Definition good_internal (s : Symbolic.state t) : Prop :=
+Definition good_internal (s : Symbolic.state mt) : Prop :=
   bounded_by s (next_id (Symbolic.internal s)) /\ isolated_syscalls s.
 
-Definition good_pc_tag (s : Symbolic.state t)
-                       (pc : atom (mword t) pc_tag) : Prop :=
+Definition good_pc_tag (s : Symbolic.state mt)
+                       (pc : atom (mword mt) pc_tag) : Prop :=
   match pc with
     | _ @ (PC _ c) => exists p I W, sget s p ?= Sym.DATA c I W
   end.
 
-Definition good_tags (s : Symbolic.state t) : Prop :=
+Definition good_tags (s : Symbolic.state mt) : Prop :=
   let: Symbolic.State MM RR pc si := s in
   good_pc_tag s pc.
 
-Definition good_state (s : Symbolic.state t) : Prop :=
+Definition good_state (s : Symbolic.state mt) : Prop :=
   good_tags s /\ good_internal s.
 
 Generalizable All Variables.
@@ -638,7 +638,7 @@ Proof.
   by repeat case: (p =P _) => _ //; move=> [<-].
 Qed.
 
-Lemma succ_trans : forall x y : mword t,
+Lemma succ_trans : forall x y : mword mt,
   (y <> monew -> x < y -> x < (y + 1)%w)%ord.
 Proof.
 move=> x y NEQ LT.
@@ -1090,8 +1090,8 @@ Qed.
 
 End WithClasses.
 
-Notation memory    t := (Symbolic.memory    t (@sym_compartmentalization t)).
-Notation registers t := (Symbolic.registers t (@sym_compartmentalization t)).
+Notation memory    mt := (Symbolic.memory    mt (@sym_compartmentalization mt)).
+Notation registers mt := (Symbolic.registers mt (@sym_compartmentalization mt)).
 
 End Sym.
 

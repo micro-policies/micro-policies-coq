@@ -18,17 +18,17 @@ Unset Printing Implicit Defensive.
 
 Section Refinement.
 
-Context {t : machine_types}
-        {ops : machine_ops t}
+Context {mt : machine_types}
+        {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {ids : @classes.cfi_id t}.
+        {ids : cfi_id mt}.
 
 Variable cfg : classes.id -> classes.id -> bool.
 
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable atable : list (Abs.syscall t).
-Variable stable : list (Symbolic.syscall t).
+Variable atable : list (Abs.syscall mt).
+Variable stable : list (Symbolic.syscall mt).
 
 Definition amachine :=  Abs.abstract_cfi_machine atable cfg.
 Definition smachine := Sym.symbolic_cfi_machine stable.
@@ -41,7 +41,7 @@ Hypothesis ref_sc_correct : refine_sc.
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    @Abs.sem t ac ast = Some ast' ->
+    @Abs.sem mt ac ast = Some ast' ->
        let '(Abs.State imem _ _ _ b) := ast in
        let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
@@ -128,7 +128,7 @@ Proof.
      + simpl in GET. congruence.
 Qed.
 
-Definition is_instr (a : atom (mword t) cfi_tag) :=
+Definition is_instr (a : atom (mword mt) cfi_tag) :=
   match taga a with
     | INSTR _ => true
     | DATA => false
@@ -151,7 +151,7 @@ Hint Resolve untag_instr_implies_imem_refinement.
 Hint Resolve untag_data_implies_dmem_refinement.
 Hint Resolve untag_implies_reg_refinement.
 
-Theorem cfg_true_equiv (asi asj : Abs.state t) ssi ssj :
+Theorem cfg_true_equiv (asi asj : Abs.state mt) ssi ssj :
   RefinementAS.refine_state stable asi ssi ->
   RefinementAS.refine_state stable asj ssj ->
   Abs.step atable cfg asi asj ->

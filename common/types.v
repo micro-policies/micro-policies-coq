@@ -291,23 +291,23 @@ Arguments imm mt : simpl never.
 
 Section instr.
 
-Variable t : machine_types.
+Variable mt : machine_types.
 
 Inductive instr : Type :=
 | Nop : instr
-| Const : imm t -> reg t -> instr
-| Mov : reg t -> reg t -> instr
-| Binop : binop -> reg t -> reg t -> reg t -> instr
-| Load : reg t -> reg t -> instr
-| Store : reg t -> reg t -> instr
-| Jump : reg t -> instr
-| Bnz : reg t -> imm t -> instr
-| Jal : reg t -> instr
+| Const : imm mt -> reg mt -> instr
+| Mov : reg mt -> reg mt -> instr
+| Binop : binop -> reg mt -> reg mt -> reg mt -> instr
+| Load : reg mt -> reg mt -> instr
+| Store : reg mt -> reg mt -> instr
+| Jump : reg mt -> instr
+| Bnz : reg mt -> imm mt -> instr
+| Jal : reg mt -> instr
 (* only for the concrete machine: *)
 | JumpEpc : instr
 | AddRule : instr
-| GetTag : reg t -> reg t -> instr
-| PutTag : reg t -> reg t -> reg t -> instr
+| GetTag : reg mt -> reg mt -> instr
+| PutTag : reg mt -> reg mt -> reg mt -> instr
 | Halt : instr.
 
 Definition instr_eq (i1 i2 : instr) : bool :=
@@ -364,39 +364,39 @@ Definition opcode_of (i : instr) : opcode :=
 
 End instr.
 
-Class machine_ops (t : machine_types) := {
-  encode_instr : instr t -> mword t;
-  decode_instr : mword t -> option (instr t);
+Class machine_ops (mt : machine_types) := {
+  encode_instr : instr mt -> mword mt;
+  decode_instr : mword mt -> option (instr mt);
 
-  ra : reg t
+  ra : reg mt
 }.
 
-Class machine_ops_spec t (ops : machine_ops t) := {
+Class machine_ops_spec mt (ops : machine_ops mt) := {
 
   encodeK : forall i, decode_instr (encode_instr i) = Some i
 
 }.
 
-Lemma max_word_bound t : (31 < val (monew : mword t)).
+Lemma max_word_bound mt : (31 < val (monew : mword mt)).
 Proof.
-have lb : 1 < 2 ^ word_size t.
+have lb : 1 < 2 ^ word_size mt.
   rewrite -{1}(expn0 2) ltn_exp2l //.
-  by have := ltn_trans _ (word_size_lb t); apply.
+  by have := ltn_trans _ (word_size_lb mt); apply.
 rewrite -[31]/(2 ^ 5 - 1) /= !modz_nat !absz_nat !modn_mod ?modn_small //;
   try by rewrite subn1 prednK ?expn_gt0 // leqnn.
 apply: ltn_sub2r=> //; rewrite ltn_exp2l //.
-by have := ltn_trans _ (word_size_lb t); apply.
+by have := ltn_trans _ (word_size_lb mt); apply.
 Qed.
 
 Section Ops.
 
 Local Open Scope word_scope.
 
-Context {t : machine_types}
-        {op : machine_ops t}
+Context {mt : machine_types}
+        {op : machine_ops mt}
         {ops : machine_ops_spec op}.
 
-Definition binop_denote (f : binop) : mword t -> mword t -> mword t :=
+Definition binop_denote (f : binop) : mword mt -> mword mt -> mword mt :=
   match f with
   | ADD => addw
   | SUB => subw
@@ -475,16 +475,21 @@ Notation "x @ t" := (Atom x t) (at level 5, format "x '@' t").
 
 Section SyscallRegs.
 
-Context {t : machine_types}.
+Context (mt : machine_types).
 
 Class syscall_regs := {
-  syscall_ret  : reg t;
-  syscall_arg1 : reg t;
-  syscall_arg2 : reg t;
-  syscall_arg3 : reg t
+  syscall_ret  : reg mt;
+  syscall_arg1 : reg mt;
+  syscall_arg2 : reg mt;
+  syscall_arg3 : reg mt
 }.
 
 End SyscallRegs.
+
+Arguments syscall_ret  {_ _}.
+Arguments syscall_arg1 {_ _}.
+Arguments syscall_arg2 {_ _}.
+Arguments syscall_arg3 {_ _}.
 
 Ltac current_instr_opcode :=
   match goal with

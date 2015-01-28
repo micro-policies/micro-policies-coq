@@ -115,14 +115,14 @@ Definition masks : Masks :=
 
 Section encoding.
 
-Context (t : machine_types).
+Context (mt : machine_types).
 
 (* TODO: Define the operations below in terms of a concrete encoding
    for tags. *)
 
 Class encodable (ut : Symbolic.tag_kind -> eqType) := {
-  decode : forall tk, {partmap mword t -> atom (mword t) (mword t)} -> mword t -> option (tag (ut tk));
-  decode_monotonic : forall (mem : {partmap mword t -> atom (mword t) (mword t)})
+  decode : forall tk, {partmap mword mt -> atom (mword mt) (mword mt)} -> mword mt -> option (tag (ut tk));
+  decode_monotonic : forall (mem : {partmap mword mt -> atom (mword mt) (mword mt)})
                             addr x y ct st ct' st' tk,
                        mem addr = Some x@ct ->
                        decode Symbolic.M mem ct = Some (USER st) ->
@@ -133,7 +133,7 @@ Class encodable (ut : Symbolic.tag_kind -> eqType) := {
 
 (* Special case where encoding doesn't depend on memory *)
 Class fencodable (ut : Symbolic.tag_kind -> eqType) := {
-  fdecode : forall tk, mword t -> option (tag (ut tk));
+  fdecode : forall tk, mword mt -> option (tag (ut tk));
   fdecode_kernel_tag : forall tk, fdecode tk Concrete.TKernel = None
 }.
 
@@ -147,17 +147,17 @@ End encoding.
 
 Section tag_encoding.
 
-Context (t : machine_types)
+Context (mt : machine_types)
         (tty : Symbolic.tag_kind -> eqType)
-        (et : encodable t tty).
+        (et : encodable mt tty).
 
 Local Notation wrapped_tag := (fun tk => [eqType of tag (tty tk)]).
 
 Variable transfer : forall ivec : Symbolic.IVec tty, option (Symbolic.VOVec tty (Symbolic.op ivec)).
 
 Definition decode_fields (fs : seq Symbolic.tag_kind)
-                         (m : {partmap mword t -> atom (mword t) (mword t)})
-                         (ts : mword t * mword t * mword t)
+                         (m : {partmap mword mt -> atom (mword mt) (mword mt)})
+                         (ts : mword mt * mword mt * mword mt)
                          : option (hseq (fun x => option (wrapped_tag x)) fs) :=
   match fs return option (hseq (fun x => option (wrapped_tag x)) fs) with
   | [::] => Some [hseq]
@@ -201,8 +201,8 @@ case E: (ensure_all_user _) l' => [l'|] // _ [<- <-]; move/IH in E=> {IH}.
 by rewrite E.
 Qed.
 
-Definition decode_ivec (m : {partmap mword t -> atom (mword t) (mword t)})
-                       (mvec : Concrete.MVec (mword t))
+Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
+                       (mvec : Concrete.MVec (mword mt))
                        : option (Symbolic.IVec tty) :=
   do! op  <- op_of_word (Concrete.cop mvec);
   match decode Symbolic.P m (Concrete.ctpc mvec) with
@@ -226,8 +226,8 @@ Definition decode_ivec (m : {partmap mword t -> atom (mword t) (mword t)})
   | _ => None
   end.
 
-Definition decode_ovec op (m : {partmap mword t -> atom (mword t) (mword t)})
-                       (rvec : Concrete.RVec (mword t))
+Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
+                       (rvec : Concrete.RVec (mword mt))
                        : option (Symbolic.VOVec tty op) :=
   match op return option (Symbolic.VOVec tty op) with
   | OP op =>
@@ -253,9 +253,9 @@ Definition decode_ovec op (m : {partmap mword t -> atom (mword t) (mword t)})
   end.
 
 (* Just for clarity *)
-Let TCopy : mword t := TNone.
+Let TCopy : mword mt := TNone.
 
-Definition ground_rules : Concrete.rules (mword t) :=
+Definition ground_rules : Concrete.rules (mword mt) :=
   let mk op := Concrete.mkMVec (word_of_op op) TKernel TKernel
                                TNone TNone TNone in
   [::
@@ -315,8 +315,8 @@ Proof.
   left. eexists. split; try by eauto. rewrite Hpriv. by split; constructor; eauto.
 Qed.
 
-Lemma decode_ivec_monotonic (cmem : {partmap mword t -> atom (mword t) (mword t)})
-      addr x y ct st (ct' : mword t) st' :
+Lemma decode_ivec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)})
+      addr x y ct st (ct' : mword mt) st' :
   cmem addr = Some x@ct ->
   decode Symbolic.M cmem ct = Some (USER st) ->
   decode Symbolic.M cmem ct' = Some (USER st') ->
@@ -329,7 +329,7 @@ Proof.
   by destruct op; simpl; rewrite !Hdec_eq.
 Qed.
 
-Lemma decode_ovec_monotonic (cmem : {partmap mword t -> atom (mword t) (mword t)}) op addr x y ct st ct' st' :
+Lemma decode_ovec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)}) op addr x y ct st ct' st' :
   cmem addr = Some x@ct ->
   decode Symbolic.M cmem ct = Some (USER st) ->
   decode Symbolic.M cmem ct' = Some (USER st') ->

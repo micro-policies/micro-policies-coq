@@ -5,13 +5,13 @@ Set Bullet Behavior "Strict Subproofs".
 
 Generalizable All Variables.
 
-Class compartmentalization_syscall_addrs (t : machine_types) := {
-  isolate_addr              : mword t;
-  add_to_jump_targets_addr  : mword t;
-  add_to_store_targets_addr : mword t
+Class compartmentalization_syscall_addrs (mt : machine_types) := {
+  isolate_addr              : mword mt;
+  add_to_jump_targets_addr  : mword mt;
+  add_to_store_targets_addr : mword mt
 }.
 
-Definition syscall_addrs {t} {c : compartmentalization_syscall_addrs t} : seq (mword t) :=
+Definition syscall_addrs {mt} {c : compartmentalization_syscall_addrs mt} : seq (mword mt) :=
   [:: isolate_addr; add_to_jump_targets_addr; add_to_store_targets_addr].
 
 Inductive where_from :=

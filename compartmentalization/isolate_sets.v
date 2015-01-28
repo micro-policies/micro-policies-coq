@@ -11,22 +11,22 @@ Generalizable All Variables.
 
 Section WithClasses.
 
-Context  {t            : machine_types}
-         {ops          : machine_ops t}
+Context  {mt           : machine_types}
+         {ops          : machine_ops mt}
          {spec         : machine_ops_spec ops}
          {V            : Type}
-         (to_word      : V -> mword t).
+         (to_word      : V -> mword mt).
 
 Open Scope word_scope.
 
-Definition isolate_get_range (m : {partmap mword t -> V}) (p : mword t) : option {set (mword t)} :=
+Definition isolate_get_range (m : {partmap mword mt -> V}) (p : mword mt) : option {set (mword mt)} :=
   do! low  <- m p;
   do! high <- m (p + 1);
-  Some [set i : mword t in range (to_word low) (to_word high)].
+  Some [set i : mword mt in range (to_word low) (to_word high)].
 
-Fixpoint isolate_get_ranges (m : {partmap mword t -> V})
-                            (p : mword t)
-                            (n : nat) : option {set (mword t)} :=
+Fixpoint isolate_get_ranges (m : {partmap mword mt -> V})
+                            (p : mword mt)
+                            (n : nat) : option {set (mword mt)} :=
   match n with
     | O    => Some set0
     | S n' => do! here <- isolate_get_range m p;
@@ -34,8 +34,8 @@ Fixpoint isolate_get_ranges (m : {partmap mword t -> V})
               Some (here :|: rest)
   end.
 
-Definition isolate_create_set (m : {partmap mword t -> V})
-                              (base : mword t) : option {set (mword t)} :=
+Definition isolate_create_set (m : {partmap mword mt -> V})
+                              (base : mword mt) : option {set (mword mt)} :=
   do! pairs <- m base;
   isolate_get_ranges m (base + 1) (val (to_word pairs)).
 

@@ -11,8 +11,8 @@ Import Symbolic.
 
 Section Declarations.
 
-Context (t : machine_types).
-Context {op : machine_ops t}.
+Context (mt : machine_types).
+Context {op : machine_ops mt}.
 Context {ap : params t}.
 
 Inductive initial : @state t ap -> Prop :=
@@ -31,8 +31,8 @@ Module R := kernel.rules.
 
 Section Declarations.
 
-Context (t : machine_types).
-Context {op : machine_ops t}.
+Context (mt : machine_types).
+Context {op : machine_ops mt}.
 Context {cp : concrete_params t}.
 
 Require Import ZArith.
@@ -42,7 +42,7 @@ Open Scope Z_scope.
 (* ASZ: These user-level maxima aren't defined in Concrete, but they're
    mentioned in Andrew's notes on an initial state. *)
 Parameter max_user_address  : word t.
-Parameter max_user_register : reg t.
+Parameter max_user_register : reg mt.
 
 Definition user_then_kernel {Ix                 : Type}
                             (lt le              : Ix -> Ix -> Prop)

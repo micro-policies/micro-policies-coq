@@ -23,15 +23,15 @@ Unset Printing Implicit Defensive.
 
 Section Refinement.
 
-Let t := concrete_int_32_t.
-Let sp := @Sym.sym_compartmentalization t.
+Let mt := concrete_int_32_mt.
+Let sp := @Sym.sym_compartmentalization mt.
 Existing Instance concrete_int_32_ops.
 Existing Instance concrete_int_32_ops_spec.
 Existing Instance sp.
 
-Implicit Type mem : Concrete.memory t.
+Implicit Type mem : Concrete.memory mt.
 
-Definition read_kernel_word mem (addr : mword t) : option (mword t) :=
+Definition read_kernel_word mem (addr : mword mt) : option (mword mt) :=
   do! x <- mem addr;
   if Concrete.is_kernel_tag (taga x) then Some (vala x)
   else None.
@@ -48,7 +48,7 @@ Proof.
   by rewrite Hget /= (negbTE Hnk) (negbTE Hnk').
 Qed.
 
-Fixpoint read_kernel_array (mem : Concrete.memory t) (addr : mword t) (count : nat) : option (seq (mword t)) :=
+Fixpoint read_kernel_array (mem : Concrete.memory mt) (addr : mword mt) (count : nat) : option (seq (mword mt)) :=
   match count with
   | 0 => Some [::]
   | S count =>
@@ -68,10 +68,10 @@ Proof.
   by rewrite (read_kernel_word_monotonic x' Hget Hnk Hnk') IH.
 Qed.
 
-Definition read_set (mem : Concrete.memory t) (addr : mword t) : option {set mword t} :=
+Definition read_set (mem : Concrete.memory mt) (addr : mword mt) : option {set mword mt} :=
   do! count <- mem addr;
   if Concrete.is_kernel_tag (taga count) then
-    omap (fun arr => [set x : [finType of mword t] in arr])
+    omap (fun arr => [set x : [finType of mword mt] in arr])
          (read_kernel_array mem (addr + 1)%w (nat_of_ord (ord_of_word (vala count))))
   else
     None.
@@ -90,18 +90,18 @@ Proof.
   by rewrite (read_kernel_array_monotonic x' Hget Hnk Hnk').
 Qed.
 
-Definition decode_reg_tag (mem : Concrete.memory t) (tg : mword t) : option (tag unit) :=
+Definition decode_reg_tag (mem : Concrete.memory mt) (tg : mword mt) : option (tag unit) :=
   let: [hseq ut; w']%w := @wunpack [:: 30; 2] tg in
   if w' == 1%w then
     if ut == 0%w then Some (USER tt)
     else None
   else None.
 
-Definition decode_data_tag (mem : Concrete.memory t) (tg : mword t) : option (tag (Sym.data_tag t)) :=
+Definition decode_data_tag (mem : Concrete.memory mt) (tg : mword mt) : option (tag (Sym.data_tag mt)) :=
   let: [hseq ut; w']%w := @wunpack [:: 30; 2] tg in
   if w' == 0%w then None
   else if (w' == 1%w) || (w' == as_word 2) then
-    let addr : mword t := as_word (ord_of_word ut) in
+    let addr : mword mt := as_word (ord_of_word ut) in
     do! cid <- read_kernel_word mem addr;
     do! Iaddr <- read_kernel_word  mem (addr + 1)%w;
     do! I <- read_set mem Iaddr;
@@ -120,7 +120,7 @@ move=> Hdec; apply/negP => /eqP E; move: Hdec.
 by rewrite {}E /decode_data_tag 2!wunpackS.
 Qed.
 
-Definition decode_pc_tag (mem : Concrete.memory t) (tg : mword t) : option (tag (Sym.pc_tag t)) :=
+Definition decode_pc_tag (mem : Concrete.memory mt) (tg : mword mt) : option (tag (Sym.pc_tag mt)) :=
   let: [hseq ut; w']%w := @wunpack [:: 30; 2] tg in
   if w' == 0%w then None
   else if (w' == 1%w) || (w' == as_word 2) then
@@ -134,7 +134,7 @@ Definition decode_pc_tag (mem : Concrete.memory t) (tg : mword t) : option (tag 
     else Some (ENTRY tg)
   else None.
 
-Instance encodable_stags : encodable t (@Sym.stags t) := {
+Instance encodable_stags : encodable mt (@Sym.stags mt) := {
   decode tk mem tg :=
     match tk with
     | Symbolic.R => decode_reg_tag mem tg
@@ -170,10 +170,10 @@ Proof.
 Qed.
 
 Context {monitor_invariant : kernel_invariant}
-        {syscall_addrs : compartmentalization_syscall_addrs t}.
+        {syscall_addrs : compartmentalization_syscall_addrs mt}.
 
-Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
-| rs_intro : forall (sst : Symbolic.state t),
+Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
+| rs_intro : forall (sst : Symbolic.state mt),
                Abs.good_state ast ->
                refinement_common.refine_state monitor_invariant Sym.syscalls sst cst ->
                refinementSA.refine ast sst ->
@@ -203,7 +203,7 @@ Qed.
 
 Lemma backwards_refinement ast cst cst' :
   refine_state ast cst ->
-  exec (@Concrete.step t _ masks) cst cst' ->
+  exec (@Concrete.step mt _ masks) cst cst' ->
   in_user cst' = true ->
   exists ast',
     exec (fun ast ast' => Abs.step ast ast') ast ast' /\

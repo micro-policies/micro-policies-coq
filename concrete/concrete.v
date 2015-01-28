@@ -38,32 +38,32 @@ Definition rules T := seq (rule T).
 
 Section WithClasses.
 
-Context (t : machine_types).
-Context (ops : machine_ops t).
+Context (mt : machine_types).
+Context (ops : machine_ops mt).
 
-Let MVec := MVec (mword t).
-Let RVec := RVec (mword t).
-Let rule := rule (mword t).
-Let rules := rules (mword t).
-Let atom := atom (mword t) (mword t).
+Let MVec := MVec (mword mt).
+Let RVec := RVec (mword mt).
+Let rule := rule (mword mt).
+Let rules := rules (mword mt).
+Let atom := atom (mword mt) (mword mt).
 
 (* If we were doing good modularization, these would be abstract! *)
-Definition cache_line_addr : mword t := 0%w.
+Definition cache_line_addr : mword mt := 0%w.
 (* BCP: Call it fault_handler_addr? *)
-Definition fault_handler_start : mword t := as_word 8.
-Definition TNone   : mword t := as_word 8.
-Definition TKernel : mword t := 0.
+Definition fault_handler_start : mword mt := as_word 8.
+Definition TNone   : mword mt := as_word 8.
+Definition TKernel : mword mt := 0.
 
 Context {spops : machine_ops_spec ops}.
 
-Definition Mop : mword t := (cache_line_addr + 0)%w.
-Definition Mtpc : mword t := (cache_line_addr + 1)%w.
-Definition Mti : mword t := (cache_line_addr + as_word 2)%w.
-Definition Mt1 : mword t := (cache_line_addr + as_word 3)%w.
-Definition Mt2 : mword t := (cache_line_addr + as_word 4)%w.
-Definition Mt3 : mword t := (cache_line_addr + as_word 5)%w.
-Definition Mtrpc : mword t := (cache_line_addr + as_word 6)%w.
-Definition Mtr : mword t := (cache_line_addr + as_word 7)%w.
+Definition Mop : mword mt := (cache_line_addr + 0)%w.
+Definition Mtpc : mword mt := (cache_line_addr + 1)%w.
+Definition Mti : mword mt := (cache_line_addr + as_word 2)%w.
+Definition Mt1 : mword mt := (cache_line_addr + as_word 3)%w.
+Definition Mt2 : mword mt := (cache_line_addr + as_word 4)%w.
+Definition Mt3 : mword mt := (cache_line_addr + as_word 5)%w.
+Definition Mtrpc : mword mt := (cache_line_addr + as_word 6)%w.
+Definition Mtr : mword mt := (cache_line_addr + as_word 7)%w.
 
 Definition mvec_fields := [:: Mop; Mtpc; Mti; Mt1; Mt2; Mt3].
 Definition rvec_fields := [:: Mtrpc; Mtr].
@@ -105,8 +105,8 @@ Definition mask_dc (dcm : DCMask) (mv : MVec) : MVec :=
     (if dcm mvp_t2  then TNone else t2)
     (if dcm mvp_t3  then TNone else t3).
 
-Definition copy_mvec_part (mv : MVec) (tag : mword t)
-    (x : option mvec_part) : mword t :=
+Definition copy_mvec_part (mv : MVec) (tag : mword mt)
+    (x : option mvec_part) : mword mt :=
   match x with
   | Some mvp_tpc => ctpc mv
   | Some mvp_ti  => cti mv
@@ -120,7 +120,7 @@ Definition copy (mv : MVec) (rv : RVec) (ctm : CTMask) : RVec :=
   mkRVec (copy_mvec_part mv (ctrpc rv) (ct_trpc ctm))
          (copy_mvec_part mv (ctr   rv) (ct_tr   ctm)).
 
-Definition is_kernel_tag (tpc:mword t) : bool := tpc == TKernel.
+Definition is_kernel_tag (tpc:mword mt) : bool := tpc == TKernel.
 
 Definition cache_lookup (cache : rules)
     (masks : Masks) (mv : MVec) : option RVec :=
@@ -130,8 +130,8 @@ Definition cache_lookup (cache : rules)
   do! rv <- assoc_list_lookup cache (beq_mvec masked_mv);
   Some (copy mv rv (ct mask)).
 
-Local Notation memory := {partmap mword t -> atom}.
-Local Notation registers := {partmap reg t -> atom}.
+Local Notation memory := {partmap mword mt -> atom}.
+Local Notation registers := {partmap reg mt -> atom}.
 
 Record state := mkState {
   mem   : memory;
@@ -207,7 +207,7 @@ Definition next_state (st : state) (mvec : MVec)
   | None => Some (miss_state st mvec)
   end.
 
-Definition next_state_reg_and_pc (st : state) (mvec : MVec) (r : reg t) x pc' : option state :=
+Definition next_state_reg_and_pc (st : state) (mvec : MVec) (r : reg mt) x pc' : option state :=
   next_state st mvec (fun rvec =>
     do! reg' <- updm (regs st) r x@(ctr rvec);
     Some (mkState (mem st) reg' (cache st) pc'@(ctrpc rvec) (epc st))).
@@ -362,8 +362,8 @@ End ConcreteSection.
 
 End WithClasses.
 
-Notation memory t := {partmap mword t -> atom (mword t) (mword t)}.
-Notation registers t := {partmap reg t -> atom (mword t) (mword t)}.
+Notation memory mt := {partmap mword mt -> atom (mword mt) (mword mt)}.
+Notation registers mt := {partmap reg mt -> atom (mword mt) (mword mt)}.
 
 End Concrete.
 
@@ -430,7 +430,7 @@ End Exports.
 
 Export Exports.
 
-Arguments Concrete.state t.
+Arguments Concrete.state mt.
 Arguments Concrete.mkState {_} _ _ _ _ _.
-Arguments Concrete.TNone {t}.
-Arguments Concrete.TKernel {t}.
+Arguments Concrete.TNone {mt}.
+Arguments Concrete.TKernel {mt}.

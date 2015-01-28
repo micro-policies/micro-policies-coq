@@ -20,9 +20,9 @@ Unset Printing Implicit Defensive.
 
 Section WithClasses.
 
-Let t := concrete_int_32_t.
+Let mt := concrete_int_32_mt.
 
-Instance concrete_int_32_fh : fault_handler_params t := {
+Instance concrete_int_32_fh : fault_handler_params mt := {
   rop := as_word 1;
   rtpc := as_word 2;
   rti := as_word 3; rt1 := as_word 4; rt2 := as_word 5;
@@ -36,7 +36,7 @@ Instance concrete_int_32_fh : fault_handler_params t := {
   (* WARNING: This doesn't quite work in the general case, because imm
      should be strictly smaller than word. However, it should work
      fine when used on small immediates *)
-  load_const := fun (x : mword t) (r : reg t) =>
+  load_const := fun (x : mword mt) (r : reg mt) =>
     [:: Const (swcast x) r]
 }.
 
@@ -54,10 +54,10 @@ Fixpoint constants_from {A : Type} (i : word 32) (n : nat) (x : A)
   | S n' => constants_from (i + 1)%w n' x (setm mem i x)
   end.
 
-Definition w := mword concrete_int_32_t.
+Definition w := mword mt.
 
-Definition kernelize (seg : @relocatable_segment concrete_int_32_t w w)
-                   : @relocatable_segment concrete_int_32_t w (atom (word 32) (word 32)) :=
+Definition kernelize (seg : @relocatable_segment mt w w)
+                   : @relocatable_segment mt w (atom (word 32) (word 32)) :=
   let (l,gen) := seg in
   (l, fun b rest => map (fun x => Atom x (Concrete.TKernel : w)) (gen b rest)).
 
@@ -65,7 +65,7 @@ Definition kernelize (seg : @relocatable_segment concrete_int_32_t w w)
 machine, whose system calls have trivial entry tags. Ideally, the
 system call should provide kernelize_syscall with a tag for its entry
 point. *)
-Definition kernelize_syscall (seg : @relocatable_segment concrete_int_32_t w w)
+Definition kernelize_syscall (seg : @relocatable_segment mt w w)
                    : relocatable_segment w (atom w w) :=
   let (l,gen) := seg in
   ((l + 1)%nat, fun b rest =>
@@ -78,7 +78,7 @@ Definition kernelize_user_tag t : word 32 :=
 
 Definition kernelize_tags
                    {X : Type}
-                   (seg : @relocatable_segment concrete_int_32_t X (atom w w))
+                   (seg : @relocatable_segment mt X (atom w w))
                    : relocatable_segment X (atom w w) :=
   let (l,gen) := seg in
   (* BCP: This has to correspond with the tag encoding used in
@@ -95,7 +95,7 @@ Definition build_monitor_memory
       (extra_state : relocatable_segment _ w)
       (handler : relocatable_segment w w)
       (syscalls : list (relocatable_segment w w))
-    : Concrete.memory concrete_int_32_t * w * list w :=
+    : Concrete.memory mt * w * list w :=
   let cacheCell := Atom 0%w (Concrete.TKernel : w) in
   let '((kernel_length,gen_kernel), offsets) :=
     concat_and_measure_relocatable_segments
@@ -130,14 +130,14 @@ Definition build_monitor_memory
 
 Program Definition concrete_initial_state
       {Addrs}
-      (initial_memory : Concrete.memory concrete_int_32_t)
+      (initial_memory : Concrete.memory mt)
       (user_mem_addr : w)
       (syscall_addrs : Addrs)
       (user_mem : relocatable_segment Addrs (atom w w))
       (initial_pc_tag : w)
-      (user_regs : list (reg concrete_int_32_t))
+      (user_regs : list (reg mt))
       (initial_reg_tag : w)
-    : Concrete.state concrete_int_32_t :=
+    : Concrete.state mt :=
   let '(_, user_gen) := kernelize_tags user_mem in
   let mem' := insert_from user_mem_addr (user_gen user_mem_addr syscall_addrs) initial_memory in
   let kregs :=
@@ -162,16 +162,16 @@ Program Definition concrete_initial_state
 
 Context {sp: Symbolic.params}.
 
-Let sym_atom k := atom (mword t) (@Symbolic.ttypes sp k).
+Let sym_atom k := atom (mword mt) (@Symbolic.ttypes sp k).
 
 Program Definition symbolic_initial_state
       {Addrs}
       (user_mem : relocatable_segment Addrs (sym_atom Symbolic.M))
       (base_addr : sym_atom Symbolic.P) (syscall_addrs : Addrs)
-      (user_regs : list (reg t))
+      (user_regs : list (reg mt))
       (initial_reg_value : sym_atom Symbolic.R)
       (initial_internal_state : Symbolic.internal_state)
-      : @Symbolic.state t sp :=
+      : @Symbolic.state mt sp :=
   let (_, gen) := user_mem in
   let mem_contents := gen (vala base_addr) syscall_addrs in
   let mem :=
@@ -194,7 +194,7 @@ Program Definition symbolic_initial_state
    symbolic.int_32, though this should not cause axiom failures --
    just puzzling user program errors! *)
 
-Global Instance concrete_int_32_scr : @syscall_regs concrete_int_32_t := {|
+Global Instance concrete_int_32_scr : syscall_regs mt := {|
   syscall_ret  := as_word 16;
   syscall_arg1 := as_word 17;
   syscall_arg2 := as_word 18;

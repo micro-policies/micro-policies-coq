@@ -128,8 +128,8 @@ Open Scope bool_scope.
 
 Section WithClasses.
 
-Context (t : machine_types)
-        {ops : machine_ops t}.
+Context (mt : machine_types)
+        {ops : machine_ops mt}.
 
 Class params := {
   ttypes :> tag_kind -> eqType;
@@ -143,12 +143,12 @@ Context {sp : params}.
 
 Open Scope word_scope.
 
-Local Notation word := (mword t).
+Local Notation word := (mword mt).
 Let atom := (atom word).
 Local Notation "x .+1" := (x + 1).
 
 Local Notation memory := {partmap word -> atom (ttypes M)}.
-Local Notation registers := {partmap reg t -> atom (ttypes R)}.
+Local Notation registers := {partmap reg mt -> atom (ttypes R)}.
 
 Record state := State {
   mem : memory;
@@ -189,7 +189,7 @@ Definition next_state (st : state) (iv : IVec ttypes)
     k ov.
 
 Definition next_state_reg_and_pc (st : state) (iv : @IVec ttypes)
-  (r : reg t) (x : word) (pc' : word) : option state :=
+  (r : reg mt) (x : word) (pc' : word) : option state :=
   next_state st (
     match op iv as o return VOVec _ o -> option state with
     | OP op => fun ov =>
@@ -301,8 +301,8 @@ Inductive step (st st' : state) : Prop :=
 
 End WithClasses.
 
-Notation memory t s := {partmap mword t -> atom (mword t) (@ttypes s M)}.
-Notation registers t s := {partmap reg t -> atom (mword t) (@ttypes s R)}.
+Notation memory mt s := {partmap mword mt -> atom (mword mt) (@ttypes s M)}.
+Notation registers mt s := {partmap reg mt -> atom (mword mt) (@ttypes s R)}.
 
 End Symbolic.
 
@@ -333,8 +333,8 @@ End Exports.
 
 Export Exports.
 
-Arguments Symbolic.state t {_}.
+Arguments Symbolic.state mt {_}.
 Arguments Symbolic.State {_ _} _ _ _ _.
-Arguments Symbolic.syscall t {_}.
+Arguments Symbolic.syscall mt {_}.
 Arguments Symbolic.mkIVec {tag_type} op _ _ _.
 Arguments Symbolic.mkOVec {tag_type op} _ _.

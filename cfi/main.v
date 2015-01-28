@@ -27,18 +27,18 @@ Section WithClasses.
 (* ---------------------------------------------------------------- *)
 (* int32 instance *)
 
-Definition t := concrete_int_32_t.
-Instance ops : machine_ops t := concrete_int_32_ops.
+Definition mt := concrete_int_32_mt.
+Instance ops : machine_ops mt := concrete_int_32_ops.
 
 Definition id_size := word 28.
 Definition id := [eqType of id_size].
 Definition bound := 2 ^ 28.
 
-Definition word_to_id (w : mword t) : option id_size :=
+Definition word_to_id (w : mword mt) : option id_size :=
   if ord_of_word w < bound then Some (as_word (ord_of_word w))
   else None.
 
-Definition id_to_word (x : id) : mword t :=
+Definition id_to_word (x : id) : mword mt :=
   as_word (ord_of_word x).
 
 Lemma id_to_wordK : pcancel id_to_word word_to_id.
@@ -55,7 +55,7 @@ have [hb|] // := boolP (_ < 2 ^ 28).
 by rewrite [in X in Some X](lock as_word) /= -lock as_wordK // valwK.
 Qed.
 
-Instance ids : cfi_id := {|
+Instance ids : cfi_id mt := {|
  id := id;
  word_to_id := word_to_id;
  id_to_word := id_to_word
@@ -111,7 +111,7 @@ Qed.
 
 Import DoNotation.
 
-Instance encodable_tag : encodable t cfi_tags := {|
+Instance encodable_tag : encodable mt cfi_tags := {|
   decode k m w :=
     let: [hseq ut; w'] := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
@@ -136,14 +136,14 @@ Variable cfg : id -> id -> bool.
 Not_found when closing the Refinement section below, probably a bug to
 be reported. *)
 
-Instance sp : Symbolic.params := @Sym.sym_cfi t ids cfg.
+Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable ki : refinement_common.kernel_invariant.
-Variable stable : list (Symbolic.syscall t).
-Variable atable : list (Abs.syscall t).
+Variable stable : list (Symbolic.syscall mt).
+Variable atable : list (Abs.syscall mt).
 
-Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
-| rs_intro : forall (sst : Symbolic.state t),
+Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
+| rs_intro : forall (sst : Symbolic.state mt),
                refinement_common.refine_state ki stable sst cst ->
                RefinementAS.refine_state stable ast sst ->
                refine_state ast cst.
@@ -156,7 +156,7 @@ Hypothesis refine_syscalls_correct : RefinementAS.refine_syscalls stable atable 
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    @Abs.sem t ac ast = Some ast' ->
+    @Abs.sem mt ac ast = Some ast' ->
        let '(Abs.State imem _ _ _ b) := ast in
        let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
@@ -219,7 +219,7 @@ have [ast' [STEPA REF']] :=
 by have [ast'' [EXECA REF'']] := IH ast' REF'; eauto 7.
 Qed.
 
-Lemma backwards_refinement (ast : Abs.state t) (cst cst' : Concrete.state t) :
+Lemma backwards_refinement (ast : Abs.state mt) (cst cst' : Concrete.state mt) :
   refine_state ast cst ->
   exec (Concrete.step _ masks) cst cst' ->
   in_user cst' ->

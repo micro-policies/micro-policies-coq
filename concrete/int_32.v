@@ -14,13 +14,13 @@ Unset Printing Implicit Defensive.
 
 Import DoNotation.
 
-Program Definition concrete_int_32_t : machine_types := {|
+Program Definition concrete_int_32_mt : machine_types := {|
   word_size := 32;
   reg_field_size := 5;
   imm_size := 15
 |}.
 
-Local Notation t := concrete_int_32_t.
+Local Notation mt := concrete_int_32_mt.
 
 Definition fields_of_op op : seq nat :=
   match op with
@@ -43,7 +43,7 @@ Definition fields_of_op op : seq nat :=
 Lemma fields_of_opP op : sumn (fields_of_op op) = 27.
 Proof. by case: op. Qed.
 
-Definition args_of_instr (i : instr t) : hseq word (fields_of_op (opcode_of i)) :=
+Definition args_of_instr (i : instr mt) : hseq word (fields_of_op (opcode_of i)) :=
   match i with
   | Nop => [hseq 0%w]
   | Const i r => [hseq i : word _; r : word _; 0%w]
@@ -61,22 +61,22 @@ Definition args_of_instr (i : instr t) : hseq word (fields_of_op (opcode_of i)) 
   | Halt => [hseq 0%w]
   end.
 
-Definition instr_of_args op : hseq word (fields_of_op op) -> instr t :=
+Definition instr_of_args op : hseq word (fields_of_op op) -> instr mt :=
   match op with
-  | NOP => fun args => Nop t
-  | CONST => fun args => @Const t [hnth args 0] [hnth args 1]
-  | MOV => fun args => @Mov t [hnth args 0] [hnth args 1]
-  | BINOP b => fun args => @Binop t b [hnth args 0] [hnth args 1] [hnth args 2]
-  | LOAD => fun args => @Load t [hnth args 0] [hnth args 1]
-  | STORE => fun args => @Store t [hnth args 0] [hnth args 1]
-  | JUMP => fun args => @Jump t [hnth args 0]
-  | BNZ => fun args => @Bnz t [hnth args 0] [hnth args 1]
-  | JAL => fun args => @Jal t [hnth args 0]
-  | JUMPEPC => fun args => JumpEpc t
-  | ADDRULE => fun args => AddRule t
-  | GETTAG => fun args => @GetTag t [hnth args 0] [hnth args 1]
-  | PUTTAG => fun args => @PutTag t [hnth args 0] [hnth args 1] [hnth args 2]
-  | HALT => fun args => Halt t
+  | NOP => fun args => Nop mt
+  | CONST => fun args => @Const mt [hnth args 0] [hnth args 1]
+  | MOV => fun args => @Mov mt [hnth args 0] [hnth args 1]
+  | BINOP b => fun args => @Binop mt b [hnth args 0] [hnth args 1] [hnth args 2]
+  | LOAD => fun args => @Load mt [hnth args 0] [hnth args 1]
+  | STORE => fun args => @Store mt [hnth args 0] [hnth args 1]
+  | JUMP => fun args => @Jump mt [hnth args 0]
+  | BNZ => fun args => @Bnz mt [hnth args 0] [hnth args 1]
+  | JAL => fun args => @Jal mt [hnth args 0]
+  | JUMPEPC => fun args => JumpEpc mt
+  | ADDRULE => fun args => AddRule mt
+  | GETTAG => fun args => @GetTag mt [hnth args 0] [hnth args 1]
+  | PUTTAG => fun args => @PutTag mt [hnth args 0] [hnth args 1] [hnth args 2]
+  | HALT => fun args => Halt mt
   end.
 
 Lemma args_of_instrK i : instr_of_args (args_of_instr i) = i.
@@ -85,7 +85,7 @@ by case: i => * //=; rewrite /hnth /tnth /=;
 do !rewrite ![in X in eq_rect _ _ _ _ X]eq_axiomK /=.
 Qed.
 
-Instance concrete_int_32_ops : machine_ops t := {|
+Instance concrete_int_32_ops : machine_ops mt := {|
   encode_instr i :=
     let op := word_of_op (opcode_of i) in
     let args : word 27 := wcast (fields_of_opP _) (wpack (args_of_instr i)) in

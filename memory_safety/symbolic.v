@@ -15,14 +15,14 @@ Module Sym.
 
 Section WithClasses.
 
-Context (t : machine_types).
-Context {ops : machine_ops t}.
-Context `{syscall_regs t}
-        {msa : @memory_syscall_addrs t}.
+Context (mt : machine_types).
+Context {ops : machine_ops mt}.
+Context `{syscall_regs mt}
+        {msa : memory_syscall_addrs mt}.
 
 Open Scope word_scope.
 
-Local Notation word := (mword t).
+Local Notation word := (mword mt).
 Local Notation "x .+1" := (addw x onew).
 
 Class color_class := {
@@ -187,8 +187,8 @@ Variable initial_color : color.
 (* Hypothesis: alloc never returns initial_color. *)
 
 Variable initial_pc : word.
-Variable initial_mem  : {partmap mword t -> atom}.
-Variable initial_registers : {partmap reg t -> atom}.
+Variable initial_mem  : {partmap mword mt -> atom}.
+Variable initial_registers : {partmap reg mt -> atom}.
 Hypothesis initial_ra : getm initial_registers ra = Some initial_pc@V(PTR initial_color).
 
 Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_color)).
@@ -201,15 +201,15 @@ Global Instance sym_memory_safety : params := {
   internal_state := [eqType of (color * list block_info)%type]
 }.
 
-Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=
+Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory mt _) :=
   match n with
   | O => Some mem
   | S p => do! mem' <- write_block_rec mem base v p;
            updm mem' (base + as_word p) v
   end.
 
-Definition write_block init (base : word) (v : atom) (sz : word) : option (Symbolic.memory t _) :=
-  if base + sz < 2 ^ (word_size t) then
+Definition write_block init (base : word) (v : atom) (sz : word) : option (Symbolic.memory mt _) :=
+  if base + sz < 2 ^ (word_size mt) then
      write_block_rec init base v (val sz)
   else None.
 
@@ -222,7 +222,7 @@ Definition update_block_info info x (color : color) sz :=
     let block2 := mkBlockInfo (block_base x + sz) (block_size x - sz) None in
     block2 :: res.
 
-Definition malloc_fun st : option (state t) :=
+Definition malloc_fun st : option (state mt) :=
   let: (color,info) := internal st in
   if (color < max_color)%ord then
   do! sz <- regs st syscall_arg1;
@@ -247,11 +247,11 @@ Definition def_info : block_info :=
   mkBlockInfo 0 0 None.
 
 (* TODO: avoid memory fragmentation *)
-Definition free_fun (st : state t) : option (state t) :=
+Definition free_fun (st : state mt) : option (state mt) :=
   let: (next_color,info) := internal st in
   do! ptr <- regs st syscall_arg1;
     (* Removing the return clause makes Coq loop... *)
-  match ptr return option (state t) with
+  match ptr return option (state mt) with
   | ptr@V(PTR color) =>
     do! x <- ohead [seq x <- info | block_color x == Some color];
     let i := index x info in
@@ -268,11 +268,11 @@ Definition free_fun (st : state t) : option (state t) :=
   end.
 
 (* This factors out the common part of sizeof, basep, and offp *)
-Definition ptr_fun (st : state t)
-    (f : block_info -> color -> atom) : option (state t) :=
+Definition ptr_fun (st : state mt)
+    (f : block_info -> color -> atom) : option (state mt) :=
   let: (next_color,inf) := internal st in
   do! ptr <- regs st syscall_arg1;
-  match ptr return option (state t) with
+  match ptr return option (state mt) with
   | ptr@V(PTR color) =>
     do! x <- ohead [seq x <- inf | block_color x == Some color];
     do! regs' <- updm (regs st) syscall_ret (f x color);
@@ -284,17 +284,17 @@ Definition ptr_fun (st : state t)
   end.
 
 (* Not yet used *)
-Definition sizeof_fun (st : state t) : option (state t) :=
+Definition sizeof_fun (st : state mt) : option (state mt) :=
   ptr_fun st (fun x _ => (block_size x)@V(DATA)).
 
-Definition basep_fun (st : state t) : option (state t) :=
+Definition basep_fun (st : state mt) : option (state mt) :=
   ptr_fun st (fun x color => (block_base x)@V(PTR color)).
 
-Definition eqp_fun (st : state t) : option (state t) :=
+Definition eqp_fun (st : state mt) : option (state mt) :=
   let: (next_color,inf) := internal st in
   do! ptr1 <- regs st syscall_arg1;
   do! ptr2 <- regs st syscall_arg2;
-  match ptr1, ptr2 return option (state t) with
+  match ptr1, ptr2 return option (state mt) with
   | ptr1@V(PTR color1), ptr2@V(PTR color2) =>
     let b := if (color1 == color2) && (ptr1 == ptr2) then 1%w
              else 0%w in
@@ -306,7 +306,7 @@ Definition eqp_fun (st : state t) : option (state t) :=
   | _, _ => None
   end.
 
-Definition memsafe_syscalls : list (syscall t) :=
+Definition memsafe_syscalls : list (syscall mt) :=
   [:: Syscall malloc_addr V(DATA) malloc_fun;
       Syscall free_addr V(DATA) free_fun;
    (* Syscall size_addr V(DATA) sizeof_fun; *)
@@ -319,8 +319,8 @@ End WithClasses.
 
 Canonical block_info_eqType.
 
-Notation memory t := (Symbolic.memory t (@sym_memory_safety t _)).
-Notation registers t := (Symbolic.registers t (@sym_memory_safety t _)).
+Notation memory mt := (Symbolic.memory mt (@sym_memory_safety mt _)).
+Notation registers mt := (Symbolic.registers mt (@sym_memory_safety mt _)).
 
 Module Notations.
 
@@ -332,7 +332,7 @@ Notation FREE := TagFree.
 
 End Notations.
 
-Arguments def_info t {_}.
+Arguments def_info mt {_}.
 
 End Sym.
 

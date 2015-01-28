@@ -17,11 +17,11 @@ Module Sym.
 
 Section WithClasses.
 
-Context {t : machine_types}.
-Context {ops : machine_ops t}.
+Context {mt : machine_types}.
+Context {ops : machine_ops mt}.
 Context {opss : machine_ops_spec ops}.
 
-Context {ids : @classes.cfi_id t}.
+Context {ids : @classes.cfi_id mt}.
 
 Variable cfg : id -> id -> bool.
 
@@ -35,14 +35,14 @@ Program Instance sym_cfi : Symbolic.params := {
   internal_state := [eqType of unit]
 }.
 
-Local Notation memory := (Symbolic.memory t sym_cfi).
-Local Notation registers := (Symbolic.registers t sym_cfi).
+Local Notation memory := (Symbolic.memory mt sym_cfi).
+Local Notation registers := (Symbolic.registers mt sym_cfi).
 
-Variable table : seq (Symbolic.syscall t).
+Variable table : seq (Symbolic.syscall mt).
 
 (* The rest of the file is defining an instance of the cfi_machine *)
 
-Definition no_violation (sst : Symbolic.state t) :=
+Definition no_violation (sst : Symbolic.state mt) :=
   let '(Symbolic.State mem _ pc@tpc _) := sst in
   (forall i ti src,
     mem pc = Some i@ti ->
@@ -56,7 +56,7 @@ Definition no_violation (sst : Symbolic.state t) :=
        tpc = INSTR (Some src) ->
        exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ cfg src dst).
 
-Inductive atom_equiv (a : atom (mword t) (@cfi_tag t ids)) (a' : atom (mword t) (@cfi_tag t ids)) : Prop :=
+Inductive atom_equiv (a : atom (mword mt) (@cfi_tag mt ids)) (a' : atom (mword mt) (@cfi_tag mt ids)) : Prop :=
   | data_equiv :   taga a = DATA ->
                    taga a' = DATA ->
                    atom_equiv a a'
@@ -68,8 +68,8 @@ Inductive atom_equiv (a : atom (mword t) (@cfi_tag t ids)) (a' : atom (mword t) 
 
 Definition equiv T := @pointwise T _ _ atom_equiv.
 
-Inductive step_a : Symbolic.state t ->
-                   Symbolic.state t -> Prop :=
+Inductive step_a : Symbolic.state mt ->
+                   Symbolic.state mt -> Prop :=
 | step_attack : forall mem reg pc tpc int mem' reg'
                   (REQUIV: equiv reg reg')
                   (MEQUIV: equiv mem mem'),
@@ -77,7 +77,7 @@ Inductive step_a : Symbolic.state t ->
                          (Symbolic.State mem' reg' pc@tpc int).
 
 Lemma equiv_same_domain (T : ordType)
-           (m m' : {partmap T -> atom (mword t) cfi_tag}) :
+           (m m' : {partmap T -> atom (mword mt) cfi_tag}) :
   equiv m m' ->
   m =i m'.
 Proof. exact: pointwise_same_domain. Qed.
@@ -86,7 +86,7 @@ Local Notation "x .+1" := (x + 1)%w.
 
 Open Scope word_scope.
 
-Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
+Definition ssucc (st : Symbolic.state mt) (st' : Symbolic.state mt) : bool :=
   let pc_t := taga (Symbolic.pc st) in
   let pc_t' := taga (Symbolic.pc st') in
   let pc_s := vala (Symbolic.pc st) in
@@ -214,7 +214,7 @@ Hypothesis syscall_preserves_jal_tags :
 
 (*Invariant (step) preservation theorems*)
 
-Lemma itags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
+Lemma itags_preserved_by_step (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   instructions_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
   instructions_tagged (Symbolic.mem st').
@@ -248,7 +248,7 @@ Proof.
 Qed.
 
 Lemma valid_jmp_tagged_preserved_by_step
-      (st : Symbolic.state t) (st' : Symbolic.state t) :
+      (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   valid_jmp_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
   valid_jmp_tagged (Symbolic.mem st').
@@ -334,7 +334,7 @@ Proof.
 Qed.
 
 Lemma entry_point_tags_preserved_by_step
-      (st : Symbolic.state t) (st' : Symbolic.state t) :
+      (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   entry_points_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
   entry_points_tagged (Symbolic.mem st').
@@ -425,7 +425,7 @@ Proof.
    eapply syscall_preserves_register_tags in CALL; eauto.
 Qed.
 
-Lemma jump_tags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
+Lemma jump_tags_preserved_by_step (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   jumps_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
   jumps_tagged (Symbolic.mem st').
@@ -468,7 +468,7 @@ Proof.
      match_inv; eapply syscall_preserves_jump_tags; eauto.
 Qed.
 
-Lemma jal_tags_preserved_by_step (st : Symbolic.state t) (st' : Symbolic.state t) :
+Lemma jal_tags_preserved_by_step (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   jals_tagged (Symbolic.mem st) ->
   Symbolic.step table st st' ->
   jals_tagged (Symbolic.mem st').
@@ -511,7 +511,7 @@ Proof.
      match_inv; eapply syscall_preserves_jal_tags; eauto.
 Qed.
 
-Lemma itags_preserved_by_step_a (st : Symbolic.state t) (st' : Symbolic.state t) :
+Lemma itags_preserved_by_step_a (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   instructions_tagged (Symbolic.mem st) ->
   step_a st st' ->
   instructions_tagged (Symbolic.mem st').
@@ -529,7 +529,7 @@ Proof.
 Qed.
 
 Lemma valid_jmp_tagged_preserved_by_step_a
-      (st : Symbolic.state t) (st' : Symbolic.state t) :
+      (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   valid_jmp_tagged (Symbolic.mem st) ->
   step_a st st' ->
   valid_jmp_tagged (Symbolic.mem st').
@@ -568,7 +568,7 @@ Proof.
 Qed.
 
 Lemma entry_point_tags_preserved_by_step_a
-      (st : Symbolic.state t) (st' : Symbolic.state t) :
+      (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   entry_points_tagged (Symbolic.mem st) ->
   step_a st st' ->
   entry_points_tagged (Symbolic.mem st').
@@ -601,7 +601,7 @@ Proof.
 Qed.
 
 Lemma register_tags_preserved_by_step_a
-      (st : Symbolic.state t) (st' : Symbolic.state t) :
+      (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   registers_tagged (Symbolic.regs st) ->
   step_a st st' ->
   registers_tagged (Symbolic.regs st').
@@ -612,7 +612,7 @@ Proof.
 Qed.
 
 Lemma jal_tags_preserved_by_step_a
-      (st : Symbolic.state t) (st' : Symbolic.state t) :
+      (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   jals_tagged (Symbolic.mem st) ->
   step_a st st' ->
   jals_tagged (Symbolic.mem st').
@@ -630,7 +630,7 @@ Proof.
 Qed.
 
 Lemma jump_tags_preserved_by_step_a
-      (st : Symbolic.state t) (st' : Symbolic.state t) :
+      (st : Symbolic.state mt) (st' : Symbolic.state mt) :
   jumps_tagged (Symbolic.mem st) ->
   step_a st st' ->
   jumps_tagged (Symbolic.mem st').
@@ -702,14 +702,14 @@ Proof.
   end.
 Qed.
 
-Definition initial (s : Symbolic.state t) :=
+Definition initial (s : Symbolic.state mt) :=
   (taga (Symbolic.pc s)) = DATA /\
   invariants s.
 
 Definition all_attacker xs : Prop :=
   forall x1 x2, In2 x1 x2 xs -> step_a x1 x2.
 
-Definition all_stuck (xs : seq (Symbolic.state t)) : Prop :=
+Definition all_stuck (xs : seq (Symbolic.state mt)) : Prop :=
   forall x, x \in xs -> ~ exists s, Symbolic.step table x s.
 
 Definition stopping xs : Prop :=
@@ -746,7 +746,7 @@ Proof.
 Qed.
 
 Program Instance symbolic_cfi_machine : cfi_machine := {|
-  state := [eqType of Symbolic.state t];
+  state := [eqType of Symbolic.state mt];
   initial s := initial s;
 
   step := Symbolic.step table;
@@ -919,7 +919,7 @@ Qed.
 
 End WithClasses.
 
-Notation memory t ids vj := (Symbolic.memory t (@sym_cfi t ids vj)).
-Notation registers t ids vj := (Symbolic.registers t (@sym_cfi t ids vj)).
+Notation memory mt ids vj := (Symbolic.memory mt (@sym_cfi mt ids vj)).
+Notation registers mt ids vj := (Symbolic.registers mt (@sym_cfi mt ids vj)).
 
 End Sym.

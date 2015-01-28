@@ -144,20 +144,20 @@ Definition format_opcode (o : opcode) :=
    | HALT => ss "HALT"
   end.
 
-Class printing (t : machine_types) := {
-  format_word : mword t -> sstring;
-  format_reg : reg t -> sstring;
-  format_imm : imm t -> sstring
+Class printing (mt : machine_types) := {
+  format_word : mword mt -> sstring;
+  format_reg : reg mt -> sstring;
+  format_imm : imm mt -> sstring
 }.
 
 Section Printing.
 
-Context {t : machine_types}
-        {p : printing t}.
+Context {mt : machine_types}
+        {p : printing mt}.
 
-Definition format_reg_r (r : reg t) := ss "r" +++ format_reg r.
+Definition format_reg_r (r : reg mt) := ss "r" +++ format_reg r.
 
-Definition format_instr (i : instr t) :=
+Definition format_instr (i : instr mt) :=
   match i with
   | Nop => ss "Nop"
   | Const im r => ss "Const " +++ format_imm im +++ ss " " +++ format_reg_r r

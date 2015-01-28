@@ -15,15 +15,15 @@ Open Scope bool_scope.
 
 Section WithClasses.
 
-Context (t : machine_types).
-Context {ops : machine_ops t}.
+Context (mt : machine_types).
+Context {ops : machine_ops mt}.
 
 Variable block : ordType.
 
-Definition pointer := (block * mword t)%type.
+Definition pointer := (block * mword mt)%type.
 
 Inductive value :=
-| VData : mword t -> value
+| VData : mword mt -> value
 | VPtr : pointer -> value.
 
 Definition value_eq v1 v2 :=
@@ -46,11 +46,11 @@ Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
 Definition frame := seq value.
 
 Definition memory := {partmap block -> frame}.
-Definition registers := {partmap reg t -> value}.
+Definition registers := {partmap reg mt -> value}.
 
 Open Scope word_scope.
 
-Local Notation word := (mword t).
+Local Notation word := (mword mt).
 Local Notation "x .+1" := (fst x, snd x + 1).
 
 Record state := mkState {
@@ -134,7 +134,7 @@ Class allocator_spec (alloc : allocator) := {
 
 }.
 
-Context `{syscall_regs t} `{allocator} `{memory_syscall_addrs t}.
+Context `{syscall_regs mt} `{allocator} `{memory_syscall_addrs mt}.
 
 Definition syscall_addrs := [:: malloc_addr; free_addr].
 
@@ -283,8 +283,8 @@ End WithClasses.
 
 End Abstract.
 
-Arguments Abstract.state t block.
-Arguments Abstract.memory t block.
-Arguments Abstract.registers t block.
+Arguments Abstract.state mt block.
+Arguments Abstract.memory mt block.
+Arguments Abstract.registers mt block.
 
 Canonical Abstract.state_eqType.

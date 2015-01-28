@@ -12,10 +12,10 @@ Module Abs.
 
 Section WithClasses.
 
-Context (t : machine_types)
-        {ops : machine_ops t}
-        {scr : @syscall_regs t}
-        {ssa : @sealing_syscall_addrs t}.
+Context (mt : machine_types)
+        {ops : machine_ops mt}
+        {scr : syscall_regs mt}
+        {ssa : @sealing_syscall_addrs mt}.
 
 Class sealing_key := {
   key       : ordType;
@@ -30,9 +30,9 @@ Class sealing_key := {
 Context {sk : sealing_key}.
 
 Inductive value :=
-| VData   : mword t        -> value
+| VData   : mword mt        -> value
 | VKey    :            key -> value
-| VSealed : mword t -> key -> value.
+| VSealed : mword mt -> key -> value.
 
 Definition value_eq (v1 v2 : value) : bool :=
   match v1, v2 with
@@ -53,8 +53,8 @@ Qed.
 Definition value_eqMixin := EqMixin value_eqP.
 Canonical value_eqType := EqType value value_eqMixin.
 
-Local Notation memory := {partmap mword t -> value}.
-Local Notation registers := {partmap reg t -> value}.
+Local Notation memory := {partmap mword mt -> value}.
+Local Notation registers := {partmap reg mt -> value}.
 
 Open Scope word_scope.
 
@@ -63,7 +63,7 @@ Local Notation "x .+1" := (x + 1) (at level 60).
 Record state := State {
   mem : memory;
   regs : registers;
-  pc : mword t;
+  pc : mword mt;
   keys : seq key
 }.
 
@@ -85,7 +85,7 @@ Definition syscall_addrs := [:: mkkey_addr; seal_addr; unseal_addr].
 
 Notation "x '=?' y" := (x = Some y) (at level 99).
 
-Definition decode (mem : memory) (pc : mword t) :=
+Definition decode (mem : memory) (pc : mword mt) :=
   match mem pc with
     | Some (VData i) => decode_instr i
     | _              => None
@@ -264,9 +264,9 @@ Definition stepf (st : state) : option state :=
 (* Building initial machine states *)
 
 Program Definition abstract_initial_state
-      (user_mem : relocatable_segment classes.sealing_syscall_addrs value)
-      (base_addr : mword t)
-      (user_regs : seq (reg t))
+      (user_mem : relocatable_segment (sealing_syscall_addrs mt) value)
+      (base_addr : mword mt)
+      (user_regs : seq (reg mt))
     : state :=
   let (_, gen) := user_mem in
   let mem_contents := gen base_addr ssa in
@@ -291,12 +291,12 @@ Program Definition abstract_initial_state
 
 End WithClasses.
 
-Notation memory t := {partmap mword t -> @value t _}.
-Notation registers t := {partmap reg t -> @value t _}.
+Notation memory mt := {partmap mword mt -> @value mt _}.
+Notation registers mt := {partmap reg mt -> @value mt _}.
 
 End Abs.
 
-Arguments Abs.state t {_}.
+Arguments Abs.state mt {_}.
 
 Canonical Abs.value_eqType.
 Canonical Abs.state_eqType.

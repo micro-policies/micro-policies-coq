@@ -17,11 +17,11 @@ Unset Printing Implicit Defensive.
 
 Section RefinementSA.
 
-Context {t : machine_types}
-        {ops : machine_ops t}
+Context {mt : machine_types}
+        {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {scr : @syscall_regs t}
-        {ssa : @sealing_syscall_addrs t}
+        {scr : syscall_regs mt}
+        {ssa : sealing_syscall_addrs mt}
 
         {ssk : Sym.sealing_key}
         {ask : Abs.sealing_key}.
@@ -56,16 +56,16 @@ Section WithFixedKeyMap.
    corresponding symbolic key *)
 Variable km : {partmap Abs.key -> Sym.key}.
 
-Local Notation smemory := {partmap mword t -> Sym.sym_sealing}.
-Local Notation sregisters := {partmap reg t -> Sym.sym_sealing}.
-Local Notation astate := (@Abs.state t ask).
-Local Notation sstate := (@Symbolic.state t Sym.sym_sealing).
+Local Notation smemory := {partmap mword mt -> Sym.sym_sealing}.
+Local Notation sregisters := {partmap reg mt -> Sym.sym_sealing}.
+Local Notation astate := (@Abs.state mt ask).
+Local Notation sstate := (@Symbolic.state mt Sym.sym_sealing).
 
 Definition refine_key (ak : Abs.key) (sk : Sym.key) : Prop :=
   getm km ak = Some sk.
 
-Definition refine_val_atom (v : Abs.value t)
-                           (a : atom (mword t) Sym.stag) : Prop :=
+Definition refine_val_atom (v : Abs.value mt)
+                           (a : atom (mword mt) Sym.stag) : Prop :=
   match v,a with
   | Abs.VData w     , w'@(Sym.DATA)      => w = w'
   | Abs.VKey ak     ,  _@(Sym.KEY sk)    => refine_key ak sk
@@ -73,14 +73,14 @@ Definition refine_val_atom (v : Abs.value t)
   | _                   , _                      => False
   end.
 
-Definition refine_mem : Abs.memory t -> Sym.memory t -> Prop :=
+Definition refine_mem : Abs.memory mt -> Sym.memory mt -> Prop :=
   pointwise refine_val_atom.
 
-Definition refine_reg : Abs.registers t -> Sym.registers t -> Prop :=
+Definition refine_reg : Abs.registers mt -> Sym.registers mt -> Prop :=
   pointwise refine_val_atom.
 
 (* We make no assumption about the pc tag, since it's unused in the policy *)
-Definition refine_pc (w : mword t) (a : atom (mword t) unit) : Prop :=
+Definition refine_pc (w : mword mt) (a : atom (mword mt) unit) : Prop :=
   w = vala a.
 
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
@@ -112,10 +112,10 @@ Proof.
   intros v w ref. destruct v; simpl in ref; try tauto; subst; reflexivity.
 Qed.
 
-Definition refine_upd_reg (aregs : Abs.registers t) (sregs : Sym.registers t) :=
+Definition refine_upd_reg (aregs : Abs.registers mt) (sregs : Sym.registers mt) :=
   @refine_upd_pointwise _ _ _ refine_val_atom aregs sregs.
 
-Definition refine_upd_mem (amem : Abs.memory t) (smem : Sym.memory t) :=
+Definition refine_upd_mem (amem : Abs.memory mt) (smem : Sym.memory mt) :=
   @refine_upd_pointwise _ _ _ refine_val_atom amem smem.
 
 End WithFixedKeyMap.
@@ -347,7 +347,7 @@ Proof.
     apply refine_val_data in REF. subst v1.
 
     assert(refine_val_atom (setm km (Abs.mkkey_f akeys) skey)
-              (Abs.VKey t (Abs.mkkey_f akeys))
+              (Abs.VKey mt (Abs.mkkey_f akeys))
               (monew@(Sym.KEY skey))) as rva.
       unfold refine_val_atom, refine_key. by rewrite getm_set eqxx.
 
@@ -480,7 +480,7 @@ Definition forward_simulation := forall km ast ast' sst,
   (* ... or the symbolic machine gets stuck on a failed key generation *)
   ((forall sst', ~Sym.step sst sst')
    /\
-   (exists (i : mword t) (r : reg t) (ti t1 : Sym.stag) (sc : Symbolic.syscall t),
+   (exists (i : mword mt) (r : reg mt) (ti t1 : Sym.stag) (sc : Symbolic.syscall mt),
       (getm (Symbolic.mem sst) (vala (Symbolic.pc sst)) = Some i@ti) /\
       (decode_instr i = Some (Jal r)) /\
       (getm (Symbolic.regs sst) r = Some mkkey_addr@t1) /\

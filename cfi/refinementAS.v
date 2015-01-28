@@ -17,41 +17,41 @@ Module RefinementAS.
 
 Section Refinement.
 
-Context {t : machine_types}
-        {ops : machine_ops t}
+Context {mt : machine_types}
+        {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {ids : @classes.cfi_id t}.
+        {ids : cfi_id mt}.
 
 Variable cfg : id -> id -> bool.
 
 (* Instantiate the symbolic machine with the CFI stuff*)
 Instance sym_params : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable atable : list (Abs.syscall t).
-Variable stable : list (Symbolic.syscall t).
+Variable atable : list (Abs.syscall mt).
+Variable stable : list (Symbolic.syscall mt).
 
 (*Refinement related definitions*)
-Definition refine_dmemory (admem : Abs.dmemory t)
+Definition refine_dmemory (admem : Abs.dmemory mt)
                           smem :=
-  forall w (x : mword t),
+  forall w (x : mword mt),
     getm smem w = Some x@DATA <->
     getm admem w = Some x.
 
-Definition refine_imemory (aimem : Abs.imemory t)
+Definition refine_imemory (aimem : Abs.imemory mt)
                           smem :=
   forall w x,
     (exists id, getm smem w = Some x@(INSTR id)) <->
     getm aimem w = Some x.
 
-Definition refine_registers (areg : Abs.registers t)
-                            (sreg : Sym.registers t ids cfg) :=
-  forall n (x : mword t),
+Definition refine_registers (areg : Abs.registers mt)
+                            (sreg : Sym.registers mt ids cfg) :=
+  forall n (x : mword mt),
     getm sreg n = Some x@DATA <->
     getm areg n = Some x.
 
 Definition refine_pc
-           (apc : mword t)
-           (spc : atom (mword t) (Symbolic.ttypes Symbolic.P)) :=
+           (apc : mword mt)
+           (spc : atom (mword mt) (Symbolic.ttypes Symbolic.P)) :=
   apc = vala spc /\
   (taga spc = DATA \/
    exists id, taga spc = INSTR (Some id)).
@@ -137,8 +137,8 @@ Proof.
     * auto.
 Qed.
 
-Definition refine_state (ast : Abs.state t)
-                        (sst : @Symbolic.state t sym_params) :=
+Definition refine_state (ast : Abs.state mt)
+                        (sst : @Symbolic.state mt sym_params) :=
   let '(Abs.State imem dmem aregs apc cont) := ast in
   let '(Symbolic.State smem sregs spc@tpc _) := sst in
   refine_imemory imem smem /\
@@ -169,8 +169,8 @@ Definition refine_syscall acall scall :=
     end.
 
 Definition syscall_domains
-           (atbl : list (Abs.syscall t))
-           (stbl : list (@Symbolic.syscall t sym_params)) : Prop :=
+           (atbl : list (Abs.syscall mt))
+           (stbl : list (@Symbolic.syscall mt sym_params)) : Prop :=
   forall addr,
     (exists acall, Abs.get_syscall atbl addr = Some acall) <->
     (exists scall, Symbolic.get_syscall stbl addr = Some scall).
@@ -206,13 +206,13 @@ Qed.
 (* Might need absence of duplicates in these maps? *)
 (* Could use pointwise, and pointwise -> same_domains *)
 Definition refine_syscalls
-           (atbl : list (Abs.syscall t))
-           (stbl : list (@Symbolic.syscall t sym_params)) : Prop :=
+           (atbl : list (Abs.syscall mt))
+           (stbl : list (@Symbolic.syscall mt sym_params)) : Prop :=
   forall addr,
     match Abs.get_syscall atbl addr, Symbolic.get_syscall stbl addr with
     | Some acall, Some scall =>
-      refine_syscall (@Abs.sem t acall)
-                     (@Symbolic.run_syscall t sym_params scall)
+      refine_syscall (@Abs.sem mt acall)
+                     (@Symbolic.run_syscall mt sym_params scall)
     | None, None => True
     | _, _ => False
     end.
@@ -258,7 +258,7 @@ Qed.
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    @Abs.sem t ac ast = Some ast' ->
+    @Abs.sem mt ac ast = Some ast' ->
        let '(Abs.State imem _ _ _ b) := ast in
        let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
@@ -351,7 +351,7 @@ Proof.
     now apply MEM.
 Qed.
 
-Lemma data_memory_upd (smem : @Symbolic.memory t sym_params) smem' addr v v' :
+Lemma data_memory_upd (smem : @Symbolic.memory mt sym_params) smem' addr v v' :
   getm smem addr = Some v@DATA ->
   updm smem addr v'@DATA = Some smem' ->
   (forall addr' i id,
@@ -365,8 +365,8 @@ Proof.
     assumption.
 Qed.
 
-Lemma imem_upd_preservation amemi (smem : @Symbolic.memory t sym_params)
-      (smem' : @Symbolic.memory t sym_params) addr v v' :
+Lemma imem_upd_preservation amemi (smem : @Symbolic.memory mt sym_params)
+      (smem' : @Symbolic.memory mt sym_params) addr v v' :
   refine_imemory amemi smem ->
   getm smem addr = Some v@DATA ->
   updm smem addr v'@DATA = Some smem' ->
@@ -679,7 +679,7 @@ Proof.
   }
 Qed.
 
-Definition untag_atom (a : atom (mword t) cfi_tag) := vala a.
+Definition untag_atom (a : atom (mword mt) cfi_tag) := vala a.
 
 Lemma reg_refinement_preserved_by_equiv :
   forall areg reg reg',
@@ -749,7 +749,7 @@ Proof.
     + apply REF in GET. destruct GET as [? GET]. rewrite GET in GET'. congruence.
 Qed.
 
-Definition is_data (a : atom (mword t) cfi_tag) :=
+Definition is_data (a : atom (mword mt) cfi_tag) :=
   match taga a with
     | DATA => true
     | INSTR _ => false

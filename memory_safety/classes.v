@@ -5,16 +5,10 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Section classes.
-
-Context `{t : machine_types}.
-
-Class memory_syscall_addrs := {
-  malloc_addr : mword t;
-  free_addr : mword t;
-  size_addr : mword t;
-  base_addr : mword t;
-  eq_addr : mword t
+Class memory_syscall_addrs mt := {
+  malloc_addr : mword mt;
+  free_addr : mword mt;
+  size_addr : mword mt;
+  base_addr : mword mt;
+  eq_addr : mword mt
 }.
-
-End classes.

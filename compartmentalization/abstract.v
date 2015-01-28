@@ -17,22 +17,22 @@ Open Scope bool_scope.
 
 Section WithClasses.
 
-Context (t            : machine_types)
-        {ops          : machine_ops t}
+Context (mt           : machine_types)
+        {ops          : machine_ops mt}
         {spec         : machine_ops_spec ops}
-        {scr          : @syscall_regs t}
-        {cmp_syscalls : compartmentalization_syscall_addrs t}.
+        {scr          : syscall_regs mt}
+        {cmp_syscalls : compartmentalization_syscall_addrs mt}.
 
 Open Scope word_scope.
-Local Notation word  := (mword t).
+Local Notation word  := (mword mt).
 Local Notation value := word.
 Local Notation memory := {partmap word -> word}.
-Local Notation registers := {partmap reg t -> word}.
+Local Notation registers := {partmap reg mt -> word}.
 
 Implicit Type pc : value.
 Implicit Type M : memory.
 Implicit Type R : registers.
-Implicit Type r rsrc rdest rpsrc rpdest rtgt : reg t.
+Implicit Type r rsrc rdest rpsrc rpdest rtgt : reg mt.
 
 (* BCP: Can we change `store_targets' to `writable_memory', and disallow writes
    to `address_space'?  [TODO] *)
@@ -1098,7 +1098,7 @@ Qed.
 Theorem add_to_jump_targets_good : forall MM,
   good_syscall add_to_jump_targets MM.
 Proof.
-  clear - t ops spec.
+  clear - mt ops spec.
   intros; apply add_to_compartment_component_good;
     intros; destruct c as [A J S]; auto.
 Qed.
@@ -1107,7 +1107,7 @@ Qed.
 Theorem add_to_store_targets_good : forall MM,
   good_syscall add_to_store_targets MM.
 Proof.
-  clear - t ops spec.
+  clear - mt ops spec.
   intros; apply add_to_compartment_component_good;
     intros; destruct c as [A J S]; auto.
 Qed.
@@ -1475,8 +1475,8 @@ End WithClasses.
 
 Module Notations.
 (* Repeated notations *)
-Notation memory t := {partmap mword t -> mword t}.
-Notation registers t := {partmap reg t -> mword t}.
+Notation memory mt := {partmap mword mt -> mword mt}.
+Notation registers mt := {partmap reg mt -> mword mt}.
 Notation "<< A , J , S >>" := (@Compartment _ A J S) (format "<< A , J , S >>").
 Notation "C ⊢ p ∈ c" := (in_compartment p C c) (at level 70).
 Notation "C ⊢ p1 , p2 , .. , pk ∈ c" :=

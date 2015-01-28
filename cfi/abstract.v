@@ -12,18 +12,18 @@ Open Scope bool_scope.
 
 Section WithClasses.
 
-Context (t : machine_types).
-Context {ops : machine_ops t}.
+Context (mt : machine_types).
+Context {ops : machine_ops mt}.
 Context {opss : machine_ops_spec ops}.
 
 Open Scope word_scope.
 
-Local Notation word := (mword t).
+Local Notation word := (mword mt).
 Local Notation "x .+1" := (x + 1).
 
 Local Notation imemory := {partmap word -> word}.
 Local Notation dmemory := {partmap word -> word}.
-Local Notation registers := {partmap reg t -> word}.
+Local Notation registers := {partmap reg mt -> word}.
 
 Record state := State {
   imem : imemory;
@@ -64,7 +64,7 @@ Variable table : list syscall.
 Definition get_syscall (addr : word) : option syscall :=
   List.find (fun sc => address sc == addr) table.
 
-Context {ids : @cfi_id t}.
+Context {ids : cfi_id mt}.
 
 Variable cfg : id -> id -> bool.
 
@@ -401,14 +401,14 @@ Qed.
 
 End WithClasses.
 
-Notation imemory t := {partmap mword t -> mword t}.
-Notation dmemory t := {partmap mword t -> mword t}.
-Notation registers t := {partmap reg t -> mword t}.
+Notation imemory mt := {partmap mword mt -> mword mt}.
+Notation dmemory mt := {partmap mword mt -> mword mt}.
+Notation registers mt := {partmap reg mt -> mword mt}.
 
 End Abs.
 
-Arguments Abs.state t.
+Arguments Abs.state mt.
 Arguments Abs.State {_} _ _ _ _ _.
-Arguments Abs.syscall t.
+Arguments Abs.syscall mt.
 
 Canonical Abs.cfi_abs_state_eqType.

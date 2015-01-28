@@ -25,16 +25,16 @@ Import Sym.EnhancedDo.
 Local Notation II := Logic.I.
 
 Context
-  (t            : machine_types)
-  {ops          : machine_ops t}
+  (mt           : machine_types)
+  {ops          : machine_ops mt}
   {spec         : machine_ops_spec ops}
-  {scr          : @syscall_regs t}
-  {cmp_syscalls : compartmentalization_syscall_addrs t}.
+  {scr          : syscall_regs mt}
+  {cmp_syscalls : compartmentalization_syscall_addrs mt}.
 
-Notation word     := (mword t).
-Notation pc_tag   := (Sym.pc_tag t).
-Notation data_tag := (Sym.data_tag t).
-Notation sym_compartmentalization := (@Sym.sym_compartmentalization t).
+Notation word     := (mword mt).
+Notation pc_tag   := (Sym.pc_tag mt).
+Notation data_tag := (Sym.data_tag mt).
+Notation sym_compartmentalization := (@Sym.sym_compartmentalization mt).
 
 Notation spcatom := (atom word pc_tag).
 Notation smatom  := (atom word data_tag).
@@ -42,11 +42,11 @@ Notation sratom  := (atom word unit).
 Notation svalue  := (@vala word _).
 Notation slabel  := (@taga word _).
 
-Notation astate    := (@Abs.state t).
-Notation sstate    := (@Symbolic.state t sym_compartmentalization).
-Notation AState    := (@Abs.State t).
-Notation SState    := (@Symbolic.State t sym_compartmentalization).
-Notation SInternal := (@Sym.Internal t).
+Notation astate    := (@Abs.state mt).
+Notation sstate    := (@Symbolic.state mt sym_compartmentalization).
+Notation AState    := (@Abs.State mt).
+Notation SState    := (@Symbolic.State mt sym_compartmentalization).
+Notation SInternal := (@Sym.Internal mt).
 
 Notation astep := Abs.step.
 Notation sstep := Sym.step.
@@ -57,7 +57,7 @@ Arguments Sym.sget {_ _} s p : simpl never.
 Arguments Sym.supd {_ _} s p tg : simpl never.
 
 Canonical compartment_eqType :=
-  Eval hnf in EqType (Abs.compartment t) (Abs.compartment_eqMixin t).
+  Eval hnf in EqType (Abs.compartment mt) (Abs.compartment_eqMixin mt).
 
 (* We check the compartment stuff later *)
 Definition refine_pc_b (apc : word) (spc : spcatom) :=
@@ -76,42 +76,42 @@ Definition refine_reg_b (ar : word) (sr : sratom) : bool :=
     | sr' @ _ => ar == sr'
   end.
 
-Definition refine_memory : memory t -> Sym.memory t -> Prop :=
+Definition refine_memory : memory mt -> Sym.memory mt -> Prop :=
   pointwise refine_mem_loc_b.
 
-Definition refine_registers : registers t -> Sym.registers t -> Prop :=
+Definition refine_registers : registers mt -> Sym.registers mt -> Prop :=
   pointwise refine_reg_b.
 
 Section WithSym.
 Import Sym.
 
 Definition get_compartment_id (sst : sstate)
-                              (c   : Abs.compartment t) : option word :=
+                              (c   : Abs.compartment mt) : option word :=
   [pick cid |
     ((omap data_tag_compartment \o Sym.sget sst) @: Abs.address_space c) ==
     [set Some cid]].
 
 Definition well_defined_compartments (sst : sstate)
-                                     (C   : seq (Abs.compartment t)) : Prop :=
+                                     (C   : seq (Abs.compartment mt)) : Prop :=
   forall p, sget sst p -> Abs.in_compartment_opt C p.
 
 Definition well_defined_ids (sst : sstate)
-                            (C   : seq (Abs.compartment t)) : Prop :=
+                            (C   : seq (Abs.compartment mt)) : Prop :=
   forall c, c \in C -> get_compartment_id sst c.
 
 (* AAA: Does this imply disjointness? *)
 Definition unique_ids (sst : sstate)
-                      (C   : seq (Abs.compartment t)) : Prop :=
+                      (C   : seq (Abs.compartment mt)) : Prop :=
   forall c1 c2,
     c1 \in C ->
     c2 \in C ->
     get_compartment_id sst c1 = get_compartment_id sst c2 ->
     c1 = c2.
 
-Definition well_formed_targets (targets : Abs.compartment t -> {set word})
-                               (sources : data_tag _        -> {set word})
+Definition well_formed_targets (targets : Abs.compartment mt -> {set word})
+                               (sources : data_tag _         -> {set word})
                                (sst     : sstate)
-                               (C       : seq (Abs.compartment t)) : Prop :=
+                               (C       : seq (Abs.compartment mt)) : Prop :=
   forall c cid,
     c \in C ->
     get_compartment_id sst c = Some cid ->
@@ -119,22 +119,22 @@ Definition well_formed_targets (targets : Abs.compartment t -> {set word})
     [set p | oapp (fun s : {set word} => cid \in s) false
                   (omap sources (Sym.sget sst p)) ].
 
-Definition well_formed_jump_targets : sstate -> seq (Abs.compartment t) -> Prop :=
+Definition well_formed_jump_targets : sstate -> seq (Abs.compartment mt) -> Prop :=
   well_formed_targets (fun c => Abs.jump_targets c) data_tag_incoming.
 
-Definition well_formed_store_targets : sstate -> seq (Abs.compartment t) -> Prop :=
+Definition well_formed_store_targets : sstate -> seq (Abs.compartment mt) -> Prop :=
   well_formed_targets (fun c => Abs.store_targets c) data_tag_writers.
 
 End WithSym.
 
-Definition refine_previous_b (sk : where_from) (prev : Abs.compartment t)
+Definition refine_previous_b (sk : where_from) (prev : Abs.compartment mt)
                              (sst : sstate) : bool :=
   match Symbolic.pc sst with
     | _ @ (Sym.PC F cid) => (sk == F) &&
                             (get_compartment_id sst prev == Some cid)
   end.
 
-Definition refine_syscall_addrs_b (AM : memory t) (SM : Sym.memory t) : bool :=
+Definition refine_syscall_addrs_b (AM : memory mt) (SM : Sym.memory mt) : bool :=
   [&& all (fun x => x \notin AM) syscall_addrs ,
       all (fun x => x \notin SM) syscall_addrs &
       uniq syscall_addrs ].
@@ -199,7 +199,7 @@ Ltac unoption :=
     | EQ  : None   = None   |- _ => clear EQ
   end.
 
-Lemma get_compartment_id_in_compartment_eq (C : seq (Abs.compartment t)) sst c p :
+Lemma get_compartment_id_in_compartment_eq (C : seq (Abs.compartment mt)) sst c p :
   well_defined_compartments sst C ->
   well_defined_ids sst C ->
   unique_ids sst C ->
@@ -233,7 +233,7 @@ Proof.
     by move/eqP=> ->.
 Qed.
 
-Lemma get_compartment_id_in_compartment (C : seq (Abs.compartment t)) sst c p :
+Lemma get_compartment_id_in_compartment (C : seq (Abs.compartment mt)) sst c p :
   well_defined_compartments sst C ->
   well_defined_ids sst C ->
   unique_ids sst C ->
@@ -245,7 +245,7 @@ Proof.
   by rewrite -(get_compartment_id_in_compartment_eq _ WDC WDID UNIQUE IN) H.
 Qed.
 
-Lemma in_compartment_get_compartment_id (C : seq (Abs.compartment t)) sst c p :
+Lemma in_compartment_get_compartment_id (C : seq (Abs.compartment mt)) sst c p :
   well_defined_compartments sst C ->
   well_defined_ids sst C ->
   unique_ids sst C ->
@@ -707,7 +707,7 @@ Proof.
   - by rewrite -!(get_compartment_id_supd_same GET UPD) => /(UNIQUE _ _ IN1 IN2) E.
 Qed.
 
-Lemma well_formed_targets_augment (targets : Abs.compartment t -> {set word})
+Lemma well_formed_targets_augment (targets : Abs.compartment mt -> {set word})
                                   (sources : data_tag -> {set word})
                                   sst sst' p pcid I1 I2 W1 W2 Ss C c cid c' :
   well_formed_targets targets sources sst C ->
@@ -752,7 +752,7 @@ Proof.
     by rewrite (UNIQUE _ _ c''_in_C c_in_C ID') eqxx in Hneq.
 Qed.
 
-Lemma well_formed_targets_same (targets : Abs.compartment t -> {set word})
+Lemma well_formed_targets_same (targets : Abs.compartment mt -> {set word})
                                (sources : data_tag -> {set word})
                                sst sst' p pcid I1 I2 W1 W2 Ss C c cid c' :
   well_formed_targets targets sources sst C ->
@@ -808,7 +808,7 @@ Theorem add_to_jump_targets_refined : forall ast sst sst',
   refine ast sst ->
   Sym.add_to_jump_targets sst ?= sst' ->
   exists ast',
-    Abs.semantics (Abs.add_to_jump_targets (t:=t)) ast ?= ast' /\
+    Abs.semantics (Abs.add_to_jump_targets (mt:=mt)) ast ?= ast' /\
     refine ast' sst'.
 Proof.
   move=> ast sst sst' AGOOD REFINE ADD.
@@ -956,7 +956,7 @@ Proof.
               -(get_compartment_id_supd_same def_xcIW def_s')
                R_c_sys.
   - exact: (supd_refine_syscall_addrs_b def_s').
-  - have in_range : forall c' : [ordType of mword t],
+  - have in_range : forall c' : [ordType of mword mt],
                       c' \in (cid' |: I'') :|: W'' ->
                       (c' < Sym.next_id
                               (Symbolic.internal
@@ -979,7 +979,7 @@ Theorem add_to_store_targets_refined : forall ast sst sst',
   refine ast sst ->
   Sym.add_to_store_targets sst ?= sst' ->
   exists ast',
-    Abs.semantics (Abs.add_to_store_targets (t:=t)) ast ?= ast' /\
+    Abs.semantics (Abs.add_to_store_targets (mt:=mt)) ast ?= ast' /\
     refine ast' sst'.
 Proof.
   move=> ast sst sst' AGOOD REFINE ADD.
@@ -2120,7 +2120,7 @@ Proof.
     move: (COMPSWD pc).
     rewrite /Sym.sget PC => /(_ erefl).
     case COMP: (Abs.in_compartment_opt _ _) => [c|] // _.
-    evar (AR' : registers t);
+    evar (AR' : registers mt);
       exists (AState (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_const; try reflexivity.
@@ -2164,7 +2164,7 @@ Proof.
       [| specialize RREGS with r1; rewrite R1W GET1 in RREGS; done].
     destruct (getm AR r2) as [x2|] eqn:GET2;
       [| specialize RREGS with r2; rewrite OLD GET2 in RREGS; done].
-    evar (AR' : registers t);
+    evar (AR' : registers mt);
       exists (AState (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_mov; try reflexivity.
@@ -2208,7 +2208,7 @@ Proof.
       [| specialize RREGS with r2; rewrite R2W GET2 in RREGS; done].
     destruct (getm AR r3) as [x3|] eqn:GET3;
       [| specialize RREGS with r3; rewrite OLD GET3 in RREGS; done].
-    evar (AR' : registers t);
+    evar (AR' : registers mt);
       exists (AState (pc+1)%w AR' AM AC INTERNAL c); split;
       subst AR'.
     + eapply Abs.step_binop; try reflexivity.
@@ -2261,7 +2261,7 @@ Proof.
       subst x1.
     destruct (getm AM w1) as [x2|] eqn:GETM1;
       [|specialize RMEMS with w1; rewrite MEM1 GETM1 in RMEMS; done].
-    evar (AR' : registers t);
+    evar (AR' : registers mt);
       exists (AState (pc+1)%w AR' AM AC INTERNAL ac); split;
       subst AR'.
     + eapply Abs.step_load; try reflexivity.
@@ -2318,7 +2318,7 @@ Proof.
       subst x2.
     destruct (getm AM w1) as [xold|] eqn:GETM1;
       [|specialize RMEMS with w1; rewrite OLD GETM1 in RMEMS; done].
-    evar (AM' : memory t);
+    evar (AM' : memory mt);
       exists (AState (pc+1)%w AR AM' AC INTERNAL ac); split;
       subst AM'.
     + eapply Abs.step_store; try reflexivity.
@@ -2462,7 +2462,7 @@ Proof.
       (by specialize RREGS with r;
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
-    evar (AR' : registers t);
+    evar (AR' : registers mt);
       exists (AState w AR' AM AC JUMPED c); split;
       subst AR'.
     + eapply Abs.step_jump; try reflexivity.
@@ -2496,7 +2496,7 @@ Proof.
       (by specialize RREGS with r;
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
-    evar (AR' : registers t);
+    evar (AR' : registers mt);
       exists (AState (pc + (if w == 0 then 1 else swcast n))%w
                      AR' AM AC INTERNAL c); split;
       subst AR'.
@@ -2534,7 +2534,7 @@ Proof.
       (by specialize RREGS with r;
           rewrite RW GET /refine_reg_b in RREGS; move/eqP in RREGS);
       subst x.
-    evar (AR' : registers t);
+    evar (AR' : registers mt);
       exists (AState w AR' AM AC JUMPED c); split;
       subst AR'.
     + eapply Abs.step_jal; try reflexivity.
@@ -2582,9 +2582,9 @@ Proof.
       try solve [by destruct tpc; try done; move/eqP in RPC; subst];
       destruct CALL as [ast' [STEP REFINE]];
       exists ast'; split; auto;
-      [ eapply Abs.step_syscall with (sc := Abs.isolate              (t:=t))
-      | eapply Abs.step_syscall with (sc := Abs.add_to_jump_targets  (t:=t))
-      | eapply Abs.step_syscall with (sc := Abs.add_to_store_targets (t:=t)) ];
+      [ eapply Abs.step_syscall with (sc := Abs.isolate              (mt:=mt))
+      | eapply Abs.step_syscall with (sc := Abs.add_to_jump_targets  (mt:=mt))
+      | eapply Abs.step_syscall with (sc := Abs.add_to_store_targets (mt:=mt)) ];
       try solve [reflexivity | eassumption];
       destruct tpc as []; try discriminate; move/eqP in RPC; subst;
       try match goal with |- context[getm AM ?addr] =>

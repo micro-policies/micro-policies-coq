@@ -12,10 +12,10 @@ Unset Printing Implicit Defensive.
 
 Section uhandler.
 
-Context {t : machine_types}.
-Context {ops : machine_ops t}.
+Context {mt : machine_types}.
+Context {ops : machine_ops mt}.
 
-Context {ids : @cfi_id t}.
+Context {ids : cfi_id mt}.
 
 Inductive cfi_tag : Type :=
 | INSTR : option id -> cfi_tag

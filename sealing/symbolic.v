@@ -14,11 +14,11 @@ Module Sym.
 
 Section WithClasses.
 
-Context {t : machine_types}
-        {ops : machine_ops t}
+Context {mt : machine_types}
+        {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {scr : @syscall_regs t}
-        {ssa : @sealing_syscall_addrs t}.
+        {scr : syscall_regs mt}
+        {ssa : @sealing_syscall_addrs mt}.
 
 Open Scope ord_scope.
 
@@ -89,7 +89,7 @@ Program Instance sym_sealing : params := {
 
 Import DoNotation.
 
-Definition mkkey (s : state t) : option (state t) :=
+Definition mkkey (s : state mt) : option (state mt) :=
   let 'State mem reg pc@pct key := s in
   if key < max_key then
     let key' := inc_key key in
@@ -102,7 +102,7 @@ Definition mkkey (s : state t) : option (state t) :=
   else
     None.
 
-Definition seal (s : state t) : option (state t) :=
+Definition seal (s : state mt) : option (state mt) :=
   let 'State mem reg pc@pct next_key := s in
   match reg syscall_arg1, reg syscall_arg2 with
   | Some payload@DATA, Some _@(KEY key) =>
@@ -115,7 +115,7 @@ Definition seal (s : state t) : option (state t) :=
   | _, _ => None
   end.
 
-Definition unseal (s : state t) : option (state t) :=
+Definition unseal (s : state mt) : option (state mt) :=
   let 'State mem reg pc@pct next_key := s in
   match reg syscall_arg1, reg syscall_arg2 with
   | Some payload@(SEALED key), Some _@(KEY key') =>
@@ -130,7 +130,7 @@ Definition unseal (s : state t) : option (state t) :=
   | _, _ => None
   end.
 
-Definition sealing_syscalls : list (syscall t) :=
+Definition sealing_syscalls : list (syscall mt) :=
   [:: Syscall mkkey_addr DATA mkkey;
       Syscall seal_addr DATA seal;
       Syscall unseal_addr DATA unseal].
@@ -151,7 +151,7 @@ End WithClasses.
    and I expect that to use any of Arthur's results we'll need
    to give this kind of details *)
 
-Notation memory t := (Symbolic.memory t sym_sealing).
-Notation registers t := (Symbolic.registers t sym_sealing).
+Notation memory mt := (Symbolic.memory mt sym_sealing).
+Notation registers mt := (Symbolic.registers mt sym_sealing).
 
 End Sym.

@@ -5,27 +5,21 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Section WithClasses.
-
-Context {t : machine_types}.
-
-Class cfi_id := {
+Class cfi_id mt := {
   id         : eqType;
 
-  word_to_id : mword t -> option id;
-  id_to_word : id -> mword t;
+  word_to_id : mword mt -> option id;
+  id_to_word : id -> mword mt;
 
   id_to_wordK : forall x, word_to_id (id_to_word x) = Some x;
   word_to_idK : forall w x, word_to_id w = Some x -> id_to_word x = w
 
 }.
 
-End WithClasses.
-
 Section ControlFlow.
 
-Context {t : machine_types}
-        {ids : @cfi_id t}.
+Context {mt : machine_types}
+        {ids : @cfi_id mt}.
 
 Variable cfg : id -> id -> bool.
 

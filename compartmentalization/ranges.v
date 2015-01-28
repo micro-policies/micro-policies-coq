@@ -4,11 +4,11 @@ Require Import common.types.
 
 Section WithClasses.
 
-Context {t    : machine_types}
-        {ops  : machine_ops t}
+Context {mt   : machine_types}
+        {ops  : machine_ops mt}
         {spec : machine_ops_spec ops}.
 
-Local Notation word := (mword t).
+Local Notation word := (mword mt).
 Open Scope word_scope.
 Open Scope ord_scope.
 

@@ -21,7 +21,6 @@ Open Scope word_scope.
 
 Local Notation "x .+1" := (x + 1).
 
-(* TODO: mt should be named t, or vice versa, globally! *)
 Definition step (st : state mt) : option (state mt) :=
   let 'mkState mem reg cache pc@tpc epc := st in
   do! i <- mem pc;
