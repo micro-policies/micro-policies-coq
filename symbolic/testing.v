@@ -91,13 +91,13 @@ Proof.
   apply reflect_eq_word.
 Defined.
 
-Definition beq_rvec (x : Concrete.RVec (word mt)) (y : Concrete.RVec (word mt)):
+Definition beq_rvec (x : Concrete.rvec (word mt)) (y : Concrete.rvec (word mt)):
   bool :=
   let (ctrpc_x, ctr_x) := x in
   let (ctrpc_y, ctr_y) := y in
     (eq_word ctrpc_x ctrpc_y) && (eq_word ctr_x ctr_y).
 
-Definition is_masked (mv : Concrete.MVec (word mt)) (masks : Concrete.Masks) :=
+Definition is_masked (mv : Concrete.mvec (word mt)) (masks : Concrete.Masks) :=
   match word_to_op (Concrete.cop mv) with
     | Some op =>
       let mask := masks (Concrete.is_kernel_tag ops (Concrete.ctpc mv)) op in

@@ -474,10 +474,10 @@ Lemma analyze_cache cache cmem cmvec crvec op :
            (ts : hseq Symbolic.ttypes (Symbolic.inputs op))
            (rtpc : Symbolic.ttypes Symbolic.P)
            (rt : Symbolic.type_of_result Symbolic.ttypes (Symbolic.outputs op)),
-    let ovec := Symbolic.mkOVec rtpc rt in
+    let ovec := Symbolic.OVec rtpc rt in
     [/\ decode _ cmem (Concrete.cti cmvec) = Some (USER ti) ,
         decode_ovec e op cmem crvec = Some ovec ,
-        Symbolic.transfer (Symbolic.mkIVec op tpc ti ts) = Some ovec &
+        Symbolic.transfer (Symbolic.IVec op tpc ti ts) = Some ovec &
         decode_fields e _ cmem (Concrete.ct1 cmvec, Concrete.ct2 cmvec, Concrete.ct3 cmvec) =
         Some (hmap (fun k x => Some (USER x)) ts) ]) \/
    exists t : Symbolic.ttypes Symbolic.M,
@@ -686,7 +686,7 @@ Class kernel_code_fwd_correctness : Prop := {
        reaches a user-mode state st'... *)
     exists st' crvec,
       kernel_user_exec
-        (Concrete.mkState mem' reg cache
+        (Concrete.State mem' reg cache
                           (Concrete.fault_handler_start _)@Concrete.TKernel
                           old_pc)
         st' /\
@@ -736,7 +736,7 @@ Class kernel_code_fwd_correctness : Prop := {
        new state with primes on everything... *)
     Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) = Some (Symbolic.State amem' areg' apc'@atpc' int') ->
     decode _ cmem ctpc = Some (USER atpc) ->
-    let cst := Concrete.mkState cmem
+    let cst := Concrete.State cmem
                                 creg
                                 cache
                                 apc@ctpc epc in
@@ -749,7 +749,7 @@ Class kernel_code_fwd_correctness : Prop := {
 
     exists cmem' creg' cache' ctpc' epc',
       user_kernel_user_step cst
-                            (Concrete.mkState cmem' creg' cache'
+                            (Concrete.State cmem' creg' cache'
                                               apc'@ctpc' epc') /\
 
       (* then the new concrete state is in the same relation as before
@@ -773,7 +773,7 @@ Class kernel_code_bwd_correctness : Prop := {
     let mem' := Concrete.store_mvec mem cmvec in
     cache_correct cache mem ->
     kernel_user_exec
-        (Concrete.mkState mem' reg cache
+        (Concrete.State mem' reg cache
                           (Concrete.fault_handler_start _)@Concrete.TKernel
                           old_pc)
         st' ->
@@ -804,7 +804,7 @@ Class kernel_code_bwd_correctness : Prop := {
        run, it will never reach a user-mode state. *)
     ~~ in_kernel st' ->
     ~ exec (Concrete.step _ masks)
-      (Concrete.mkState mem' reg cache
+      (Concrete.State mem' reg cache
                         (Concrete.fault_handler_start _)@Concrete.TKernel
                         old_pc)
       st';
@@ -820,13 +820,13 @@ Class kernel_code_bwd_correctness : Prop := {
     mvec_in_kernel cmem ->
     Symbolic.get_syscall table apc = Some sc ->
     decode _ cmem ctpc = Some (USER atpc) ->
-    let cst := Concrete.mkState cmem
+    let cst := Concrete.State cmem
                                 creg
                                 cache
                                 apc@ctpc epc in
     cache_allows_syscall cst ->
     user_kernel_user_step cst
-                          (Concrete.mkState cmem' creg' cache'
+                          (Concrete.State cmem' creg' cache'
                                             cpc'@ctpc' epc') ->
     exists amem' areg' atpc' int',
       Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) =

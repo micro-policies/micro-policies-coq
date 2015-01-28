@@ -108,8 +108,8 @@ Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 Definition ms_tags : tag_kind -> eqType := fun _ => [eqType of tag].
 
 Definition rules_normal (op : opcode) (c : color)
-           (ts : hseq ms_tags (inputs op)) : option (OVec ms_tags op) :=
-  let ret  := fun rtpc (rt : type_of_result ms_tags (outputs op)) => Some (@mkOVec ms_tags op rtpc rt) in
+           (ts : hseq ms_tags (inputs op)) : option (ovec ms_tags op) :=
+  let ret  := fun rtpc (rt : type_of_result ms_tags (outputs op)) => Some (@OVec ms_tags op rtpc rt) in
   let retv := fun (rt : type_of_result ms_tags (outputs op)) => ret V(PTR c) rt in
   match op, ts, ret, retv with
   | NOP, _, ret, retv => retv tt
@@ -162,18 +162,18 @@ Definition rules_normal (op : opcode) (c : color)
   | _, _, _, _ => None
   end.
 
-Definition rules (ivec : IVec ms_tags) : option (VOVec ms_tags (op ivec)) :=
-  match ivec return option (VOVec ms_tags (op ivec)) with
-  | mkIVec op tpc ti ts =>
+Definition rules (ivec : ivec ms_tags) : option (vovec ms_tags (op ivec)) :=
+  match ivec return option (vovec ms_tags (op ivec)) with
+  | IVec op tpc ti ts =>
     match tpc, ti with
     | V(DATA), _ =>
-      match op return option (VOVec ms_tags op) with
+      match op return option (vovec ms_tags op) with
       | SERVICE => Some tt
       | _ => None
       end
     | V(PTR b), M(b', DATA) =>
       if b == b' then
-        match op return hseq _ (vinputs op) -> option (VOVec ms_tags op) with
+        match op return hseq _ (vinputs op) -> option (vovec ms_tags op) with
         | SERVICE => fun _ => None
         | OP op => rules_normal b
         end ts

@@ -169,7 +169,7 @@ Definition handler : code :=
                                   c)
                             [::] (enum opcode) ++
                  policy_handler ++
-                 (* Wrap RVec *)
+                 (* Wrap rvec *)
                  wrap_user_tag rtrpc rtrpc ++
                  wrap_user_tag rtr rtr)
                 (* ELSE: The instruction is not tagged USER: halt the machine *)

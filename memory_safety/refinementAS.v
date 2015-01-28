@@ -615,7 +615,7 @@ by apply rregs.
 Qed.
 
 Definition refine_state (ast : Abstract.state mt block) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
-  let '(Abstract.mkState amem aregs bl apc) := ast in
+  let '(Abstract.State amem aregs bl apc) := ast in
   match sst with
   | Symbolic.State smem sregs w@V(ty) ist =>
     [/\ refine_memory amem smem,

@@ -66,7 +66,7 @@ Ltac analyze_cache :=
   | LOOKUP : Concrete.cache_lookup ?cache _ ?mvec = Some ?rvec,
     PC     : getm _ ?pc = Some ?i@_,
     INST   : decode_instr ?i = Some _,
-    INUSER : is_true (in_user (Concrete.mkState _ _ _ ?pc@_ _)),
+    INUSER : is_true (in_user (Concrete.State _ _ _ ?pc@_ _)),
     CACHE  : cache_correct ?cache ?cmem |- _ =>
     assert (CACHEHIT := analyze_cache CACHE LOOKUP INUSER (erefl _));
     simpl in CACHEHIT;
@@ -232,7 +232,7 @@ Proof.
   case: sst => smem sregs [pc atpc] int.
   move => [/= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
   rewrite /Symbolic.pcv /= in PC. subst pc.
-  inv STEP; subst mvec;
+  inv STEP; subst mv;
   unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
          Concrete.next_state_pc, Concrete.next_state in *;
   simpl in *;
@@ -258,7 +258,7 @@ Lemma initial_handler_state cst kst cmvec :
   forall (CMVEC : build_cmvec cst = Some cmvec)
          (MISS : Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None)
          (STEP : Concrete.step _ masks cst kst),
-      kst = Concrete.mkState (Concrete.store_mvec (Concrete.mem cst) cmvec)
+      kst = Concrete.State (Concrete.store_mvec (Concrete.mem cst) cmvec)
                              (Concrete.regs cst)
                              (Concrete.cache cst)
                              (Concrete.fault_handler_start mt)@Concrete.TKernel

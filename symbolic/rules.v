@@ -153,7 +153,7 @@ Context (mt : machine_types)
 
 Local Notation wrapped_tag := (fun tk => [eqType of tag (tty tk)]).
 
-Variable transfer : forall ivec : Symbolic.IVec tty, option (Symbolic.VOVec tty (Symbolic.op ivec)).
+Variable transfer : forall ivec : Symbolic.ivec tty, option (Symbolic.vovec tty (Symbolic.op ivec)).
 
 Definition decode_fields (fs : seq Symbolic.tag_kind)
                          (m : {partmap mword mt -> atom (mword mt) (mword mt)})
@@ -202,8 +202,8 @@ by rewrite E.
 Qed.
 
 Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
-                       (mvec : Concrete.MVec mt)
-                       : option (Symbolic.IVec tty) :=
+                       (mvec : Concrete.mvec mt)
+                       : option (Symbolic.ivec tty) :=
   do! op  <- op_of_word (Concrete.cop mvec);
   match decode Symbolic.P m (Concrete.ctpc mvec) with
   | Some (USER tpc) =>
@@ -215,10 +215,10 @@ Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
                                 Concrete.ct3 mvec);
       do! ts <- ensure_all_user ts;
       if Symbolic.privileged_op (OP op) then None
-      else Some (Symbolic.mkIVec (OP op) tpc ti ts)
+      else Some (Symbolic.IVec (OP op) tpc ti ts)
     | Some (ENTRY ti) =>
       match op with
-      | NOP => Some (Symbolic.mkIVec SERVICE tpc ti [hseq])
+      | NOP => Some (Symbolic.IVec SERVICE tpc ti [hseq])
       | _ => None
       end
     | None => None
@@ -227,9 +227,9 @@ Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
   end.
 
 Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
-                       (rvec : Concrete.RVec mt)
-                       : option (Symbolic.VOVec tty op) :=
-  match op return option (Symbolic.VOVec tty op) with
+                       (rvec : Concrete.rvec mt)
+                       : option (Symbolic.vovec tty op) :=
+  match op return option (Symbolic.vovec tty op) with
   | OP op =>
     do! trpc <- match decode Symbolic.P m (Concrete.ctrpc rvec) with
                 | Some (USER trpc) => Some trpc
@@ -256,30 +256,30 @@ Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
 Let TCopy : mword mt := TNone.
 
 Definition ground_rules : Concrete.rules mt :=
-  let mk op := Concrete.mkMVec (word_of_op op) TKernel TKernel
+  let mk op := Concrete.MVec (word_of_op op) TKernel TKernel
                                TNone TNone TNone in
   [::
-   (mk NOP, Concrete.mkRVec TCopy TNone);
-   (mk CONST, Concrete.mkRVec TCopy TKernel);
-   (mk MOV, Concrete.mkRVec TCopy TCopy);
-   (mk (BINOP ADD), Concrete.mkRVec TCopy TKernel);
-   (mk (BINOP SUB), Concrete.mkRVec TCopy TKernel);
-   (mk (BINOP MUL), Concrete.mkRVec TCopy TKernel);
-   (mk (BINOP EQ),  Concrete.mkRVec TCopy TKernel);
-   (mk (BINOP LEQ),  Concrete.mkRVec TCopy TKernel);
-   (mk (BINOP AND),  Concrete.mkRVec TCopy TKernel);
-   (mk (BINOP OR),  Concrete.mkRVec TCopy TKernel);
-   (mk (BINOP SHRU),  Concrete.mkRVec TCopy TKernel);
-   (mk (BINOP SHL),  Concrete.mkRVec TCopy TKernel);
-   (mk LOAD, Concrete.mkRVec TCopy TCopy);
-   (mk STORE, Concrete.mkRVec TCopy TCopy);
-   (mk JUMP, Concrete.mkRVec TCopy TNone);
-   (mk BNZ, Concrete.mkRVec TCopy TNone);
-   (mk JAL, Concrete.mkRVec TCopy TCopy);
-   (mk JUMPEPC, Concrete.mkRVec TCopy TNone);
-   (mk ADDRULE, Concrete.mkRVec TCopy TNone);
-   (mk GETTAG, Concrete.mkRVec TCopy TKernel);
-   (mk PUTTAG, Concrete.mkRVec TCopy TNone)
+   (mk NOP, Concrete.RVec TCopy TNone);
+   (mk CONST, Concrete.RVec TCopy TKernel);
+   (mk MOV, Concrete.RVec TCopy TCopy);
+   (mk (BINOP ADD), Concrete.RVec TCopy TKernel);
+   (mk (BINOP SUB), Concrete.RVec TCopy TKernel);
+   (mk (BINOP MUL), Concrete.RVec TCopy TKernel);
+   (mk (BINOP EQ),  Concrete.RVec TCopy TKernel);
+   (mk (BINOP LEQ),  Concrete.RVec TCopy TKernel);
+   (mk (BINOP AND),  Concrete.RVec TCopy TKernel);
+   (mk (BINOP OR),  Concrete.RVec TCopy TKernel);
+   (mk (BINOP SHRU),  Concrete.RVec TCopy TKernel);
+   (mk (BINOP SHL),  Concrete.RVec TCopy TKernel);
+   (mk LOAD, Concrete.RVec TCopy TCopy);
+   (mk STORE, Concrete.RVec TCopy TCopy);
+   (mk JUMP, Concrete.RVec TCopy TNone);
+   (mk BNZ, Concrete.RVec TCopy TNone);
+   (mk JAL, Concrete.RVec TCopy TCopy);
+   (mk JUMPEPC, Concrete.RVec TCopy TNone);
+   (mk ADDRULE, Concrete.RVec TCopy TNone);
+   (mk GETTAG, Concrete.RVec TCopy TKernel);
+   (mk PUTTAG, Concrete.RVec TCopy TNone)
   ].
 
 Lemma decode_ivec_inv mvec m ivec :

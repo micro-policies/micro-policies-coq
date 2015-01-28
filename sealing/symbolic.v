@@ -62,19 +62,19 @@ Definition stags : tag_kind -> eqType := fun k =>
 
 Section WithHSeqs.
 
-Definition sealing_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
+Definition sealing_handler (iv : ivec stags) : option (vovec stags (op iv)) :=
   match iv with
-  | mkIVec (OP NOP)       tt DATA [hseq]               => Some (@mkOVec stags NOP tt tt)
-  | mkIVec (OP CONST)     tt DATA [hseq _]             => Some (@mkOVec stags CONST tt DATA)
-  | mkIVec (OP MOV)       tt DATA [hseq tsrc; _]       => Some (@mkOVec stags MOV tt tsrc)
-  | mkIVec (OP (BINOP o)) tt DATA [hseq DATA; DATA; _] => Some (@mkOVec stags (BINOP o) tt DATA)
-  | mkIVec (OP LOAD)      tt DATA [hseq DATA; tmem; _] => Some (@mkOVec stags LOAD tt tmem)
-  | mkIVec (OP STORE)     tt DATA [hseq DATA; tsrc; _] => Some (@mkOVec stags STORE tt tsrc)
-  | mkIVec (OP JUMP)      tt DATA [hseq DATA]          => Some (@mkOVec stags JUMP tt tt)
-  | mkIVec (OP BNZ)       tt DATA [hseq DATA]          => Some (@mkOVec stags BNZ tt tt)
-  | mkIVec (OP JAL)       tt DATA [hseq DATA; _]       => Some (@mkOVec stags JAL tt DATA)
-  | mkIVec SERVICE        tt _    [hseq]               => Some tt
-  | mkIVec _              tt _ _                       => None
+  | IVec (OP NOP)       tt DATA [hseq]               => Some (@OVec stags NOP tt tt)
+  | IVec (OP CONST)     tt DATA [hseq _]             => Some (@OVec stags CONST tt DATA)
+  | IVec (OP MOV)       tt DATA [hseq tsrc; _]       => Some (@OVec stags MOV tt tsrc)
+  | IVec (OP (BINOP o)) tt DATA [hseq DATA; DATA; _] => Some (@OVec stags (BINOP o) tt DATA)
+  | IVec (OP LOAD)      tt DATA [hseq DATA; tmem; _] => Some (@OVec stags LOAD tt tmem)
+  | IVec (OP STORE)     tt DATA [hseq DATA; tsrc; _] => Some (@OVec stags STORE tt tsrc)
+  | IVec (OP JUMP)      tt DATA [hseq DATA]          => Some (@OVec stags JUMP tt tt)
+  | IVec (OP BNZ)       tt DATA [hseq DATA]          => Some (@OVec stags BNZ tt tt)
+  | IVec (OP JAL)       tt DATA [hseq DATA; _]       => Some (@OVec stags JAL tt DATA)
+  | IVec SERVICE        tt _    [hseq]               => Some tt
+  | IVec _              tt _ _                       => None
   end.
 
 End WithHSeqs.

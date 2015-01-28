@@ -22,10 +22,10 @@ Open Scope word_scope.
 Local Notation "x .+1" := (x + 1).
 
 Definition step (st : state mt) : option (state mt) :=
-  let 'mkState mem reg cache pc@tpc epc := st in
+  let 'State mem reg cache pc@tpc epc := st in
   do! i <- mem pc;
   do! instr <- decode_instr (vala i);
-  let mvec := mkMVec (word_of_op (opcode_of instr)) tpc (taga i) in
+  let mvec := MVec (word_of_op (opcode_of instr)) tpc (taga i) in
   match instr with
   | Nop =>
     let mvec := mvec TNone TNone TNone in
@@ -58,7 +58,7 @@ Definition step (st : state mt) : option (state mt) :=
     let mvec := mvec (taga v1) (taga v2) (taga v3) in
     next_state masks st mvec (fun rvec =>
       do! mem' <- updm mem (vala v1) (vala v2)@(ctr rvec);
-      Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc))
+      Some (State mem' reg cache (pc.+1)@(ctrpc rvec) epc))
   | Jump r =>
     do! v <- reg r;
     let mvec := mvec (taga v) TNone TNone in
@@ -80,7 +80,7 @@ Definition step (st : state mt) : option (state mt) :=
     let mvec := mvec TNone TNone TNone in
     next_state masks st mvec (fun rvec =>
       do! cache' <- add_rule cache masks mem;
-      Some (mkState mem reg cache' (pc.+1)@(ctrpc rvec) epc))
+      Some (State mem reg cache' (pc.+1)@(ctrpc rvec) epc))
   | GetTag r1 r2 =>
     do! v1 <- reg r1;
     do! old <- reg r2;
@@ -93,7 +93,7 @@ Definition step (st : state mt) : option (state mt) :=
     let mvec := mvec (taga v1) (taga v2) (taga old) in
     next_state masks st mvec (fun rvec =>
       do! reg' <- updm reg r3 (vala v1)@(vala v2);
-      Some (mkState mem reg' cache (pc.+1)@(ctrpc rvec) epc))
+      Some (State mem reg' cache (pc.+1)@(ctrpc rvec) epc))
   | Halt => None
 end.
 
@@ -122,7 +122,7 @@ Proof.
                destruct t eqn:?; simpl in STEP; try discriminate
              | x : atom _ _ |- _ =>
                destruct x; simpl in *
-             | rv : RVec _ |- _ =>
+             | rv : rvec _ |- _ =>
                destruct rv; simpl in *
              | H : Some _ = Some _ |- _ =>
                inv H
@@ -132,7 +132,7 @@ Proof.
 
   - unfold step.
     inv STEP; rewrite PC; clear PC; simpl;
-    rewrite INST; clear INST; simpl; subst mvec; try subst lookup; simpl; try congruence;
+    rewrite INST; clear INST; simpl; subst mv; try subst lookup; simpl; try congruence;
     repeat match goal with
     | H : ?X = _ |- context[?X] =>
       rewrite H; trivial
@@ -147,12 +147,12 @@ Proof.
   apply (iffP eqP); by move => /stepP.
 Qed.
 
-Definition build_cmvec st : option (Concrete.MVec mt) :=
+Definition build_cmvec st : option (Concrete.mvec mt) :=
   match Concrete.mem st (Concrete.pcv st) with
     | Some i =>
       match decode_instr (vala i) with
         | Some op =>
-          let part := @Concrete.mkMVec mt (word_of_op (opcode_of op))
+          let part := @Concrete.MVec mt (word_of_op (opcode_of op))
                                        (Concrete.pct st) (taga i) in
           match op  with
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
@@ -222,7 +222,7 @@ Lemma step_lookup_success_or_fault cst cst' :
     | Some crvec => pct cst' = ctrpc crvec
     | None =>
       let cmem' := store_mvec (mem cst) cmvec in
-      cst' = mkState cmem'
+      cst' = State cmem'
                      (regs cst)
                      (cache cst)
                      (fault_handler_start mt)@TKernel
@@ -236,7 +236,7 @@ Proof.
   | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
   end;
   eexists; (split; first by reflexivity);
-  subst mvec;
+  subst mv;
   unfold next_state_reg, next_state_pc,
          next_state_reg_and_pc, next_state, miss_state, pct in *;
   simpl in *; match_inv;
@@ -248,7 +248,7 @@ Qed.
 Lemma lookup_none_step cst cmvec :
   build_cmvec cst = Some cmvec ->
   Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None ->
-  Concrete.step _ masks cst (Concrete.mkState (Concrete.store_mvec (Concrete.mem cst) cmvec)
+  Concrete.step _ masks cst (Concrete.State (Concrete.store_mvec (Concrete.mem cst) cmvec)
                                               (Concrete.regs cst)
                                               (Concrete.cache cst)
                                               (Concrete.fault_handler_start mt)@Concrete.TKernel

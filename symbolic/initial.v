@@ -60,7 +60,7 @@ Inductive initial : @state t cp -> Prop :=
     user_then_kernel Z.lt Z.le mem  max_user_address  max_address  ->
     user_then_kernel lt   le   regs max_user_register max_register ->
     tpc <> TKernel                                                 ->
-    initial (mkState mem regs
+    initial (State mem regs
                      (compile_rules compile_tag R.ground_rules)
                      (Z_to_word 0)@tpc epc).
 

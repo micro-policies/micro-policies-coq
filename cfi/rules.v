@@ -57,34 +57,34 @@ Definition default_rtag (op : opcode) : type_of_result cfi_tags (outputs op) :=
   end.
 
 (* This allows loading of instructions as DATA *)
-Definition cfi_handler (ivec : Symbolic.IVec cfi_tags) : option (Symbolic.VOVec cfi_tags (Symbolic.op ivec)) :=
-  match ivec return option (Symbolic.VOVec cfi_tags (Symbolic.op ivec)) with
-  | mkIVec   (JUMP as op) (INSTR (Some n))  (INSTR (Some m))  _
-  | mkIVec   (JAL  as op) (INSTR (Some n))  (INSTR (Some m))  _  =>
-    if cfg n m then Some (@mkOVec cfi_tags op (INSTR (Some m)) (default_rtag op))
+Definition cfi_handler (ivec : Symbolic.ivec cfi_tags) : option (Symbolic.vovec cfi_tags (Symbolic.op ivec)) :=
+  match ivec return option (Symbolic.vovec cfi_tags (Symbolic.op ivec)) with
+  | IVec   (JUMP as op) (INSTR (Some n))  (INSTR (Some m))  _
+  | IVec   (JAL  as op) (INSTR (Some n))  (INSTR (Some m))  _  =>
+    if cfg n m then Some (@OVec cfi_tags op (INSTR (Some m)) (default_rtag op))
     else None
-  | mkIVec   (JUMP as op)  DATA  (INSTR (Some n))  _
-  | mkIVec   (JAL  as op)  DATA  (INSTR (Some n))  _   =>
-    Some (@mkOVec cfi_tags op (INSTR (Some n)) (default_rtag op))
-  | mkIVec   JUMP   DATA  (INSTR None)  _
-  | mkIVec   JAL    DATA  (INSTR None)  _  =>
+  | IVec   (JUMP as op)  DATA  (INSTR (Some n))  _
+  | IVec   (JAL  as op)  DATA  (INSTR (Some n))  _   =>
+    Some (@OVec cfi_tags op (INSTR (Some n)) (default_rtag op))
+  | IVec   JUMP   DATA  (INSTR None)  _
+  | IVec   JAL    DATA  (INSTR None)  _  =>
     None
-  | mkIVec   STORE  (INSTR (Some n))  (INSTR (Some m))  [hseq _ ; _ ; DATA]  =>
-    if cfg n m then Some (@mkOVec cfi_tags STORE DATA DATA) else None
-  | mkIVec   STORE  DATA  (INSTR _)  [hseq _ ; _ ; DATA]  =>
-    Some (@mkOVec cfi_tags STORE DATA DATA)
-  | mkIVec   STORE  _  _  _  => None
-  | mkIVec   (OP op) (INSTR (Some n))  (INSTR (Some m))  _  =>
+  | IVec   STORE  (INSTR (Some n))  (INSTR (Some m))  [hseq _ ; _ ; DATA]  =>
+    if cfg n m then Some (@OVec cfi_tags STORE DATA DATA) else None
+  | IVec   STORE  DATA  (INSTR _)  [hseq _ ; _ ; DATA]  =>
+    Some (@OVec cfi_tags STORE DATA DATA)
+  | IVec   STORE  _  _  _  => None
+  | IVec   (OP op) (INSTR (Some n))  (INSTR (Some m))  _  =>
     (* this includes op = SERVICE *)
-    if cfg n m then Some (@mkOVec cfi_tags op DATA (default_rtag op)) else None
-  | mkIVec   (OP op) DATA  (INSTR _)  _  =>
+    if cfg n m then Some (@OVec cfi_tags op DATA (default_rtag op)) else None
+  | IVec   (OP op) DATA  (INSTR _)  _  =>
     (* this includes op = SERVICE, fall-throughs checked statically *)
-    Some (@mkOVec cfi_tags op DATA (default_rtag op))
-  | mkIVec   SERVICE (INSTR (Some n)) (INSTR (Some m)) _ =>
+    Some (@OVec cfi_tags op DATA (default_rtag op))
+  | IVec   SERVICE (INSTR (Some n)) (INSTR (Some m)) _ =>
     if cfg n m then Some tt else None
-  | mkIVec   SERVICE DATA (INSTR _) _ =>
+  | IVec   SERVICE DATA (INSTR _) _ =>
     Some tt
-  | mkIVec _ _ _ _ => None
+  | IVec _ _ _ _ => None
   end.
 
 Ltac handler_equiv_tac :=

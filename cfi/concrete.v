@@ -32,7 +32,7 @@ Definition valid_jmp := classes.valid_jmp cfg.
 
 
 Definition no_violation (cst : Concrete.state mt) :=
-  let '(Concrete.mkState mem _  _ pc@tpc _) := cst in
+  let '(Concrete.State mem _  _ pc@tpc _) := cst in
   (forall i cti ti src,
     getm mem pc = Some i@cti ->
     @fdecode _ _ e Symbolic.M cti = Some (USER ti) ->
@@ -77,8 +77,8 @@ Inductive step_a : Concrete.state mt ->
                   (INUSER: oapp (fun x => is_user x) false (@fdecode _ _ e Symbolic.P tpc))
                   (REQUIV: reg_equiv reg reg')
                   (MEQUIV: equiv mem mem'),
-                  step_a (Concrete.mkState mem reg cache pc@tpc epc)
-                         (Concrete.mkState mem' reg' cache pc@tpc epc).
+                  step_a (Concrete.State mem reg cache pc@tpc epc)
+                         (Concrete.State mem' reg' cache pc@tpc epc).
 
 Local Notation "x .+1" := (x + 1)%w.
 Local Open Scope word_scope.

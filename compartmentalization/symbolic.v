@@ -178,44 +178,44 @@ Definition can_execute (Lpc : pc_tag) (LI : data_tag) : option (mword mt) :=
 Definition compartmentalization_rvec (op : opcode)
                                      (F : where_from)
                                      (c : mword mt)
-                                     (tr : type_of_result stags (outputs op)) : OVec stags op :=
-  mkOVec (PC F c) tr.
+                                     (tr : type_of_result stags (outputs op)) : ovec stags op :=
+  OVec (PC F c) tr.
 
 Definition rvec_step op
-                     (rv : mword mt -> option (OVec stags op))
-                     (Lpc : pc_tag) (LI : data_tag)  : option (OVec stags op) :=
+                     (rv : mword mt -> option (ovec stags op))
+                     (Lpc : pc_tag) (LI : data_tag)  : option (ovec stags op) :=
   do! c <- can_execute Lpc LI;
   rv c.
 
 Definition rvec_simple op (F : where_from) (tr : type_of_result stags (outputs op)) :
-                       pc_tag -> data_tag -> option (OVec stags op) :=
+                       pc_tag -> data_tag -> option (ovec stags op) :=
   rvec_step (fun c => Some (compartmentalization_rvec F c tr)).
 
-Definition rvec_next op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (OVec stags op) :=
+Definition rvec_next op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (ovec stags op) :=
   rvec_simple INTERNAL tr.
-Definition rvec_jump op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (OVec stags op) :=
+Definition rvec_jump op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (ovec stags op) :=
   rvec_simple JUMPED tr.
 Definition rvec_store (c : mword mt) (I W : {set mword mt})
-                      : pc_tag -> data_tag -> option (OVec stags STORE) :=
+                      : pc_tag -> data_tag -> option (ovec stags STORE) :=
   rvec_step (fun c' =>
     do! guard (c == c') || (c' \in W);
-    Some (@mkOVec stags STORE (PC INTERNAL c') (DATA c I W))).
+    Some (@OVec stags STORE (PC INTERNAL c') (DATA c I W))).
 
-(* The `REG's in the IVec's fields can also be _s; it's an invariant that
+(* The `REG's in the ivec's fields can also be _s; it's an invariant that
    registers are always tagged with `REG'. *)
-Definition compartmentalization_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
+Definition compartmentalization_handler (iv : ivec stags) : option (vovec stags (op iv)) :=
   match iv with
-    | mkIVec (OP NOP)       Lpc LI [hseq]                       => @rvec_next NOP       tt  Lpc LI
-    | mkIVec (OP CONST)     Lpc LI [hseq REG]                   => @rvec_next CONST     REG Lpc LI
-    | mkIVec (OP MOV)       Lpc LI [hseq REG; REG]              => @rvec_next MOV       REG Lpc LI
-    | mkIVec (OP (BINOP b)) Lpc LI [hseq REG; REG; REG]         => @rvec_next (BINOP b) REG Lpc LI
-    | mkIVec (OP LOAD)      Lpc LI [hseq REG; DATA _ _ _; REG]  => @rvec_next LOAD      REG Lpc LI
-    | mkIVec (OP STORE)     Lpc LI [hseq REG; REG; DATA c In W] => rvec_store c In W Lpc LI
-    | mkIVec (OP JUMP)      Lpc LI [hseq REG]                   => @rvec_jump JUMP      tt  Lpc LI
-    | mkIVec (OP BNZ)       Lpc LI [hseq REG]                   => @rvec_next BNZ       tt  Lpc LI
-    | mkIVec (OP JAL)       Lpc LI [hseq REG; REG]              => @rvec_jump JAL       REG Lpc LI
-    | mkIVec SERVICE        Lpc LI [hseq]                       => Some tt
-    | mkIVec _         _   _  _                               => None
+    | IVec (OP NOP)       Lpc LI [hseq]                       => @rvec_next NOP       tt  Lpc LI
+    | IVec (OP CONST)     Lpc LI [hseq REG]                   => @rvec_next CONST     REG Lpc LI
+    | IVec (OP MOV)       Lpc LI [hseq REG; REG]              => @rvec_next MOV       REG Lpc LI
+    | IVec (OP (BINOP b)) Lpc LI [hseq REG; REG; REG]         => @rvec_next (BINOP b) REG Lpc LI
+    | IVec (OP LOAD)      Lpc LI [hseq REG; DATA _ _ _; REG]  => @rvec_next LOAD      REG Lpc LI
+    | IVec (OP STORE)     Lpc LI [hseq REG; REG; DATA c In W] => rvec_store c In W Lpc LI
+    | IVec (OP JUMP)      Lpc LI [hseq REG]                   => @rvec_jump JUMP      tt  Lpc LI
+    | IVec (OP BNZ)       Lpc LI [hseq REG]                   => @rvec_next BNZ       tt  Lpc LI
+    | IVec (OP JAL)       Lpc LI [hseq REG; REG]              => @rvec_jump JAL       REG Lpc LI
+    | IVec SERVICE        Lpc LI [hseq]                       => Some tt
+    | IVec _         _   _  _                               => None
   end.
 
 Record compartmentalization_internal :=
