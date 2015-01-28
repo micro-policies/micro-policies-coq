@@ -22,13 +22,67 @@ Record mvec (mt : machine_types) : Type := MVec {
   ct3  : mword mt
 }.
 
+Definition mvec_eqb mt (m1 m2 : mvec mt) : bool :=
+  [&& cop m1 == cop m2,
+      ctpc m1 == ctpc m2,
+      cti m1 == cti m2,
+      ct1 m1 == ct1 m2 &
+      ct2 m1 == ct2 m2] && (ct3 m1 == ct3 m2).
+
+Lemma mvec_eqbP mt : Equality.axiom (@mvec_eqb mt).
+Proof.
+  move => m1 m2.
+  case: m1 => *. case: m2 => *.
+  apply (iffP andP); simpl.
+  - by move => [/and5P [/eqP -> /eqP -> /eqP -> /eqP -> /eqP ->] /eqP ->].
+  - move => [-> -> -> -> -> ->]. by rewrite !eqxx.
+Qed.
+
+Definition mvec_eqMixin mt := EqMixin (@mvec_eqbP mt).
+Canonical mvec_eqType mt :=
+  Eval hnf in EqType (mvec mt) (@mvec_eqMixin mt).
+
+Section MVecOrdType.
+
+Variable mt : machine_types.
+
+Definition tuple_of_mvec (mv : mvec mt) :=
+  (cop mv, ctpc mv, cti mv, ct1 mv, ct2 mv, ct3 mv).
+
+Definition mvec_of_tuple tup : mvec mt :=
+  let: (cop, ctpc, cti, ct1, ct2, ct3) := tup in
+  MVec cop ctpc cti ct1 ct2 ct3.
+
+Lemma tuple_of_mvecK : cancel tuple_of_mvec mvec_of_tuple.
+Proof. by case. Qed.
+
+Definition mvec_ordMixin := CanOrdMixin tuple_of_mvecK.
+Canonical mvec_ordType := Eval hnf in OrdType (mvec mt) mvec_ordMixin.
+
+End MVecOrdType.
+
 Record rvec (mt : machine_types) : Type := RVec {
   ctrpc : mword mt;
   ctr   : mword mt
 }.
 
-Definition rule mt := (mvec mt * rvec mt)%type.
-Definition rules mt := seq (rule mt).
+Definition rvec_eqb mt (r1 r2 : rvec mt) : bool :=
+  [&& ctrpc r1 == ctrpc r2 & ctr r1 == ctr r2].
+
+Lemma rvec_eqbP mt : Equality.axiom (@rvec_eqb mt).
+Proof.
+  move => r1 r2.
+  case: r1 => *. case: r2 => *.
+  apply (iffP andP); simpl.
+  - by move => [/eqP -> /eqP ->].
+  - move => [-> ->]. by rewrite !eqxx.
+Qed.
+
+Definition rvec_eqMixin mt := EqMixin (@rvec_eqbP mt).
+Canonical rvec_eqType mt :=
+  Eval hnf in EqType (rvec mt) (rvec_eqMixin mt).
+
+Definition rules mt := {partmap mvec mt -> rvec mt}.
 
 Section WithClasses.
 
@@ -37,7 +91,6 @@ Context (ops : machine_ops mt).
 
 Let mvec := mvec mt.
 Let rvec := rvec mt.
-Let rule := rule mt.
 Let rules := rules mt.
 Let atom := atom (mword mt) (mword mt).
 
@@ -62,12 +115,6 @@ Definition Mtr : mword mt := (cache_line_addr + as_word 7)%w.
 Definition mvec_fields := [:: Mop; Mtpc; Mti; Mt1; Mt2; Mt3].
 Definition rvec_fields := [:: Mtrpc; Mtr].
 Definition mvec_and_rvec_fields := mvec_fields ++ rvec_fields.
-
-Definition beq_mvec (mv1 mv2 : mvec) : bool :=
-  let '(MVec op tpc ti t1 t2 t3) := mv1 in
-  let '(MVec op' tpc' ti' t1' t2' t3') := mv2 in
-  (op == op') && (tpc == tpc') && (ti == ti')
-  && (t1 == t1') && (t2 == t2') && (t3 == t3').
 
 Inductive mvec_part : Set :=
   | mvp_tpc : mvec_part
@@ -121,7 +168,7 @@ Definition cache_lookup (cache : rules)
   do! op <- op_of_word (cop mv);
   let mask := masks (is_kernel_tag (ctpc mv)) op in
   let masked_mv := mask_dc (dc mask) mv in
-  do! rv <- assoc_list_lookup cache (beq_mvec masked_mv);
+  do! rv <- getm cache masked_mv;
   Some (copy mv rv (ct mask)).
 
 Local Notation memory := {partmap mword mt -> atom}.
@@ -159,9 +206,9 @@ Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rule
   do! atr   <- mem Mtr;
   do! op    <- op_of_word (vala aop);
   let dcm := dc (masks false op) in
-  Some ((mask_dc dcm (MVec (vala aop) (vala atpc)
-                             (vala ati) (vala at1) (vala at2) (vala at3)),
-         RVec (vala atrpc) (vala atr)) :: cache).
+  let mv := mask_dc dcm (MVec (vala aop) (vala atpc)
+                              (vala ati) (vala at1) (vala at2) (vala at3)) in
+  Some (setm cache mv (RVec (vala atrpc) (vala atr))).
 
 Definition store_mvec (mem : memory) (mv : mvec) : memory :=
   unionm [partmap (Mop, (cop mv)@TKernel);
@@ -366,41 +413,6 @@ Module Exports.
 Import Concrete.
 Require Import seq.
 
-Definition mvec_eqb mt (m1 m2 : mvec mt) : bool :=
-  [&& cop m1 == cop m2,
-      ctpc m1 == ctpc m2,
-      cti m1 == cti m2,
-      ct1 m1 == ct1 m2 &
-      ct2 m1 == ct2 m2] && (ct3 m1 == ct3 m2).
-
-Lemma mvec_eqbP mt : Equality.axiom (@mvec_eqb mt).
-Proof.
-  move => m1 m2.
-  case: m1 => *. case: m2 => *.
-  apply (iffP andP); simpl.
-  - by move => [/and5P [/eqP -> /eqP -> /eqP -> /eqP -> /eqP ->] /eqP ->].
-  - move => [-> -> -> -> -> ->]. by rewrite !eqxx.
-Qed.
-
-Definition mvec_eqMixin mt := EqMixin (@mvec_eqbP mt).
-Canonical mvec_eqType mt :=
-  Eval hnf in EqType (mvec mt) (@mvec_eqMixin mt).
-
-Definition rvec_eqb mt (r1 r2 : rvec mt) : bool :=
-  [&& ctrpc r1 == ctrpc r2 & ctr r1 == ctr r2].
-
-Lemma rvec_eqbP mt : Equality.axiom (@rvec_eqb mt).
-Proof.
-  move => r1 r2.
-  case: r1 => *. case: r2 => *.
-  apply (iffP andP); simpl.
-  - by move => [/eqP -> /eqP ->].
-  - move => [-> ->]. by rewrite !eqxx.
-Qed.
-
-Definition rvec_eqMixin mt := EqMixin (@rvec_eqbP mt).
-Canonical rvec_eqType mt :=
-  Eval hnf in EqType (rvec mt) (rvec_eqMixin mt).
 
 Definition state_eqb mt : rel (state mt) :=
   [rel s1 s2 | [&& mem s1 == mem s2,

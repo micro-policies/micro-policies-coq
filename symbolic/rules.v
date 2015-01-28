@@ -258,7 +258,7 @@ Let TCopy : mword mt := TNone.
 Definition ground_rules : Concrete.rules mt :=
   let mk op := Concrete.MVec (word_of_op op) TKernel TKernel
                                TNone TNone TNone in
-  [::
+  [partmap
    (mk NOP, Concrete.RVec TCopy TNone);
    (mk CONST, Concrete.RVec TCopy TKernel);
    (mk MOV, Concrete.RVec TCopy TCopy);
