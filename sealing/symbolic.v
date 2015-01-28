@@ -60,7 +60,7 @@ Definition stags : tag_kind -> eqType := fun k =>
   | _ => [eqType of stag]
   end.
 
-Section WithHLists.
+Section WithHSeqs.
 
 Definition sealing_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   match iv with
@@ -77,7 +77,7 @@ Definition sealing_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   | mkIVec _              tt _ _                       => None
   end.
 
-End WithHLists.
+End WithHSeqs.
 
 Program Instance sym_sealing : params := {
   ttypes := stags;
@@ -130,7 +130,7 @@ Definition unseal (s : state mt) : option (state mt) :=
   | _, _ => None
   end.
 
-Definition sealing_syscalls : list (syscall mt) :=
+Definition sealing_syscalls : seq (syscall mt) :=
   [:: Syscall mkkey_addr DATA mkkey;
       Syscall seal_addr DATA seal;
       Syscall unseal_addr DATA unseal].

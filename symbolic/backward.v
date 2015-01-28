@@ -26,7 +26,7 @@ Context {mt : machine_types}
         {sp : Symbolic.params}
         {e : encodable mt Symbolic.ttypes}
         {ki : kernel_invariant}
-        {table : list (Symbolic.syscall mt)}
+        {table : seq (Symbolic.syscall mt)}
         {kcc : kernel_code_bwd_correctness ki table}.
 
 Hint Unfold Symbolic.next_state.

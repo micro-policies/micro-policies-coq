@@ -223,11 +223,11 @@ Definition overlap (bi1 bi2 : Sym.block_info mt) (w : mword mt) :=
   inbounds (Sym.block_base bi1) (Sym.block_size bi1) w /\
   inbounds (Sym.block_base bi2) (Sym.block_size bi2) w.
 
-Definition cover (smem : Sym.memory mt) (info : list (Sym.block_info mt)) :=
+Definition cover (smem : Sym.memory mt) (info : seq (Sym.block_info mt)) :=
   forall w v, smem w = Some v ->
   exists bi, bi \in info /\ inbounds (Sym.block_base bi) (Sym.block_size bi) w.
 
-Definition refine_internal_state (bl : list block) smem (ist : Sym.color * list (Sym.block_info mt)) :=
+Definition refine_internal_state (bl : seq block) smem (ist : Sym.color * seq (Sym.block_info mt)) :=
   let: (col, info) := ist in
   fresh_color col /\
   (forall col b base, mi col = Some (b,base) -> b \in bl) /\

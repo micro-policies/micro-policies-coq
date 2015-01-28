@@ -32,7 +32,7 @@ Variable cfg : id -> id -> bool.
 
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable stable : list (Symbolic.syscall mt).
+Variable stable : seq (Symbolic.syscall mt).
 Variable ki : refinement_common.kernel_invariant.
 
 Definition masks := symbolic.rules.masks.

@@ -72,7 +72,7 @@ Notation "x +++ y" := (ssappend x y) (right associativity, at level 60).
 
 Definition to_string (s : sstring) : string := s "".
 
-Definition ssconcat (sep : sstring) (s : list sstring) : sstring :=
+Definition ssconcat (sep : sstring) (s : seq sstring) : sstring :=
   foldr (fun rest x => rest +++ sep +++ x) ssempty s.
 
 Definition sspace := ss " ".

@@ -1,6 +1,7 @@
 Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import word partmap.
-Require Import lib.utils common.types cfi.property cfi.classes.
+Require Import lib.utils lib.ssr_list_utils common.types.
+Require Import cfi.property cfi.classes.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -59,10 +60,10 @@ Record syscall := Syscall {
   sem : state -> option state
 }.
 
-Variable table : list syscall.
+Variable table : seq syscall.
 
 Definition get_syscall (addr : word) : option syscall :=
-  List.find (fun sc => address sc == addr) table.
+  ofind (fun sc => address sc == addr) table.
 
 Context {ids : cfi_id mt}.
 
@@ -183,7 +184,7 @@ Definition all_attacker (xs : seq state) : Prop :=
 Definition all_stuck (xs : seq state) : Prop :=
   forall x, x \in xs -> ~ exists s, step x s.
 
-Definition stopping (xs : list state) : Prop :=
+Definition stopping (xs : seq state) : Prop :=
   all_attacker xs /\ all_stuck xs.
 
 Program Instance abstract_cfi_machine : cfi_machine := {|
@@ -218,14 +219,6 @@ Lemma step_a_violation ast ast' :
 Proof.
   intros STEP.
   inversion STEP; subst. reflexivity.
-Qed.
-
-Lemma list_theorem {X} (x : X) xs hs y z tl x0 :
-  xs ++ [:: x] = hs ++ y :: z :: tl ++ [:: x0] ->
-  x = x0.
-Proof.
-rewrite -[[:: y, z & tl ++ [:: x0]]]/([:: y, z & tl] ++ [:: x0]) catA !cats1.
-by move/(f_equal (last x)); rewrite !last_rcons.
 Qed.
 
 Lemma all_attacker_red ast ast' axs :

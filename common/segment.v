@@ -27,7 +27,7 @@ Context {mt : machine_types}
    code combinators can build these certificates pretty easily.) *)
 
 Definition relocatable_segment :=
-  fun Args => fun Cell => (nat * (mword mt -> Args -> list Cell))%type.
+  fun Args => fun Cell => (nat * (mword mt -> Args -> seq Cell))%type.
 
 Definition empty_relocatable_segment (Args Cell : Type) : relocatable_segment Args Cell :=
   (0, fun (base : mword mt) (rest : Args) => [::]).
@@ -36,10 +36,10 @@ Definition empty_relocatable_segment (Args Cell : Type) : relocatable_segment Ar
    list of offsets (relative to the base address). *)
 Definition concat_and_measure_relocatable_segments
              (Args Cell : Type)
-             (segs : list (relocatable_segment Args Cell))
-           : relocatable_segment Args Cell * list nat :=
+             (segs : seq (relocatable_segment Args Cell))
+           : relocatable_segment Args Cell * seq nat :=
   foldl
-    (fun (p : relocatable_segment Args Cell * list nat)
+    (fun (p : relocatable_segment Args Cell * seq nat)
          (seg : relocatable_segment Args Cell) =>
        let: (acc,addrs) := p in
        let (l1,gen1) := acc in
@@ -54,7 +54,7 @@ Definition concat_and_measure_relocatable_segments
 
 Definition concat_relocatable_segments
              (Args Cell : Type)
-             (segs : list (relocatable_segment Args Cell))
+             (segs : seq (relocatable_segment Args Cell))
            : relocatable_segment Args Cell :=
   fst (concat_and_measure_relocatable_segments segs).
 

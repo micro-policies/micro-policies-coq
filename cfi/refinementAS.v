@@ -27,8 +27,8 @@ Variable cfg : id -> id -> bool.
 (* Instantiate the symbolic machine with the CFI stuff*)
 Instance sym_params : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable atable : list (Abs.syscall mt).
-Variable stable : list (Symbolic.syscall mt).
+Variable atable : seq (Abs.syscall mt).
+Variable stable : seq (Symbolic.syscall mt).
 
 (*Refinement related definitions*)
 Definition refine_dmemory (admem : Abs.dmemory mt)
@@ -169,8 +169,8 @@ Definition refine_syscall acall scall :=
     end.
 
 Definition syscall_domains
-           (atbl : list (Abs.syscall mt))
-           (stbl : list (@Symbolic.syscall mt sym_params)) : Prop :=
+           (atbl : seq (Abs.syscall mt))
+           (stbl : seq (@Symbolic.syscall mt sym_params)) : Prop :=
   forall addr,
     (exists acall, Abs.get_syscall atbl addr = Some acall) <->
     (exists scall, Symbolic.get_syscall stbl addr = Some scall).
@@ -206,8 +206,8 @@ Qed.
 (* Might need absence of duplicates in these maps? *)
 (* Could use pointwise, and pointwise -> same_domains *)
 Definition refine_syscalls
-           (atbl : list (Abs.syscall mt))
-           (stbl : list (@Symbolic.syscall mt sym_params)) : Prop :=
+           (atbl : seq (Abs.syscall mt))
+           (stbl : seq (@Symbolic.syscall mt sym_params)) : Prop :=
   forall addr,
     match Abs.get_syscall atbl addr, Symbolic.get_syscall stbl addr with
     | Some acall, Some scall =>

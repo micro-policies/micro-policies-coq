@@ -447,7 +447,7 @@ Definition add_to_store_targets (s : Symbolic.state mt)
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
   end.
 
-Definition syscalls : list (Symbolic.syscall mt) :=
+Definition syscalls : seq (Symbolic.syscall mt) :=
   let dummy := DATA 0%w set0 set0 in
   [:: Symbolic.Syscall isolate_addr              dummy isolate;
       Symbolic.Syscall add_to_jump_targets_addr  dummy add_to_jump_targets;

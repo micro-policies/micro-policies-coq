@@ -198,7 +198,7 @@ Global Instance sym_memory_safety : params := {
 
   transfer := rules;
 
-  internal_state := [eqType of (color * list block_info)%type]
+  internal_state := [eqType of (color * seq block_info)%type]
 }.
 
 Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory mt _) :=
@@ -306,7 +306,7 @@ Definition eqp_fun (st : state mt) : option (state mt) :=
   | _, _ => None
   end.
 
-Definition memsafe_syscalls : list (syscall mt) :=
+Definition memsafe_syscalls : seq (syscall mt) :=
   [:: Syscall malloc_addr V(DATA) malloc_fun;
       Syscall free_addr V(DATA) free_fun;
    (* Syscall size_addr V(DATA) sizeof_fun; *)

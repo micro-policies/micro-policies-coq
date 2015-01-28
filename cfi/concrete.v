@@ -133,7 +133,7 @@ Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable ki : refinement_common.kernel_invariant.
 
-Variable stable : list (Symbolic.syscall mt).
+Variable stable : seq (Symbolic.syscall mt).
 
 (* This is basically the initial_refine assumption on preservation *)
 Definition cinitial (cs : Concrete.state mt) :=
@@ -141,7 +141,7 @@ Definition cinitial (cs : Concrete.state mt) :=
 
 Variable masks : Concrete.Masks.
 
-Definition all_attacker (xs : list (Concrete.state mt)) : Prop :=
+Definition all_attacker (xs : seq (Concrete.state mt)) : Prop :=
   forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~ Concrete.step _ masks x1 x2.
 
 Lemma all_attacker_red ast ast' axs :
@@ -155,7 +155,7 @@ Proof.
   assumption.
 Qed.
 
-Definition stopping (ss : list (Concrete.state mt)) : Prop :=
+Definition stopping (ss : seq (Concrete.state mt)) : Prop :=
   (all_attacker ss /\ all in_user ss)
   \/
   (exists user kernel,

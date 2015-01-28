@@ -21,7 +21,7 @@ Class sealing_key := {
   key       : ordType;
 
   (* This function is total, so key has to be infinite *)
-  mkkey_f : list key -> key;
+  mkkey_f : seq key -> key;
 
   (* This ensures freshness without fixing a generation strategy *)
   mkkey_fresh : forall ks, mkkey_f ks \notin ks

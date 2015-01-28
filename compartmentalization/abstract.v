@@ -42,7 +42,7 @@ Record compartment := Compartment { address_space : {set value}
 Notation "<< A , J , S >>" := (Compartment A J S) (format "<< A , J , S >>").
 Implicit Type c     : compartment.
 Implicit Type A J S : {set value}.
-Implicit Type C     : list compartment.
+Implicit Type C     : seq compartment.
 
 Definition compartment_eq c1 c2 :=
   [&& address_space c1 == address_space c2,
@@ -99,11 +99,11 @@ Qed.
 
 (* BCP: Do we need this?  Can we get away with just having all user memory
    inside a compartment at all times?  [TODO] *)
-Definition contained_compartments (C : list compartment) : bool :=
+Definition contained_compartments (C : seq compartment) : bool :=
   \bigcup_(i <- C) jump_targets i :|: \bigcup_(i <- C) store_targets i
   \subset \bigcup_(i <- C) address_space i.
 
-Definition good_compartments (C : list compartment) : bool :=
+Definition good_compartments (C : seq compartment) : bool :=
   non_overlapping          C &&
   contained_compartments   C.
 
@@ -117,7 +117,7 @@ Notation "C ⊢ p1 , p2 , .. , pk ∈ c" :=
   (and .. (and (C ⊢ p1 ∈ c) (C ⊢ p2 ∈ c)) .. (C ⊢ pk ∈ c))
   (at level 70).
 
-Fixpoint in_compartment_opt (C : list compartment)
+Fixpoint in_compartment_opt (C : seq compartment)
                             (p : value) : option compartment :=
   match C with
     | [::]     => None
@@ -148,7 +148,7 @@ Proof. by case. Qed.
 Definition state_eqMixin := CanEqMixin tuple_of_stateK.
 Canonical state_eqType := Eval hnf in EqType state state_eqMixin.
 
-Definition permitted_now_in (C : list compartment)
+Definition permitted_now_in (C : seq compartment)
                             (sk : where_from)
                             (prev : compartment)
                             (pc : word) : option compartment :=
@@ -242,11 +242,11 @@ Definition syscall_address_space (M : memory) (c : compartment) : bool :=
 
 Arguments syscall_address_space : simpl never.
 
-Definition syscalls_separated (M : memory) : list compartment -> bool :=
+Definition syscalls_separated (M : memory) : seq compartment -> bool :=
   all (predU (user_address_space M) (syscall_address_space M)).
 Arguments syscalls_separated M C /.
 
-Definition syscalls_present (C : list compartment) : bool :=
+Definition syscalls_present (C : seq compartment) : bool :=
   all (isSome ∘ in_compartment_opt C) syscall_addrs.
 
 Definition good_state (MM : state) : bool :=

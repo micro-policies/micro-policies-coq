@@ -27,8 +27,8 @@ Variable cfg : classes.id -> classes.id -> bool.
 
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable atable : list (Abs.syscall mt).
-Variable stable : list (Symbolic.syscall mt).
+Variable atable : seq (Abs.syscall mt).
+Variable stable : seq (Symbolic.syscall mt).
 
 Definition amachine :=  Abs.abstract_cfi_machine atable cfg.
 Definition smachine := Sym.symbolic_cfi_machine stable.

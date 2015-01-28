@@ -140,7 +140,7 @@ Proof.
   by rewrite decode_kernel_tag.
 Qed.
 
-Variable table : list (Symbolic.syscall mt).
+Variable table : seq (Symbolic.syscall mt).
 
 Definition is_nop (i : mword mt) : bool :=
   match decode_instr i with

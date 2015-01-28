@@ -143,7 +143,7 @@ Qed.
 
 Definition DATA : mword mt := 0%w.
 
-Definition transfer_function : list (instr mt) :=
+Definition transfer_function : seq (instr mt) :=
  let assert_DATA r := [::
    Const (swcast DATA) ri1;
    Binop EQ r ri1 ri1 ] ++
@@ -396,7 +396,7 @@ Definition build_symbolic_sealing_machine
 
 Definition keytype := [ordType of nat].
 
-Definition max_element (l : list keytype) : keytype :=
+Definition max_element (l : seq keytype) : keytype :=
  foldr maxn O l.
 
 Lemma max_element_plus_one_is_distinct :
@@ -441,7 +441,7 @@ Definition build_abstract_sealing_machine
     base_addr
     user_registers.
 
-Definition user_code (f : w -> @classes.sealing_syscall_addrs mt -> list (instr mt))
+Definition user_code (f : w -> @classes.sealing_syscall_addrs mt -> seq (instr mt))
                   : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt) :=
  (size (f user_memory_addr ssa), f).
 

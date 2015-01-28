@@ -1,4 +1,4 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -27,7 +27,7 @@ Context {mt : machine_types}
         {sp : Symbolic.params}
         {e : encodable mt Symbolic.ttypes}
         {ki : kernel_invariant}
-        {table : list (Symbolic.syscall mt)}
+        {table : seq (Symbolic.syscall mt)}
         {kcc : kernel_code_fwd_correctness ki table}.
 
 Hint Unfold Symbolic.next_state.

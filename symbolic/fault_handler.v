@@ -20,7 +20,7 @@ Section fault_handler.
 Context (mt : machine_types)
         (ops : machine_ops mt).
 
-Let code := list (instr mt).
+Let code := seq (instr mt).
 
 Class fault_handler_params := {
   rop : reg mt; (* Opcode register *)

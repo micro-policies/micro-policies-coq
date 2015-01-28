@@ -1,4 +1,4 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
+Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 Require Import hseq word partmap.
 Require Import lib.utils common.types symbolic.symbolic.
 
@@ -14,7 +14,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {sp : Symbolic.params}.
 
-Variable table : list (Symbolic.syscall mt).
+Variable table : seq (Symbolic.syscall mt).
 
 Import Symbolic.
 

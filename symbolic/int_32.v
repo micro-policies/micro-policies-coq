@@ -94,8 +94,8 @@ Definition kernelize_tags
 Definition build_monitor_memory
       (extra_state : relocatable_segment _ w)
       (handler : relocatable_segment w w)
-      (syscalls : list (relocatable_segment w w))
-    : Concrete.memory mt * w * list w :=
+      (syscalls : seq (relocatable_segment w w))
+    : Concrete.memory mt * w * seq w :=
   let cacheCell := Atom 0%w (Concrete.TKernel : w) in
   let '((kernel_length,gen_kernel), offsets) :=
     concat_and_measure_relocatable_segments
@@ -135,7 +135,7 @@ Program Definition concrete_initial_state
       (syscall_addrs : Addrs)
       (user_mem : relocatable_segment Addrs (atom w w))
       (initial_pc_tag : w)
-      (user_regs : list (reg mt))
+      (user_regs : seq (reg mt))
       (initial_reg_tag : w)
     : Concrete.state mt :=
   let '(_, user_gen) := kernelize_tags user_mem in
@@ -168,7 +168,7 @@ Program Definition symbolic_initial_state
       {Addrs}
       (user_mem : relocatable_segment Addrs (sym_atom Symbolic.M))
       (base_addr : sym_atom Symbolic.P) (syscall_addrs : Addrs)
-      (user_regs : list (reg mt))
+      (user_regs : seq (reg mt))
       (initial_reg_value : sym_atom Symbolic.R)
       (initial_internal_state : Symbolic.internal_state)
       : @Symbolic.state mt sp :=
