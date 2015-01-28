@@ -412,26 +412,6 @@ Next Obligation.
   apply (backwards_simulation_attacker REF STEPA).
 Qed.
 
-(*XXX: Move this to refinement_common?*)
-Lemma kernel_step cst cst' ast kst cst0 :
-  refinement_common.refine_state ki stable ast cst0 ->
-  Concrete.step ops rules.masks cst0 kst ->
-  kernel_exec kst cst ->
-  Concrete.step _ masks cst cst' ->
-  in_kernel cst ->
-  ~~ in_user cst' ->
-  in_kernel cst'.
-Proof.
-  intros REF STEP EXEC STEP' INKERNEL INUSER.
-  assert (REFW: @refine_state_weak _ _ _ _ ki stable ast cst).
-  { right. eauto. }
-  generalize (backwards_simulation REFW STEP').
-  intros [[REF' | (? & ? & ? & ? & KEXEC')] | [? _ REF']].
-  - apply @refine_state_in_user in REF'. by rewrite REF' in INUSER.
-  - by apply restricted_exec_snd in KEXEC'.
-  - apply @refine_state_in_user in REF'. by rewrite REF' in INUSER.
-Qed.
-
 (*This is a helper lemma to instantiate CFI refinement between
   symbolic and concrete*)
 Lemma attacker_no_v : forall si sj,
@@ -507,44 +487,6 @@ Proof.
   by discriminate.
   rewrite GETCALL in Heqo.
   by discriminate.
-Qed.
-
-(*XXX: Move these to refinement_common*)
-Lemma get_reg_no_user sreg reg m r v ctg t :
-  @refinement_common.refine_registers mt sp _ sreg reg m ->
-  getm sreg r = None ->
-  getm reg r = Some v@ctg ->
-  rules.fdecode Symbolic.R ctg = Some t ->
-  exists ut, t = rules.ENTRY ut.
-Proof.
-  intros REF SGET GET DEC.
-  destruct t.
-  - move: (proj1 REF r v ctg ut DEC GET).
-    by rewrite SGET.
-  - eexists; reflexivity.
-Qed.
-
-Lemma get_mem_no_user smem mem addr v ctg t :
-  @refinement_common.refine_memory mt sp _ smem mem ->
-  getm smem addr = None ->
-  getm mem addr = Some v@ctg ->
-  rules.fdecode Symbolic.M ctg = Some t ->
-  exists ut, t = rules.ENTRY ut.
-Proof.
-  intros REF SGET GET DEC.
-  destruct t.
-  - move: (proj1 REF addr v ctg ut DEC GET).
-    by rewrite SGET.
-  - eexists; reflexivity.
-Qed.
-
-Lemma in_user_ctpc cst :
-  refinement_common.in_user cst ->
-  exists ut,
-    rules.fdecode Symbolic.P (taga (Concrete.pc cst)) = Some (rules.USER ut).
-Proof.
-  rewrite /in_user /=.
-  by case: (rules.fdecode _ _) => [[?|?]|] //=; eauto.
 Qed.
 
 Lemma refine_traces_kexec axs cxs cst cst' :

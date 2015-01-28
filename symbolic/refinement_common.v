@@ -610,7 +610,42 @@ Definition user_regs_unchanged (cregs cregs' : Concrete.registers mt) cmem :=
     (cregs r = Some w@ct <->
      cregs' r = Some w@ct).
 
-Import DoNotation.
+Lemma get_reg_no_user sreg reg m r v ctg t :
+  refine_registers sreg reg m ->
+  getm sreg r = None ->
+  getm reg r = Some v@ctg ->
+  decode Symbolic.R m ctg = Some t ->
+  exists ut, t = rules.ENTRY ut.
+Proof.
+  intros REF SGET GET DEC.
+  destruct t.
+  - move: (proj1 REF r v ctg ut DEC GET).
+    by rewrite SGET.
+  - eexists; reflexivity.
+Qed.
+
+Lemma get_mem_no_user smem mem addr v ctg t :
+  refine_memory smem mem ->
+  getm smem addr = None ->
+  getm mem addr = Some v@ctg ->
+  decode Symbolic.M mem ctg = Some t ->
+  exists ut, t = rules.ENTRY ut.
+Proof.
+  intros REF SGET GET DEC.
+  destruct t.
+  - move: (proj1 REF addr v ctg ut DEC GET).
+    by rewrite SGET.
+  - eexists; reflexivity.
+Qed.
+
+Lemma in_user_ctpc cst :
+  in_user cst ->
+  exists ut,
+    decode Symbolic.P (Concrete.mem cst) (taga (Concrete.pc cst)) = Some (rules.USER ut).
+Proof.
+  rewrite /in_user /=.
+  by case: (decode _ _) => [[?|?]|] //=; eauto.
+Qed.
 
 (* Returns true iff our machine is at the beginning of a system call
 and the cache says it is allowed to execute. To simplify this

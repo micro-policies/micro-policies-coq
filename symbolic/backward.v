@@ -470,6 +470,25 @@ Proof.
       * left. left. by eapply cache_miss_simulation; eauto.
 Qed.
 
+Lemma kernel_step cst cst' ast kst cst0 :
+  refine_state ki table ast cst0 ->
+  Concrete.step ops rules.masks cst0 kst ->
+  kernel_exec kst cst ->
+  Concrete.step _ masks cst cst' ->
+  in_kernel cst ->
+  ~~ in_user cst' ->
+  in_kernel cst'.
+Proof.
+  intros REF STEP EXEC STEP' INKERNEL INUSER.
+  assert (REFW: refine_state_weak ast cst).
+  { right. eauto. }
+  generalize (backwards_simulation REFW STEP').
+  intros [[REF' | (? & ? & ? & ? & KEXEC')] | [? _ REF']].
+  - apply @refine_state_in_user in REF'. by rewrite REF' in INUSER.
+  - by apply restricted_exec_snd in KEXEC'.
+  - apply @refine_state_in_user in REF'. by rewrite REF' in INUSER.
+Qed.
+
 Theorem backwards_refinement sst cst cst' :
   refine_state ki table sst cst ->
   exec (Concrete.step _ masks) cst cst' ->
