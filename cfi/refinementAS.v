@@ -52,9 +52,9 @@ Definition refine_registers (areg : Abs.registers t)
 Definition refine_pc
            (apc : mword t)
            (spc : atom (mword t) (Symbolic.ttypes Symbolic.P)) :=
-  apc = types.val spc /\
-  (types.tag spc = DATA \/
-   exists id, types.tag spc = INSTR (Some id)).
+  apc = vala spc /\
+  (taga spc = DATA \/
+   exists id, taga spc = INSTR (Some id)).
 
 Lemma refine_memory_total aimem admem smem :
   refine_imemory aimem smem ->
@@ -679,7 +679,7 @@ Proof.
   }
 Qed.
 
-Definition untag_atom (a : atom (mword t) cfi_tag) := types.val a.
+Definition untag_atom (a : atom (mword t) cfi_tag) := vala a.
 
 Lemma reg_refinement_preserved_by_equiv :
   forall areg reg reg',
@@ -750,7 +750,7 @@ Proof.
 Qed.
 
 Definition is_data (a : atom (mword t) cfi_tag) :=
-  match types.tag a with
+  match taga a with
     | DATA => true
     | INSTR _ => false
   end.

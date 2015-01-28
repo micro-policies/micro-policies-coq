@@ -85,8 +85,8 @@ Definition kernelize_tags
      fault_handler.v -- probably better to write it there rather than here *)
   (l,
    fun b rest =>
-     map (fun x => Atom (types.val x)
-                        (kernelize_user_tag (types.tag x))) (gen b rest)).
+     map (fun x => Atom (vala x)
+                        (kernelize_user_tag (taga x))) (gen b rest)).
 
 (* Build the basic monitor memory on top of which we will put user
    programs. Returns a triple with the monitor memory, the base user
@@ -173,12 +173,12 @@ Program Definition symbolic_initial_state
       (initial_internal_state : Symbolic.internal_state)
       : @Symbolic.state t sp :=
   let (_, gen) := user_mem in
-  let mem_contents := gen (types.val base_addr) syscall_addrs in
+  let mem_contents := gen (vala base_addr) syscall_addrs in
   let mem :=
     snd (foldl
       (fun x c => let: (i,m) := x in
                   (i + 1, setm m i c)%w)
-      ((types.val base_addr), emptym) mem_contents) in
+      ((vala base_addr), emptym) mem_contents) in
   let regs :=
         foldl
           (fun regs r => setm regs r initial_reg_value)

@@ -25,58 +25,58 @@ Local Notation "x .+1" := (x + 1).
 Definition step (st : state mt) : option (state mt) :=
   let 'mkState mem reg cache pc@tpc epc := st in
   do! i <- mem pc;
-  do! instr <- decode_instr (val i);
-  let mvec := mkMVec (word_of_op (opcode_of instr)) tpc (tag i) in
+  do! instr <- decode_instr (vala i);
+  let mvec := mkMVec (word_of_op (opcode_of instr)) tpc (taga i) in
   match instr with
   | Nop =>
     let mvec := mvec TNone TNone TNone in
     next_state_pc masks st mvec (pc.+1)
   | Const n r =>
     do! old <- reg r;
-    let mvec := mvec (tag old) TNone TNone in
+    let mvec := mvec (taga old) TNone TNone in
     next_state_reg masks st mvec r (swcast n)
   | Mov r1 r2 =>
     do! v1 <- reg r1;
     do! old <- reg r2;
-    let mvec := mvec (tag v1) (tag old) TNone in
-    next_state_reg masks st mvec r2 (val v1)
+    let mvec := mvec (taga v1) (taga old) TNone in
+    next_state_reg masks st mvec r2 (vala v1)
   | Binop f r1 r2 r3 =>
     do! v1 <- reg r1;
     do! v2 <- reg r2;
     do! old <- reg r3;
-    let mvec := mvec (tag v1) (tag v2) (tag old) in
-    next_state_reg masks st mvec r3 (binop_denote f (val v1) (val v2))
+    let mvec := mvec (taga v1) (taga v2) (taga old) in
+    next_state_reg masks st mvec r3 (binop_denote f (vala v1) (vala v2))
   | Load r1 r2 =>
     do! v1 <- reg r1;
-    do! v2 <- mem (val v1);
+    do! v2 <- mem (vala v1);
     do! old <- reg r2;
-    let mvec := mvec (tag v1) (tag v2) (tag old) in
-    next_state_reg masks st mvec r2 (val v2)
+    let mvec := mvec (taga v1) (taga v2) (taga old) in
+    next_state_reg masks st mvec r2 (vala v2)
   | Store r1 r2 =>
     do! v1 <- reg r1;
     do! v2 <- reg r2;
-    do! v3 <- mem (val v1);
-    let mvec := mvec (tag v1) (tag v2) (tag v3) in
+    do! v3 <- mem (vala v1);
+    let mvec := mvec (taga v1) (taga v2) (taga v3) in
     next_state masks st mvec (fun rvec =>
-      do! mem' <- updm mem (val v1) (val v2)@(ctr rvec);
+      do! mem' <- updm mem (vala v1) (vala v2)@(ctr rvec);
       Some (mkState mem' reg cache (pc.+1)@(ctrpc rvec) epc))
   | Jump r =>
     do! v <- reg r;
-    let mvec := mvec (tag v) TNone TNone in
-    next_state_pc masks st mvec (val v)
+    let mvec := mvec (taga v) TNone TNone in
+    next_state_pc masks st mvec (vala v)
   | Bnz r n =>
     do! v <- reg r;
-    let mvec := mvec (tag v) TNone TNone in
-    let pc' := pc + if (val v) == 0%w then 1%w else swcast n in
+    let mvec := mvec (taga v) TNone TNone in
+    let pc' := pc + if (vala v) == 0%w then 1%w else swcast n in
     next_state_pc masks st mvec pc'
   | Jal r =>
     do! v <- reg r;
     do! old <- reg ra;
-    let mvec := mvec (tag v) (tag old) TNone in
-    next_state_reg_and_pc masks st mvec ra (pc.+1) (val v)
+    let mvec := mvec (taga v) (taga old) TNone in
+    next_state_reg_and_pc masks st mvec ra (pc.+1) (vala v)
   | JumpEpc =>
-    let mvec := mvec (tag epc) TNone TNone in
-    next_state_pc masks st mvec (val epc)
+    let mvec := mvec (taga epc) TNone TNone in
+    next_state_pc masks st mvec (vala epc)
   | AddRule =>
     let mvec := mvec TNone TNone TNone in
     next_state masks st mvec (fun rvec =>
@@ -85,20 +85,20 @@ Definition step (st : state mt) : option (state mt) :=
   | GetTag r1 r2 =>
     do! v1 <- reg r1;
     do! old <- reg r2;
-    let mvec := mvec (tag v1) (tag old) TNone in
-    next_state_reg masks st mvec r2 (tag v1)
+    let mvec := mvec (taga v1) (taga old) TNone in
+    next_state_reg masks st mvec r2 (taga v1)
   | PutTag r1 r2 r3 =>
     do! v1 <- reg r1;
     do! v2 <- reg r2;
     do! old <- reg r3;
-    let mvec := mvec (tag v1) (tag v2) (tag old) in
+    let mvec := mvec (taga v1) (taga v2) (taga old) in
     next_state masks st mvec (fun rvec =>
-      do! reg' <- updm reg r3 (val v1)@(val v2);
+      do! reg' <- updm reg r3 (vala v1)@(vala v2);
       Some (mkState mem reg' cache (pc.+1)@(ctrpc rvec) epc))
   | Halt => None
 end.
 
-Lemma atom_eta {V T} : forall a : atom V T, a = (val a)@(tag a).
+Lemma atom_eta {V T} : forall a : atom V T, a = (vala a)@(taga a).
 Proof. destruct a; reflexivity. Qed.
 
 Ltac atom_eta :=
@@ -151,49 +151,49 @@ Qed.
 Definition build_cmvec st : option (Concrete.MVec (mword mt)) :=
   match Concrete.mem st (Concrete.pcv st) with
     | Some i =>
-      match decode_instr (val i) with
+      match decode_instr (vala i) with
         | Some op =>
           let part := @Concrete.mkMVec (mword mt) (word_of_op (opcode_of op))
-                                       (Concrete.pct st) (types.tag i) in
+                                       (Concrete.pct st) (taga i) in
           match op  with
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
             | Const n r =>
               fun part =>
                 do! old <- (Concrete.regs st) r;
-                  Some (part (types.tag old) Concrete.TNone Concrete.TNone)
+                  Some (part (taga old) Concrete.TNone Concrete.TNone)
             | Mov r1 r2 =>
               fun part =>
                 do! v1 <- (Concrete.regs st) r1;
                 do! v2 <- (Concrete.regs st) r2;
-                  Some (part (types.tag v1) (types.tag v2) Concrete.TNone)
+                  Some (part (taga v1) (taga v2) Concrete.TNone)
             | Binop _ r1 r2 r3 => fun part =>
               do! v1 <- (Concrete.regs st) r1;
               do! v2 <- (Concrete.regs st) r2;
               do! v3 <- (Concrete.regs st) r3;
-                Some (part (types.tag v1) (types.tag v2) (types.tag v3))
+                Some (part (taga v1) (taga v2) (taga v3))
             | Load r1 r2 => fun part =>
               do! w1 <- (Concrete.regs st) r1;
-              do! w2 <- Concrete.mem st (val w1);
+              do! w2 <- Concrete.mem st (vala w1);
               do! old <- (Concrete.regs st) r2;
-                Some (part (types.tag w1) (types.tag w2) (types.tag old))
+                Some (part (taga w1) (taga w2) (taga old))
             | Store r1 r2 => fun part =>
               do! w1 <- (Concrete.regs st) r1;
               do! w2 <- (Concrete.regs st) r2;
-                do! w3 <- Concrete.mem st (val w1);
-                Some (part (types.tag w1) (types.tag w2) (types.tag w3))
+                do! w3 <- Concrete.mem st (vala w1);
+                Some (part (taga w1) (taga w2) (taga w3))
             | Jump r => fun part =>
               do! w <- (Concrete.regs st) r;
-                Some (part (types.tag w) Concrete.TNone Concrete.TNone)
+                Some (part (taga w) Concrete.TNone Concrete.TNone)
             | Bnz r n => fun part =>
               do! w <- (Concrete.regs st) r;
-                Some (part (types.tag w) Concrete.TNone Concrete.TNone)
+                Some (part (taga w) Concrete.TNone Concrete.TNone)
             | Jal r => fun part =>
               do! w <- (Concrete.regs st) r;
               do! old <- (Concrete.regs st) ra;
-                Some (part (types.tag w) (types.tag old) Concrete.TNone)
+                Some (part (taga w) (taga old) Concrete.TNone)
             | JumpEpc =>
               fun part =>
-                Some (part (types.tag (Concrete.epc st)) Concrete.TNone Concrete.TNone)
+                Some (part (taga (Concrete.epc st)) Concrete.TNone Concrete.TNone)
             | AddRule =>
               fun part =>
                 Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
@@ -201,13 +201,13 @@ Definition build_cmvec st : option (Concrete.MVec (mword mt)) :=
               fun part =>
                 do! w1 <- (Concrete.regs st) r1;
                 do! old <- (Concrete.regs st) r2;
-                Some (part (types.tag w1) (types.tag old) Concrete.TNone)
+                Some (part (taga w1) (taga old) Concrete.TNone)
             | PutTag r1 r2 r3 =>
               fun part =>
                 do! w1 <- (Concrete.regs st) r1;
                 do! w2 <- (Concrete.regs st) r2;
                 do! old <- (Concrete.regs st) r3;
-                Some (part (types.tag w1) (types.tag w2) (types.tag old))
+                Some (part (taga w1) (taga w2) (taga old))
             | Halt => fun _ => None
           end part
         | None => None

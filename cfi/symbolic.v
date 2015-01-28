@@ -57,12 +57,12 @@ Definition no_violation (sst : Symbolic.state t) :=
        exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ cfg src dst).
 
 Inductive atom_equiv (a : atom (mword t) (@cfi_tag t ids)) (a' : atom (mword t) (@cfi_tag t ids)) : Prop :=
-  | data_equiv :   tag a = DATA ->
-                   tag a' = DATA ->
+  | data_equiv :   taga a = DATA ->
+                   taga a' = DATA ->
                    atom_equiv a a'
   | instr_equiv : forall id id',
-                    tag a = INSTR id ->
-                    tag a' = INSTR id' ->
+                    taga a = INSTR id ->
+                    taga a' = INSTR id' ->
                     a = a' ->
                     atom_equiv a a'.
 
@@ -87,10 +87,10 @@ Local Notation "x .+1" := (x + 1)%w.
 Open Scope word_scope.
 
 Definition ssucc (st : Symbolic.state t) (st' : Symbolic.state t) : bool :=
-  let pc_t := types.tag (Symbolic.pc st) in
-  let pc_t' := types.tag (Symbolic.pc st') in
-  let pc_s := types.val (Symbolic.pc st) in
-  let pc_s' := types.val (Symbolic.pc st') in
+  let pc_t := taga (Symbolic.pc st) in
+  let pc_t' := taga (Symbolic.pc st') in
+  let pc_s := vala (Symbolic.pc st) in
+  let pc_s' := vala (Symbolic.pc st') in
   match (getm (Symbolic.mem st) pc_s) with
     | Some i@DATA => false
     | Some i@(INSTR (Some src)) =>
@@ -648,7 +648,7 @@ Proof.
 Qed.
 
 Lemma data_pc_no_violation : forall s,
-  tag (Symbolic.pc s) = DATA ->
+  taga (Symbolic.pc s) = DATA ->
   no_violation s.
 Proof.
   intros. destruct s. destruct pc as [pc tpc]. simpl. split; intros;
@@ -703,7 +703,7 @@ Proof.
 Qed.
 
 Definition initial (s : Symbolic.state t) :=
-  (types.tag (Symbolic.pc s)) = DATA /\
+  (taga (Symbolic.pc s)) = DATA /\
   invariants s.
 
 Definition all_attacker xs : Prop :=
@@ -760,10 +760,10 @@ Import DoNotation.
 Import Vector.VectorNotations.
 
 Definition get_ti sst :=
-  match getm (Symbolic.mem sst) (types.val (Symbolic.pc sst)) with
+  match getm (Symbolic.mem sst) (vala (Symbolic.pc sst)) with
     | Some i@ti => Some ti
     | None =>
-      match Symbolic.get_syscall table (types.val (Symbolic.pc sst)) with
+      match Symbolic.get_syscall table (vala (Symbolic.pc sst)) with
         | Some sc => Some (Symbolic.entry_tag sc)
         | None => None
       end
@@ -904,7 +904,7 @@ Proof.
       inv UMVEC; try reflexivity;
       unfold Symbolic.transfer; simpl; unfold cfi_handler;
       try rewrite (negbTE VIO); try reflexivity.
-    destruct (tag a1); by reflexivity.
+    destruct (taga a1); by reflexivity.
   -  (*get mem pc = None*)
     rewrite GET in VIO UMVEC.
     unfold Symbolic.pcv in *. simpl in UMVEC.

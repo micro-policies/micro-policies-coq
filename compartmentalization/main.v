@@ -33,7 +33,7 @@ Implicit Type mem : Concrete.memory t.
 
 Definition read_kernel_word mem (addr : mword t) : option (mword t) :=
   do! x <- mem addr;
-  if Concrete.is_kernel_tag (types.tag x) then Some (types.val x)
+  if Concrete.is_kernel_tag (taga x) then Some (vala x)
   else None.
 
 Lemma read_kernel_word_monotonic mem addr x ct x' ct' :
@@ -70,9 +70,9 @@ Qed.
 
 Definition read_set (mem : Concrete.memory t) (addr : mword t) : option {set mword t} :=
   do! count <- mem addr;
-  if Concrete.is_kernel_tag (types.tag count) then
+  if Concrete.is_kernel_tag (taga count) then
     omap (fun arr => [set x : [finType of mword t] in arr])
-         (read_kernel_array mem (addr + 1)%w (nat_of_ord (ord_of_word (val count))))
+         (read_kernel_array mem (addr + 1)%w (nat_of_ord (ord_of_word (vala count))))
   else
     None.
 

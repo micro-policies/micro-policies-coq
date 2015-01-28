@@ -157,8 +157,8 @@ Record state := State {
   internal : internal_state
 }.
 
-Definition pcv (s : state) := val (pc s).
-Definition pct (s : state) := tag (pc s).
+Definition pcv (s : state) := vala (pc s).
+Definition pct (s : state) := taga (pc s).
 
 Lemma state_eta st :
   st = State (mem st) (regs st) (pcv st)@(pct st) (internal st).
@@ -178,7 +178,7 @@ Definition get_syscall (addr : word) : option syscall :=
   ofind (fun sc => address sc == addr) table.
 
 Definition run_syscall (sc : syscall) (st : state) : option state :=
-  match transfer (mkIVec SERVICE (types.tag (pc st)) (entry_tag sc) [hseq]) with
+  match transfer (mkIVec SERVICE (taga (pc st)) (entry_tag sc) [hseq]) with
   | Some _ => sem sc st
   | None => None
   end.
@@ -204,7 +204,7 @@ Definition next_state_reg_and_pc (st : state) (iv : @IVec ttypes)
   ).
 
 Definition next_state_reg (st : state) (mvec : @IVec ttypes) r x : option state :=
-  next_state_reg_and_pc st mvec r x (val (pc st)).+1.
+  next_state_reg_and_pc st mvec r x (vala (pc st)).+1.
 
 Definition next_state_pc (st : state) (iv : @IVec ttypes)
   (x : word) : option state :=

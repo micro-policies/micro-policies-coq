@@ -652,7 +652,7 @@ Proof.
     (P := refine_reg_val)
     (f := fun mi' col' nb' => mi = mi' /\ col = col' /\ (newb,base) = nb'); auto.
   intros ? ? ? ? ? [E1 [E2 [R]]]. subst k1 km.
-  unfold refine_reg_val. destruct v2; destruct tag; auto.
+  unfold refine_reg_val. destruct v2; destruct taga; auto.
   eapply refine_val_malloc; eauto.
 Qed.
 
@@ -1240,10 +1240,10 @@ by solve_pc rpci.
   case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
   move/(_ bi _).
   have: bi \in [seq x <- info
-              | (val <= Sym.block_size x)%ord
+              | (vala <= Sym.block_size x)%ord
               & Sym.block_color x == None].
     case: [seq x <- info
-              | (val <= Sym.block_size x)%ord
+              | (vala <= Sym.block_size x)%ord
               & Sym.block_color x == None] Heqo => //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/andP [lt_val /eqP color_bi in_bi]].
@@ -1252,7 +1252,7 @@ by solve_pc rpci.
   move=> _ [? ?] FREE Heqo E0 color_bi in_bi lt_val.
 
 
-  case malloc: (Abstract.malloc_fun a_mem bl val) => [amem' newb].
+  case malloc: (Abstract.malloc_fun a_mem bl vala) => [amem' newb].
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
   have rnewb: refine_val mi' (Abstract.VPtr (newb, 0)) (Sym.block_base bi) (PTR color).
     rewrite -[Sym.block_base bi]addw0; constructor.
@@ -1272,7 +1272,7 @@ by solve_pc rpci.
   split; try eassumption.
   exact: (refine_memory_malloc rmem rist malloc).
   exact: (refine_val_malloc _ fresh_color malloc).
-  have int_val : 0 < val <= Sym.block_size bi by apply/andP; split; eauto.
+  have int_val : 0 < vala <= Sym.block_size bi by apply/andP; split; eauto.
   exact: (refine_internal_state_malloc int_val malloc).
 
 (* Free *)
@@ -1291,10 +1291,10 @@ by solve_pc rpci.
   rewrite (lock addw) /= -!val_ordE /= /Ord.leq /= -lock in ub_val.
   rewrite valw_add' // -ltnNge in ub_val.
   have /andP [E1 E2]:
-    Sym.block_base x <= val < Sym.block_base x + Sym.block_size x.
+    Sym.block_base x <= vala < Sym.block_base x + Sym.block_size x.
     by apply/andP.
   have [fr get_b]: exists fr, a_mem b = Some fr.
-    case/(_ (val - Sym.block_base x)): get_x => [|w' [ty]].
+    case/(_ (vala - Sym.block_base x)): get_x => [|w' [ty]].
       by rewrite valw_sub // -(ltn_add2r (Sym.block_base x)) subnK // addnC.
     case: rmem => _ rmem.
     move/rmem.

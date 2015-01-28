@@ -39,8 +39,8 @@ Notation sym_compartmentalization := (@Sym.sym_compartmentalization t).
 Notation spcatom := (atom word pc_tag).
 Notation smatom  := (atom word data_tag).
 Notation sratom  := (atom word unit).
-Notation svalue  := (@val word _).
-Notation slabel  := (@types.tag word _).
+Notation svalue  := (@vala word _).
+Notation slabel  := (@taga word _).
 
 Notation astate    := (@Abs.state t).
 Notation sstate    := (@Symbolic.state t sym_compartmentalization).
@@ -594,7 +594,7 @@ Proof.
   move=> UPD /and3P [Ha Hs Hu].
   apply/and3P; split=> // {Ha Hu}; apply/allP=> x /(allP Hs).
   rewrite !inE; case E: (getm _ _) => [//|] _.
-  by rewrite (Sym.get_supd_none _ _ _ _ _ E UPD).
+  by rewrite (Sym.get_supd_none E UPD).
 Qed.
 
 Lemma sget_supd_good_internal (sst sst' : sstate) p c I1 W1 I2 W2 :
@@ -607,8 +607,8 @@ Proof.
   move=> Hbounded_new Hsget Hsupd [Hbounded Hisolate].
   split.
   - move=> p' cid I W.
-    rewrite (Sym.sget_supd _ _ _ _ Hsupd)
-           -(Sym.supd_preserves_next_id _ _ _ _ Hsupd).
+    rewrite (Sym.sget_supd Hsupd)
+           -(Sym.supd_preserves_next_id Hsupd).
     have [_ {p'} [<- <- <- {cid I W}]|_] := p' =P p; last by apply Hbounded.
     move=> cid.
     rewrite -setUA in_setU1.
@@ -616,7 +616,7 @@ Proof.
     apply: (Hbounded _ _ _ _ Hsget).
     by rewrite in_setU in_setU1 eqxx.
   - move=> p' sc.
-    rewrite !(Sym.sget_supd _ _ _ _ Hsupd).
+    rewrite !(Sym.sget_supd Hsupd).
     have [-> {p'}|_] := p' =P p;
     have [-> {sc}|_] := sc =P p => //=.
     + move=> sc_is_sc E.
@@ -647,8 +647,8 @@ Lemma supd_tags_subsets sst sst' p c I1 W1 I2 W2 :
 Proof.
   move=> GET UPD HI HW p'.
   have [{p'} -> //|NE] := altP (p' =P p).
-  { by rewrite GET (Sym.sget_supd _ _ _ _ UPD) eqxx. }
-  rewrite (Sym.sget_supd _ _ _ _ UPD) (negbTE NE).
+  { by rewrite GET (Sym.sget_supd UPD) eqxx. }
+  rewrite (Sym.sget_supd UPD) (negbTE NE).
   by case: (Sym.sget _ _) => [[]|] //=.
 Qed.
 
@@ -670,7 +670,7 @@ Proof.
   apply/eq_pick => c'.
   apply/f_equal2 => // {c'}.
   apply/eq_imset => p' /=.
-  rewrite (Sym.sget_supd _ _ _ _ UPD).
+  rewrite (Sym.sget_supd UPD).
   have [{p'} -> /=|//] := (p' =P p); by rewrite GET.
 Qed.
 
@@ -731,20 +731,20 @@ Proof.
       congruence. }
     rewrite TARGETS (WF _ _ c_in_C ID).
     apply/eqP. rewrite eqEsubset. apply/andP. split.
-    + rewrite subUset sub1set in_set (Sym.sget_supd _ _ _ _ UPD)
+    + rewrite subUset sub1set in_set (Sym.sget_supd UPD)
               eqxx /= SOURCES2 /= in_setU1 eqxx /=.
       apply/subsetP => p'.
-      rewrite !in_set (Sym.sget_supd _ _ _ _ UPD).
+      rewrite !in_set (Sym.sget_supd UPD).
       have [{p'} -> /=|//] := (p' =P p).
       by rewrite SOURCES2 /= in_setU1 eqxx.
     + apply/subsetP => p'.
-      rewrite !in_set (Sym.sget_supd _ _ _ _ UPD).
+      rewrite !in_set (Sym.sget_supd UPD).
       by have [{p'} ->|] := (p' =P p).
   - rewrite (WF _ _ c''_in_C ID').
     apply/eqP. rewrite eqEsubset. apply/andP.
     split; apply/subsetP => p';
     rewrite !in_set
-            (Sym.sget_supd _ _ _ _ UPD);
+            (Sym.sget_supd UPD);
     have [{p'} ->|] //= := (p' =P p);
     rewrite SOURCES2 GET /= SOURCES1 /= in_setU1; first by rewrite orbC => ->.
     case/orP => [/eqP E|//].
@@ -777,18 +777,18 @@ Proof.
     rewrite TARGETS (WF _ _ c_in_C ID).
     apply/eqP. rewrite eqEsubset. apply/andP. split.
     + apply/subsetP => p'.
-      rewrite !in_set (Sym.sget_supd _ _ _ _ UPD).
+      rewrite !in_set (Sym.sget_supd UPD).
       have [{p'} -> /=|//] := (p' =P p).
       by rewrite SOURCES2 GET /= SOURCES1 /=.
     + apply/subsetP => p'.
-      rewrite !in_set (Sym.sget_supd _ _ _ _ UPD).
+      rewrite !in_set (Sym.sget_supd UPD).
       have [{p'} ->/=|//] := (p' =P p).
       by rewrite SOURCES2 /= GET /= SOURCES1 /=.
   - rewrite (WF _ _ c''_in_C ID').
     apply/eqP. rewrite eqEsubset. apply/andP.
     by split; apply/subsetP => p';
     rewrite !in_set
-            (Sym.sget_supd _ _ _ _ UPD);
+            (Sym.sget_supd UPD);
     have [{p'} ->/=|//] := (p' =P p);
     rewrite SOURCES2 GET /= SOURCES1 /=.
 Qed.
@@ -905,10 +905,10 @@ Proof.
   { apply/(get_compartment_id_in_compartment COMPSWD IDSWD IDSU AIN).
     have [E|NE] := (pc' =P p).
     - subst pc'.
-      rewrite (Sym.sget_supd_eq _ _ _ _ def_s') in def_xcIW0.
+      rewrite (Sym.sget_supd_eq def_s') in def_xcIW0.
       rewrite def_xcIW /=.
       congruence.
-    - by rewrite -(Sym.sget_supd_neq _ _ _ _ _ NE def_s') def_xcIW0 /=. }
+    - by rewrite -(Sym.sget_supd_neq NE def_s') def_xcIW0 /=. }
 
   rewrite -(lock _) /= IN_pc' /= eq_refl.
 
@@ -919,21 +919,21 @@ Proof.
     have [E|NE] := (pc' =P p).
     - subst pc'.
       rewrite def_xcIW /=.
-      rewrite (Sym.sget_supd _ _ _ _ def_s') eqxx in def_xcIW0.
+      rewrite (Sym.sget_supd def_s') eqxx in def_xcIW0.
       move: def_xcIW0 => [? ? ?]; subst cid'' I_next W_next.
       by rewrite (in_setU1 cid_sys) eq_sym (negbTE NEQ_cid_sys) /= in NEXT.
-    - by rewrite -(Sym.sget_supd_neq _ _ _ _ _ NE def_s') def_xcIW0 /=.
+    - by rewrite -(Sym.sget_supd_neq NE def_s') def_xcIW0 /=.
   }
 
   rewrite IN_Jsys. eexists; split; [reflexivity|].
-  have /= E := Sym.supd_preserves_regs _ _ _ _ def_s'.
+  have /= E := Sym.supd_preserves_regs def_s'.
   subst R_next.
 
   constructor => //=.
   - exact: (supd_refine_memory def_s' RMEMS).
   - move=> p''.
     rewrite (sget_irrelevancies SR not_pc).
-    move=> /(Sym.sget_supd_inv _ _ _ _ _ def_s')/COMPSWD.
+    move=> /(Sym.sget_supd_inv def_s')/COMPSWD.
     by apply/in_compartment_update'.
   - move=> c''.
     rewrite  (get_compartment_id_irrelevancies SR not_pc)
@@ -1075,10 +1075,10 @@ Proof.
   { apply/(get_compartment_id_in_compartment COMPSWD IDSWD IDSU AIN).
     have [E|NE] := (pc' =P p).
     - subst pc'.
-      rewrite (Sym.sget_supd_eq _ _ _ _ def_s') in def_xcIW0.
+      rewrite (Sym.sget_supd_eq def_s') in def_xcIW0.
       rewrite def_xcIW /=.
       congruence.
-    - by rewrite -(Sym.sget_supd_neq _ _ _ _ _ NE def_s') def_xcIW0 /=. }
+    - by rewrite -(Sym.sget_supd_neq NE def_s') def_xcIW0 /=. }
 
   rewrite -(lock _) /= IN_pc' /= eq_refl.
 
@@ -1089,20 +1089,20 @@ Proof.
     have [E|NE] := (pc' =P p).
     - subst pc'.
       rewrite def_xcIW /=.
-      rewrite (Sym.sget_supd _ _ _ _ def_s') eqxx in def_xcIW0.
+      rewrite (Sym.sget_supd def_s') eqxx in def_xcIW0.
       by move: def_xcIW0 => [? ? ?]; subst cid'' I_next W_next.
-    - by rewrite -(Sym.sget_supd_neq _ _ _ _ _ NE def_s') def_xcIW0 /=.
+    - by rewrite -(Sym.sget_supd_neq NE def_s') def_xcIW0 /=.
   }
 
   rewrite IN_Jsys. eexists; split; [reflexivity|].
-  have /= E := Sym.supd_preserves_regs _ _ _ _ def_s'.
+  have /= E := Sym.supd_preserves_regs def_s'.
   subst R_next.
 
   constructor => //=.
   - exact: (supd_refine_memory def_s' RMEMS).
   - move=> p''.
     rewrite (sget_irrelevancies SR not_pc).
-    move=> /(Sym.sget_supd_inv _ _ _ _ _ def_s')/COMPSWD.
+    move=> /(Sym.sget_supd_inv def_s')/COMPSWD.
     by apply/in_compartment_update'.
   - move=> c''.
     rewrite  (get_compartment_id_irrelevancies SR not_pc)
@@ -1165,7 +1165,7 @@ Proof.
     apply eq_pick => cid //=.
     apply f_equal2 => // {cid}.
     apply eq_in_imset => p' /= p'_in_c.
-    rewrite (Sym.sget_supd_neq _ _ _ _ _ _ UPD) // => ?. subst p'.
+    rewrite (Sym.sget_supd_neq _ UPD) // => ?. subst p'.
     move: (Hdis _ p'_in_c).
     by rewrite in_cons eqxx.
   - move=> pp Hin.
@@ -1216,7 +1216,7 @@ Proof.
     apply eq_pick=> cid''.
     apply f_equal2=> // {cid''}.
     apply eq_imset=> p' //=.
-    rewrite (Sym.sget_supd _ _ _ _ UPD).
+    rewrite (Sym.sget_supd UPD).
     have [{p'} ->|//] := p' =P p.
     by rewrite GET.
   - case RETAG: (retag _ _ _ _) => [cid' I' W'] //=.
@@ -1225,7 +1225,7 @@ Proof.
     apply eq_pick=> cid''.
     apply f_equal2=> // {cid''}.
     apply eq_in_imset=> p' p'_in_c //=.
-    rewrite (Sym.sget_supd_neq _ _ _ _ _ _ UPD) // => ?.
+    rewrite (Sym.sget_supd_neq _ UPD) // => ?.
     subst p'.
     by rewrite (negbTE p_nin_c) in p'_in_c.
 Qed.
@@ -1310,11 +1310,11 @@ Proof.
     apply eq_pick => p'.
     apply f_equal2 => // {p'}.
     apply eq_in_imset => p' /=.
-    rewrite (Sym.sget_supd _ _ _ _ Hsupd).
+    rewrite (Sym.sget_supd Hsupd).
     have [->|//] := altP (p' =P p).
     by rewrite (negbTE p_notin_A). }
   have := Hnew cid I W. rewrite Hretag /= => ?. subst cid''.
-  rewrite get_compartment_id_setU1 (Sym.sget_supd _ _ _ _ Hsupd) eqxx /=.
+  rewrite get_compartment_id_setU1 (Sym.sget_supd Hsupd) eqxx /=.
   have [->|NE] := altP (A =P set0).
   { rewrite /get_compartment_id imset0.
     case: pickP => [cid'' /eqP/setP/(_ (Some cid''))|//].
@@ -1324,7 +1324,7 @@ Proof.
   apply eq_pick=> cid''.
   apply f_equal2 => // {cid''}.
   apply eq_in_imset=> p' /=.
-  rewrite (Sym.sget_supd _ _ _ _ Hsupd).
+  rewrite (Sym.sget_supd Hsupd).
   have [->|//] := p' =P p.
   by rewrite (negbTE p_notin_A).
 Qed.
@@ -1465,8 +1465,8 @@ Proof.
     destruct s' as [SM' SR' pc'' si'];
     unoption.
 
-  have /= ? := Sym.retag_set_preserves_pc _ _ _ _ _ def_s'.
-  have /= ? := Sym.retag_set_preserves_regs _ _ _ _ _ def_s'.
+  have /= ? := Sym.retag_set_preserves_pc def_s'.
+  have /= ? := Sym.retag_set_preserves_regs def_s'.
   move: def_c'.
   rewrite /Sym.fresh' /=.
   have [//|NEQ [?]] := Snext =P monew.
@@ -1503,7 +1503,7 @@ Proof.
 
   have SUBSET_A' : A' \subset Aprev. {
     apply/subsetP; intros a IN.
-    have := (Sym.retag_set_forall _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' a).
+    have /(_ a) := (Sym.retag_set_forall (enum_uniq (mem (A' :|: J' :|: S'))) def_s').
     rewrite /Sym.do_ok (mem_enum (mem (A' :|: J' :|: S'))) !in_setU IN /= => /(_ erefl).
     move=> /= [c' [I' [W' [SGET /and3P [/eqP OK _ _]]]]]. subst c'.
     apply/(get_compartment_id_in_compartment COMPSWD IDSWD IDSU AIN).
@@ -1514,7 +1514,7 @@ Proof.
   have SUBSET_J' : J' \subset Aprev :|: Jprev. {
     apply/subsetP; move=> a IN.
     rewrite in_setU. apply/orP.
-    have := Sym.retag_set_forall _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' a.
+    have /(_ a) := Sym.retag_set_forall (enum_uniq (mem (A' :|: J' :|: S'))) def_s'.
     rewrite /Sym.do_retag /Sym.do_ok
             (mem_enum (mem (A' :|: J' :|: S'))) !in_setU IN orbT /=
             => /(_ erefl) [cid' [I' [W' [EQ /and3P [_ /orP [/eqP ? | cid'_in_I'] _]]]]].
@@ -1530,7 +1530,7 @@ Proof.
   have SUBSET_S' : S' \subset Aprev :|: Sprev. {
     apply/subsetP; move=> a IN.
     rewrite in_setU. apply/orP.
-    have := Sym.retag_set_forall _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' a.
+    have /(_ a) := Sym.retag_set_forall (enum_uniq (mem (A' :|: J' :|: S'))) def_s'.
     rewrite /Sym.do_retag /Sym.do_ok
             (mem_enum (mem (A' :|: J' :|: S'))) !in_setU IN orbT /=
             => /(_ erefl) [cid' [I' [W' [EQ /and3P [_ _ /orP [/eqP ? | cid'_in_S']]]]]].
@@ -1546,7 +1546,7 @@ Proof.
   have IN_pc' : pc' \in Aprev.
   { apply/(get_compartment_id_in_compartment COMPSWD IDSWD IDSU AIN).
     have [OLD | [cid' [I' [W' [OLD []]]]]] :=
-      Sym.retag_set_or_ok _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' pc';
+      Sym.retag_set_or_ok (enum_uniq (mem (A' :|: J' :|: S'))) def_s' pc';
       first by rewrite OLD def_xcIW.
     rewrite OLD RPREV {RPREV} /= def_xcIW /Sym.do_ok /Sym.do_retag.
     by have [IN /= /and3P [/eqP -> _ _] _|_ _ [-> _ _]] := boolP (pc' \in A'). }
@@ -1565,7 +1565,7 @@ Proof.
 
   have NIN : pc' \notin A'. {
     apply/negP => IN.
-    have := Sym.retag_set_in_ok _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' pc'.
+    have /(_ pc') := Sym.retag_set_in_ok (enum_uniq (mem (A' :|: J' :|: S'))) def_s'.
     rewrite /Sym.do_ok /Sym.do_retag (mem_enum (mem (A' :|: J' :|: S'))) !in_setU IN /=
             => /(_ erefl) [cpc' [Ipc' [Wpc' [THEN [/and3P [/eqP ? _ _] NOW]]]]].
     subst cpc'.
@@ -1582,7 +1582,8 @@ Proof.
   have IN_Jsys : pc' \in Abs.jump_targets c_sys.
   { have /= -> := JTWF _ cid_sys c_sys_in_AC c_sys_id.
     rewrite in_set.
-    have [->|[c' [I' [W' [-> /=]]]]] := Sym.retag_set_or_ok _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' pc';
+    have [->|[c' [I' [W' [-> /=]]]]] :=
+      @Sym.retag_set_or_ok _ _ _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' pc';
       first by rewrite def_xcIW /=.
     rewrite def_xcIW /Sym.do_retag.
     case=> _ [_ E _].
@@ -1627,7 +1628,7 @@ Proof.
   {
     move=> X DJX a.
     have [a_in_sets|a_nin_sets] := boolP (a \in A' :|: J' :|: S').
-    - have := Sym.retag_set_in _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' a.
+    - have /(_ a) := Sym.retag_set_in (enum_uniq (mem (A' :|: J' :|: S'))) def_s'.
       rewrite -(mem_enum (mem (A' :|: J' :|: S')) a) in a_in_sets
         => /(_ a_in_sets) [cid' [I' [W' [Hold Hnew]]]].
       rewrite Hold Hnew /Sym.do_retag.
@@ -1637,7 +1638,7 @@ Proof.
         by rewrite a_in_X andbT=> ->.
       + by case: (a \in J'); auto.
       + by case: (a \in S'); auto.
-    - have := Sym.retag_set_not_in _ _ _ _ _ def_s' a.
+    - have /(_ a) := Sym.retag_set_not_in def_s'.
       rewrite -(mem_enum (mem (A' :|: J' :|: S')) a) in a_nin_sets
         => /(_ a_nin_sets) <-.
       by case: (Sym.sget _ _) => [[*]|]; auto. }
@@ -1765,7 +1766,7 @@ Proof.
     assumption.
   - move=> p' Hp'.
     move: (COMPSWD p').
-    rewrite (Sym.retag_set_preserves_definedness _ _ _ _ _ def_s' p') => /(_ Hp') {Hp'}.
+    rewrite (Sym.retag_set_preserves_definedness def_s' p') => /(_ Hp') {Hp'}.
     case Hp': (Abs.in_compartment_opt AC p') => [cp'|] // _.
     case/Abs.in_compartment_opt_correct/andP: Hp'.
     have [{cp'} ->|NE] := altP (cp' =P <<Aprev,Jprev,Sprev>>) => cp'_in_AC p'_in_cp'.
@@ -1797,7 +1798,7 @@ Proof.
       rewrite -Hcid'' => /imsetP /= [p' _].
       case GETp': (Sym.sget _ _) => [[cp' Ip' Wp']|] //= [E].
       subst cp'.
-      move: (Sym.sget_lt_next _ _ _ _ _ RINT GETp') => /=.
+      move: (Sym.sget_lt_next RINT GETp') => /=.
       by rewrite Ord.leqxx.
     + rewrite -RPREV RC_rest // => NEW.
       rewrite in_rem_all in c1_in_AC.
@@ -1810,7 +1811,7 @@ Proof.
       rewrite -Hcid'' => /imsetP /= [p' _].
       case GETp': (Sym.sget _ _) => [[cp' Ip' Wp']|] //= [E].
       subst cp'.
-      move: (Sym.sget_lt_next _ _ _ _ _ RINT GETp') => /=.
+      move: (Sym.sget_lt_next RINT GETp') => /=.
       by rewrite Ord.leqxx.
     + rewrite !RC_rest //.
       rewrite !in_rem_all in c1_in_AC c2_in_AC.
@@ -1852,7 +1853,7 @@ Proof.
       apply/setP => p'.
       rewrite in_set.
       have [p'_in_sets|p'_nin_sets] := boolP (p' \in (A' :|: J' :|: S')).
-      * have := Sym.retag_set_in _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' p'.
+      * have /(_ p') := Sym.retag_set_in (enum_uniq (mem (A' :|: J' :|: S'))) def_s'.
         move: p'_in_sets.
         rewrite -(mem_enum (mem (A' :|: J' :|: S')))
                 => H /(_ H) {H} [cid' [I' [W' [Hold']]]].
@@ -1861,7 +1862,7 @@ Proof.
         apply/esym/negbTE/negP=> Snext_in_I'.
         have /(_ Snext)/= := bounded_tags RINT Hold'.
         by rewrite in_setU Snext_in_I' Ord.leqxx => /(_ erefl).
-      * have := Sym.retag_set_not_in _ _ _ _ _ def_s' p'.
+      * have /(_ p') := Sym.retag_set_not_in def_s'.
         move: (p'_nin_sets).
         rewrite -(mem_enum (mem (A' :|: J' :|: S'))) {2 3}/Sym.sget /= => H /(_ H) {H} <-.
         rewrite !in_setU !negb_or -andbA in p'_nin_sets.
@@ -1935,7 +1936,7 @@ Proof.
       apply/setP => p'.
       rewrite in_set.
       have [p'_in_sets|p'_nin_sets] := boolP (p' \in (A' :|: J' :|: S')).
-      * have := Sym.retag_set_in _ _ _ _ _ (enum_uniq (mem (A' :|: J' :|: S'))) def_s' p'.
+      * have /(_ p') := Sym.retag_set_in (enum_uniq (mem (A' :|: J' :|: S'))) def_s'.
         move: p'_in_sets.
         rewrite -(mem_enum (mem (A' :|: J' :|: S')))
                 => H /(_ H) {H} [cid' [I' [W' [Hold']]]].
@@ -1944,7 +1945,7 @@ Proof.
         apply/esym/negbTE/negP=> Snext_in_W'.
         have /(_ Snext)/= := bounded_tags RINT Hold'.
         by rewrite in_setU Snext_in_W' orbT Ord.leqxx => /(_ erefl).
-      * have := Sym.retag_set_not_in _ _ _ _ _ def_s' p'.
+      * have /(_ p') := Sym.retag_set_not_in def_s'.
         move: (p'_nin_sets).
         rewrite -(mem_enum (mem (A' :|: J' :|: S'))) {2 3}/Sym.sget /= => H /(_ H) {H} <-.
         rewrite !in_setU !negb_or -andbA in p'_nin_sets.
@@ -1987,8 +1988,8 @@ Proof.
     case/and3P: RSC => ? Hs ?.
     apply/and3P.
     split=> //; apply/allP=> x /(allP Hs); rewrite inE.
-    by rewrite -(Sym.retag_set_preserves_get_definedness _ _ _ _ _ def_s') /= inE.
-  - have := (Sym.retag_set_preserves_good_internal _ _ _ _ _ _ RINT def_s').
+    by rewrite -(Sym.retag_set_preserves_get_definedness def_s') /= inE.
+  - have := (Sym.retag_set_preserves_good_internal _ RINT def_s').
     apply => //.
     + move=> sc cid' I' W' sc_is_sc.
       rewrite /Sym.do_retag.
@@ -2009,7 +2010,7 @@ Lemma prove_permitted_now_in AR AM AC Ask Aprev mem reg pc extra c i cid cid' ci
   let sst := SState mem reg pc@(Sym.PC F cid') extra in
   Abs.good_state ast ->
   Sym.good_state sst ->
-  getm (Symbolic.mem sst) (types.val (Symbolic.pc sst)) ?= i@(Sym.DATA cid'' II WW) ->
+  getm (Symbolic.mem sst) (vala (Symbolic.pc sst)) ?= i@(Sym.DATA cid'' II WW) ->
   (do! guard (cid'' == cid') || (F == JUMPED) && (cid' \in II);
    Some cid'') ?= cid ->
   refine_previous_b (Abs.step_kind ast) (Abs.previous ast) sst ->
@@ -2017,8 +2018,8 @@ Lemma prove_permitted_now_in AR AM AC Ask Aprev mem reg pc extra c i cid cid' ci
   well_defined_ids sst AC ->
   unique_ids sst AC ->
   well_formed_jump_targets sst AC ->
-  Abs.in_compartment_opt (Abs.compartments ast) (types.val (Symbolic.pc sst)) ?= c ->
-  Abs.permitted_now_in (Abs.compartments ast) (Abs.step_kind ast) (Abs.previous ast) (types.val (Symbolic.pc sst)) ?= c.
+  Abs.in_compartment_opt (Abs.compartments ast) (vala (Symbolic.pc sst)) ?= c ->
+  Abs.permitted_now_in (Abs.compartments ast) (Abs.step_kind ast) (Abs.previous ast) (vala (Symbolic.pc sst)) ?= c.
 Proof.
   rewrite /=.
   move=> AGOOD SGOOD PC def_cid RPREV COMPSWD IDSWD IDSU JTWF COMP.

@@ -210,7 +210,7 @@ Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory t _) :=
 
 Definition write_block init (base : word) (v : atom) (sz : word) : option (Symbolic.memory t _) :=
   if base + sz < 2 ^ (word_size t) then
-     write_block_rec init base v (eqtype.val sz)
+     write_block_rec init base v (val sz)
   else None.
 
 Definition update_block_info info x (color : color) sz :=

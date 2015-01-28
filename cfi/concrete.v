@@ -58,7 +58,7 @@ Inductive atom_equiv k (a : atom (mword t) (mword t)) (a' : atom (mword t) (mwor
                    @fdecode _ _ e k ct' = Some (USER ut') ->
                    Sym.atom_equiv v@ut v'@ut' ->
                    atom_equiv k a a'
-  | any_equiv : (~ exists ut, @fdecode _ _ e k (types.tag a) = Some (USER ut)) ->
+  | any_equiv : (~ exists ut, @fdecode _ _ e k (taga a) = Some (USER ut)) ->
                 a = a' ->
                 atom_equiv k a a'.
 
@@ -84,23 +84,23 @@ Local Notation "x .+1" := (x + 1)%w.
 Local Open Scope word_scope.
 
 Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
-  let pc_s := types.val (Concrete.pc st) in
-  let pc_s' := types.val (Concrete.pc st') in
+  let pc_s := vala (Concrete.pc st) in
+  let pc_s' := vala (Concrete.pc st') in
   if in_kernel st || in_kernel st' then true else
   match (getm (Concrete.mem st) pc_s) with
     | Some i =>
-      match (@fdecode _ _ e Symbolic.M (types.tag i)) with
+      match (@fdecode _ _ e Symbolic.M (taga i)) with
         | Some (USER (INSTR (Some src))) =>
-          match decode_instr (types.val i) with
+          match decode_instr (vala i) with
             | Some (Jump r)
             | Some (Jal r) =>
               match (getm (Concrete.mem st) pc_s') with
                 | Some i' =>
-                  match (@fdecode _ _ e Symbolic.M (types.tag i')) with
+                  match (@fdecode _ _ e Symbolic.M (taga i')) with
                     | Some (USER (INSTR (Some dst))) =>
                       cfg src dst
                     | Some (ENTRY (INSTR (Some dst))) =>
-                      is_nop (types.val i') && cfg src dst
+                      is_nop (vala i') && cfg src dst
                     | _ => false
                   end
                 | _ => false
@@ -111,7 +111,7 @@ Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
             | _ => pc_s' == pc_s .+1
           end
         | Some (USER (INSTR None)) =>
-          match decode_instr (types.val i) with
+          match decode_instr (vala i) with
             | Some (Jump r)
             | Some (Jal r) =>
               false

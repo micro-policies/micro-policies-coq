@@ -151,44 +151,44 @@ Qed.
 Definition build_ivec st : option (IVec ttypes)  :=
   match mem st (pcv st) with
     | Some i =>
-      match decode_instr (types.val i) with
+      match decode_instr (vala i) with
         | Some op =>
-          let part := @mkIVec ttypes (opcode_of op) (pct st) (types.tag i) in
+          let part := @mkIVec ttypes (opcode_of op) (pct st) (taga i) in
           match op return (hseq ttypes (inputs (opcode_of op)) ->
                            IVec ttypes) -> option (IVec ttypes) with
             | Nop => fun part => Some (part [hseq])
             | Const n r => fun part =>
                 do! old <- regs st r;
-                Some (part [hseq types.tag old])
+                Some (part [hseq taga old])
             | Mov r1 r2 => fun part =>
               do! v1 <- regs st r1;
               do! v2 <- regs st r2;
-              Some (part [hseq (types.tag v1); (types.tag v2)])
+              Some (part [hseq (taga v1); (taga v2)])
             | Binop _ r1 r2 r3 => fun part =>
               do! v1 <- regs st r1;
               do! v2 <- regs st r2;
               do! v3 <- regs st r3;
-              Some (part [hseq (types.tag v1); (types.tag v2); (types.tag v3)])
+              Some (part [hseq (taga v1); (taga v2); (taga v3)])
             | Load  r1 r2 => fun part =>
               do! w1 <- regs st r1;
-              do! w2 <- (mem st) (types.val w1);
+              do! w2 <- (mem st) (vala w1);
               do! old <- regs st r2;
-              Some (part [hseq (types.tag w1); (types.tag w2); (types.tag old)])
+              Some (part [hseq (taga w1); (taga w2); (taga old)])
             | Store  r1 r2 => fun part =>
               do! w1 <- regs st r1;
               do! w2 <- regs st r2;
-              do! w3 <- mem st (types.val w1);
-              Some (part [hseq (types.tag w1); (types.tag w2); (types.tag w3)])
+              do! w3 <- mem st (vala w1);
+              Some (part [hseq (taga w1); (taga w2); (taga w3)])
             | Jump  r => fun part =>
               do! w <- regs st r;
-              Some (part [hseq types.tag w])
+              Some (part [hseq taga w])
             | Bnz  r n => fun part =>
               do! w <- regs st r;
-              Some (part [hseq types.tag w])
+              Some (part [hseq taga w])
             | Jal  r => fun part =>
               do! w <- regs st r;
               do! old <- regs st ra;
-              Some (part [hseq types.tag w; types.tag old])
+              Some (part [hseq taga w; taga old])
             | JumpEpc => fun _ => None
             | AddRule => fun _ => None
             | GetTag _ _ => fun _ => None

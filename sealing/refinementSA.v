@@ -81,7 +81,7 @@ Definition refine_reg : Abs.registers t -> Sym.registers t -> Prop :=
 
 (* We make no assumption about the pc tag, since it's unused in the policy *)
 Definition refine_pc (w : mword t) (a : atom (mword t) unit) : Prop :=
-  w = val a.
+  w = vala a.
 
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
 Definition refine_ins (akeys : seq Abs.key) (next_skey : Sym.key) : Prop :=
@@ -481,7 +481,7 @@ Definition forward_simulation := forall km ast ast' sst,
   ((forall sst', ~Sym.step sst sst')
    /\
    (exists (i : mword t) (r : reg t) (ti t1 : Sym.stag) (sc : Symbolic.syscall t),
-      (getm (Symbolic.mem sst) (val (Symbolic.pc sst)) = Some i@ti) /\
+      (getm (Symbolic.mem sst) (vala (Symbolic.pc sst)) = Some i@ti) /\
       (decode_instr i = Some (Jal r)) /\
       (getm (Symbolic.regs sst) r = Some mkkey_addr@t1) /\
       (Symbolic.get_syscall Sym.sealing_syscalls mkkey_addr = Some sc) /\

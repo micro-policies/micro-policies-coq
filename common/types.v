@@ -452,10 +452,13 @@ End Coding.
 Arguments word_of_op {k} _.
 Arguments op_of_word {k} _.
 
-Record atom V T := Atom { val : V; tag : T }.
+Record atom V T := Atom { vala : V; taga : T }.
+
+Arguments vala {V T} _.
+Arguments taga {V T} _.
 
 Definition atom_eqb (V T : eqType) : rel (atom V T) :=
-  [rel a1 a2 | [&& val a1 == val a2 & tag a1 == tag a2] ].
+  [rel a1 a2 | [&& vala a1 == vala a2 & taga a1 == taga a2] ].
 
 Lemma atom_eqbP V T : Equality.axiom (@atom_eqb V T).
 Proof.

@@ -101,7 +101,7 @@ Proof.
     rewrite getm_map /= in GET.
     destruct (reg r) eqn:GET'.
     + destruct a. simpl in GET.
-      assert (tag = DATA)
+      assert (taga = DATA)
         by (apply RTG in GET'; assumption).
       subst.
       rewrite GET' /= in GET.
@@ -129,7 +129,7 @@ Proof.
 Qed.
 
 Definition is_instr (a : atom (mword t) cfi_tag) :=
-  match types.tag a with
+  match taga a with
     | INSTR _ => true
     | DATA => false
   end.
@@ -285,8 +285,8 @@ Proof.
     }
     { simpl.
       destruct (getm mem pc) eqn:GET'.
-      { destruct a. destruct tag.
-        { assert (EGET' : exists id, getm mem pc = Some val@(INSTR id))
+      { destruct a. destruct taga.
+        { assert (EGET' : exists id, getm mem pc = Some vala@(INSTR id))
                by (eexists; eauto).
           apply REFI in EGET'. congruence.
         }

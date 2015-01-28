@@ -297,7 +297,7 @@ Lemma build_cmvec_cache_lookup_pc cst cst' cmvec crvec :
   Concrete.step _ masks cst cst' ->
   build_cmvec cst = Some cmvec ->
   Concrete.cache_lookup (Concrete.cache cst) masks cmvec = Some crvec ->
-  types.tag (Concrete.pc cst') = Concrete.ctrpc crvec.
+  taga (Concrete.pc cst') = Concrete.ctrpc crvec.
 Proof.
   move=> STEP BUILD LOOKUP.
   move/step_lookup_success_or_fault: STEP.

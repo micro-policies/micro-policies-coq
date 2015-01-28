@@ -37,7 +37,7 @@ Fixpoint isolate_get_ranges (m : {partmap mword t -> V})
 Definition isolate_create_set (m : {partmap mword t -> V})
                               (base : mword t) : option {set (mword t)} :=
   do! pairs <- m base;
-  isolate_get_ranges m (base + 1) (eqtype.val (to_word pairs)).
+  isolate_get_ranges m (base + 1) (val (to_word pairs)).
 
 Local Notation "x ?= y" := (x = Some y) (at level 70, no associativity).
 

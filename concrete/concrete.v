@@ -141,8 +141,8 @@ Record state := mkState {
   epc   : atom
 }.
 
-Definition pcv (s : state) := val (pc s).
-Definition pct (s : state) := tag (pc s).
+Definition pcv (s : state) := vala (pc s).
+Definition pct (s : state) := taga (pc s).
 
 Lemma state_eta (cst : state) :
   cst = mkState (mem cst)
@@ -163,11 +163,11 @@ Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rule
   do! at3   <- mem Mt3;
   do! atrpc <- mem Mtrpc;
   do! atr   <- mem Mtr;
-  do! op    <- op_of_word (val aop);
+  do! op    <- op_of_word (vala aop);
   let dcm := dc (masks false op) in
-  Some ((mask_dc dcm (mkMVec (val aop) (val atpc)
-                             (val ati) (val at1) (val at2) (val at3)),
-         mkRVec (val atrpc) (val atr)) :: cache).
+  Some ((mask_dc dcm (mkMVec (vala aop) (vala atpc)
+                             (vala ati) (vala at1) (vala at2) (vala at3)),
+         mkRVec (vala atrpc) (vala atr)) :: cache).
 
 Definition store_mvec (mem : memory) (mv : MVec) : memory :=
   unionm [partmap (Mop, (cop mv)@TKernel);
@@ -213,7 +213,7 @@ Definition next_state_reg_and_pc (st : state) (mvec : MVec) (r : reg t) x pc' : 
     Some (mkState (mem st) reg' (cache st) pc'@(ctrpc rvec) (epc st))).
 
 Definition next_state_reg (st : state) (mvec : MVec) r x : option state :=
-  next_state_reg_and_pc st mvec r x (val (pc st)).+1.
+  next_state_reg_and_pc st mvec r x (vala (pc st)).+1.
 
 Definition next_state_pc (st : state) (mvec : MVec) x : option state :=
   next_state st mvec (fun rvec =>

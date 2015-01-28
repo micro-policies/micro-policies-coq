@@ -7,6 +7,8 @@ Require Import symbolic.symbolic.
 Require Import compartmentalization.common.
 Require Import compartmentalization.isolate_sets compartmentalization.ranges.
 
+Set Implicit Arguments.
+Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
 Set Bullet Behavior "Strict Subproofs".
@@ -187,15 +189,15 @@ Definition rvec_step op
 
 Definition rvec_simple op (F : where_from) (tr : type_of_result stags (outputs op)) :
                        pc_tag -> data_tag -> option (OVec stags op) :=
-  rvec_step op (fun c => Some (compartmentalization_rvec op F c tr)).
+  rvec_step (fun c => Some (compartmentalization_rvec F c tr)).
 
 Definition rvec_next op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (OVec stags op) :=
-  rvec_simple op INTERNAL tr.
+  rvec_simple INTERNAL tr.
 Definition rvec_jump op (tr : type_of_result stags (outputs op)) : pc_tag -> data_tag -> option (OVec stags op) :=
-  rvec_simple op JUMPED tr.
+  rvec_simple JUMPED tr.
 Definition rvec_store (c : mword t) (I W : {set mword t})
                       : pc_tag -> data_tag -> option (OVec stags STORE) :=
-  rvec_step STORE (fun c' =>
+  rvec_step (fun c' =>
     do! guard (c == c') || (c' \in W);
     Some (@mkOVec stags STORE (PC INTERNAL c') (DATA c I W))).
 
@@ -203,15 +205,15 @@ Definition rvec_store (c : mword t) (I W : {set mword t})
    registers are always tagged with `REG'. *)
 Definition compartmentalization_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
   match iv with
-    | mkIVec (OP NOP)       Lpc LI [hseq]                       => rvec_next NOP       tt  Lpc LI
-    | mkIVec (OP CONST)     Lpc LI [hseq REG]                   => rvec_next CONST     REG Lpc LI
-    | mkIVec (OP MOV)       Lpc LI [hseq REG; REG]              => rvec_next MOV       REG Lpc LI
-    | mkIVec (OP (BINOP b)) Lpc LI [hseq REG; REG; REG]         => rvec_next (BINOP b) REG Lpc LI
-    | mkIVec (OP LOAD)      Lpc LI [hseq REG; DATA _ _ _; REG]  => rvec_next LOAD      REG Lpc LI
+    | mkIVec (OP NOP)       Lpc LI [hseq]                       => @rvec_next NOP       tt  Lpc LI
+    | mkIVec (OP CONST)     Lpc LI [hseq REG]                   => @rvec_next CONST     REG Lpc LI
+    | mkIVec (OP MOV)       Lpc LI [hseq REG; REG]              => @rvec_next MOV       REG Lpc LI
+    | mkIVec (OP (BINOP b)) Lpc LI [hseq REG; REG; REG]         => @rvec_next (BINOP b) REG Lpc LI
+    | mkIVec (OP LOAD)      Lpc LI [hseq REG; DATA _ _ _; REG]  => @rvec_next LOAD      REG Lpc LI
     | mkIVec (OP STORE)     Lpc LI [hseq REG; REG; DATA c In W] => rvec_store c In W Lpc LI
-    | mkIVec (OP JUMP)      Lpc LI [hseq REG]                   => rvec_jump JUMP      tt  Lpc LI
-    | mkIVec (OP BNZ)       Lpc LI [hseq REG]                   => rvec_next BNZ       tt  Lpc LI
-    | mkIVec (OP JAL)       Lpc LI [hseq REG; REG]              => rvec_jump JAL       REG Lpc LI
+    | mkIVec (OP JUMP)      Lpc LI [hseq REG]                   => @rvec_jump JUMP      tt  Lpc LI
+    | mkIVec (OP BNZ)       Lpc LI [hseq REG]                   => @rvec_next BNZ       tt  Lpc LI
+    | mkIVec (OP JAL)       Lpc LI [hseq REG; REG]              => @rvec_jump JAL       REG Lpc LI
     | mkIVec SERVICE        Lpc LI [hseq]                       => Some tt
     | mkIVec _         _   _  _                               => None
   end.
@@ -273,7 +275,7 @@ Definition supd (s : Symbolic.state t) (p : mword t) (tg : data_tag)
                 add_to_store_targets_tag :=
        si in
   let sctagged si' := Some (Symbolic.State mem reg pc si') in
-  match repm mem p (fun v => (val v)@tg) with
+  match repm mem p (fun v => (vala v)@tg) with
     | Some mem' => Some (Symbolic.State mem' reg pc si)
     | None      =>
       if      p == isolate_addr
@@ -381,10 +383,10 @@ Definition isolate (s : Symbolic.state t) : option (Symbolic.state t) :=
     do! pJ @ _ <- RR syscall_arg2;
     do! pS @ _ <- RR syscall_arg3;
 
-    do! A' <- isolate_create_set (@val _ _) MM pA;
+    do! A' <- isolate_create_set vala MM pA;
     do! guard A' != set0;
-    do! J' : {set mword t} <- isolate_create_set (@val _ _) MM pJ;
-    do! S' : {set mword t} <- isolate_create_set (@val _ _) MM pS;
+    do! J' : {set mword t} <- isolate_create_set vala MM pJ;
+    do! S' : {set mword t} <- isolate_create_set vala MM pS;
 
     do! s' <- retag_set (do_ok c A' J' S')
                         (do_retag c c' A' J' S')
@@ -589,8 +591,8 @@ Qed.
 
 Theorem supd_same_val s p L s' :
   supd s p L ?= s' ->
-  omap (fun x => val x) \o getm (Symbolic.mem s) =1
-  omap (fun x => val x) \o getm (Symbolic.mem s').
+  omap vala \o getm (Symbolic.mem s) =1
+  omap vala \o getm (Symbolic.mem s').
 Proof.
   case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'] /=.
   rewrite /supd.
@@ -685,7 +687,7 @@ Proof.
   case GET: (sget _ _) => [[cid I W]|] //=.
   case: (ok _ _ _ _) => //=.
   case: (retag _ _ _ _) => [cid' I' W'] //= UPD p'.
-  rewrite (sget_supd _ _ _ _ UPD).
+  rewrite (sget_supd UPD).
   by have [{p'} ->|//] := (p' =P p); rewrite GET.
 Qed.
 
@@ -694,7 +696,7 @@ Lemma retag_set_preserves_definedness ok retag ps s s' :
   forall p, sget s p = sget s' p :> bool.
 Proof.
   move=> H.
-  have := (ofoldl_preserve _ _ _ _ _ _ _ (retag_one_preserves_definedness ok retag) _ _ H).
+  have := (@ofoldl_preserve _ _ _ _ _ _ _ (@retag_one_preserves_definedness ok retag) _ _ H).
   by apply; eauto.
 Qed.
 
@@ -708,9 +710,9 @@ Proof.
   case: (retag _ _ _ _) => [cid' I' W'] //= UPD p'.
   have [{p'} ->|NEQ] := (p' =P p).
   - case GET': (Symbolic.mem s p) => [[x L]|].
-    + by rewrite (get_supd_eq _ _ _ _ _ _ GET' UPD).
-    + by rewrite (get_supd_none _ _ _ _ _ GET' UPD).
-  - by rewrite (get_supd_neq _ _ _ _ _ NEQ UPD).
+    + by rewrite (get_supd_eq GET' UPD).
+    + by rewrite (get_supd_none GET' UPD).
+  - by rewrite (get_supd_neq NEQ UPD).
 Qed.
 
 Lemma retag_set_preserves_get_definedness ok retag ps s s' :
@@ -718,7 +720,7 @@ Lemma retag_set_preserves_get_definedness ok retag ps s s' :
   Symbolic.mem s =i Symbolic.mem s'.
 Proof.
 move=> H.
-have := (ofoldl_preserve _ _ _ _ _ _ _ (retag_one_preserves_get_definedness ok retag) _ _ H).
+have := (@ofoldl_preserve _ _ _ _ _ _ _ (@retag_one_preserves_get_definedness ok retag) _ _ H).
 by apply; eauto.
 Qed.
 
@@ -730,7 +732,7 @@ Proof.
   case: (sget _ _) => [[? ? ?]|] //=.
   case: (ok _ _ _ _) => //=.
   case: (retag _ _ _ _) => ? ? ? UPD.
-  by rewrite (supd_preserves_regs _ _ _ _ UPD).
+  by rewrite (supd_preserves_regs UPD).
 Qed.
 
 Lemma retag_set_preserves_registers ok retag ps s s' :
@@ -738,7 +740,7 @@ Lemma retag_set_preserves_registers ok retag ps s s' :
   Symbolic.regs s' = Symbolic.regs s.
 Proof.
   move=> H.
-  have := (ofoldl_preserve _ _ _ _ _ _ _ (retag_one_preserves_registers ok retag) _ _ H).
+  have := (@ofoldl_preserve _ _ _ _ _ _ _ (@retag_one_preserves_registers ok retag) _ _ H).
   apply; eauto; congruence.
 Qed.
 
@@ -869,8 +871,8 @@ Qed.
 
 Lemma retag_set_same_val ok retag ps s s' :
   retag_set ok retag ps s ?= s' ->
-  omap (fun x => val x) \o getm (Symbolic.mem s) =1
-  omap (fun x => val x) \o getm (Symbolic.mem s').
+  omap vala \o getm (Symbolic.mem s) =1
+  omap vala \o getm (Symbolic.mem s').
 Proof.
   rewrite /retag_set /retag_one.
   elim: ps s s' => [|p ps IH] s s' /=; first by move=> [->].
@@ -878,7 +880,7 @@ Proof.
   case: (ok p c I W) => //.
   case: (retag p c I W) => // c' I' W'.
   case UPD: (supd _ _ _) => [s''|] //= RETAG p'.
-  rewrite (supd_same_val _ _ _ _ UPD).
+  rewrite (supd_same_val UPD).
   exact: (IH _ _ RETAG).
 Qed.
 
@@ -892,8 +894,8 @@ Lemma retag_set_or_ok_get : forall ok retag ps s s',
                     getm (Symbolic.mem s') p ?= x@(retag p c I W).
 Proof.
   intros ok retag ps s s' NODUP RETAG p.
-  move: (retag_set_same_val _ _ _ _ _ RETAG p) => /= GET.
-  generalize (retag_set_or_ok ok retag ps s s' NODUP RETAG p)
+  move: (retag_set_same_val RETAG p) => /= GET.
+  generalize (retag_set_or_ok NODUP RETAG p)
              => [[EQ | [c [I [W [OLD [OK NEW]]]]]]].
   - move: EQ GET {RETAG NODUP}.
     rewrite /sget.
@@ -988,7 +990,7 @@ Proof.
   case: (ok _ _ _ _) => //.
   case Hsupd: (supd _ _ _) => [s''|] //=.
   apply: IH => p' cid' I' W'.
-  rewrite (sget_supd _ _ _ _ Hsupd).
+  rewrite (sget_supd Hsupd).
   have [/= _ {p'} [Hretag] cid''|_] := p' =P p; last by apply: Hbounds.
   rewrite -setUA in_setU1=> /orP [/eqP -> {cid''}| Hcid''].
   - move: (Hnew_cid p cid I W).
@@ -1032,14 +1034,14 @@ Proof.
   case Hsupd: (supd _ _ _) => [s''|] //= Hretag.
   apply: (IH s'') => //.
   - move=> sc cid' I' W'.
-    rewrite (sget_supd _ _ _ _ Hsupd).
+    rewrite (sget_supd Hsupd).
     have [-> {sc} /=|_] := sc =P p.
     + move=> p_in_scs [Hretag_p].
       move: Hretag_p (Hsc_cid p cid I W p_in_scs) => -> /= -> {cid'}.
       by apply: (Hpreserved p cid I W).
     + by apply: Hpreserved.
   - move=> p' sc.
-    rewrite !(sget_supd _ _ _ _ Hsupd).
+    rewrite !(sget_supd Hsupd).
     have [/= {p'} ->|_] := p' =P p;
     have [/= {sc} -> //|_] := sc =P p.
     + move=> sc_is_sc.
@@ -1077,12 +1079,10 @@ Lemma retag_set_preserves_good_internal ok retag ps s s' pc' :
 Proof.
   move=> [Hbounded Hisolated] Hretag /= Hnot_max Hsc_cid Hnew_cid Hnew_targets.
   split.
-  - move: (retag_set_preserves_bounded_by _ _ _ _ _ _
-                                          Hnot_max Hbounded Hretag Hnew_cid Hnew_targets).
-    rewrite (retag_set_preserves_next_id _ _ _ _ _ Hretag) {Hretag}.
+  - move: (retag_set_preserves_bounded_by Hnot_max Hbounded Hretag Hnew_cid Hnew_targets).
+    rewrite (retag_set_preserves_next_id Hretag) {Hretag}.
     by case: s' => mem regs pc [id ? ? ?] /= {Hbounded} Hbounded p cid I W /Hbounded.
   - move: (retag_set_preserves_isolated_syscalls
-             _ _ _ _ _ _
              Hbounded Hisolated Hretag Hsc_cid Hnew_cid) => {Hretag}.
     case: s' => mem regs pc [id ? ? ?] /= {Hisolated} Hisolated p sc sc_is_sc /= /Hisolated.
     by apply.
