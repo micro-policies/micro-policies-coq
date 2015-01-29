@@ -409,8 +409,6 @@ End Concrete.
 Module Exports.
 
 Import Concrete.
-Require Import seq.
-
 
 Definition state_eqb mt : rel (state mt) :=
   [rel s1 s2 | [&& mem s1 == mem s2,

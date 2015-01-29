@@ -500,3 +500,7 @@ Ltac current_instr_opcode :=
     let op := (eval compute in (opcode_of instr)) in
     op
   end.
+
+Ltac failwith m :=
+  let op := current_instr_opcode in
+  fail 1000 m op.

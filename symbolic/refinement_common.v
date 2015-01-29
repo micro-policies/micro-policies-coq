@@ -86,10 +86,6 @@ do !(case/orP=> [/eqP [_ ->]|]; eauto).
 by move/eqP => [_ ->]; eauto.
 Qed.
 
-(* CH: kernel_invariant only holds when kernel starts executing, can
-   be broken during kernel execution, but has to be restored before
-   returning to user mode. It doesn't necessarily have to hold at all
-   intermediate kernel steps. Right? *)
 (* CH: I find the way the "kernel invariant" is stated rather
    indirect. Is there no direct way to define this? *)
 (* AAA: We need to add the cache as an argument here, since we don't

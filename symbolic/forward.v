@@ -79,10 +79,6 @@ Proof.
     by eauto.
 Qed.
 
-Ltac failwith message :=
-  let op := current_instr_opcode in
-  fail 1000 message op.
-
 Ltac check_conv t1 t2 :=
   let e := constr:(erefl t1 : t1 = t2) in idtac.
 

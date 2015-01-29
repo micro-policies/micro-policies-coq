@@ -14,7 +14,7 @@ Module Symbolic.
 
 (* BCP/AAA: Should some of this be shared with the concrete machine? *)
 
-(* CH: These could move to common.v?  But they would be useful only if
+(* CH: These could move to types.v?  But they would be useful only if
        we want to make the concrete machine dependently typed too; and
        we probably don't want to do that. *)
 
@@ -124,7 +124,6 @@ End WithTagTypes.
 Arguments IVec {_} _ _ _ _.
 
 Open Scope bool_scope.
-(* Open Scope Z_scope. *)
 
 Section WithClasses.
 

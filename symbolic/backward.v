@@ -41,10 +41,6 @@ Hint Resolve kernel_invariant_store_mvec.
 Ltac check_conv t1 t2 :=
   let e := constr:(erefl t1 : t1 = t2) in idtac.
 
-Ltac failwith m :=
-  let op := current_instr_opcode in
-  fail 1000 m op.
-
 Ltac contradict_in_user :=
   match goal with
   | INUSER : is_true (in_user ?st),
