@@ -68,17 +68,19 @@ Ltac analyze_cache :=
     INST   : decode_instr ?i = Some _,
     INUSER : is_true (in_user (Concrete.State _ _ _ ?pc@_ _)),
     CACHE  : cache_correct ?cache ?cmem |- _ =>
-    assert (CACHEHIT := analyze_cache CACHE LOOKUP INUSER (erefl _));
-    simpl in CACHEHIT;
-    repeat match type of CACHEHIT with
-    | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
-    | _ /\ _ => destruct CACHEHIT as [? CACHEHIT]
-    | _ \/ _ => destruct CACHEHIT as [CACHEHIT | CACHEHIT]
-    | and3 _ _ _ => destruct CACHEHIT
-    | and4 _ _ _ _ => destruct CACHEHIT
-    | False => destruct CACHEHIT
-    end;
-    try contradict_in_user; destruct_hseq; match_inv; simpl in *
+    first [
+        assert (CACHEHIT := analyze_cache CACHE LOOKUP INUSER);
+        simpl in CACHEHIT;
+        repeat match type of CACHEHIT with
+        | exists _, _ => destruct CACHEHIT as [? CACHEHIT]
+        | _ /\ _ => destruct CACHEHIT as [? CACHEHIT]
+        | _ \/ _ => destruct CACHEHIT as [CACHEHIT | CACHEHIT]
+        | and3 _ _ _ => destruct CACHEHIT
+        | and4 _ _ _ _ => destruct CACHEHIT
+        | False => destruct CACHEHIT
+        end;
+        try contradict_in_user; destruct_hseq; match_inv; simpl in *
+      | failwith "analyze_cache hit" ]
   | INUSER : is_true (in_user (Concrete.miss_state ?st ?mvec)) |- _ =>
     first [ destruct (negP (miss_state_not_user st mvec) INUSER) |
             failwith "analyze_cache miss" ]
@@ -190,7 +192,7 @@ Proof.
     case: Hdec => [Hop ? Hdec_tpc Hdec_ti]. subst vop.
     rewrite (build_cmvec_ctpc Hbuild) in Hdec_tpc.
     have [i [instr [Hget Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
-    move: Hop. rewrite -{}Hop' mword_of_opK.
+    move: Hop. rewrite -{}Hop'.
     case: instr Hdec_i => // /is_nopP Hdec_i _.
     have [sc Hget_sc Hsct] := wf_entry_points_only_if (rs_entry_points Href)
                                                       Hget Hdec_ti Hdec_i.
@@ -202,11 +204,11 @@ Proof.
     rewrite (rs_pct Href) in Hdec_tpc.
     case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
     by rewrite [in RHS]hseq0.
-  case: Hdec => op [Hop [Hpriv Hcop Hdec_tpc Hdec_ti Hdec_ts]]. subst vop.
+  case: Hdec => [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts]. subst vop.
   rewrite (build_cmvec_ctpc Hbuild) (rs_pct Href) in Hdec_tpc.
   case: Hdec_tpc => ?. subst tpc.
   have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
-  move: Hcop; rewrite -{}Hop' mword_of_opK => [[?]]; subst op.
+  move: ts Hdec_ts; rewrite -{}Hop'=> ts Hdec_ts.
   move: Hbuild.
   rewrite /build_cmvec /build_ivec (rs_pc Href) Hget_i Hdec_i.
   rewrite (proj1 (rs_refm Href) _ _ _ _ Hdec_ti Hget_i) Hdec_i /=.
@@ -326,13 +328,12 @@ Proof.
   rewrite /in_kernel /Concrete.is_kernel_tag => /eqP -> LOOKUP _.
   rewrite /in_user /= -(build_cmvec_ctpc BUILD) in INUSER.
   case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _]].
-  case: DECi ovec DECo => [[op [E [Hpriv DEC _ _ _]]]|[DECop E _ DECti]].
+  case: DECi ovec DECo => [[E Hpriv _ _ _]|[DECop E _ DECti]].
     by rewrite {}E {ivec} /decode_ovec /= decode_kernel_tag /= => ovec.
   suff : false by done.
   move: {ivec E} (Symbolic.ti ivec) DECti => ti DECti.
-  move: (build_cmvec_cop_cti BUILD) DECop => [i [instr [GETPC DECi <-]]].
-  rewrite mword_of_opK => [[Hinstr]].
-  have {DECi Hinstr} ISNOP : is_nop i by rewrite /is_nop {}DECi; case: instr Hinstr.
+  move: (build_cmvec_cop_cti BUILD) DECop => [i [instr [GETPC DECi <-]]] DECop.
+  have {DECi} ISNOP : is_nop i by rewrite /is_nop {}DECi; case: instr DECop.
   move: (wf_entry_points_only_if WFENTRYPOINTS GETPC DECti ISNOP).
   by rewrite GETSC; case.
 Qed.

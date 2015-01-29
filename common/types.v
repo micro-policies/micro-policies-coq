@@ -173,6 +173,9 @@ Definition unpickle_opcode (n : nat) : option opcode :=
 Lemma pickle_opcodeK : pcancel pickle_opcode unpickle_opcode.
 Proof. by do !case. Qed.
 
+Definition opcode_ordMixin := PcanOrdMixin pickle_opcodeK.
+Canonical opcode_ordType := Eval hnf in OrdType opcode opcode_ordMixin.
+
 Definition opcode_choiceMixin := PcanChoiceMixin pickle_opcodeK.
 Canonical opcode_choiceType :=
   Eval hnf in ChoiceType opcode opcode_choiceMixin.

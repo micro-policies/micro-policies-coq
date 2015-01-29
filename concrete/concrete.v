@@ -14,7 +14,7 @@ Module Concrete.
 Local Open Scope word_scope.
 
 Record mvec (mt : machine_types) : Type := MVec {
-  cop  : mword mt;
+  cop  : opcode;
   ctpc : mword mt;
   cti  : mword mt;
   ct1  : mword mt;
@@ -165,8 +165,7 @@ Definition is_kernel_tag (tpc:mword mt) : bool := tpc == TKernel.
 
 Definition cache_lookup (cache : rules)
     (masks : Masks) (mv : mvec) : option rvec :=
-  do! op <- op_of_word (cop mv);
-  let mask := masks (is_kernel_tag (ctpc mv)) op in
+  let mask := masks (is_kernel_tag (ctpc mv)) (cop mv) in
   let masked_mv := mask_dc (dc mask) mv in
   do! rv <- getm cache masked_mv;
   Some (copy mv rv (ct mask)).
@@ -206,12 +205,12 @@ Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rule
   do! atr   <- mem Mtr;
   do! op    <- op_of_word (vala aop);
   let dcm := dc (masks false op) in
-  let mv := mask_dc dcm (MVec (vala aop) (vala atpc)
+  let mv := mask_dc dcm (MVec op (vala atpc)
                               (vala ati) (vala at1) (vala at2) (vala at3)) in
   Some (setm cache mv (RVec (vala atrpc) (vala atr))).
 
 Definition store_mvec (mem : memory) (mv : mvec) : memory :=
-  unionm [partmap (Mop, (cop mv)@TKernel);
+  unionm [partmap (Mop, (word_of_op (cop mv))@TKernel);
                   (Mtpc, (ctpc mv)@TKernel);
                   (Mti, (cti mv)@TKernel);
                   (Mt1, (ct1 mv)@TKernel);
@@ -266,7 +265,7 @@ Inductive step (st st' : state) : Prop :=
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Nop _)),
-    let mv := MVec (word_of_op NOP) tpc ti TNone TNone TNone in
+    let mv := MVec NOP tpc ti TNone TNone TNone in
     forall (NEXT : next_state_pc st mv (pc.+1) = Some st'),
       step st st'
 | step_const :
@@ -275,7 +274,7 @@ Inductive step (st st' : state) : Prop :=
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Const n r)),
     forall (OLD : reg r = Some old@told),
-    let mv := MVec (word_of_op CONST) tpc ti told TNone TNone in
+    let mv := MVec CONST tpc ti told TNone TNone in
     forall (NEXT : next_state_reg st mv r (swcast n) = Some st'),
       step st st'
 | step_mov :
@@ -285,7 +284,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (Mov r1 r2)),
     forall (REG1 : reg r1 = Some w1@t1),
     forall (OLD : reg r2 = Some old@told),
-    let mv := MVec (word_of_op MOV) tpc ti t1 told TNone in
+    let mv := MVec MOV tpc ti t1 told TNone in
     forall (NEXT : next_state_reg st mv r2 w1 = Some st'),
       step st st'
 | step_binop :
@@ -296,7 +295,7 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : reg r1 = Some w1@t1),
     forall (REG2 : reg r2 = Some w2@t2),
     forall (OLD : reg r3 = Some old@told),
-    let mv := MVec (word_of_op (BINOP op)) tpc ti t1 t2 told in
+    let mv := MVec (BINOP op) tpc ti t1 t2 told in
     forall (NEXT : next_state_reg st mv r3 (binop_denote op w1 w2) =
                    Some st'),
       step st st'
@@ -308,7 +307,7 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : reg r1 = Some w1@t1),
     forall (M1 : mem w1 = Some w2@t2),
     forall (OLD : reg r2 = Some old@told),
-    let mv := MVec (word_of_op LOAD) tpc ti t1 t2 told in
+    let mv := MVec LOAD tpc ti t1 t2 told in
     forall (NEXT : next_state_reg st mv r2 w2 = Some st'),
       step st st'
 | step_store :
@@ -319,7 +318,7 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : reg r1 = Some w1@t1),
     forall (REG2 : reg r2 = Some w2@t2),
     forall (M1 : mem w1 = Some w3@t3),
-    let mv := MVec (word_of_op STORE) tpc ti t1 t2 t3 in
+    let mv := MVec STORE tpc ti t1 t2 t3 in
     forall (NEXT :
       next_state st mv (fun rvec =>
         do! mem' <- updm mem w1 w2@(ctr rvec);
@@ -331,7 +330,7 @@ Inductive step (st st' : state) : Prop :=
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Jump r)),
     forall (REG : reg r = Some w@t1),
-    let mv := MVec (word_of_op JUMP) tpc ti t1 TNone TNone in
+    let mv := MVec JUMP tpc ti t1 TNone TNone in
     forall (NEXT : next_state_pc st mv w = Some st'),
       step st st'
 | step_bnz :
@@ -340,7 +339,7 @@ Inductive step (st st' : state) : Prop :=
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Bnz r n)),
     forall (REG : reg r = Some w@t1),
-    let mv := MVec (word_of_op BNZ) tpc ti t1 TNone TNone in
+    let mv := MVec BNZ tpc ti t1 TNone TNone in
     let pc' := pc + if w == 0 then 1 else swcast n in
     forall (NEXT : next_state_pc st mv pc' = Some st'),
       step st st'
@@ -351,7 +350,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (Jal r)),
     forall (REG : reg r = Some w@t1),
     forall (OLD: reg ra = Some old@told),
-    let mv := MVec (word_of_op JAL) tpc ti t1 told TNone in
+    let mv := MVec JAL tpc ti t1 told TNone in
     forall (NEXT : next_state_reg_and_pc st mv ra (pc.+1) w = Some st'),
       step st st'
 | step_jumpepc :
@@ -359,7 +358,7 @@ Inductive step (st st' : state) : Prop :=
     forall (ST : st = State mem reg cache pc@tpc w@tepc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (JumpEpc _)),
-    let mv := MVec (word_of_op JUMPEPC) tpc ti tepc TNone TNone in
+    let mv := MVec JUMPEPC tpc ti tepc TNone TNone in
     forall (NEXT : next_state_pc st mv w = Some st'),
       step st st'
 | step_addrule :
@@ -367,8 +366,7 @@ Inductive step (st st' : state) : Prop :=
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (AddRule _)),
-    let mv :=
-        MVec (word_of_op ADDRULE) tpc ti TNone TNone TNone in
+    let mv := MVec ADDRULE tpc ti TNone TNone TNone in
     forall (NEXT :
       next_state st mv (fun rvec =>
         do! cache' <- add_rule cache masks mem;
@@ -381,7 +379,7 @@ Inductive step (st st' : state) : Prop :=
     forall (INST : decode_instr i = Some (GetTag r1 r2)),
     forall (REG : reg r1 = Some w@t1),
     forall (OLD : reg r2 = Some old@told),
-    let mv := MVec (word_of_op GETTAG) tpc ti t1 told TNone in
+    let mv := MVec GETTAG tpc ti t1 told TNone in
     forall (NEXT : next_state_reg st mv r2 t1 = Some st'),
       step st st'
 | step_puttag :
@@ -392,7 +390,7 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : reg r1 = Some w@t1),
     forall (REG2 : reg r2 = Some t@t2),
     forall (OLD: reg r3 = Some old@told),
-    let mv := MVec (word_of_op PUTTAG) tpc ti t1 t2 told in
+    let mv := MVec PUTTAG tpc ti t1 t2 told in
     forall (NEXT :
       next_state st mv (fun rvec =>
         do! reg' <- updm reg r3 w@t;

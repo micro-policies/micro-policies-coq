@@ -463,11 +463,11 @@ Qed.
 Definition user_step cst cst' :=
   hit_step cst cst' \/ user_kernel_user_step cst cst'.
 
-Lemma analyze_cache cache cmem cmvec crvec op :
+Lemma analyze_cache cache cmem cmvec crvec :
   cache_correct cache cmem ->
   Concrete.cache_lookup cache masks cmvec = Some crvec ->
   oapp (fun x => is_user x) false (decode Symbolic.P cmem (Concrete.ctpc cmvec)) ->
-  Concrete.cop cmvec = word_of_op op ->
+  let op := Concrete.cop cmvec in
   if Symbolic.privileged_op op then False else
   exists tpc : Symbolic.ttypes Symbolic.P, decode _ cmem (Concrete.ctpc cmvec) = Some (USER tpc) /\
   ((exists (ti : Symbolic.ttypes Symbolic.M)
@@ -485,15 +485,15 @@ Lemma analyze_cache cache cmem cmvec crvec op :
          decode _ cmem (Concrete.cti cmvec) = Some (ENTRY t) &
          Concrete.ctrpc crvec = Concrete.TKernel ]).
 Proof.
-  case: cmvec => op' tpc ti t1 t2 t3 /= CACHE LOOKUP INUSER EQ. subst op'.
+  case: cmvec => op tpc ti t1 t2 t3 /= CACHE LOOKUP INUSER.
   case: (CACHE _ crvec LOOKUP INUSER) =>
         [[op' tpc' ti' ts] /= [ovec /= [/decode_ivec_inv /= [E1|E1] E2 E3]]];
-  rewrite mword_of_opK in E1; last first.
-    case: E1 => [[?] ? -> ->]. subst op op'.
+    last first.
+    case: E1 => [? ? -> ->]. subst op op'.
     move: E2 => /=.
     have [-> _| //] := (Concrete.ctrpc _ =P _).
     by eauto 11 using And3.
-  case: E1 => op'' [? [Hpriv [?] -> ->]]. subst op' op'' => ->.
+  case: E1 => [? Hpriv -> ->]. subst op' => ->.
   rewrite (negbTE Hpriv). eexists. split; eauto.
   case: ovec E2 E3 => trpc tr /=.
   case: (decode _ cmem _) => [[trpc'|?]|] //= DEC.
@@ -525,7 +525,7 @@ Proof.
     rewrite (build_cmvec_ctpc Hcmvec) => /(_ Huser) [ivec [ovec [Hdec_i Hdec_o Htrans]]] Hpc_cst'.
     have := build_cmvec_cop_cti Hcmvec.
     rewrite Hget => [[i [instr [[<- -> {i}] _ _]]]].
-    have [[? [? [? ? ? ->]]] //|[_ Hservice _ _]] := decode_ivec_inv Hdec_i.
+    have [[? ? ? -> ?] //|[_ Hservice _ _]] := decode_ivec_inv Hdec_i.
     move: ovec Huser' {Htrans} Hdec_o.
     rewrite /in_user {}Hservice /= -{}Hpc_cst' => [[]].
     have [->|//] := (_ =P _).
@@ -548,7 +548,7 @@ Proof.
   case Hlookup: (Concrete.cache_lookup _ _ _) => [crvec|].
     have := Hcache _ _ Hlookup.
     rewrite (build_cmvec_ctpc Hcmvec) => /(_ Huser) [ivec [ovec [Hdec_i Hdec_o Htrans]]] Hpc_st'.
-    have [[op [Hop [Hpriv _ _ _ _]]]|] := decode_ivec_inv Hdec_i.
+    have [[Hop Hpriv _ _ _]|] := decode_ivec_inv Hdec_i.
       move: ovec {Htrans} Hdec_o.
       rewrite Hop /= -{}Hpc_st' => ovec.
       case Hdec: (decode Symbolic.P (Concrete.mem st) _) => [[st''|]|] //= Hdec_o.
@@ -570,7 +570,7 @@ Proof.
       repeat match goal with
       | H : Some _ = Some _ |- _ => inv H; simpl in *
       end; trivial.
-      rewrite /decode_ivec mword_of_opK /= => ?.
+      rewrite /decode_ivec /= => ?.
       match_inv; simpl in *;
       repeat match goal with
       | H : hshead _ = _ |- _ => rewrite /hshead /hnth eq_axiomK /= in H

@@ -25,7 +25,7 @@ Definition step (st : state mt) : option (state mt) :=
   let 'State mem reg cache pc@tpc epc := st in
   do! i <- mem pc;
   do! instr <- decode_instr (vala i);
-  let mvec := MVec (word_of_op (opcode_of instr)) tpc (taga i) in
+  let mvec := MVec (opcode_of instr) tpc (taga i) in
   match instr with
   | Nop =>
     let mvec := mvec TNone TNone TNone in
@@ -152,7 +152,7 @@ Definition build_cmvec st : option (Concrete.mvec mt) :=
     | Some i =>
       match decode_instr (vala i) with
         | Some op =>
-          let part := @Concrete.MVec mt (word_of_op (opcode_of op))
+          let part := @Concrete.MVec mt (opcode_of op)
                                        (Concrete.pct st) (taga i) in
           match op  with
             | Nop => fun part => Some (part Concrete.TNone Concrete.TNone Concrete.TNone)
@@ -293,10 +293,10 @@ Qed.
 Lemma build_cmvec_cop_cti cst cmvec :
   build_cmvec cst = Some cmvec ->
   exists i instr,
-    [/\ (Concrete.mem cst) (Concrete.pcv cst) =
+    [/\ Concrete.mem cst (Concrete.pcv cst) =
         Some i@(Concrete.cti cmvec),
         decode_instr i = Some instr &
-        word_of_op (opcode_of instr) = Concrete.cop cmvec].
+        opcode_of instr = Concrete.cop cmvec].
 Proof.
   rewrite /build_cmvec.
   case: (getm _ _) => [[i ti]|] //= MVEC. exists i. move: MVEC.

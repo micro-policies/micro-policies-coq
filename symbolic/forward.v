@@ -333,7 +333,7 @@ Proof.
     have Hctpc := build_cmvec_ctpc Hbuild.
     have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
     have Hinstr : instr = Nop _.
-      rewrite -{}Hop' mword_of_opK in Hop.
+      rewrite -{}Hop' in Hop.
       by case: instr Hdec_i Hop.
     rewrite {}Hinstr {instr} in Hdec_i Hop'.
     have [sc Hget_sc Hsc_t] :=
@@ -343,11 +343,10 @@ Proof.
     by rewrite /build_cmvec /Concrete.pcv -Hpc Hget_i Hget_i' Hdec_i /Concrete.pct Hpc.
   case: cmvec Hbuild ivec Hdec
         => [cop ctpc cti ct1 ct2 ct3] /= Hbuild
-           [op' tpc ti ts] /= [op [Hop [Hpriv Hcop Hdec_tpc Hdec_ti Hdec_ts]]].
+           [op' tpc ti ts] /= [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts].
   move: ts Hdec_ts. rewrite {}Hop {op'} => ts Hdec_ts.
   have [i [instr [//= Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
-  rewrite -{}Hop' mword_of_opK in Hcop.
-  case: Hcop => Hcop. subst op.
+  subst cop.
   move: Hbuild ts Hdec_ts.
   move/(Hmem _ _ _ _ Hdec_ti): (Hget_i) => Hget_i'.
   rewrite /build_cmvec /Concrete.pcv /Concrete.pct -Hpc Hget_i Hget_i' /= {}Hdec_i.
@@ -384,7 +383,7 @@ Proof.
     case Hget_sc: (Symbolic.get_syscall _ _) => [sc|] //= [<-] {ivec}.
     have [i' [cti [Hget' Hdec_cti /is_nopP Hi]]] :=
       wf_entry_points_if (rs_entry_points Href) Hget_sc.
-    rewrite Hget' Hi /= mword_of_opK.
+    rewrite Hget' Hi /=.
     by rewrite /decode_ivec /= (rs_pct Href) Hdec_cti.
   have [cti Hdec_cti Hget'] := proj2 (rs_refm Href) _ _ _ Hget.
   rewrite Hget' /=.
@@ -447,7 +446,7 @@ Proof.
   have [cmvec'] := refine_ivec REF IVEC.
   rewrite CMVEC. move=> [<-] {cmvec'} DEC.
   have [ |ivec' [ovec' [DEC' DECo TRANS']]] := rs_cache REF LOOKUP _.
-    by case/decode_ivec_inv: DEC => [[op [? [? ? ->]]]|[? ? ->]].
+    by case/decode_ivec_inv: DEC => [[? ? ->]|[? ? ->]].
   move: DEC' ovec' DECo TRANS'.
   rewrite DEC. move=> [<-]. rewrite TRANS.
   by move=> ? -> [<-].

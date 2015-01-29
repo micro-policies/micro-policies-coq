@@ -204,7 +204,7 @@ Qed.
 Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
                        (mvec : Concrete.mvec mt)
                        : option (Symbolic.ivec tty) :=
-  do! op  <- op_of_word (Concrete.cop mvec);
+  let op := Concrete.cop mvec in
   match decode Symbolic.P m (Concrete.ctpc mvec) with
   | Some (USER tpc) =>
     match decode Symbolic.M m (Concrete.cti mvec) with
@@ -256,8 +256,7 @@ Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
 Let TCopy : mword mt := TNone.
 
 Definition ground_rules : Concrete.rules mt :=
-  let mk op := Concrete.MVec (word_of_op op) TKernel TKernel
-                               TNone TNone TNone in
+  let mk op := Concrete.MVec op TKernel TKernel TNone TNone TNone in
   [partmap
    (mk NOP, Concrete.RVec TCopy TNone);
    (mk CONST, Concrete.RVec TCopy TKernel);
@@ -284,35 +283,32 @@ Definition ground_rules : Concrete.rules mt :=
 
 Lemma decode_ivec_inv mvec m ivec :
   decode_ivec m mvec = Some ivec ->
-  (exists op,
-    [/\ Symbolic.op ivec = OP op &
-    [/\ ~~ Symbolic.privileged_op op,
-        op_of_word (Concrete.cop mvec) = Some op,
-        decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)),
-        decode Symbolic.M m (Concrete.cti mvec) = Some (USER (Symbolic.ti ivec)) &
-        decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
-        Some (hmap (fun k x => Some (USER x)) (Symbolic.ts ivec)) ]]) \/
-  [/\ op_of_word (Concrete.cop mvec) = Some NOP ,
+  [/\ Symbolic.op ivec = OP (Concrete.cop mvec),
+      ~~ Symbolic.privileged_op (Concrete.cop mvec),
+      decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)),
+      decode Symbolic.M m (Concrete.cti mvec) = Some (USER (Symbolic.ti ivec)) &
+      decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
+      Some (hmap (fun k x => Some (USER x)) (Symbolic.ts ivec)) ] \/
+  [/\ Concrete.cop mvec = NOP ,
       Symbolic.op ivec = SERVICE ,
       decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)) &
       decode Symbolic.M m (Concrete.cti mvec) = Some (ENTRY (Symbolic.ti ivec)) ].
 Proof.
   case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts].
   rewrite /decode_ivec (lock Symbolic.privileged_op) /=.
-  case: (op_of_word cop) => [op'|] //=.
   case: (decode _ m ctpc) => [[tpc'|?]|] //=.
   case: (decode _ m cti) => [[ti'|ti']|] //=; last first.
-    case: op' => //= [] [? ? ?]. subst op tpc' ti'. right.
+    case: cop => //= [] [? ? ?]. subst op tpc' ti'. right.
     constructor; eauto.
   case DEC: (decode_fields _ m _) => [ts'|] //=.
   case ENSURE: (ensure_all_user _) => [ts''|] //=.
   rewrite -lock.
-  case Hpriv: (Symbolic.privileged_op op') => //=.
+  case Hpriv: (Symbolic.privileged_op cop) => //=.
   move/ensure_all_user_inv in ENSURE. subst ts'.
   case: op ts => [op|] //= ts.
   move=> E. move: (Symbolic.ivec_eq_inv (Some_inj E)) DEC => [] {E} [E1] E2 E3.
-  subst op' tpc' ti' => /(@pair2_inj _ _ _ _ _) H. subst ts'' => ->.
-  left. eexists. split; try by eauto. rewrite Hpriv. by split; constructor; eauto.
+  subst cop tpc' ti' => /(@pair2_inj _ _ _ _ _) H. subst ts'' => ->.
+  by left; eauto.
 Qed.
 
 Lemma decode_ivec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)})
@@ -325,8 +321,7 @@ Proof.
   move=> Hget Hdec Hdec' [cop ctpc cti ct1 ct2 ct3].
   have Hdec_eq := decode_monotonic _ _ Hget Hdec Hdec'.
   rewrite /decode_ivec /=.
-  case: (op_of_word cop) => [op|] //=.
-  by destruct op; simpl; rewrite !Hdec_eq.
+  by destruct cop; simpl; rewrite !Hdec_eq.
 Qed.
 
 Lemma decode_ovec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)}) op addr x y ct st ct' st' :
