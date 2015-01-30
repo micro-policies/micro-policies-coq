@@ -1273,7 +1273,7 @@ by solve_pc rpci.
   exact: (refine_memory_malloc rmem rist malloc).
   exact: (refine_val_malloc _ fresh_color malloc).
   have int_val : 0 < vala <= Sym.block_size bi by apply/andP; split; eauto.
-  exact: (refine_internal_state_malloc int_val malloc).
+  by apply: (refine_internal_state_malloc int_val malloc); eauto.
 
 (* Free *)
 

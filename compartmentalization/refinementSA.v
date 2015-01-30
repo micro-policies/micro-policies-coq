@@ -565,7 +565,7 @@ Proof.
   move/Abs.in_compartment_opt_correct in E.
   suff [? -> //] : exists c', Abs.in_compartment_opt (<<A,J,Sa>> :: rem_all <<A,J',Sa'>> AC) p ?= c'.
   have [c' Hc'] := @in_compartment_update A J Sa J' Sa' AC p c E.
-  by apply/Abs.in_compartment_opt_present.
+  by apply/Abs.in_compartment_opt_present; eassumption.
 Qed.
 
 Lemma supd_refine_memory AM sst sst' p c i w :
@@ -1741,9 +1741,8 @@ Proof.
     rewrite (retag_set_get_compartment_id_same_ids def_s') //; last first.
     { rewrite /= => p' cid' _ _.
       by rewrite in_setD => /andP [/negbTE -> ?]. }
-    have := (get_compartment_id_subset _ _ RPREV).
+    have := (@get_compartment_id_subset _ _ _ _ pc' _ _ RPREV).
     apply.
-    - exact: pc'.
     - by rewrite in_setD IN_pc' NIN.
     - by rewrite subDset subsetUr. }
 
