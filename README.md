@@ -19,8 +19,4 @@ Coq formalization accompanying the paper:
 
 ### License
 
-- The files in this directory and all subdirectories other than
-  `compcert/lib` are under the MIT license (see `LICENSE`)
-- The files in the `compcert/lib` directory are dual-licensed under
-  the INRIA Non-Commercial License Agreement and the GNU General
-  Public License version 2 or later (see `compcert/LICENSE`)
+This development is distributed under the MIT license (see `LICENSE`)
