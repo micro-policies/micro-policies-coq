@@ -1,4 +1,5 @@
-Require Import ssreflect ssrbool ssrfun eqtype seq.
+Require Import Ssreflect.ssreflect Ssreflect.ssrbool Ssreflect.ssrfun.
+Require Import Ssreflect.eqtype Ssreflect.seq.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -146,7 +147,7 @@ Notation "'do!' 'guard?' ocond ; rest" :=
     | Some true         => rest
     | Some false | None => None
   end
-  (at level 200, cond at level 100, rest at level 200).
+  (at level 200, ocond at level 100, rest at level 200).
 
 End DoNotation.
 

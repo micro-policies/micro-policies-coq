@@ -1,4 +1,5 @@
 -R . MicroPolicies
+-arg -no-native-compiler
 
 lib/utils.v
 lib/haskell_notation.v

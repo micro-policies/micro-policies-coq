@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
-Require Import ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype MathComp.finset.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils lib.partmap_utils common.types.
 Require Import symbolic.symbolic.

@@ -1,8 +1,8 @@
 Ltac type_of x := type of x.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
-Require Import ssrint ssralg.
-Require Import ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
+Require Import MathComp.ssrint MathComp.ssralg.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.

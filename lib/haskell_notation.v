@@ -1,5 +1,6 @@
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun.
+
 Require Import lib.utils.
-Require Import ssreflect ssrfun.
 
 (* Monadic function composition *)
 Definition opt_compose {A B C}

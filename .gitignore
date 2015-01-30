@@ -2,6 +2,7 @@
 *.log
 *.out
 *.bak
+.coq-native
 main.pdf
 temp
 *.glob

@@ -1,5 +1,5 @@
-Require Import ssreflect ssrbool ssrfun eqtype ssrnat div ssrint intdiv.
-Require Import ord word.
+Require Import Ssreflect.ssreflect Ssreflect.ssrbool Ssreflect.ssrfun Ssreflect.eqtype Ssreflect.ssrnat MathComp.div MathComp.ssrint MathComp.intdiv.
+Require Import CoqUtils.ord CoqUtils.word.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

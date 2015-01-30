@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype fintype seq ssrint finset.
-Require Import ord hseq word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.fintype Ssreflect.seq MathComp.ssrint MathComp.finset.
+Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.

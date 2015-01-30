@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import hseq word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 Require Import lib.utils common.types symbolic.symbolic.
 
 Set Implicit Arguments.
@@ -125,10 +125,18 @@ Proof.
                destruct rv; simpl in *
              | H : Some _ = Some _ |- _ =>
                inversion H; subst
-           end;
-      econstructor (solve [eauto]).
+           end.
+      econstructor; solve [eauto].
+      econstructor; solve [eauto].
+      econstructor; solve [eauto].
+      econstructor; solve [eauto].
+      econstructor; solve [eauto].
+      econstructor; solve [eauto].
+      econstructor; solve [eauto].
+      econstructor; solve [eauto].
+      econstructor; solve [eauto].
     - destruct STEP as (sc & GETCALL & STEP).
-      econstructor (solve [eauto]).
+      econstructor; solve [eauto].
   }
   { unfold stepf.
     inversion STEP; subst; rewrite PC; try (subst mv);

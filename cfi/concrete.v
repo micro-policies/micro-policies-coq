@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -163,7 +163,7 @@ Definition stopping (ss : seq (Concrete.state mt)) : Prop :=
     all_attacker user /\ all in_user user /\
     all in_kernel kernel).
 
-Program Instance concrete_cfi_machine : cfi_machine := {|
+Program Instance concrete_cfi_machine : cfi_machine := {
   state := [eqType of Concrete.state mt];
   initial s := cinitial s;
 
@@ -172,7 +172,7 @@ Program Instance concrete_cfi_machine : cfi_machine := {|
 
   succ := csucc;
   stopping := stopping
- |}.
+}.
 
 End ConcreteSection.
 

@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.word CoqUtils.partmap.
 Require Import lib.utils lib.ssr_list_utils common.types.
 Require Import cfi.property cfi.classes.
 
@@ -187,7 +187,7 @@ Definition all_stuck (xs : seq state) : Prop :=
 Definition stopping (xs : seq state) : Prop :=
   all_attacker xs /\ all_stuck xs.
 
-Program Instance abstract_cfi_machine : cfi_machine := {|
+Program Instance abstract_cfi_machine : cfi_machine := {
   state := [eqType of state];
   initial s := initial s;
 
@@ -196,7 +196,7 @@ Program Instance abstract_cfi_machine : cfi_machine := {|
 
   succ := succ;
   stopping := stopping
- |}.
+}.
 
 Lemma step_succ_violation ast ast' :
    ~~ succ ast ast' ->
