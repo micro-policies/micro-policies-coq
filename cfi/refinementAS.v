@@ -516,7 +516,7 @@ Proof.
     (*handle abstract steps*)
     repeat (match goal with
               | [|- exists _,  _ /\ _] => eexists; split
-              | [|- Abs.step _ _ _ _] => econstructor(eassumption)
+              | [|- Abs.step _ _ _ _] => repeat ([> once (econstructor; eassumption) | .. ])
               | [H: decode_instr _ = Some (Load _ _) |- Abs.step _ _ _ _] =>
                 eapply Abs.step_load; eauto
               | [H: getm ?Mem ?Addr = Some ?V@?TG, H1: refine_imemory _ _,

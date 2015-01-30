@@ -126,21 +126,9 @@ Proof.
                destruct rv; simpl in *
              | H : Some _ = Some _ |- _ =>
                inv H
-           end.
+           end;
 
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
-    econstructor; solve [eauto | atom_eta].
+    repeat ([> once (econstructor; solve [eauto | atom_eta]) | .. ]).
 
   - unfold step.
     inv STEP; rewrite PC; clear PC; simpl;

@@ -194,11 +194,11 @@ Proof.
       exists [:: ast;ast']. split.
       * exists ast'. eapply intermr_multi. right. eassumption. now constructor.
       * apply TRNormal1; auto.
-        constructor(assumption).
+        constructor; assumption.
     + specialize (INVIS CHECK); clear VIS.
       destruct INVIS as [ZERO | [ast' [STEP REF]]].
       * exists [:: ast]; split; [exists ast; constructor | apply TRNormal0; auto].
-        now constructor(assumption).
+        constructor; assumption.
       * exists [:: ast; ast'].
         { split.
           - exists ast'.
@@ -209,7 +209,7 @@ Proof.
   - destruct STEP2 as [STEP2A | STEP2N]; [idtac | tauto].
     destruct (backwards_refinement_attacker INITREF STEP2A) as [ast' [STEPA REF]].
     exists [:: ast;ast']; split;
-    [exists ast' | apply TRAttacker; auto; constructor(assumption)].
+    [exists ast' | apply TRAttacker; auto; constructor; assumption].
     eapply intermr_multi; eauto. left; eassumption. now constructor.
   }
   { destruct (step_classic cst cst'') as [STEPN | NST].
@@ -332,7 +332,7 @@ Proof.
   - destruct ahd; simpl in *.
     + inv eqaxs. clear IHref.
       exists [::]. exists cst. exists cst'. exists cxs.
-      repeat split; eauto. by constructor(assumption).
+      repeat split; eauto. by constructor; assumption.
     + inv eqaxs.
       edestruct IHref as [chd [csi [csj [ctl [CSTEP [REFI [REFJ [RTHD [RTT CLST]]]]]]]]]; eauto.
       clear IHref.

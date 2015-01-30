@@ -268,7 +268,8 @@ Ltac find_and_rewrite :=
 Ltac solve_concrete_step :=
   match goal with
   | LOOKUP : Concrete.cache_lookup _ _ _ = _ |- _ =>
-    econstructor (solve [eauto;
+    repeat ([> once (
+    econstructor; solve [eauto;
                          try solve [ eapply Concrete.state_eta
                                    | user_data_unchanged ];
                          repeat autounfold; simpl;
@@ -280,6 +281,7 @@ Ltac solve_concrete_step :=
                          end;
                          simpl in *;
                          find_and_rewrite; match_inv; eauto])
+     | .. ])
   end.
 
 Ltac solve_refine_state :=
