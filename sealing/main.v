@@ -73,12 +73,12 @@ Definition kernel_code {X} l : @relocatable_segment mt X w :=
       SEALED(k) --> k*4+3
 *)
 
-Instance sk_defs : Sym.sealing_key := {|
+Instance sk_defs : Sym.sealing_key := {
  key := [ordType of word 28];
  max_key := monew;
  inc_key x := (x + 1)%w;
  ltb_inc sk := @leqw_succ _ sk monew
-|}.
+}.
 
 Definition encode_sealing_tag (t : Sym.stag) : word 30 :=
  match t with
@@ -120,11 +120,11 @@ Proof.
 Qed.
 
 Instance encodable_tag : @encodable mt Sym.stags := {|
-  decode k mem w :=
+  decode k mem := fun (w : mword mt) =>
     let: [hseq ut; w'] := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
     else
-      match k with
+      match k return option (tag (Sym.stags k)) with
       | Symbolic.P => Some (USER tt)
       | _ =>
         if w' == 1%w then
@@ -415,11 +415,11 @@ Proof.
  omega.
 Qed.
 
-Global Instance sk : Abs.sealing_key := {|
+Global Instance sk : Abs.sealing_key := {
  key := keytype;
  mkkey_f := fun l => 1 + max_element l;
  mkkey_fresh := max_element_plus_one_is_distinct
-|}.
+}.
 
 (* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
   a different order from Int32PMap.get and Int32PMap.set?? *)
