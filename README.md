@@ -11,6 +11,7 @@ Coq formalization accompanying the paper:
 - SSReflect 1.5 (http://ssr.msr-inria.inria.fr/FTP/)
 - The Mathematical Components library 1.5
   (http://www.msr-inria.fr/projects/mathematical-components-2/)
+- The CoqUtils library (https://github.com/arthuraa/coq-utils)
 
 ### Compiling
 
