@@ -496,6 +496,16 @@ Eval vm_compute in oapp (@tstate_halted concrete_int_32_t) 9999
 (* Factoid: pkue needs 408 steps to halt or resolve back into user steps on all paths. 
 The above computations take far too much time/memory to complete on my machine. *)
 
+(*Definition x: True. 
+assert(pkue t basemem 408 parametric_initial_state = None). 
+unfold pkue. 
+pose proof (proj2_sig (pkuer0 t basemem)) as P.
+rewrite P.
+unfold upkuer. simpl. 
+
+*)
+
+
 Lemma phandler_correct_allowed :
   forall env cmvec crvec,
     let st := concretize_pstate _ env parametric_initial_state in
@@ -538,6 +548,7 @@ Lemma phandler_correct_allowed :
 Proof.
   intros. 
 
+(*
   eexists.
   split.
   match goal with |- ?A = ?B => set z := A end. 
@@ -574,6 +585,7 @@ Ltac renum :=
   renum.
 simpl. 
 
+*)
 
 (*   change st with (almost_id (@Phantom _ st)) in *. *)
   vm_compute in st. 
@@ -651,7 +663,48 @@ Ltac renum :=
   renum.
 
   eexists. split.
+  pose proof (proj2_sig (pkuer0 t basemem)) as P. simpl in P.
+  unfold pkue.
+  rewrite P. 
+  unfold upkuer.
+  simpl (ppc t parametric_initial_state).
+  simpl (common.tag
+         (C t (Concrete.fault_handler_start t))@(C t Concrete.TKernel)).
+  unfold known.
+  unfold obind.
+  unfold oapp.
+  match goal with |- (if ?A then _ else _) = _ => set z := A end. 
+  vm_compute in z. unfold z. clear z. 
+  match goal with |- (match ?A with _ => _ end) = Some _ => set z := A end.
+  vm_compute in z. unfold z; clear z.
+  unfold tdistr.
+  rewrite P. 
+  unfold upkuer.
+  unfold common.tag. unfold ppc. 
+  unfold known, obind, oapp. 
+  match goal with |- (if ?A then _ else _) = _ => set z := A end. 
+  vm_compute in z; unfold z; clear z. 
+  unfold Concrete.is_kernel_tag.
+
+  unfold Concrete.is_kernel_tag. 
+  unfold eq_op.
+  simpl (Equality.op (Equality.class (int_eqType (word_size_minus_one t)))
+         Concrete.TKernel Concrete.TKernel).
+  unfold Word.eq. 
+  unfold Coqlib.zeq. simpl (Word.unsigned Concrete.TKernel).
+  simpl (Z.eq_dec 0 0).
+
+
+  unfold bind.
+
+
   match goal with |- ?A = ?B => set z := A end. 
+  
+
+  rewrite P in z. 
+  unfold upkuer.   
+
+
   vm_compute in z; reflexivity; renum;
   unfold concretize_tstate;  (*  rewrite {1}/concretize_pvalue. *)
   unfold concretize_pvalue; 

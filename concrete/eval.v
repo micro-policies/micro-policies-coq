@@ -309,6 +309,49 @@ Fixpoint tdistr (f: pstate -> option tstate) (ts: tstate) : option tstate :=
       end
    end.
 
+Definition utdistr (td: (pstate->option tstate) -> tstate -> option tstate) 
+                  (f: pstate -> option tstate) (ts: tstate) : option tstate :=
+  match ts with
+  | Halted => Some Halted
+  | St s => f s
+  | Ch z s1 s2 =>  
+      (* force both sub-trees to avoid short-circuiting that can
+         induce surprising (good) performance effects *)
+      let ts1 := td f s1 in
+      let ts2 := td f s2 in
+      match ts1, ts2 with
+      | Some Halted, Some Halted => Some Halted
+      | Some l,Some r => Some (Ch z l r)
+      | _,_ => None
+      end
+   end.
+
+Definition tdistr0 : 
+  {td : ((pstate -> option tstate) -> tstate -> option tstate) 
+   | forall (f:pstate -> option tstate) (ts:tstate), td f ts = utdistr td f ts}.
+ econstructor.                    
+ instantiate (1:= tdistr). 
+ destruct ts; auto.
+Qed.
+
+Lemma utdistr0 :  forall (f:pstate -> option tstate) (ts:tstate),
+   (proj1_sig tdistr0) f ts = tdistr f ts.                     
+Proof. 
+  intros. 
+  pose proof (proj2_sig tdistr0 f ts).  rewrite H. 
+  clear. 
+  induction ts. 
+  auto.
+  auto.
+  pose proof (proj2_sig tdistr0 f ts1).
+  rewrite <- H in IHts1. clear H.
+  pose proof (proj2_sig tdistr0 f ts2). 
+  rewrite <- H in IHts2. clear H. 
+  simpl. 
+  rewrite IHts1.
+  rewrite IHts2.
+  auto.
+Qed.
 
 End WithMasks.
 
@@ -472,7 +515,8 @@ Proof.
   destruct (PartMaps.get basemem x); simpl; auto.  
   destruct a; auto.
 Qed.                                                                                  
-                                                                                  Lemma sound_add_rule: forall env
+
+Lemma sound_add_rule: forall env
                              (pcache pcache' : rules (pvalue mt))
                              (pmem : word_map mt (atom (pvalue mt) (pvalue mt))),
        add_rule mt basemem pcache masks pmem = Some pcache' ->
@@ -809,6 +853,23 @@ Proof.
   inv H2.
 Qed.
 
+Lemma sound_tdistr0: forall pf f env
+  (SOUNDF: forall ps ts s,
+     Some ts = pf ps ->
+     Some s = concretize_tstate _ env ts -> 
+     Some s = f (concretize_pstate _  env ps)),
+  forall ts0 ts s0 s,
+  Some ts = (proj1_sig (tdistr0 mt)) pf ts0 ->
+  Some s0 = concretize_tstate _  env ts0 -> 
+  Some s = concretize_tstate _ env ts ->
+  Some s = f s0.
+Proof.
+  intros.
+  eapply sound_tdistr; eauto. 
+  rewrite H. 
+  apply utdistr0. 
+Qed.
+
 Lemma sound_tdistr_none: forall env f t ts, 
        concretize_tstate mt env t = None -> 
        Some ts = tdistr mt f t -> 
@@ -835,6 +896,16 @@ Proof.
   destruct t; inv H2. 
   inv H2. 
   inv H2. 
+Qed.
+
+Lemma sound_tdistr0_none: forall env f t ts, 
+       concretize_tstate mt env t = None -> 
+       Some ts = proj1_sig (tdistr0 mt) f t -> 
+       concretize_tstate mt env ts = None.
+Proof.
+  intros. eapply sound_tdistr_none; eauto.
+  rewrite H0. 
+  apply utdistr0. 
 Qed.
 
 (*  An older version of tdistr:
@@ -931,13 +1002,45 @@ Fixpoint pkuer (max_steps:nat) (k:pstate mt -> option (tstate mt)) (ps:(pstate m
     | O => None
     | S max_steps' =>
       do! ts <- pstep _ basemem masks ps;
-      tdistr mt (pkuer max_steps' (fun ps => Some(St _ ps))) ts
+      tdistr mt (* (proj1_sig (tdistr0 mt)) *) (pkuer max_steps' (fun ps => Some(St _ ps))) ts
     end
   else k ps.
 
-Definition pkue (max_steps:nat) (ps:pstate mt) : option (tstate mt) :=
-  pkuer max_steps (fun _ => None) ps.  
+Definition upkuer (pk: (nat -> (pstate mt -> option (tstate mt)) -> (pstate mt) -> option (tstate mt)))
+        (max_steps:nat) (k:pstate mt -> option (tstate mt)) (ps:(pstate mt)) : option (tstate mt) :=
+  do! t <- known _ (common.tag (ppc mt ps)); 
+ if is_kernel_tag t then
+    match max_steps with
+    | O => None
+    | S max_steps' =>
+      do! ts <- pstep _ basemem masks ps;
+      tdistr mt (* (proj1_sig (tdistr0 mt)) *)  (pk  max_steps' (fun ps => Some(St _ ps))) ts
+    end
+  else k ps.
 
+Definition pkuer0 : 
+  {pk : (nat -> (pstate mt -> option (tstate mt)) -> (pstate mt) -> option (tstate mt))
+   | forall (max_steps:nat) (* (k:pstate mt -> option (tstate mt))  (ps:(pstate mt)) *), pk max_steps (* k  ps*) = upkuer pk max_steps (* k ps *) }.
+ econstructor.                    
+ instantiate (1:= pkuer).
+ destruct max_steps; auto.
+Qed.
+
+Lemma upkuer0 : forall (max_steps:nat)(*  (k:pstate mt -> option (tstate mt)) (ps:(pstate mt)) *),
+   (proj1_sig pkuer0) max_steps (* k ps *) = pkuer max_steps (* k ps *). 
+Proof. 
+  intros. 
+  pose proof (proj2_sig pkuer0 max_steps).  rewrite H. 
+  clear. 
+  induction max_steps.
+  auto.
+  unfold upkuer.
+  simpl. 
+  pose proof (proj2_sig pkuer0 max_steps). 
+  rewrite <- H in IHmax_steps. 
+  rewrite IHmax_steps. 
+  auto.
+Qed.
 
 Lemma sound_pkuer : forall env n pk k,
   (forall ps, match pk ps with
@@ -972,17 +1075,34 @@ Proof.
            | None => Some (concretize_pstate mt env ps) = None
            end).
     clear. intros. simpl in H. inv H. auto. 
-  pose proof (sound_tdistr _ (pkuer n _) (kuer basemem n _) env (IHn (fun ps : pstate mt => Some (St mt ps)) Some H2)).
+  pose proof (sound_tdistr (* sound_tdistr0*)  _ (pkuer n _) (kuer basemem n _) env (IHn (fun ps : pstate mt => Some (St mt ps)) Some H2)).
   destruct (concretize_tstate mt env t) eqn:?.
-    eapply H3; eauto.  
-    pose proof (sound_tdistr_none _ _ _ _ _ Heqo0 H0). rewrite H4 in H1. inv H1. 
+    eapply H3; eauto. 
+    pose proof (sound_tdistr_none (* sound_tdistr0_none *)_ _ _ _ _ Heqo0 H0).  rewrite H4 in H1. inv H1. 
 
   apply sound_next_rvec. 
 
   simpl. rewrite Heqo. unfold is_kernel_tag in Heqb. f_equal.  apply (eqP Heqb).
 
-  intro. subst t. inv H0.  inv H1. 
+  intro. subst t. (* rewrite utdistr0  in H0.*) inv H0.  inv H1. 
   pose proof (H ps). rewrite <- H0 in H2. eauto.
+Qed.
+
+Lemma sound_pkuer0 : forall env n pk k,
+  (forall ps, match pk ps with
+              | None => k (concretize_pstate mt env ps) = None
+              | Some ps' => forall s', Some s' = concretize_tstate mt  env ps' -> 
+                                       Some s' = k (concretize_pstate mt env ps)
+              end) -> 
+   forall ps ts s,
+   Some ts = (proj1_sig pkuer0) n pk ps -> 
+   Some s = concretize_tstate mt env ts ->
+   Some s = kuer basemem n k (concretize_pstate mt env ps).
+Proof.
+  intros. eapply sound_pkuer; eauto.
+  rewrite H0. 
+  rewrite upkuer0.
+  auto.
 Qed.
 
 (* kue can fail if we don't match kernel pattern within n steps (by halting or wrong modes)
@@ -991,13 +1111,16 @@ Qed.
       (b) we don't match kernel pattern within n steps (by wrong modes)
    concretize_tstate (pkue) can fail iff we halt on actual path
 *)
+Definition pkue (max_steps:nat) (ps:pstate mt) : option (tstate mt) :=
+  (proj1_sig pkuer0) max_steps (fun _ => None) ps.  
+
 Lemma sound_pkue : forall env n st ts s,
   Some ts = pkue n st ->
   Some s = concretize_tstate mt env ts ->
   Some s = kue basemem n (concretize_pstate mt env st).
 Proof.
   unfold pkue, kue. intros. 
-  eapply sound_pkuer; eauto.
+  eapply sound_pkuer0; eauto.
   intros. reflexivity. 
 Qed.
 
