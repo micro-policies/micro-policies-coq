@@ -516,7 +516,7 @@ Proof.
     (*handle abstract steps*)
     repeat (match goal with
               | [|- exists _,  _ /\ _] => eexists; split
-              | [|- Abs.step _ _ _ _] => repeat ([> once (econstructor; eassumption) | .. ])
+              | [|- Abs.step _ _ _ _] => once [> econstructor; eassumption | .. ]
               | [H: decode_instr _ = Some (Load _ _) |- Abs.step _ _ _ _] =>
                 eapply Abs.step_load; eauto
               | [H: getm ?Mem ?Addr = Some ?V@?TG, H1: refine_imemory _ _,
@@ -927,7 +927,7 @@ Proof.
   assert (DOMAINM := dmem_domain_preserved_by_equiv REFD MEQUIV REFD').
   assert (DOMAINR := reg_domain_preserved_by_equiv REFR RTG REQUIV REFR').
   exists (Abs.State imem dmem' (mapm untag_atom reg') pc b).
-  split; [econstructor(eauto) | split; auto].
+  split; [once [> econstructor; eauto ..] | split; auto].
   split; auto.
   split; auto.
   split.
