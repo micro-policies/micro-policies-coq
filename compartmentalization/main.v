@@ -195,8 +195,7 @@ Proof.
 move => GOOD REF EXEC.
 elim: EXEC ast GOOD REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] ast GOOD REF; first by eauto 7.
 have [ast' [STEPA REF']] := backward_simulation GOOD REF STEPS.
-have GOOD' :=
-  @Abs.good_state_preserved _ _ concrete_int_32_ops_spec _ _ _ _ STEPA GOOD.
+have GOOD' : Abs.good_state ast' by eapply Abs.good_state_preserved; eauto.
 have [ast'' [EXECA [GOOD'' REF'']]] := IH _ GOOD' REF'.
 by eauto 7.
 Qed.
