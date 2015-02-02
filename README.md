@@ -7,9 +7,9 @@ Coq formalization accompanying the paper:
 
 ### Prerequisites
 
-- Coq 8.5beta1 (https://coq.inria.fr/download)
-- SSReflect 1.5 (for Coq 8.5beta1) (http://ssr.msr-inria.inria.fr/FTP/)
-- The Mathematical Components library 1.5 (for Coq 8.5beta1)
+- Coq 8.4pl4 or 8.4pl5 (https://coq.inria.fr/download)
+- SSReflect 1.5 (http://ssr.msr-inria.inria.fr/FTP/)
+- The Mathematical Components library 1.5
   (http://www.msr-inria.fr/projects/mathematical-components-2/)
 - The CoqUtils library (https://github.com/arthuraa/coq-utils)
 
