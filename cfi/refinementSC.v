@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -507,7 +507,7 @@ Proof.
     rewrite !inE in IN; case/orP: IN => [/eqP ? | IN]; try subst a.
     + have [USER|USER] := boolP (in_user cst').
       * right. exists cst'. split; auto.
-        econstructor(eauto).
+        by econstructor; eauto.
       * destruct REF as [WREF INV]; clear INV.
         destruct WREF as [CONTRA | KREF].
         { apply @refine_state_in_user in CONTRA.
@@ -520,7 +520,7 @@ Proof.
         }
     + have [USER|USER] := boolP (in_user a).
       * right. exists a; split; auto.
-        econstructor(eauto).
+        by econstructor; eauto.
       * destruct REF as [WREF INV]; clear INV.
         destruct WREF as [CONTRA | KREF].
         { apply @refine_state_in_user in CONTRA.
@@ -534,14 +534,14 @@ Proof.
           - left; assumption.
           - right. exists cst''.
             split; auto.
-            econstructor(eauto).
+            by econstructor; eauto.
         }
   }
   { (*visible step*)
     rewrite !inE in IN; case/orP: IN=> [/eqP ?|IN]; try subst a.
     + have [USER|USER] := boolP (in_user cst').
       * right. exists cst'. split; auto.
-        econstructor(eauto).
+        by econstructor; eauto.
       * destruct REF as [WREF INV]; clear INV.
         destruct WREF as [CONTRA | KREF].
         { apply @refine_state_in_user in CONTRA.
@@ -554,7 +554,7 @@ Proof.
         }
     + have [USER|USER] := boolP (in_user a).
       * right. exists a; split; auto.
-        econstructor(eauto).
+        by econstructor; eauto.
       * destruct REF as [WREF INV]; clear INV.
         destruct WREF as [CONTRA | KREF].
         { apply @refine_state_in_user in CONTRA.
@@ -568,7 +568,7 @@ Proof.
           - left; assumption.
           - right. exists cst''.
             split; auto.
-            econstructor(eauto).
+            by econstructor; eauto.
         }
   }
   { (*attacker step - attacker not allowed in kernel mode*)
@@ -644,7 +644,7 @@ Proof.
          split; auto.
          left.
          exists ast'. split; auto.
-         econstructor(eauto).
+         by econstructor; eauto.
        }
       * inversion RTRACE'; subst.
         { right.
@@ -661,7 +661,7 @@ Proof.
           split.
           apply Sym.all_stuck_red in ALLS.
           by auto.
-          by econstructor(eauto).
+          by econstructor; eauto.
         }
         { have IN: ast' \in (ast :: ast' :: ast'' :: axs) by rewrite !inE eqxx orbT.
           specialize (ALLS ast' IN).
@@ -706,7 +706,7 @@ Proof.
               { split. assumption.
                 split; [assumption | idtac].
                 left. exists asi. split; auto.
-                econstructor(eauto).
+                by econstructor; eauto.
               }
             }
             { destruct IH as [asi [asj [atl [RTRACE'' [STUCK'' [EXEC'' REF'']]]]]].

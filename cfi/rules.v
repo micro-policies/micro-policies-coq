@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import hseq.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat.
+Require Import CoqUtils.hseq.
 
 Require Import lib.utils common.types symbolic.symbolic.
 Require Import cfi.classes.

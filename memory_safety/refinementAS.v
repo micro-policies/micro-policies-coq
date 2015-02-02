@@ -1,8 +1,8 @@
 Ltac type_of x := type of x.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype.
-Require Import ssrint ssralg.
-Require Import ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
+Require Import MathComp.ssrint MathComp.ssralg.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
@@ -1112,7 +1112,7 @@ Qed.
 
 Ltac solve_pc rpci :=
   by eexists; eexists; split;
-  [econstructor (by eauto) |
+  [repeat (s_econstructor solve [eauto]) |
   split; try eassumption;
   simpl; rewrite <-rpci, <-addwA; econstructor].
 
@@ -1273,7 +1273,7 @@ by solve_pc rpci.
   exact: (refine_memory_malloc rmem rist malloc).
   exact: (refine_val_malloc _ fresh_color malloc).
   have int_val : 0 < vala <= Sym.block_size bi by apply/andP; split; eauto.
-  exact: (refine_internal_state_malloc int_val malloc).
+  by apply: (refine_internal_state_malloc int_val malloc); eauto.
 
 (* Free *)
 

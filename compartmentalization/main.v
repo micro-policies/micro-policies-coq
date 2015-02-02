@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype fintype seq ssrint finset.
-Require Import ord hseq word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.fintype Ssreflect.seq MathComp.ssrint MathComp.finset.
+Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -195,8 +195,8 @@ Proof.
 move => GOOD REF EXEC.
 elim: EXEC ast GOOD REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] ast GOOD REF; first by eauto 7.
 have [ast' [STEPA REF']] := backward_simulation GOOD REF STEPS.
-have GOOD' := Abs.good_state_preserved (spec := concrete_int_32_ops_spec)
-                                       STEPA GOOD.
+have GOOD' : Abs.good_state ast'
+  by eapply Abs.good_state_preserved; eauto with typeclass_instances.
 have [ast'' [EXECA [GOOD'' REF'']]] := IH _ GOOD' REF'.
 by eauto 7.
 Qed.

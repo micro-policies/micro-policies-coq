@@ -1,5 +1,5 @@
-Require Import ssreflect ssrbool ssrfun ssrnat eqtype seq fintype ssrint.
-Require Import ord hseq word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrbool Ssreflect.ssrfun Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.seq Ssreflect.fintype MathComp.ssrint.
+Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -55,11 +55,11 @@ have [hb|] // := boolP (_ < 2 ^ 28).
 by rewrite [in X in Some X](lock as_word) /= -lock as_wordK // valwK.
 Qed.
 
-Instance ids : cfi_id mt := {|
+Instance ids : cfi_id mt := {
  id := id;
  word_to_id := word_to_id;
  id_to_word := id_to_word
-|}.
+}.
 Proof.
   - by apply id_to_wordK.
   - by move=> w x h; move: (word_to_idK w); rewrite h.
@@ -87,7 +87,7 @@ Definition decode_cfi_tag (t : word 30) : option cfi_tag :=
     if k == 0%w then Some (INSTR None)
     else None
   else if t == as_word 2 then
-    Some (INSTR (Some k))
+    Some (INSTR (Some (k : @classes.id _ ids)))
   else None.
 
 Lemma encode_cfi_tagK : pcancel encode_cfi_tag decode_cfi_tag.
@@ -112,7 +112,7 @@ Qed.
 Import DoNotation.
 
 Instance encodable_tag : encodable mt cfi_tags := {|
-  decode k m w :=
+  decode k m := fun (w : mword mt) =>
     let: [hseq ut; w'] := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
     else if w' == 1%w then

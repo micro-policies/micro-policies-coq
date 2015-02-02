@@ -1,5 +1,7 @@
-Require Import ssreflect ssrbool ssrfun eqtype.
-Require Import ord partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
+Require Import Ssreflect.eqtype.
+
+Require Import CoqUtils.ord CoqUtils.partmap.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

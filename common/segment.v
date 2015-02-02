@@ -1,6 +1,6 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype.
-Require Import div ssrint ssralg intdiv.
-Require Import ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.choice Ssreflect.fintype.
+Require Import MathComp.div MathComp.ssrint MathComp.ssralg MathComp.intdiv.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils common.types.
 

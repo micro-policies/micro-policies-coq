@@ -1,4 +1,5 @@
-Require Import ssreflect ssrbool ssrfun eqtype seq.
+Require Import Ssreflect.ssreflect Ssreflect.ssrbool Ssreflect.ssrfun.
+Require Import Ssreflect.eqtype Ssreflect.seq.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -35,6 +36,15 @@ Ltac move_to_top x :=
   match reverse goal with
   | H : _ |- _ => try move x after H
   end.
+
+(* Wrappers around the backtracking version of (e)constructor, which
+changed between 8.4 and 8.5 *)
+
+Tactic Notation "s_constructor" tactic(t) :=
+  constructor (t).
+
+Tactic Notation "s_econstructor" tactic(t) :=
+  econstructor (t).
 
 Tactic Notation "assert_eq" ident(x) constr(v) :=
   let H := fresh in
@@ -146,7 +156,7 @@ Notation "'do!' 'guard?' ocond ; rest" :=
     | Some true         => rest
     | Some false | None => None
   end
-  (at level 200, cond at level 100, rest at level 200).
+  (at level 200, ocond at level 100, rest at level 200).
 
 End DoNotation.
 

@@ -1,6 +1,6 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype MathComp.finset.
 
-Require Import ord hseq word partmap.
+Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils lib.word_utils common.types.
 Require Import symbolic.symbolic.
@@ -980,7 +980,7 @@ Proof.
   { move=> p cid I W /Hbounds {Hbounds} H cid' /H {H}.
     by apply: succ_trans. }
   have Hsucc : (cnew < (cnew + 1)%w)%ord.
-  { apply: leqw_succ; first exact: monew.
+  { apply: (@leqw_succ _ _ monew).
     by move: (leqw_mone cnew); rewrite Ord.leq_eqVlt (introF eqP Hnot_max). }
   elim: ps s Hbounds Hretag
         => [ s Hbounds [<-] //

@@ -1,4 +1,4 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -9,7 +9,7 @@ Require Import symbolic.exec.
 Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 
-Require Import word partmap.
+Require Import CoqUtils.word CoqUtils.partmap.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -221,7 +221,7 @@ Ltac user_data_unchanged_mem cmem1 cmem2 :=
     | _ : getm cmem2 addr = Some _ |- _ => fail 1
     | |- _ => idtac
     end;
-    first [ destruct (proj1 (USERMEM _ _ _ _ DEC) GET) as [? ?]
+    first [ pose proof (proj1 (USERMEM _ _ _ _ DEC) GET)
           | failwith "user_data_unchanged_mem" ]
   end.
 
@@ -268,18 +268,18 @@ Ltac find_and_rewrite :=
 Ltac solve_concrete_step :=
   match goal with
   | LOOKUP : Concrete.cache_lookup _ _ _ = _ |- _ =>
-    econstructor (solve [eauto;
-                         try solve [ eapply Concrete.state_eta
-                                   | user_data_unchanged ];
-                         repeat autounfold; simpl;
-                         simpl in LOOKUP; rewrite LOOKUP;
-                         match goal with
-                         | STORE : Concrete.store_mvec _ _ = Some _ |- _ =>
-                           rewrite STORE
-                         | |- _ => idtac
-                         end;
-                         simpl in *;
-                         find_and_rewrite; match_inv; eauto])
+    s_econstructor solve [eauto;
+                          try solve [ eapply Concrete.state_eta
+                                    | user_data_unchanged ];
+                          repeat autounfold; simpl;
+                          simpl in LOOKUP; rewrite LOOKUP;
+                          match goal with
+                          | STORE : Concrete.store_mvec _ _ = Some _ |- _ =>
+                            rewrite STORE
+                          | |- _ => idtac
+                          end;
+                          simpl in *;
+                          find_and_rewrite; match_inv; eauto]
   end.
 
 Ltac solve_refine_state :=
@@ -347,10 +347,6 @@ Proof.
   move/(Hmem _ _ _ _ Hdec_ti): (Hget_i) => Hget_i'.
   rewrite /build_cmvec /Concrete.pcv /Concrete.pct -Hpc Hget_i Hget_i' /= {}Hdec_i.
   destruct instr; simpl; move => Hbuild ts Hdec_ts;
-  repeat match goal with
-  | ts : prod _ _ |- _ => destruct ts
-  | ts : unit |- _ => destruct ts
-  end;
   match_inv; trivial;
   repeat match goal with
   | a : atom _ _ |- _ => destruct a
@@ -369,7 +365,7 @@ Lemma refine_ivec sst cst ivec :
     decode_ivec e (Concrete.mem cst) cmvec = Some ivec.
 Proof.
   move=> Href Hbuild.
-  suff : match @build_cmvec _ ops cst with
+  suff : match @build_cmvec _ ops cst return Prop with
          | Some cmvec => decode_ivec e (Concrete.mem cst) cmvec = Some ivec
          | None => False
          end by case: (build_cmvec cst); eauto.
@@ -482,7 +478,7 @@ Proof.
       eapply re_step; trivial; try eassumption.
       by eapply exec_until_weaken; eauto.
     by constructor=> //.
-  suff : match @step masks _ ops cst with
+  suff : match @step masks _ ops cst return Prop with
          | Some cst' => @refine_state _ ops _ _ ki table sst' cst'
          | None => False
          end.

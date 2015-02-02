@@ -1,7 +1,7 @@
 (* Executable formulation of concrete machine semantics *)
 
-Require Import ssreflect ssrfun ssrbool ssrnat eqtype ssrint.
-Require Import word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.ssrnat Ssreflect.eqtype MathComp.ssrint.
+Require Import CoqUtils.word CoqUtils.partmap.
 Require Import lib.utils common.types concrete.concrete.
 
 Import Concrete. Import DoNotation.
@@ -128,7 +128,7 @@ Proof.
                inv H
            end;
 
-    econstructor (solve [eauto | atom_eta]).
+    s_econstructor solve [eauto | atom_eta].
 
   - unfold step.
     inv STEP; rewrite PC; clear PC; simpl;

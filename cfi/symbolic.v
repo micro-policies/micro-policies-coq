@@ -1,5 +1,6 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-Require Import ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
+Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -745,7 +746,7 @@ Proof.
   by rewrite inE IN orbT.
 Qed.
 
-Program Instance symbolic_cfi_machine : cfi_machine := {|
+Program Instance symbolic_cfi_machine : cfi_machine := {
   state := [eqType of Symbolic.state mt];
   initial s := initial s;
 
@@ -754,7 +755,7 @@ Program Instance symbolic_cfi_machine : cfi_machine := {|
 
   succ := ssucc;
   stopping := stopping
- |}.
+}.
 
 Import DoNotation.
 Import Vector.VectorNotations.

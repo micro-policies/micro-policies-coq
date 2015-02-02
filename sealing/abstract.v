@@ -1,5 +1,5 @@
-Require Import ssreflect ssrfun ssrbool eqtype seq.
-Require Import ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.seq.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 Require Import lib.utils common.types common.segment sealing.classes.
 
 Import DoNotation.

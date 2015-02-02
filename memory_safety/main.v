@@ -1,5 +1,5 @@
-Require Import ssreflect ssrbool eqtype seq ssrint.
-Require Import hseq ord word partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.seq MathComp.ssrint.
+Require Import CoqUtils.hseq CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils lib.word_utils.
 Require Import common.types.
@@ -29,12 +29,12 @@ Definition color_size := 13%nat. (*2^13 colors*)
 Definition color := [ordType of word color_size].
 Definition inc_color (c : color) := (c + 1)%w.
 
-Instance col : Sym.color_class := {|
+Instance col : Sym.color_class := {
   color := color;
   max_color := monew;
   inc_color := inc_color;
   ltb_inc col := @leqw_succ _ col monew
-|}.
+}.
 
 (* Encoding scheme
 
@@ -146,7 +146,7 @@ Proof.
 Qed.
 
 Instance enc: encodable mt Sym.ms_tags := {|
-  decode k m w :=
+  decode k m := fun (w : mword mt) =>
     let: [hseq ut; w']%w := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
     else if w' == 1%w then
