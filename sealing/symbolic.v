@@ -1,32 +1,32 @@
-Require Import List. Import ListNotations.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-
-Require Import lib.hlist lib.Integers lib.utils lib.ordered lib.partial_maps common.common.
+Require Import lib.utils common.types.
 Require Import symbolic.symbolic sealing.classes.
 
 Import Symbolic.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module Sym.
 
 Section WithClasses.
 
-Import PartMaps.
-
-Context {t : machine_types}
-        {ops : machine_ops t}
+Context {mt : machine_types}
+        {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {scr : @syscall_regs t}
-        {ssa : @sealing_syscall_addrs t}.
+        {scr : syscall_regs mt}
+        {ssa : @sealing_syscall_addrs mt}.
+
+Open Scope ord_scope.
 
 Class sealing_key := {
-  key : eqType;
+  key : ordType;
   max_key;
   inc_key : key -> key;
-  ord_key :> Ordered key;
-  ltb_inc : forall sk, sk <? max_key -> sk <? inc_key sk
+  ltb_inc : forall sk, sk < max_key -> sk < inc_key sk
 }.
 
 Context {sk : sealing_key}.
@@ -60,25 +60,24 @@ Definition stags : tag_kind -> eqType := fun k =>
   | _ => [eqType of stag]
   end.
 
-Section WithHLists.
-Import HListNotations.
+Section WithHSeqs.
 
-Definition sealing_handler (iv : IVec stags) : option (VOVec stags (op iv)) :=
+Definition sealing_handler (iv : ivec stags) : option (vovec stags (op iv)) :=
   match iv with
-  | mkIVec (OP NOP)       tt DATA [hl]               => Some (@mkOVec stags NOP tt tt)
-  | mkIVec (OP CONST)     tt DATA [hl _]             => Some (@mkOVec stags CONST tt DATA)
-  | mkIVec (OP MOV)       tt DATA [hl tsrc; _]       => Some (@mkOVec stags MOV tt tsrc)
-  | mkIVec (OP (BINOP o)) tt DATA [hl DATA; DATA; _] => Some (@mkOVec stags (BINOP o) tt DATA)
-  | mkIVec (OP LOAD)      tt DATA [hl DATA; tmem; _] => Some (@mkOVec stags LOAD tt tmem)
-  | mkIVec (OP STORE)     tt DATA [hl DATA; tsrc; _] => Some (@mkOVec stags STORE tt tsrc)
-  | mkIVec (OP JUMP)      tt DATA [hl DATA]          => Some (@mkOVec stags JUMP tt tt)
-  | mkIVec (OP BNZ)       tt DATA [hl DATA]          => Some (@mkOVec stags BNZ tt tt)
-  | mkIVec (OP JAL)       tt DATA [hl DATA; _]       => Some (@mkOVec stags JAL tt DATA)
-  | mkIVec SERVICE        tt _    [hl]               => Some tt
-  | mkIVec _              tt _ _                     => None
+  | IVec (OP NOP)       tt DATA [hseq]               => Some (@OVec stags NOP tt tt)
+  | IVec (OP CONST)     tt DATA [hseq _]             => Some (@OVec stags CONST tt DATA)
+  | IVec (OP MOV)       tt DATA [hseq tsrc; _]       => Some (@OVec stags MOV tt tsrc)
+  | IVec (OP (BINOP o)) tt DATA [hseq DATA; DATA; _] => Some (@OVec stags (BINOP o) tt DATA)
+  | IVec (OP LOAD)      tt DATA [hseq DATA; tmem; _] => Some (@OVec stags LOAD tt tmem)
+  | IVec (OP STORE)     tt DATA [hseq DATA; tsrc; _] => Some (@OVec stags STORE tt tsrc)
+  | IVec (OP JUMP)      tt DATA [hseq DATA]          => Some (@OVec stags JUMP tt tt)
+  | IVec (OP BNZ)       tt DATA [hseq DATA]          => Some (@OVec stags BNZ tt tt)
+  | IVec (OP JAL)       tt DATA [hseq DATA; _]       => Some (@OVec stags JAL tt DATA)
+  | IVec SERVICE        tt _    [hseq]               => Some tt
+  | IVec _              tt _ _                       => None
   end.
 
-End WithHLists.
+End WithHSeqs.
 
 Program Instance sym_sealing : params := {
   ttypes := stags;
@@ -90,12 +89,12 @@ Program Instance sym_sealing : params := {
 
 Import DoNotation.
 
-Definition mkkey (s : state t) : option (state t) :=
+Definition mkkey (s : state mt) : option (state mt) :=
   let 'State mem reg pc@pct key := s in
-  if key <? max_key then
+  if key < max_key then
     let key' := inc_key key in
-    do! reg' <- upd reg syscall_ret ((max_word t)@(KEY key));
-    do! ret  <- get reg ra;
+    do! reg' <- updm reg syscall_ret monew@(KEY key);
+    do! ret  <- reg ra;
     match ret with
     | pc'@DATA => Some (State mem reg' (pc'@tt) key')
     | _ => None
@@ -103,12 +102,12 @@ Definition mkkey (s : state t) : option (state t) :=
   else
     None.
 
-Definition seal (s : state t) : option (state t) :=
+Definition seal (s : state mt) : option (state mt) :=
   let 'State mem reg pc@pct next_key := s in
-  match get reg syscall_arg1, get reg syscall_arg2 with
-  | Some (payload@DATA), Some (_@(KEY key)) =>
-    do! reg' <- upd reg syscall_ret (payload@(SEALED key));
-    do! ret  <- get reg ra;
+  match reg syscall_arg1, reg syscall_arg2 with
+  | Some payload@DATA, Some _@(KEY key) =>
+    do! reg' <- updm reg syscall_ret payload@(SEALED key);
+    do! ret  <- reg ra;
     match ret with
     | pc'@DATA => Some (State mem reg' (pc'@tt) next_key)
     | _ => None
@@ -116,13 +115,13 @@ Definition seal (s : state t) : option (state t) :=
   | _, _ => None
   end.
 
-Definition unseal (s : state t) : option (state t) :=
+Definition unseal (s : state mt) : option (state mt) :=
   let 'State mem reg pc@pct next_key := s in
-  match get reg syscall_arg1, get reg syscall_arg2 with
-  | Some (payload@(SEALED key)), Some (_@(KEY key')) =>
+  match reg syscall_arg1, reg syscall_arg2 with
+  | Some payload@(SEALED key), Some _@(KEY key') =>
     if key == key' then
-      do! reg' <- upd reg syscall_ret (payload@DATA);
-      do! ret  <- get reg ra;
+      do! reg' <- updm reg syscall_ret payload@DATA;
+      do! ret  <- reg ra;
       match ret with
       | pc'@DATA => Some (State mem reg' (pc'@tt) next_key)
       | _ => None
@@ -131,10 +130,10 @@ Definition unseal (s : state t) : option (state t) :=
   | _, _ => None
   end.
 
-Definition sealing_syscalls : list (syscall t) :=
-  [Syscall mkkey_addr DATA mkkey;
-   Syscall seal_addr DATA seal;
-   Syscall unseal_addr DATA unseal].
+Definition sealing_syscalls : seq (syscall mt) :=
+  [:: Syscall mkkey_addr DATA mkkey;
+      Syscall seal_addr DATA seal;
+      Syscall unseal_addr DATA unseal].
 
 Definition step := step sealing_syscalls.
 
@@ -152,7 +151,7 @@ End WithClasses.
    and I expect that to use any of Arthur's results we'll need
    to give this kind of details *)
 
-Notation memory t := (Symbolic.memory t sym_sealing).
-Notation registers t := (Symbolic.registers t sym_sealing).
+Notation memory mt := (Symbolic.memory mt sym_sealing).
+Notation registers mt := (Symbolic.registers mt sym_sealing).
 
 End Sym.

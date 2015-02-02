@@ -1,19 +1,14 @@
 -R . MicroPolicies
 
-compcert/lib/Coqlib.v
-compcert/lib/Maps.v
-compcert/lib/Integers.v
-
 lib/utils.v
-lib/FiniteMaps.v
-lib/ordered.v
-lib/partial_maps.v
 lib/haskell_notation.v
 lib/ssr_list_utils.v
 lib/ssr_set_utils.v
-lib/hlist.v
+lib/partmap_utils.v
+lib/word_utils.v
 
-common/common.v
+common/types.v
+common/segment.v
 common/printing.v
 
 concrete/concrete.v
@@ -22,11 +17,9 @@ concrete/int_32.v
 
 symbolic/symbolic.v
 symbolic/fault_handler.v
-# symbolic/initial.v -- doesn't compile
 symbolic/refinement_common.v
 symbolic/backward.v
 symbolic/forward.v
-# symbolic/testing.v -- doesn't compile
 symbolic/int_32.v
 symbolic/rules.v
 symbolic/exec.v

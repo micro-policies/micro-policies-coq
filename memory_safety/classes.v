@@ -1,20 +1,14 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import common.common.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat.
+Require Import common.types.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Section classes.
-
-Context `{t : machine_types}.
-
-Class memory_syscall_addrs := {
-  malloc_addr : word t;
-  free_addr : word t;
-  size_addr : word t;
-  base_addr : word t;
-  eq_addr : word t
+Class memory_syscall_addrs mt := {
+  malloc_addr : mword mt;
+  free_addr : mword mt;
+  size_addr : mword mt;
+  base_addr : mword mt;
+  eq_addr : mword mt
 }.
-
-End classes.

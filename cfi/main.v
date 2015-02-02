@@ -1,9 +1,8 @@
-Require Import ssreflect ssrbool ssrfun eqtype seq.
+Require Import Ssreflect.ssreflect Ssreflect.ssrbool Ssreflect.ssrfun Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.seq Ssreflect.fintype MathComp.ssrint.
+Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
-Require Import Coq.Lists.List.
-Require Import lib.Coqlib lib.utils.
-Require Import lib.partial_maps lib.FiniteMaps lib.ordered.
-Require Import common.common.
+Require Import lib.utils.
+Require Import common.types.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
 Require Import symbolic.symbolic.
@@ -16,7 +15,10 @@ Require Import cfi.rules.
 Require Import cfi.symbolic.
 Require Import cfi.abstract.
 Require Import cfi.refinementAS.
-Require Import Integers.
+
+Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module CFIInstances.
 
@@ -25,85 +27,42 @@ Section WithClasses.
 (* ---------------------------------------------------------------- *)
 (* int32 instance *)
 
-Definition t := concrete_int_32_t.
-Instance ops : machine_ops t := concrete_int_32_ops.
+Definition mt := concrete_int_32_mt.
+Instance ops : machine_ops mt := concrete_int_32_ops.
 
-Definition id_size := Word.int 27.
+Definition id_size := word 28.
 Definition id := [eqType of id_size].
-Definition bound : word t := Word.repr ((Word.max_unsigned 27) + 1)%Z. (*29 bits*)
+Definition bound := 2 ^ 28.
 
-Definition word_to_id (w : word t) : option id_size :=
-  if (Word.ltu w bound) then Some (Word.castu w) else None.
+Definition word_to_id (w : mword mt) : option id_size :=
+  if ord_of_word w < bound then Some (as_word (ord_of_word w))
+  else None.
 
-Definition id_to_word (x : id) : word t :=
-  Word.castu x.
+Definition id_to_word (x : id) : mword mt :=
+  as_word (ord_of_word x).
 
-Lemma id_to_word_bound x : Word.ltu (id_to_word x) bound.
+Lemma id_to_wordK : pcancel id_to_word word_to_id.
 Proof.
-  destruct x as [x Hx].
-  let u := eval compute in (Word.modulus 27) in
-  change (Word.modulus 27) with u in Hx.
-  unfold id_to_word, Word.castu, Word.ltu, bound.
-  simpl. rewrite Word.Z_mod_modulus_eq. rewrite Zmod_small.
-  - destruct (zlt x 268435456); by [trivial | omega].
-  -  let u := eval compute in (Word.modulus 31) in
-     change (Word.modulus 31) with u.
-     by omega.
+move=> x; rewrite /word_to_id /id_to_word.
+have hx := valP (ord_of_word x) : ord_of_word x < bound.
+by rewrite !as_wordK ?[in LHS]hx ?valwK ?(ltn_trans hx) /bound ?ltn_exp2l.
 Qed.
 
-Lemma id_to_wordK x : word_to_id (id_to_word x) = Some x.
+Lemma word_to_idK : ocancel word_to_id id_to_word.
 Proof.
-  remember (id_to_word x) as w eqn:Hw.
-  unfold word_to_id.
-  rewrite Hw. clear Hw.
-  rewrite id_to_word_bound.
-  unfold id_to_word, Word.castu, bound in *.
-  apply f_equal.
-  rewrite Word.unsigned_repr_eq.
-  let u := eval compute in (Word.modulus (word_size_minus_one t)) in
-  change (Word.modulus (word_size_minus_one t)) with u.
-  rewrite Zmod_small.
-  - by apply Word.repr_unsigned.
-  - unfold Word.unsigned.
-    assert (H := Word.intrange 27 x).
-    let u := eval compute in (Word.modulus 27) in
-                              change (Word.modulus 27) with u in H.
-    by omega.
+move=> w; rewrite /word_to_id /id_to_word.
+have [hb|] // := boolP (_ < 2 ^ 28).
+by rewrite [in X in Some X](lock as_word) /= -lock as_wordK // valwK.
 Qed.
 
-Lemma word_to_idK w x :
-  word_to_id w = Some x ->
-  id_to_word x = w.
-Proof.
-  intros Hwid.
-  unfold word_to_id in Hwid.
-  destruct (Word.ltu w bound) eqn:Hl; [idtac | discriminate].
-  inv Hwid.
-  unfold id_to_word, Word.castu.
-  rewrite Word.unsigned_repr_eq.
-  let u := eval compute in (Word.modulus 27) in
-                            change (Word.modulus 27) with u.
-  unfold Word.ltu, bound in Hl.
-  simpl in Hl.
-  case: (zlt (Word.unsigned w) 268435456) => Hcmp.
-  + rewrite Zmod_small; [by apply Word.repr_unsigned | idtac].
-    split; auto.
-    destruct (Word.unsigned_range w) as [? ?].
-    by assumption.
-  + exfalso.
-    apply zlt_false with (A := bool) (a := true) (b := false) in Hcmp.
-    rewrite Hl in Hcmp.
-    by discriminate.
-Qed.
-
-Instance ids : cfi_id := {|
+Instance ids : cfi_id mt := {
  id := id;
  word_to_id := word_to_id;
  id_to_word := id_to_word
-|}.
+}.
 Proof.
   - by apply id_to_wordK.
-  - by apply word_to_idK.
+  - by move=> w x h; move: (word_to_idK w); rewrite h.
 Defined.
 
 (* Encoding of tags:
@@ -112,64 +71,61 @@ Defined.
       INSTR (Some x) --> x*4+2
 *)
 
-Definition encode_cfi_tag (t : cfi_tag) : Word.int 29 :=
+Definition encode_cfi_tag (t : cfi_tag) : word 30 :=
  match t with
-   DATA => Word.pack [:: 27; 1] [wp Word.zero; Word.zero]%w
- | INSTR None => Word.pack [:: 27; 1] [wp Word.zero; Word.one]%w
- | INSTR (Some x) => Word.pack [:: 27; 1] [wp x; Word.repr 2]%w
+   DATA => @wpack [:: 28; 2] [hseq 0; 0]%w
+ | INSTR None => @wpack [:: 28; 2] [hseq 0; 1]%w
+ | INSTR (Some x) => @wpack [:: 28; 2] [hseq x; as_word 2]%w
  end.
 
-Definition decode_cfi_tag (t : Word.int 29) : option cfi_tag :=
-  let: [wu k; t]%w := Word.unpack [:: 27; 1] t in
-  if t == Word.zero then
-    if k == Word.zero then Some DATA
+Definition decode_cfi_tag (t : word 30) : option cfi_tag :=
+  let: [hseq k; t] := @wunpack [:: 28; 2] t in
+  if t == 0%w then
+    if k == 0%w then Some DATA
     else None
-  else if t == Word.one then
-    if k == Word.zero then Some (INSTR None)
+  else if t == 1%w then
+    if k == 0%w then Some (INSTR None)
     else None
-  else if t == Word.repr 2 then
-    Some (INSTR (Some k))
+  else if t == as_word 2 then
+    Some (INSTR (Some (k : @classes.id _ ids)))
   else None.
 
-Lemma encode_cfi_tagK t : decode_cfi_tag (encode_cfi_tag t) = Some t.
+Lemma encode_cfi_tagK : pcancel encode_cfi_tag decode_cfi_tag.
 Proof.
-  case: t => [[k|]|];
-  by rewrite /decode_cfi_tag /encode_cfi_tag Word.packK /=.
+by case=> [[k|]|] /=; rewrite /decode_cfi_tag wpackK.
 Qed.
 
-Lemma decode_cfi_tagK w t : decode_cfi_tag w = Some t ->
-                                encode_cfi_tag t = w.
+Lemma decode_cfi_tagK : ocancel decode_cfi_tag encode_cfi_tag.
 Proof.
-  rewrite /decode_cfi_tag /encode_cfi_tag.
-  case E: (Word.unpack [:: 27; 1] w) => [k [w' []]].
-  move: (Word.unpackK [:: 27; 1] w). rewrite E.
-  have [?|?] := altP (w' =P Word.zero); try subst w'.
-  { have [?|?] := altP (k =P Word.zero); try subst k; last by [].
-    by move => H [<-]. }
-  have [?|?] := altP (w' =P Word.one); try subst w'.
-  { have [?|?] := altP (k =P Word.zero); try subst k; last by [].
-     by move => H [<-]. }
-  have [?|?] := altP (w' =P Word.repr 2); try subst w'; last by [].
-  by move => H [<-].
+move=> w; rewrite /decode_cfi_tag.
+case E: (wunpack _) => [k [t []]]; move: E.
+have [{t}->|] := altP (t =P _).
+  have [{k}->|hk] //= := altP (k =P _).
+  by move=> <-; rewrite wunpackK.
+have [{t}-> _|] := altP (t =P 1%w).
+  have [{k}->|hk] //= := altP (k =P _).
+  by move=> <-; rewrite wunpackK.
+have [{t}-> _ _|] //= := altP (t =P as_word 2).
+by move=> <-; rewrite wunpackK.
 Qed.
 
 Import DoNotation.
 
-Instance encodable_tag : encodable t cfi_tags := {|
-  decode k m w :=
-    let: [wu ut; w']%w := Word.unpack [:: 29; 1] w in
-    if w' == Word.zero then None
-    else if w' == Word.one then
+Instance encodable_tag : encodable mt cfi_tags := {|
+  decode k m := fun (w : mword mt) =>
+    let: [hseq ut; w'] := @wunpack [:: 30; 2] w in
+    if w' == 0%w then None
+    else if w' == 1%w then
       do! ut <- decode_cfi_tag ut;
       Some (@USER cfi_tag_eqType ut)
-    else if w' == Word.repr 2 then
+    else if w' == as_word 2 then
       do! ut <- decode_cfi_tag ut;
       Some (@ENTRY cfi_tag_eqType ut)
     else None
 |}.
 Proof.
   - by eauto.
-  - by [].
+  - by move=> tk _; rewrite 2!wunpackS.
 Qed.
 
 Section Refinement.
@@ -180,14 +136,14 @@ Variable cfg : id -> id -> bool.
 Not_found when closing the Refinement section below, probably a bug to
 be reported. *)
 
-Instance sp : Symbolic.params := @Sym.sym_cfi t ids cfg.
+Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable ki : refinement_common.kernel_invariant.
-Variable stable : list (Symbolic.syscall t).
-Variable atable : list (Abs.syscall t).
+Variable stable : seq (Symbolic.syscall mt).
+Variable atable : seq (Abs.syscall mt).
 
-Inductive refine_state (ast : Abs.state t) (cst : Concrete.state t) : Prop :=
-| rs_intro : forall (sst : Symbolic.state t),
+Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
+| rs_intro : forall (sst : Symbolic.state mt),
                refinement_common.refine_state ki stable sst cst ->
                RefinementAS.refine_state stable ast sst ->
                refine_state ast cst.
@@ -200,7 +156,7 @@ Hypothesis refine_syscalls_correct : RefinementAS.refine_syscalls stable atable 
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    @Abs.sem t ac ast = Some ast' ->
+    @Abs.sem mt ac ast = Some ast' ->
        let '(Abs.State imem _ _ _ b) := ast in
        let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
@@ -248,16 +204,22 @@ Lemma backwards_refinement_as ast sst sst' :
     exec (fun ast ast' => Abs.step atable cfg ast ast') ast ast' /\
     RefinementAS.refine_state stable ast' sst'.
 Proof.
-  move => REF EXEC.
-  elim: EXEC ast REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] ast REF; first by eauto 7.
-  exploit RefinementAS.backwards_simulation; eauto.
-  intros (ast' & STEPA & REF').
-  exploit (IH  ast'); eauto.
-  intros (ast'' & EXECA & REF'').
-  eauto 7.
+move => REF EXEC.
+elim: EXEC ast REF=> {sst sst'} [sst _|sst sst' sst'' _ STEPS EXEC IH] ast REF.
+  by eauto 7.
+have [ast' [STEPA REF']] :=
+  RefinementAS.backwards_simulation refine_syscalls_correct syscall_sem
+                                    syscall_preserves_instruction_tags
+                                    syscall_preserves_valid_jmp_tags
+                                    syscall_preserves_entry_tags
+                                    syscall_preserves_register_tags
+                                    syscall_preserves_jump_tags
+                                    syscall_preserves_jal_tags
+                                    REF STEPS.
+by have [ast'' [EXECA REF'']] := IH ast' REF'; eauto 7.
 Qed.
 
-Lemma backwards_refinement (ast : Abs.state t) (cst cst' : Concrete.state t) :
+Lemma backwards_refinement (ast : Abs.state mt) (cst cst' : Concrete.state mt) :
   refine_state ast cst ->
   exec (Concrete.step _ masks) cst cst' ->
   in_user cst' ->
@@ -265,11 +227,9 @@ Lemma backwards_refinement (ast : Abs.state t) (cst cst' : Concrete.state t) :
     exec (fun ast ast' => Abs.step atable cfg ast ast') ast ast' /\
     refine_state ast' cst'.
 Proof.
-  move => [sst SC AS] EXECC INUSER.
-  exploit @backward.backwards_refinement; eauto.
-  intros (sst' & EXECS & SC').
-  exploit backwards_refinement_as; eauto.
-  intros (ast' & EXECA & AS'). eauto 7.
+move => [sst SC AS] EXECC INUSER.
+have [sst' EXECS SC'] := backward.backwards_refinement SC EXECC INUSER.
+by have [ast' [EXECA AS']] := backwards_refinement_as AS EXECS; eauto.
 Qed.
 
 End Refinement.

@@ -1,9 +1,8 @@
-Require Import Coq.Lists.List Coq.Arith.Arith Coq.ZArith.ZArith.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-
-Require Import lib.Integers lib.utils lib.partial_maps.
-Require Import common.common.
+Require Import lib.utils lib.partmap_utils.
+Require Import common.types.
 Require Import concrete.concrete.
 Require Import symbolic.symbolic.
 Require Import cfi.symbolic.
@@ -11,21 +10,19 @@ Require Import cfi.property.
 Require Import cfi.rules.
 Require Import cfi.classes.
 Require Import symbolic.rules.
-Require Import lib.Coqlib.
 Require Import symbolic.refinement_common.
 
 Set Implicit Arguments.
-Open Scope Z_scope.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Module Conc.
 Section ConcreteSection.
 
-Context {t : machine_types}
-        {ops : machine_ops t}
-        {ids : @classes.cfi_id t}
-        {e : rules.fencodable t cfi_tags}.
-
-Import PartMaps.
+Context {mt : machine_types}
+        {ops : machine_ops mt}
+        {ids : cfi_id mt}
+        {e : rules.fencodable mt cfi_tags}.
 
 Variable cfg : id -> id -> bool.
 
@@ -34,16 +31,16 @@ Definition valid_jmp := classes.valid_jmp cfg.
 (*allow attacker to change only things tagged USER DATA! all the rest should be equiv*)
 
 
-Definition no_violation (cst : Concrete.state t) :=
-  let '(Concrete.mkState mem _  _ pc@tpc _) := cst in
+Definition no_violation (cst : Concrete.state mt) :=
+  let '(Concrete.State mem _  _ pc@tpc _) := cst in
   (forall i cti ti src,
-    get mem pc = Some i@cti ->
+    getm mem pc = Some i@cti ->
     @fdecode _ _ e Symbolic.M cti = Some (USER ti) ->
     @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
     exists dst,
         ti = INSTR (Some dst) /\ cfg src dst) /\
   (forall i cti ti src,
-     get mem pc = Some i@cti ->
+     getm mem pc = Some i@cti ->
      @fdecode _ _ e Symbolic.M cti = Some (ENTRY ti) ->
      @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
      exists dst,
@@ -53,7 +50,7 @@ Definition no_violation (cst : Concrete.state t) :=
 (* TODO: as a sanity check, please prove reflexivity for this and
    the other attacker relations. That will ensure that the attacker
    can at least keep things the same. *)
-Inductive atom_equiv k (a : atom (word t) (word t)) (a' : atom (word t) (word t)) : Prop :=
+Inductive atom_equiv k (a : atom (mword mt) (mword mt)) (a' : atom (mword mt) (mword mt)) : Prop :=
   | user_equiv : forall v v' ct ut ct' ut',
                    a = v@ct ->
                    @fdecode _ _ e k ct = Some (USER ut) ->
@@ -61,65 +58,65 @@ Inductive atom_equiv k (a : atom (word t) (word t)) (a' : atom (word t) (word t)
                    @fdecode _ _ e k ct' = Some (USER ut') ->
                    Sym.atom_equiv v@ut v'@ut' ->
                    atom_equiv k a a'
-  | any_equiv : (~ exists ut, @fdecode _ _ e k (common.tag a) = Some (USER ut)) ->
+  | any_equiv : (~ exists ut, @fdecode _ _ e k (taga a) = Some (USER ut)) ->
                 a = a' ->
                 atom_equiv k a a'.
 
-Definition equiv (mem mem' : Concrete.memory t) :=
+Definition equiv (mem mem' : Concrete.memory mt) :=
   pointwise (atom_equiv Symbolic.M) mem mem'.
 
-Definition reg_equiv (regs : Concrete.registers t) (regs' : Concrete.registers t) :=
+Definition reg_equiv (regs : Concrete.registers mt) (regs' : Concrete.registers mt) :=
   forall r, exists x x',
-    PartMaps.get regs r = Some x /\
-    PartMaps.get regs' r = Some x' /\
+    getm regs r = Some x /\
+    getm regs' r = Some x' /\
     atom_equiv Symbolic.R x x'.
 
-Inductive step_a : Concrete.state t ->
-                   Concrete.state t -> Prop :=
+Inductive step_a : Concrete.state mt ->
+                   Concrete.state mt -> Prop :=
 | step_attack : forall mem reg cache pc tpc epc mem' reg'
                   (INUSER: oapp (fun x => is_user x) false (@fdecode _ _ e Symbolic.P tpc))
                   (REQUIV: reg_equiv reg reg')
                   (MEQUIV: equiv mem mem'),
-                  step_a (Concrete.mkState mem reg cache pc@tpc epc)
-                         (Concrete.mkState mem' reg' cache pc@tpc epc).
+                  step_a (Concrete.State mem reg cache pc@tpc epc)
+                         (Concrete.State mem' reg' cache pc@tpc epc).
 
-Local Notation "x .+1" := (Word.add x Word.one).
+Local Notation "x .+1" := (x + 1)%w.
 Local Open Scope word_scope.
 
-Definition csucc (st : Concrete.state t) (st' : Concrete.state t) : bool :=
-  let pc_s := common.val (Concrete.pc st) in
-  let pc_s' := common.val (Concrete.pc st') in
+Definition csucc (st : Concrete.state mt) (st' : Concrete.state mt) : bool :=
+  let pc_s := vala (Concrete.pc st) in
+  let pc_s' := vala (Concrete.pc st') in
   if in_kernel st || in_kernel st' then true else
-  match (get (Concrete.mem st) pc_s) with
+  match (getm (Concrete.mem st) pc_s) with
     | Some i =>
-      match (@fdecode _ _ e Symbolic.M (common.tag i)) with
+      match (@fdecode _ _ e Symbolic.M (taga i)) with
         | Some (USER (INSTR (Some src))) =>
-          match decode_instr (common.val i) with
+          match decode_instr (vala i) with
             | Some (Jump r)
             | Some (Jal r) =>
-              match (get (Concrete.mem st) pc_s') with
+              match (getm (Concrete.mem st) pc_s') with
                 | Some i' =>
-                  match (@fdecode _ _ e Symbolic.M (common.tag i')) with
+                  match (@fdecode _ _ e Symbolic.M (taga i')) with
                     | Some (USER (INSTR (Some dst))) =>
                       cfg src dst
                     | Some (ENTRY (INSTR (Some dst))) =>
-                      is_nop (common.val i') && cfg src dst
+                      is_nop (vala i') && cfg src dst
                     | _ => false
                   end
                 | _ => false
               end
             | Some (Bnz r imm) =>
-              (pc_s' == pc_s .+1) || (pc_s' == pc_s + Word.casts imm)
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + swcast imm)
             | None => false
             | _ => pc_s' == pc_s .+1
           end
         | Some (USER (INSTR None)) =>
-          match decode_instr (common.val i) with
+          match decode_instr (vala i) with
             | Some (Jump r)
             | Some (Jal r) =>
               false
             | Some (Bnz r imm) =>
-              (pc_s' == pc_s .+1) || (pc_s' == pc_s + Word.casts imm)
+              (pc_s' == pc_s .+1) || (pc_s' == pc_s + swcast imm)
             | None => false
             | _ => pc_s' == pc_s .+1
           end
@@ -136,17 +133,15 @@ Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable ki : refinement_common.kernel_invariant.
 
-Variable stable : list (Symbolic.syscall t).
+Variable stable : seq (Symbolic.syscall mt).
 
 (* This is basically the initial_refine assumption on preservation *)
-Definition cinitial (cs : Concrete.state t) :=
+Definition cinitial (cs : Concrete.state mt) :=
   exists ss, Sym.initial stable ss /\ refine_state ki stable ss cs.
 
 Variable masks : Concrete.Masks.
 
-Import ListNotations.
-
-Definition all_attacker (xs : list (Concrete.state t)) : Prop :=
+Definition all_attacker (xs : seq (Concrete.state mt)) : Prop :=
   forall x1 x2, In2 x1 x2 xs -> step_a x1 x2 /\ ~ Concrete.step _ masks x1 x2.
 
 Lemma all_attacker_red ast ast' axs :
@@ -160,16 +155,16 @@ Proof.
   assumption.
 Qed.
 
-Definition stopping (ss : list (Concrete.state t)) : Prop :=
-  (all_attacker ss /\ forallb in_user ss)
+Definition stopping (ss : seq (Concrete.state mt)) : Prop :=
+  (all_attacker ss /\ all in_user ss)
   \/
   (exists user kernel,
     ss = user ++ kernel /\
-    all_attacker user /\ forallb in_user user /\
-    forallb in_kernel kernel).
+    all_attacker user /\ all in_user user /\
+    all in_kernel kernel).
 
-Program Instance concrete_cfi_machine : cfi_machine := {|
-  state := Concrete.state t;
+Program Instance concrete_cfi_machine : cfi_machine := {
+  state := [eqType of Concrete.state mt];
   initial s := cinitial s;
 
   step s1 s2 := Concrete.step ops masks s1 s2;
@@ -177,7 +172,7 @@ Program Instance concrete_cfi_machine : cfi_machine := {|
 
   succ := csucc;
   stopping := stopping
- |}.
+}.
 
 End ConcreteSection.
 

@@ -1,14 +1,8 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import common.common.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat.
+Require Import common.types.
 
-Section WithClasses.
-
-Context {t : machine_types}.
-
-Class sealing_syscall_addrs := {
-  mkkey_addr  : word t;
-  seal_addr   : word t;
-  unseal_addr : word t
+Class sealing_syscall_addrs mt := {
+  mkkey_addr  : mword mt;
+  seal_addr   : mword mt;
+  unseal_addr : mword mt
 }.
-
-End WithClasses.

@@ -1,27 +1,27 @@
-Require Import List.
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-Require Import lib.utils common.common.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.word CoqUtils.partmap.
+Require Import lib.utils common.types.
 
 Set Implicit Arguments.
-
-Import ListNotations.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Section CFI.
 
-Context (t : machine_types).
-Context {ops : machine_ops t}.
+Context (mt : machine_types).
+Context {ops : machine_ops mt}.
 
-Local Notation word := (word t).
+Local Notation word := (mword mt).
 
 Class cfi_machine := {
-  state : Type;
+  state : eqType;
   initial : state -> Prop;
 
   step : state -> state -> Prop;
   step_a : state -> state -> Prop;
 
   succ : state -> state -> bool;
-  stopping : list state -> Prop
+  stopping : seq state -> Prop
 }.
 
 Context (cfim : cfi_machine).
@@ -33,10 +33,8 @@ Definition intermstep := interm cfi_step.
 
 Definition intermrstep := intermr cfi_step.
 
-Definition zero_one_step := zero_one cfi_step.
-
 (* Old definition of CFI (Abadi)
-Definition trace_has_cfi' (trace : list state) :=
+Definition trace_has_cfi' (trace : seq state) :=
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
              (step_a si sj /\ get_pc si = get_pc sj)
@@ -44,16 +42,16 @@ Definition trace_has_cfi' (trace : list state) :=
 *)
 
 (* Our new CFI definition *)
-Definition trace_has_cfi (trace : list state) :=
+Definition trace_has_cfi (trace : seq state) :=
   forall (si sj : state)
          (INTRACE : In2 si sj trace ),
            step si sj -> succ si sj.
 
-Definition trace_has_at_most_one_violation (trace : list state) :=
+Definition trace_has_at_most_one_violation (trace : seq state) :=
   trace_has_cfi trace \/
   exists si sj hs tl, trace = hs ++ si :: sj :: tl
                          /\ (step si sj /\ ~~ succ si sj)
-                         /\ trace_has_cfi (hs ++ [si])
+                         /\ trace_has_cfi (rcons hs si)
                          /\ trace_has_cfi (sj :: tl)
                          /\ stopping(sj :: tl).
 

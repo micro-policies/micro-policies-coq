@@ -1,8 +1,8 @@
-Require Import Coq.Lists.List.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+
 Require Import lib.utils.
-Require Import lib.partial_maps.
-Require Import lib.Coqlib.
-Require Import common.common.
+Require Import common.types.
 Require Import symbolic.symbolic.
 Require Import symbolic.exec.
 Require Import cfi.classes.
@@ -12,25 +12,23 @@ Require Import cfi.preservation.
 Require Import cfi.refinementAS.
 Require Import cfi.rules.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-
 Set Implicit Arguments.
-
-Import PartMaps.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
 
 Section Refinement.
 
-Context {t : machine_types}
-        {ops : machine_ops t}
+Context {mt : machine_types}
+        {ops : machine_ops mt}
         {opss : machine_ops_spec ops}
-        {ids : @classes.cfi_id t}.
+        {ids : cfi_id mt}.
 
 Variable cfg : classes.id -> classes.id -> bool.
 
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable atable : list (Abs.syscall t).
-Variable stable : list (Symbolic.syscall t).
+Variable atable : seq (Abs.syscall mt).
+Variable stable : seq (Symbolic.syscall mt).
 
 Definition amachine :=  Abs.abstract_cfi_machine atable cfg.
 Definition smachine := Sym.symbolic_cfi_machine stable.
@@ -43,7 +41,7 @@ Hypothesis ref_sc_correct : refine_sc.
 
 Hypothesis syscall_sem :
   forall ac ast ast',
-    @Abs.sem t ac ast = Some ast' ->
+    @Abs.sem mt ac ast = Some ast' ->
        let '(Abs.State imem _ _ _ b) := ast in
        let '(Abs.State imem' _ _ _ b') := ast' in
          imem = imem' /\ b' = b.
@@ -93,41 +91,34 @@ Definition backwards_simulation :=
 
 Lemma untag_implies_reg_refinement reg :
   Sym.registers_tagged reg ->
-  RefinementAS.refine_registers (cfg := cfg) (PartMaps.map RefinementAS.untag_atom reg) reg.
+  RefinementAS.refine_registers (cfg := cfg) (mapm RefinementAS.untag_atom reg) reg.
 Proof.
   intros RTG r v.
   split.
   - intros GET.
-    rewrite PartMaps.map_correctness.
-    rewrite GET. reflexivity.
+    by rewrite getm_map /= GET.
   - intros GET.
-    rewrite PartMaps.map_correctness in GET.
-    destruct (get reg r) eqn:GET'.
+    rewrite getm_map /= in GET.
+    destruct (reg r) eqn:GET'.
     + destruct a. simpl in GET.
-      assert (tag = DATA)
+      assert (taga = DATA)
         by (apply RTG in GET'; assumption).
       subst.
-      rewrite GET' in GET.
-      simpl in GET.
-      inv GET.
-      assumption.
+      rewrite GET' /= in GET.
+      by inv GET.
     + rewrite GET' in GET. simpl in GET. congruence.
 Qed.
 
 Lemma untag_data_implies_dmem_refinement mem :
   RefinementAS.refine_dmemory
-    (PartMaps.map RefinementAS.untag_atom (filter RefinementAS.is_data mem)) mem.
+    (mapm RefinementAS.untag_atom (filterm RefinementAS.is_data mem)) mem.
 Proof.
    intros addr v.
    split.
    - intros GET.
-     rewrite PartMaps.map_correctness.
-     rewrite filter_correctness.
-     rewrite GET. reflexivity.
-   - intros GET.
-     rewrite PartMaps.map_correctness in GET.
-     rewrite filter_correctness in GET.
-     destruct (get mem addr) eqn:GET'.
+     by rewrite getm_map /= getm_filter /= GET.
+   - rewrite getm_map /= getm_filter /= => GET.
+     destruct (getm mem addr) eqn:GET'.
      + destruct a as [val tg].
        simpl in GET.
        destruct tg as [[id|]|]; simpl in GET.
@@ -137,40 +128,30 @@ Proof.
      + simpl in GET. congruence.
 Qed.
 
-Definition is_instr (a : atom (word t) cfi_tag) :=
-  match common.tag a with
+Definition is_instr (a : atom (mword mt) cfi_tag) :=
+  match taga a with
     | INSTR _ => true
     | DATA => false
   end.
 
 Lemma untag_instr_implies_imem_refinement mem :
   RefinementAS.refine_imemory
-    (PartMaps.map RefinementAS.untag_atom (filter is_instr mem)) mem.
+    (mapm RefinementAS.untag_atom (filterm is_instr mem)) mem.
 Proof.
    intros addr v.
    split.
    - intros (ut & GET).
-     rewrite PartMaps.map_correctness.
-     rewrite filter_correctness.
-     rewrite GET. reflexivity.
-   - intros GET.
-     rewrite PartMaps.map_correctness in GET.
-     rewrite filter_correctness in GET.
-     destruct (get mem addr) eqn:GET'.
-     + destruct a as [val tg].
-       simpl in GET.
-       destruct tg as [[id|]|]; simpl in GET.
-       * inv GET. eexists; reflexivity.
-       * inv GET; eexists; reflexivity.
-       * congruence.
-     + simpl in GET. congruence.
+     by rewrite getm_map /= getm_filter /= GET.
+   - rewrite getm_map /= getm_filter /=.
+     case GET': (getm mem addr) => [[val tg]|] //=.
+     by case: tg GET' => [[id|]|] //= _ [<-]; simpl; eauto.
 Qed.
 
 Hint Resolve untag_instr_implies_imem_refinement.
 Hint Resolve untag_data_implies_dmem_refinement.
 Hint Resolve untag_implies_reg_refinement.
 
-Theorem cfg_true_equiv (asi asj : Abs.state t) ssi ssj :
+Theorem cfg_true_equiv (asi asj : Abs.state mt) ssi ssj :
   RefinementAS.refine_state stable asi ssi ->
   RefinementAS.refine_state stable asj ssj ->
   Abs.step atable cfg asi asj ->
@@ -192,7 +173,7 @@ Proof.
   destruct REFPC' as [? TPC'];
   subst.
   unfold Sym.ssucc; simpl.
-  destruct (get imem spc) as [s|] eqn:GET.
+  destruct (getm imem spc) as [s|] eqn:GET.
   + destruct (decode_instr s) eqn:INST.
     - destruct i eqn:DECODE;
       apply REFI in GET;
@@ -203,8 +184,8 @@ Proof.
         as [[? ?] [[? GETSPC'] | [GETSPC' [? [GETCALL ETAG]]]]]; simpl in *;
       unfold Abs.valid_jmp, valid_jmp in ASUCC;
       repeat match goal with
-        | [H: get _ ?Spc = Some _@(INSTR _),
-           H1: get _ ?Spc = Some _@(INSTR (word_to_id ?Spc)) |- _] =>
+        | [H: getm _ ?Spc = Some _@(INSTR _),
+           H1: getm _ ?Spc = Some _@(INSTR (word_to_id ?Spc)) |- _] =>
           rewrite H1 in H; inv H
         | [H: ?Expr = _, H1: context[match ?Expr with _ => _ end] |- _] =>
            rewrite H in H1
@@ -217,15 +198,15 @@ Proof.
       end; try discriminate; by auto.
     - by discriminate.
   + destruct (Abs.get_syscall atable spc) eqn:GETCALL.
-    - destruct (get mem spc) eqn:GET'.
+    - destruct (getm mem spc) eqn:GET'.
       { destruct a as [v ut].
         destruct ut.
-        * assert (EGET': exists id, get mem spc = Some v@(INSTR id))
+        * assert (EGET': exists id, getm mem spc = Some v@(INSTR id))
             by (eexists; eauto).
           apply REFI in EGET'.
           rewrite EGET' in GET. congruence.
         * rewrite GET'.
-          destruct (get dmem spc) eqn:AGET.
+          destruct (getm dmem spc) eqn:AGET.
           + discriminate.
           + apply REFD in GET'.
             rewrite GET' in AGET. congruence.
@@ -239,7 +220,7 @@ Proof.
         destruct EGETCALL as [sc GETCALL'].
         rewrite GETCALL'. reflexivity.
       }
-    - destruct (get dmem spc); discriminate.
+    - destruct (getm dmem spc); discriminate.
 Qed.
 
 Theorem cfg_false_equiv asi asj ssi ssj :
@@ -262,14 +243,14 @@ Proof.
                                             REFPC' as [? TPC'].
   subst.
   unfold Sym.ssucc.
-  destruct (get imem pc) as [s|] eqn:GET.
+  destruct (getm imem pc) as [s|] eqn:GET.
   { apply REFI in GET.
     destruct GET as [id GET].
     destruct (decode_instr s) eqn:INST.
     { destruct i;
       simpl; rewrite GET; simpl; rewrite INST; destruct id; auto;
       unfold Abs.valid_jmp, valid_jmp in ASUCC;
-      destruct (get mem pc') as [[v [[id|]|]]|] eqn:GET';
+      destruct (getm mem pc') as [[v [[id|]|]]|] eqn:GET';
       rewrite GET';
       try match goal with
         | [|- is_true (~~ match Symbolic.get_syscall _ _ with _ => _ end)] =>
@@ -284,9 +265,9 @@ Proof.
                  destruct (Symbolic.entry_tag S) as [[?|]|] eqn:?
              end;
       repeat match goal with
-               | [H: get _ _ = Some _@(INSTR (Some _)) |- _] =>
+               | [H: getm _ _ = Some _@(INSTR (Some _)) |- _] =>
                  apply ITG in H
-               | [H: get _ ?Addr = None,
+               | [H: getm _ ?Addr = None,
                   H1: Symbolic.get_syscall _ ?Addr = Some _,
                   H2: Symbolic.entry_tag _ = INSTR (Some _) |- _] =>
                  apply (ETG _ _ _ H H1) in H2
@@ -298,14 +279,14 @@ Proof.
   }
   { destruct (Abs.get_syscall atable pc) eqn:GETCALL.
     { simpl.
-      destruct (get dmem pc) eqn:GET'.
+      destruct (getm dmem pc) eqn:GET'.
       { apply REFD in GET'. rewrite GET'. reflexivity. }
       { discriminate. }
     }
     { simpl.
-      destruct (get mem pc) eqn:GET'.
-      { destruct a. destruct tag.
-        { assert (EGET' : exists id, get mem pc = Some val@(INSTR id))
+      destruct (getm mem pc) eqn:GET'.
+      { destruct a. destruct taga.
+        { assert (EGET' : exists id, getm mem pc = Some vala@(INSTR id))
                by (eexists; eauto).
           apply REFI in EGET'. congruence.
         }
@@ -331,16 +312,14 @@ Next Obligation.
   [intros;
     destruct (backwards_simulation syscall_preserves_register_tags
                                    syscall_preserves_jump_tags
-                                   syscall_preserves_jal_tags _ REF STEP)
+                                   syscall_preserves_jal_tags REF STEP)
     as [? [? ?]];
    eexists; split; eauto | discriminate].
 Qed.
 Next Obligation.
-  destruct (RefinementAS.backwards_simulation_attacker stable ast REF STEPA);
+  destruct (RefinementAS.backwards_simulation_attacker REF STEPA);
   eexists; eauto.
 Qed.
-
-Import ListNotations.
 
 Program Instance cfi_refinementAS_specs :
   machine_refinement_specs cfi_refinementAS.
@@ -350,9 +329,9 @@ Qed.
 Next Obligation. (*initial state*)
   destruct H as [TPC [ITG [VTG [ETG [RTG ?]]]]].
   destruct cst as [mem reg [pc tpc] int].
-  exists (Abs.State (PartMaps.map RefinementAS.untag_atom (filter is_instr mem))
-                    (PartMaps.map RefinementAS.untag_atom (filter RefinementAS.is_data mem))
-                    (PartMaps.map RefinementAS.untag_atom reg) pc true).
+  exists (Abs.State (mapm RefinementAS.untag_atom (filterm is_instr mem))
+                    (mapm RefinementAS.untag_atom (filterm RefinementAS.is_data mem))
+                    (mapm RefinementAS.untag_atom reg) pc true).
   split.
   - unfold Abs.initial. reflexivity.
   - unfold RefinementAS.refine_state. repeat (split; eauto).
@@ -384,49 +363,38 @@ Next Obligation.
   - split.
     + intros csi' csj' CONTRA.
       destruct CONTRA.
-    + intros csi' IN.
-      destruct IN as [? | CONTRA]; subst.
-      * intros (? & CONTRA).
-        destruct (backwards_refinement_normal _ _ _ REF CONTRA) as [VIS CLEAN].
-        clear CLEAN.
-        unfold check in VIS. simpl in VIS.
-        destruct (VIS erefl) as [ast' [ASTEP REF']].
-        unfold Abs.all_stuck in ALLS.
-        assert (IN: In ast [ast]) by (simpl; auto).
-        apply ALLS in IN.
-        eauto.
-      * destruct CONTRA.
+    + move=> csi'; rewrite inE => /eqP {csi'}->.
+      intros (? & CONTRA).
+      destruct (backwards_refinement_normal REF CONTRA) as [VIS CLEAN].
+      clear CLEAN.
+      unfold check in VIS. simpl in VIS.
+      destruct (VIS erefl) as [ast' [ASTEP REF']].
+      unfold Abs.all_stuck in ALLS.
+      have IN: ast \in [:: ast] by rewrite inE eqxx.
+      apply ALLS in IN.
+      by eauto.
   - simpl in *.
     discriminate.
-  - simpl in *.
-    assert (IN: In ast (ast :: ast' :: axs')) by (simpl; auto).
+  - have IN: ast \in (ast :: ast' :: axs') by rewrite inE eqxx.
     apply ALLS in IN.
-    exfalso.
-    eauto.
+    by exfalso; eauto.
   - apply Abs.all_attacker_red in ALLA.
     split.
     { apply Abs.all_stuck_red in ALLS.
-      exploit IHRTRACE'; auto.
-      intros [IH IH'];
+      by case: (IHRTRACE' ALLA ALLS)=> [IH IH'];
       simpl in *; eauto using Sym.all_attacker_step.
     }
-    { intros csi' IN.
-      destruct IN as [? | IN]; subst.
+    { move=> csi'; rewrite inE => /orP [/eqP ? | IN]; subst.
       - intros (? & CONTRA).
-        destruct (backwards_refinement_normal _ _ _ REF CONTRA) as [CONTRA' H'].
+        destruct (backwards_refinement_normal REF CONTRA) as [CONTRA' H'].
         clear H'.
         simpl in CONTRA'.
         destruct (CONTRA' erefl) as [ast'' [ASTEP REF'']].
-        assert (IN: In ast (ast :: ast' :: axs'))
-          by (simpl; auto).
+        have IN: ast \in (ast :: ast' :: axs') by rewrite inE eqxx.
         specialize (ALLS ast IN).
-        eauto.
-      - exploit IHRTRACE'; auto.
-        apply Abs.all_stuck_red in ALLS.
-        assumption.
-        intros [? STUCK].
-        specialize (STUCK csi' IN).
-        assumption.
+        by eauto.
+      - apply Abs.all_stuck_red in ALLS.
+        by move: (IHRTRACE' ALLA ALLS) => [? STUCK]; auto.
     }
 Qed.
 

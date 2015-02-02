@@ -1,9 +1,7 @@
-Require Import List NPeano Arith Bool.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
 
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-
-Require Import lib.Integers lib.utils lib.partial_maps lib.Coqlib.
-Require Import common.common.
+Require Import lib.utils.
+Require Import common.types.
 Require Import concrete.concrete.
 Require Import concrete.exec.
 Require Import symbolic.symbolic.
@@ -11,13 +9,11 @@ Require Import symbolic.exec.
 Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 
-Open Scope nat_scope.
+Require Import CoqUtils.word CoqUtils.partmap.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-
-Import ListNotations.
 
 Hint Constructors restricted_exec.
 Hint Unfold exec.
@@ -31,7 +27,7 @@ Context {mt : machine_types}
         {sp : Symbolic.params}
         {e : encodable mt Symbolic.ttypes}
         {ki : kernel_invariant}
-        {table : list (Symbolic.syscall mt)}
+        {table : seq (Symbolic.syscall mt)}
         {kcc : kernel_code_fwd_correctness ki table}.
 
 Hint Unfold Symbolic.next_state.
@@ -83,19 +79,15 @@ Proof.
     by eauto.
 Qed.
 
-Ltac failwith message :=
-  let op := current_instr_opcode in
-  fail 1000 message op.
-
 Ltac check_conv t1 t2 :=
   let e := constr:(erefl t1 : t1 = t2) in idtac.
 
 Ltac match_mem_get REF sst cst :=
   match goal with
-  | GET : PartMaps.get ?smem ?addr = Some ?w@?t |- _ =>
+  | GET : getm ?smem ?addr = Some ?w@?t |- _ =>
     check_conv smem (Symbolic.mem sst);
     match goal with
-    | _ : PartMaps.get ?cmem addr = _ |- _ => check_conv cmem (Concrete.mem cst); fail 1
+    | _ : getm ?cmem addr = _ |- _ => check_conv cmem (Concrete.mem cst); fail 1
     | |- _ => idtac
     end;
     first [ have [? ? ?] := proj2 (rs_refm REF) _ _ _ GET
@@ -104,12 +96,12 @@ Ltac match_mem_get REF sst cst :=
 
 Ltac match_mem_upd REF sst cst :=
   match goal with
-  | UPD : PartMaps.upd ?smem ?addr ?w@?t = Some ?smem',
+  | UPD : updm ?smem ?addr ?w@?t = Some ?smem',
     DEC : decode Symbolic.M ?cmem ?ct = Some (USER ?t) |- _ =>
     check_conv smem (Symbolic.mem sst);
     match goal with
     | _ : refine_memory smem' ?cmem',
-      _ : PartMaps.upd cmem ?addr _ = Some ?cmem' |- _ => fail 1
+      _ : updm cmem ?addr _ = Some ?cmem' |- _ => fail 1
     | |- _ => idtac
     end;
     first [ let cmem' := fresh "cmem'" in
@@ -136,11 +128,11 @@ Ltac match_mem_unchanged REF sst cst :=
 
 Ltac match_mem_unchanged_tags :=
   match goal with
-  | GET : PartMaps.get ?mem1 ?addr = Some ?x@?ct,
+  | GET : getm ?mem1 ?addr = Some ?x@?ct,
     DEC : decode Symbolic.M ?mem1 ?ct = Some (USER ?t),
     USERMEM : user_mem_unchanged ?mem1 ?mem2 |- _ =>
     match goal with
-    | _ : PartMaps.get mem2 addr = _ |- _ => fail 1
+    | _ : getm mem2 addr = _ |- _ => fail 1
     | |- _ => idtac
     end;
     first [ let GET' := fresh "GET'" in
@@ -150,10 +142,10 @@ Ltac match_mem_unchanged_tags :=
 
 Ltac match_reg_get REF sst cst :=
   match goal with
-  | GET : PartMaps.get ?sregs ?r = Some ?w@?t |- _ =>
+  | GET : getm ?sregs ?r = Some ?w@?t |- _ =>
     check_conv sregs (Symbolic.regs sst);
     match goal with
-    | _ : PartMaps.get ?cregs r = Some _ |- _ => check_conv cregs (Concrete.regs cst); fail 1
+    | _ : getm ?cregs r = Some _ |- _ => check_conv cregs (Concrete.regs cst); fail 1
     | |- _ => idtac
     end;
     first [ destruct (proj2 (rs_refr REF) _ _ _ GET) as [? ? ?]
@@ -162,12 +154,12 @@ Ltac match_reg_get REF sst cst :=
 
 Ltac match_reg_upd REF sst cst :=
   match goal with
-  | UPD : PartMaps.upd ?sregs ?r ?w@?t = Some ?sregs',
+  | UPD : updm ?sregs ?r ?w@?t = Some ?sregs',
     DEC : decode Symbolic.R ?cmem ?ct = Some (USER ?t) |- _ =>
     check_conv sregs (Symbolic.regs sst);
     match goal with
     | _ : refine_registers sregs' ?cregs' cmem,
-      _ : PartMaps.upd _ r _ = Some ?cregs' |- _ => fail 1
+      _ : updm _ r _ = Some ?cregs' |- _ => fail 1
     | |- _ => idtac
     end;
     let cregs' := fresh "cregs'" in
@@ -192,9 +184,9 @@ Ltac match_reg_unchanged REF sst cst :=
 
 Ltac match_pc_tag :=
   match goal with
-  | GET : PartMaps.get ?cmem ?addr = Some ?w@?ct,
+  | GET : getm ?cmem ?addr = Some ?w@?ct,
     DEC : decode Symbolic.M ?cmem ?ct = Some (USER ?st),
-    UPD : PartMaps.upd ?cmem ?addr ?w'@?ct' = Some ?cmem',
+    UPD : updm ?cmem ?addr ?w'@?ct' = Some ?cmem',
     DEC' : decode Symbolic.M ?cmem ?ct' = Some (USER ?st'),
     DECPC : decode Symbolic.P ?cmem ?cpct = Some (USER ?spct) |- _ =>
     match goal with
@@ -202,8 +194,9 @@ Ltac match_pc_tag :=
     | |- _ => idtac
     end;
     let DECPC' := fresh "DECPC'" in
-    have DECPC' : decode Symbolic.P cmem' cpct = Some (USER spct)
-      by rewrite (decode_monotonic Symbolic.P GET DEC UPD DEC'); eauto
+    first [ have DECPC' : decode Symbolic.P cmem' cpct = Some (USER spct)
+            by rewrite (updm_set UPD) /=; erewrite decode_monotonic; eauto |
+            failwith "match_pc_tag" ]
   end.
 
 Ltac match_data :=
@@ -221,24 +214,24 @@ Ltac match_data :=
 
 Ltac user_data_unchanged_mem cmem1 cmem2 :=
   match goal with
-  | GET : PartMaps.get cmem1 ?addr = Some ?w@?ct,
+  | GET : getm cmem1 ?addr = Some ?w@?ct,
     DEC : decode Symbolic.M cmem1 ?ct = Some (USER ?t),
     USERMEM : user_mem_unchanged cmem1 cmem2 |- _ =>
     match goal with
-    | _ : PartMaps.get cmem2 addr = Some _ |- _ => fail 1
+    | _ : getm cmem2 addr = Some _ |- _ => fail 1
     | |- _ => idtac
     end;
-    first [ destruct (proj1 (USERMEM _ _ _ _ DEC) GET) as [? ?]
+    first [ pose proof (proj1 (USERMEM _ _ _ _ DEC) GET)
           | failwith "user_data_unchanged_mem" ]
   end.
 
 Ltac user_data_unchanged_regs cmem1 cmem2 :=
   match goal with
-  | GET : PartMaps.get ?regs1 ?r = Some ?w@?ct,
+  | GET : getm ?regs1 ?r = Some ?w@?ct,
     DEC : decode Symbolic.R cmem1 ?ct = Some (USER ?t),
     USERREGS : user_regs_unchanged ?regs1 ?regs2 cmem1 |- _ =>
     match goal with
-    | _ : PartMaps.get regs2 r = Some _ |- _ => fail 1
+    | _ : getm regs2 r = Some _ |- _ => fail 1
     | |- _ => idtac
     end;
     first [ pose proof (proj1 (USERREGS _ _ _ _ DEC) GET)
@@ -255,7 +248,7 @@ Ltac user_data_unchanged :=
 Lemma no_syscall_no_entry_point mem addr t :
   wf_entry_points table mem ->
   Symbolic.get_syscall table addr = None ->
-  ~~ match PartMaps.get mem addr with
+  ~~ match getm mem addr with
      | Some i@it => (is_nop i) && (decode Symbolic.M mem it == Some (ENTRY t))
      | None => false
      end.
@@ -275,18 +268,18 @@ Ltac find_and_rewrite :=
 Ltac solve_concrete_step :=
   match goal with
   | LOOKUP : Concrete.cache_lookup _ _ _ = _ |- _ =>
-    econstructor (solve [eauto;
-                         try solve [ eapply Concrete.state_eta
-                                   | user_data_unchanged ];
-                         repeat autounfold; simpl;
-                         simpl in LOOKUP; rewrite LOOKUP;
-                         match goal with
-                         | STORE : Concrete.store_mvec _ _ = Some _ |- _ =>
-                           rewrite STORE
-                         | |- _ => idtac
-                         end;
-                         simpl in *;
-                         find_and_rewrite; match_inv; eauto])
+    s_econstructor solve [eauto;
+                          try solve [ eapply Concrete.state_eta
+                                    | user_data_unchanged ];
+                          repeat autounfold; simpl;
+                          simpl in LOOKUP; rewrite LOOKUP;
+                          match goal with
+                          | STORE : Concrete.store_mvec _ _ = Some _ |- _ =>
+                            rewrite STORE
+                          | |- _ => idtac
+                          end;
+                          simpl in *;
+                          find_and_rewrite; match_inv; eauto]
   end.
 
 Ltac solve_refine_state :=
@@ -301,7 +294,7 @@ Ltac solve_refine_state :=
 
 Ltac analyze_cache_miss :=
   match goal with
-  | PC : PartMaps.get ?cmem ?pc = Some ?i@_,
+  | PC : getm ?cmem ?pc = Some ?i@_,
     INST : decode_instr ?i = Some _,
     MVEC : mvec_in_kernel ?cmem,
     KINV : kernel_invariant_statement _ ?cmem _ ?cache _,
@@ -309,10 +302,9 @@ Ltac analyze_cache_miss :=
     LOOKUP : Concrete.cache_lookup ?cache _ _ = None,
     HANDLER : Symbolic.transfer ?mvec = Some _ |- _ =>
     let STORE := fresh "STORE" in
-    destruct (mvec_in_kernel_store_mvec _ MVEC) as [? STORE];
-    pose proof (store_mvec_mvec_in_kernel _ _ STORE);
-    pose proof (kernel_invariant_store_mvec ki _ _ _ _ _ KINV STORE);
-    destruct (handler_correct_allowed_case_fwd _ _ _ pc@(Concrete.ctpc _) _ KINV _ STORE CACHE)
+    pose proof (store_mvec_mvec_in_kernel cmem mvec);
+    pose proof (kernel_invariant_store_mvec ki _ _ _ _ KINV);
+    destruct (handler_correct_allowed_case_fwd _ _ _ pc@(Concrete.ctpc _) _ KINV _ STORE)
       as ([? ? ? [? ?] ?] &
           KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
     simpl in PC'; inv PC';
@@ -337,7 +329,7 @@ Proof.
     have Hctpc := build_cmvec_ctpc Hbuild.
     have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
     have Hinstr : instr = Nop _.
-      rewrite -{}Hop' op_to_wordK in Hop.
+      rewrite -{}Hop' in Hop.
       by case: instr Hdec_i Hop.
     rewrite {}Hinstr {instr} in Hdec_i Hop'.
     have [sc Hget_sc Hsc_t] :=
@@ -347,19 +339,14 @@ Proof.
     by rewrite /build_cmvec /Concrete.pcv -Hpc Hget_i Hget_i' Hdec_i /Concrete.pct Hpc.
   case: cmvec Hbuild ivec Hdec
         => [cop ctpc cti ct1 ct2 ct3] /= Hbuild
-           [op' tpc ti ts] /= [op [Hop [Hpriv Hcop Hdec_tpc Hdec_ti Hdec_ts]]].
+           [op' tpc ti ts] /= [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts].
   move: ts Hdec_ts. rewrite {}Hop {op'} => ts Hdec_ts.
   have [i [instr [//= Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
-  rewrite -{}Hop' op_to_wordK in Hcop.
-  case: Hcop => Hcop. subst op.
+  subst cop.
   move: Hbuild ts Hdec_ts.
   move/(Hmem _ _ _ _ Hdec_ti): (Hget_i) => Hget_i'.
   rewrite /build_cmvec /Concrete.pcv /Concrete.pct -Hpc Hget_i Hget_i' /= {}Hdec_i.
   destruct instr; simpl; move => Hbuild ts Hdec_ts;
-  repeat match goal with
-  | ts : prod _ _ |- _ => destruct ts
-  | ts : unit |- _ => destruct ts
-  end;
   match_inv; trivial;
   repeat match goal with
   | a : atom _ _ |- _ => destruct a
@@ -378,17 +365,17 @@ Lemma refine_ivec sst cst ivec :
     decode_ivec e (Concrete.mem cst) cmvec = Some ivec.
 Proof.
   move=> Href Hbuild.
-  suff : match @build_cmvec _ ops cst with
+  suff : match @build_cmvec _ ops cst return Prop with
          | Some cmvec => decode_ivec e (Concrete.mem cst) cmvec = Some ivec
          | None => False
          end by case: (build_cmvec cst); eauto.
   move: Hbuild.
   rewrite /build_ivec /build_cmvec /decode_ivec (rs_pc Href).
-  case Hget: (PartMaps.get _ _) => [[i ti]|] //=; last first.
+  case Hget: (getm _ _) => [[i ti]|] //=; last first.
     case Hget_sc: (Symbolic.get_syscall _ _) => [sc|] //= [<-] {ivec}.
     have [i' [cti [Hget' Hdec_cti /is_nopP Hi]]] :=
       wf_entry_points_if (rs_entry_points Href) Hget_sc.
-    rewrite Hget' Hi.
+    rewrite Hget' Hi /=.
     by rewrite /decode_ivec /= (rs_pct Href) Hdec_cti.
   have [cti Hdec_cti Hget'] := proj2 (rs_refm Href) _ _ _ Hget.
   rewrite Hget' /=.
@@ -399,7 +386,7 @@ Proof.
   repeat match goal with
   | x : atom _ _ |- _ => destruct x
   end;
-  match_data; find_and_rewrite; rewrite ?op_to_wordK /= ?(rs_pct Href) //;
+  match_data; find_and_rewrite; rewrite ?mword_of_opK /= ?(rs_pct Href) //;
   find_and_rewrite; done.
 Qed.
 
@@ -417,11 +404,10 @@ Lemma forward_simulation_miss sst cst ivec ovec cmvec :
         build_cmvec cst' = Some cmvec ].
 Proof.
   move=> REF IVEC CMVEC TRANS LOOKUP.
-  have [cmem Hcmem] := mvec_in_kernel_store_mvec cmvec (rs_mvec REF).
-  have FAULT := lookup_none_step CMVEC LOOKUP Hcmem.
+  have FAULT := lookup_none_step CMVEC LOOKUP.
   have [cmvec'] := refine_ivec REF IVEC.
   rewrite CMVEC. move => [<-] {cmvec'} DEC.
-  have := handler_correct_allowed_case_fwd (Concrete.pc cst) (rs_kinv REF) DEC TRANS Hcmem
+  have := handler_correct_allowed_case_fwd (Concrete.pc cst) (rs_kinv REF) DEC TRANS
                                            (rs_cache REF) => /(_ _ _ kcc).
   case=> cst' [crvec [EXEC [CACHE [LOOKUP' [DEC' [MVEC [USERPCTAG [USERMEM [USERREGS [PC [ENTRYPOINTS KINV]]]]]]]]]]].
   exists cst', crvec.
@@ -452,7 +438,7 @@ Proof.
   have [cmvec'] := refine_ivec REF IVEC.
   rewrite CMVEC. move=> [<-] {cmvec'} DEC.
   have [ |ivec' [ovec' [DEC' DECo TRANS']]] := rs_cache REF LOOKUP _.
-    by case/decode_ivec_inv: DEC => [[op [? [? ? ->]]]|[? ? ->]].
+    by case/decode_ivec_inv: DEC => [[? ? ->]|[? ? ->]].
   move: DEC' ovec' DECo TRANS'.
   rewrite DEC. move=> [<-]. rewrite TRANS.
   by move=> ? -> [<-].
@@ -470,7 +456,7 @@ Lemma forward_simulation_hit sst sst' cst ivec ovec cmvec crvec :
     refine_state ki table sst' cst'.
 Proof.
   move=> REF IVEC CMVEC TRANS LOOKUP /stepP STEP.
-  case GETi: (PartMaps.get (Symbolic.mem sst) (Symbolic.pcv sst)) => [[i ti]|]; last first.
+  case GETi: (getm (Symbolic.mem sst) (Symbolic.pcv sst)) => [[i ti]|]; last first.
     move: STEP ivec ovec TRANS IVEC CMVEC.
     rewrite {1}(Symbolic.state_eta sst) /build_ivec /= GETi.
     case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.
@@ -492,7 +478,7 @@ Proof.
       eapply re_step; trivial; try eassumption.
       by eapply exec_until_weaken; eauto.
     by constructor=> //.
-  suff : match @step masks _ ops cst with
+  suff : match @step masks _ ops cst return Prop with
          | Some cst' => @refine_state _ ops _ _ ki table sst' cst'
          | None => False
          end.

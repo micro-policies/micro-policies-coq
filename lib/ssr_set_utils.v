@@ -1,6 +1,10 @@
-Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq bigop fintype finset.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
+Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq MathComp.bigop Ssreflect.fintype MathComp.finset.
 
 Set Implicit Arguments.
+Unset Strict Implicit.
+Unset Printing Implicit Defensive.
+
 Set Bullet Behavior "Strict Subproofs".
 
 Theorem common_not_disjoint (T : finType) (x : T) (A B : {set T}) :
