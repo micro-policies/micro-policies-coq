@@ -162,16 +162,14 @@ Ltac simplify_eqs :=
   end.
 
 Ltac solve_step :=
-  repeat ([> once (
   solve [
-      econstructor;
+      s_econstructor (
           solve [eauto;
                  repeat autounfold;
                  repeat simplify_eqs;
                  repeat (find_and_rewrite; simpl);
-                 reflexivity]
-    | failwith "solve_step"
-  ]) | ..]).
+                 reflexivity])
+    | failwith "solve_step" ].
 
 Ltac solve_refine_state :=
   solve [ econstructor; eauto; try update_decodings

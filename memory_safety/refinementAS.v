@@ -1112,7 +1112,7 @@ Qed.
 
 Ltac solve_pc rpci :=
   by eexists; eexists; split;
-  [repeat ([> once (econstructor; solve [eauto]) | ..]) |
+  [repeat (s_econstructor solve [eauto]) |
   split; try eassumption;
   simpl; rewrite <-rpci, <-addwA; econstructor].
 

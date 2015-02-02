@@ -268,20 +268,18 @@ Ltac find_and_rewrite :=
 Ltac solve_concrete_step :=
   match goal with
   | LOOKUP : Concrete.cache_lookup _ _ _ = _ |- _ =>
-    repeat ([> once (
-    econstructor; solve [eauto;
-                         try solve [ eapply Concrete.state_eta
-                                   | user_data_unchanged ];
-                         repeat autounfold; simpl;
-                         simpl in LOOKUP; rewrite LOOKUP;
-                         match goal with
-                         | STORE : Concrete.store_mvec _ _ = Some _ |- _ =>
-                           rewrite STORE
-                         | |- _ => idtac
-                         end;
-                         simpl in *;
-                         find_and_rewrite; match_inv; eauto])
-     | .. ])
+    s_econstructor solve [eauto;
+                          try solve [ eapply Concrete.state_eta
+                                    | user_data_unchanged ];
+                          repeat autounfold; simpl;
+                          simpl in LOOKUP; rewrite LOOKUP;
+                          match goal with
+                          | STORE : Concrete.store_mvec _ _ = Some _ |- _ =>
+                            rewrite STORE
+                          | |- _ => idtac
+                          end;
+                          simpl in *;
+                          find_and_rewrite; match_inv; eauto]
   end.
 
 Ltac solve_refine_state :=

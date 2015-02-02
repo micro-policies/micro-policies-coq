@@ -128,7 +128,7 @@ Proof.
                inv H
            end;
 
-    repeat ([> once (econstructor; solve [eauto | atom_eta]) | .. ]).
+    s_econstructor solve [eauto | atom_eta].
 
   - unfold step.
     inv STEP; rewrite PC; clear PC; simpl;

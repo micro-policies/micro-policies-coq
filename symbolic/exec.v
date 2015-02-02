@@ -125,16 +125,9 @@ Proof.
                destruct rv; simpl in *
              | H : Some _ = Some _ |- _ =>
                inversion H; subst
-           end.
-      econstructor; solve [eauto].
-      econstructor; solve [eauto].
-      econstructor; solve [eauto].
-      econstructor; solve [eauto].
-      econstructor; solve [eauto].
-      econstructor; solve [eauto].
-      econstructor; solve [eauto].
-      econstructor; solve [eauto].
-      econstructor; solve [eauto].
+           end;
+      s_econstructor solve [eauto].
+
     - destruct STEP as (sc & GETCALL & STEP).
       econstructor; solve [eauto].
   }
