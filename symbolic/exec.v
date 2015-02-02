@@ -126,10 +126,10 @@ Proof.
              | H : Some _ = Some _ |- _ =>
                inversion H; subst
            end;
-      s_econstructor solve [eauto].
+      s_econstructor (solve [eauto]).
 
     - destruct STEP as (sc & GETCALL & STEP).
-      econstructor; solve [eauto].
+      s_econstructor (solve [eauto]).
   }
   { unfold stepf.
     inversion STEP; subst; rewrite PC; try (subst mv);
