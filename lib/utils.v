@@ -41,10 +41,10 @@ Ltac move_to_top x :=
 changed between 8.4 and 8.5 *)
 
 Tactic Notation "s_constructor" tactic(t) :=
-  [> once (constructor; t) ..].
+  constructor (t).
 
 Tactic Notation "s_econstructor" tactic(t) :=
-  [> once (econstructor; t) ..].
+  econstructor (t).
 
 Tactic Notation "assert_eq" ident(x) constr(v) :=
   let H := fresh in
