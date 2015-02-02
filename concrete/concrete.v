@@ -99,7 +99,7 @@ Definition cache_line_addr : mword mt := 0%w.
 (* BCP: Call it fault_handler_addr? *)
 Definition fault_handler_start : mword mt := as_word 8.
 Definition TNone   : mword mt := as_word 8.
-Definition TKernel : mword mt := 0.
+Definition TMonitor : mword mt := 0.
 
 Context {spops : machine_ops_spec ops}.
 
@@ -161,11 +161,11 @@ Definition copy (mv : mvec) (rv : rvec) (ctm : CTMask) : rvec :=
   RVec (copy_mvec_part mv (ctrpc rv) (ct_trpc ctm))
          (copy_mvec_part mv (ctr   rv) (ct_tr   ctm)).
 
-Definition is_kernel_tag (tpc:mword mt) : bool := tpc == TKernel.
+Definition is_monitor_tag (tpc:mword mt) : bool := tpc == TMonitor.
 
 Definition cache_lookup (cache : rules)
     (masks : Masks) (mv : mvec) : option rvec :=
-  let mask := masks (is_kernel_tag (ctpc mv)) (cop mv) in
+  let mask := masks (is_monitor_tag (ctpc mv)) (cop mv) in
   let masked_mv := mask_dc (dc mask) mv in
   do! rv <- getm cache masked_mv;
   Some (copy mv rv (ct mask)).
@@ -210,12 +210,12 @@ Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rule
   Some (setm cache mv (RVec (vala atrpc) (vala atr))).
 
 Definition store_mvec (mem : memory) (mv : mvec) : memory :=
-  unionm [partmap (Mop, (word_of_op (cop mv))@TKernel);
-                  (Mtpc, (ctpc mv)@TKernel);
-                  (Mti, (cti mv)@TKernel);
-                  (Mt1, (ct1 mv)@TKernel);
-                  (Mt2, (ct2 mv)@TKernel);
-                  (Mt3, (ct3 mv)@TKernel)]
+  unionm [partmap (Mop, (word_of_op (cop mv))@TMonitor);
+                  (Mtpc, (ctpc mv)@TMonitor);
+                  (Mti, (cti mv)@TMonitor);
+                  (Mt1, (ct1 mv)@TMonitor);
+                  (Mt2, (ct2 mv)@TMonitor);
+                  (Mt3, (ct3 mv)@TMonitor)]
          mem.
 
 Section ConcreteSection.
@@ -224,12 +224,12 @@ Variable masks : Masks.
 
 Local Notation "x .+1" := (x + 1)%w.
 
-(* The mvector is written at fixed locations in kernel memory where
+(* The mvector is written at fixed locations in monitor memory where
    the fault handler can access them (using the same addresses as for
    add_rule: Mop, Mtpc, etc.) *)
 Definition miss_state (st : state) (mvec : mvec) : state :=
   let mem' := store_mvec (mem st) mvec in
-  State mem' (regs st) (cache st) fault_handler_start@TKernel (pc st).
+  State mem' (regs st) (cache st) fault_handler_start@TMonitor (pc st).
 
 
 (* The next functions build the next state by looking up on the cache,
@@ -435,4 +435,4 @@ Export Exports.
 Arguments Concrete.state mt.
 Arguments Concrete.State {_} _ _ _ _ _.
 Arguments Concrete.TNone {mt}.
-Arguments Concrete.TKernel {mt}.
+Arguments Concrete.TMonitor {mt}.

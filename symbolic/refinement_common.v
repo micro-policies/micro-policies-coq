@@ -49,9 +49,9 @@ Definition refine_registers (areg : Symbolic.registers mt _)
        decode Symbolic.R cmem ctg = Some (USER atg) &
        creg r = Some x@ctg).
 
-Definition in_kernel (st : Concrete.state mt) :=
-  Concrete.is_kernel_tag (Concrete.pct st).
-Hint Unfold in_kernel.
+Definition in_monitor (st : Concrete.state mt) :=
+  Concrete.is_monitor_tag (Concrete.pct st).
+Hint Unfold in_monitor.
 
 Definition in_user st :=
   oapp (fun x => is_user x) false (decode Symbolic.P (Concrete.mem st) (Concrete.pct st)).
@@ -68,13 +68,13 @@ Definition cache_correct cache cmem :=
 
 Definition in_mvec addr := addr \in Concrete.mvec_fields mt.
 
-Definition mvec_in_kernel (cmem : Concrete.memory mt) :=
+Definition mvec_in_monitor (cmem : Concrete.memory mt) :=
   forall addr,
     in_mvec addr ->
-    exists w : mword mt, cmem addr = Some w@Concrete.TKernel.
+    exists w : mword mt, cmem addr = Some w@Concrete.TMonitor.
 
-Lemma store_mvec_mvec_in_kernel cmem mvec :
-  mvec_in_kernel (Concrete.store_mvec cmem mvec).
+Lemma store_mvec_mvec_in_monitor cmem mvec :
+  mvec_in_monitor (Concrete.store_mvec cmem mvec).
 Proof.
 move=> k; rewrite /Concrete.store_mvec getm_union.
 set m := mkpartmap _.
@@ -86,54 +86,54 @@ do !(case/orP=> [/eqP [_ ->]|]; eauto).
 by move/eqP => [_ ->]; eauto.
 Qed.
 
-(* CH: I find the way the "kernel invariant" is stated rather
+(* CH: I find the way the "monitor invariant" is stated rather
    indirect. Is there no direct way to define this? *)
 (* AAA: We need to add the cache as an argument here, since we don't
    assume anything about ground rules right now *)
 
-Record kernel_invariant : Type := {
-  kernel_invariant_statement :> Concrete.memory mt ->
+Record monitor_invariant : Type := {
+  monitor_invariant_statement :> Concrete.memory mt ->
                                 Concrete.registers mt ->
                                 Concrete.rules mt ->
                                 Symbolic.internal_state -> Prop;
 
-  kernel_invariant_upd_mem :
+  monitor_invariant_upd_mem :
     forall regs mem1 mem2 cache addr w1 ct ut w2 int
-           (KINV : kernel_invariant_statement mem1 regs cache int)
+           (MINV : monitor_invariant_statement mem1 regs cache int)
            (GET : mem1 addr = Some w1@ct)
            (DEC : decode Symbolic.M mem1 ct = Some (USER ut))
            (UPD : updm mem1 addr w2 = Some mem2),
-      kernel_invariant_statement mem2 regs cache int;
+      monitor_invariant_statement mem2 regs cache int;
 
-  kernel_invariant_upd_reg :
+  monitor_invariant_upd_reg :
     forall mem regs1 regs2 cache r w1 ct1 ut1 w2 ct2 ut2 int
-           (KINV : kernel_invariant_statement mem regs1 cache int)
+           (MINV : monitor_invariant_statement mem regs1 cache int)
            (GET : regs1 r = Some w1@ct1)
            (DEC1 : decode Symbolic.R mem ct1 = Some (USER ut1))
            (UPD : updm regs1 r w2@ct2 = Some regs2)
            (DEC2 : decode Symbolic.R mem ct2 = Some (USER ut2)),
-      kernel_invariant_statement mem regs2 cache int;
+      monitor_invariant_statement mem regs2 cache int;
 
-  kernel_invariant_store_mvec :
+  monitor_invariant_store_mvec :
     forall mem mvec regs cache int
-           (KINV : kernel_invariant_statement mem regs cache int),
-      kernel_invariant_statement (Concrete.store_mvec mem mvec)
+           (MINV : monitor_invariant_statement mem regs cache int),
+      monitor_invariant_statement (Concrete.store_mvec mem mvec)
                                  regs cache int
 }.
 
-Hint Resolve kernel_invariant_upd_mem.
-Hint Resolve kernel_invariant_upd_reg.
-Hint Resolve kernel_invariant_store_mvec.
+Hint Resolve monitor_invariant_upd_mem.
+Hint Resolve monitor_invariant_upd_reg.
+Hint Resolve monitor_invariant_store_mvec.
 
-Variable ki : kernel_invariant.
+Variable mi : monitor_invariant.
 
-Lemma in_user_in_kernel :
-  forall st, in_user st -> ~~ in_kernel st.
+Lemma in_user_in_monitor :
+  forall st, in_user st -> ~~ in_monitor st.
 Proof.
   move=> st.
-  rewrite /in_user /in_kernel /Concrete.is_kernel_tag.
+  rewrite /in_user /in_monitor /Concrete.is_monitor_tag.
   apply contraTN=> /eqP ->.
-  by rewrite decode_kernel_tag.
+  by rewrite decode_monitor_tag.
 Qed.
 
 Variable table : seq (Symbolic.syscall mt).
@@ -211,9 +211,9 @@ Inductive refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) : Pro
   rs_refm : refine_memory (Symbolic.mem sst) (Concrete.mem cst);
   rs_refr : refine_registers (Symbolic.regs sst) (Concrete.regs cst) (Concrete.mem cst);
   rs_cache : cache_correct (Concrete.cache cst) (Concrete.mem cst);
-  rs_mvec : mvec_in_kernel (Concrete.mem cst);
+  rs_mvec : mvec_in_monitor (Concrete.mem cst);
   rs_entry_points : wf_entry_points (Concrete.mem cst);
-  rs_kinv : ki (Concrete.mem cst) (Concrete.regs cst)
+  rs_minv : mi (Concrete.mem cst) (Concrete.regs cst)
                (Concrete.cache cst) (Symbolic.internal sst)
 }.
 
@@ -294,29 +294,29 @@ case: (cmem addr') => [[i ti]|] //.
   by rewrite Hmono.
 Qed.
 
-Lemma mvec_in_kernel_user_upd cmem cmem' addr v v' ct t ct' t' :
-  mvec_in_kernel cmem ->
+Lemma mvec_in_monitor_user_upd cmem cmem' addr v v' ct t ct' t' :
+  mvec_in_monitor cmem ->
   cmem addr = Some v@ct ->
   decode Symbolic.M cmem ct = Some (USER t) ->
   updm cmem addr v'@ct' = Some cmem' ->
   decode Symbolic.M cmem ct' = Some (USER t') ->
-  mvec_in_kernel cmem'.
+  mvec_in_monitor cmem'.
 Proof.
   intros MVEC GET DEC UPD DEC'.
   intros addr' H.
   specialize (MVEC addr' H). destruct MVEC as [w' KER].
   assert (NEQ : addr' <> addr).
   { intros E. subst addr'.
-    have CONTRA : Concrete.TKernel = ct by congruence. subst ct.
-    by rewrite decode_kernel_tag in DEC. }
+    have CONTRA : Concrete.TMonitor = ct by congruence. subst ct.
+    by rewrite decode_monitor_tag in DEC. }
   move: UPD; rewrite /updm GET /= => - [<-].
   by rewrite getm_set (introF eqP NEQ) KER; eauto.
 Qed.
 
-Lemma mvec_in_kernel_kernel_upd cmem cmem' addr w :
-  mvec_in_kernel cmem ->
-  updm cmem addr w@Concrete.TKernel = Some cmem' ->
-  mvec_in_kernel cmem'.
+Lemma mvec_in_monitor_monitor_upd cmem cmem' addr w :
+  mvec_in_monitor cmem ->
+  updm cmem addr w@Concrete.TMonitor = Some cmem' ->
+  mvec_in_monitor cmem'.
 Proof.
 intros MVEC UPD addr' IN.
 move: UPD; rewrite /updm; case: (cmem _) => //= _ [<-].
@@ -429,26 +429,26 @@ Inductive hit_step cst cst' : Prop :=
            (USER' : in_user cst')
            (STEP : Concrete.step _ masks cst cst').
 
-Definition kernel_exec kst kst' :=
+Definition monitor_exec kst kst' :=
   restricted_exec (Concrete.step _ masks)
-                  (fun s => in_kernel s)
+                  (fun s => in_monitor s)
                   kst kst'.
-Hint Unfold kernel_exec.
+Hint Unfold monitor_exec.
 
-Definition kernel_user_exec kst st : Prop :=
+Definition monitor_user_exec kst st : Prop :=
   exec_until (Concrete.step _ masks)
-             (fun s => in_kernel s)
-             (fun s => ~~ in_kernel s)
+             (fun s => in_monitor s)
+             (fun s => ~~ in_monitor s)
              kst st.
 
-Inductive user_kernel_user_step cst cst' : Prop :=
+Inductive user_monitor_user_step cst cst' : Prop :=
 | ukus_intro kst
              (USER : in_user cst)
              (STEP : Concrete.step _ masks cst kst)
-             (EXEC : kernel_user_exec kst cst').
+             (EXEC : monitor_user_exec kst cst').
 
-Lemma user_kernel_user_step_weaken cst cst' :
-  user_kernel_user_step cst cst' ->
+Lemma user_monitor_user_step_weaken cst cst' :
+  user_monitor_user_step cst cst' ->
   exec (Concrete.step _ masks) cst cst'.
 Proof.
   move => [cst'' ? ? ?].
@@ -457,7 +457,7 @@ Proof.
 Qed.
 
 Definition user_step cst cst' :=
-  hit_step cst cst' \/ user_kernel_user_step cst cst'.
+  hit_step cst cst' \/ user_monitor_user_step cst cst'.
 
 Lemma analyze_cache cache cmem cmvec crvec :
   cache_correct cache cmem ->
@@ -479,7 +479,7 @@ Lemma analyze_cache cache cmem cmvec crvec :
    exists t : Symbolic.ttypes Symbolic.M,
      [/\ op = NOP ,
          decode _ cmem (Concrete.cti cmvec) = Some (ENTRY t) &
-         Concrete.ctrpc crvec = Concrete.TKernel ]).
+         Concrete.ctrpc crvec = Concrete.TMonitor ]).
 Proof.
   case: cmvec => op tpc ti t1 t2 t3 /= CACHE LOOKUP INUSER.
   case: (CACHE _ crvec LOOKUP INUSER) =>
@@ -500,9 +500,9 @@ Lemma miss_state_not_user st mvec :
   ~~ (in_user (Concrete.miss_state st mvec)).
 Proof.
   apply/negP=> INUSER.
-  apply in_user_in_kernel in INUSER.
+  apply in_user_in_monitor in INUSER.
   unfold Concrete.miss_state in INUSER.
-  unfold in_kernel, Concrete.is_kernel_tag in INUSER.
+  unfold in_monitor, Concrete.is_monitor_tag in INUSER.
   by rewrite /= eqxx in INUSER.
 Qed.
 
@@ -525,10 +525,10 @@ Proof.
     move: ovec Huser' {Htrans} Hdec_o.
     rewrite /in_user {}Hservice /= -{}Hpc_cst' => [[]].
     have [->|//] := (_ =P _).
-    by rewrite decode_kernel_tag.
+    by rewrite decode_monitor_tag.
   rewrite /= => Hcst'.
   move: Huser'.
-  by rewrite /in_user {}Hcst' /= decode_kernel_tag.
+  by rewrite /in_user {}Hcst' /= decode_monitor_tag.
 Qed.
 
 Lemma valid_pcs st st' :
@@ -537,7 +537,7 @@ Lemma valid_pcs st st' :
   in_user st ->
   (exists t,
      decode Symbolic.P (Concrete.mem st') (Concrete.pct st') = Some (USER t)) \/
-  Concrete.pct st' = Concrete.TKernel.
+  Concrete.pct st' = Concrete.TMonitor.
 Proof.
   move=> Hstep Hcache Huser.
   have [cmvec [Hcmvec]] := step_lookup_success_or_fault Hstep.
@@ -580,7 +580,7 @@ Proof.
     case=> _ Hop _ _.
     move: ovec {Htrans} Hdec_o.
     rewrite {}Hop /= => [[]].
-    by have [->|//] := _ =P Concrete.TKernel; auto.
+    by have [->|//] := _ =P Concrete.TMonitor; auto.
   by rewrite /= => ->; auto.
 Qed.
 
@@ -658,13 +658,13 @@ Definition cache_allows_syscall (cst : Concrete.state mt) : bool :=
   | None => false
   end.
 
-Class kernel_code_fwd_correctness : Prop := {
+Class monitor_code_fwd_correctness : Prop := {
 
 (* BCP: Added some comments -- please check! *)
   handler_correct_allowed_case_fwd :
   forall mem cmvec ivec ovec reg cache old_pc int,
-    (* If kernel invariant holds... *)
-    ki mem reg cache int ->
+    (* If monitor invariant holds... *)
+    mi mem reg cache int ->
     (* and calling the handler on the current m-vector succeeds and returns rvec... *)
     decode_ivec e mem cmvec = Some ivec ->
     Symbolic.transfer ivec = Some ovec ->
@@ -675,15 +675,15 @@ Class kernel_code_fwd_correctness : Prop := {
        some (mvec,rvec) pair in the relation defined by the [handler]
        function) ... *)
     cache_correct cache mem ->
-    (* THEN if we start the concrete machine in kernel mode (i.e.,
-       with the PC tagged TKernel) at the beginning of the fault
+    (* THEN if we start the concrete machine in monitor mode (i.e.,
+       with the PC tagged TMonitor) at the beginning of the fault
        handler (and with the current memory, and with the current PC
        in the return-addr register epc)) and let it run until it
        reaches a user-mode state st'... *)
     exists st' crvec,
-      kernel_user_exec
+      monitor_user_exec
         (Concrete.State mem' reg cache
-                          (Concrete.fault_handler_start _)@Concrete.TKernel
+                          (Concrete.fault_handler_start _)@Concrete.TMonitor
                           old_pc)
         st' /\
       (* then the new cache is still correct... *)
@@ -691,8 +691,8 @@ Class kernel_code_fwd_correctness : Prop := {
       (* and the new cache now contains a rule mapping mvec to rvec... *)
       Concrete.cache_lookup (Concrete.cache st') masks cmvec = Some crvec /\
       decode_ovec e (Symbolic.op ivec) (Concrete.mem st') crvec = Some ovec /\
-      (* and the mvec has been tagged as kernel data (BCP: why is this important??) *)
-      mvec_in_kernel (Concrete.mem st') /\
+      (* and the mvec has been tagged as monitor data (BCP: why is this important??) *)
+      mvec_in_monitor (Concrete.mem st') /\
       (* and we've arrived at the return address that was in epc with
          unchanged user memory and registers... *)
       user_tags_unchanged mem (Concrete.mem st') /\
@@ -701,17 +701,17 @@ Class kernel_code_fwd_correctness : Prop := {
       Concrete.pc st' = old_pc /\
       (* and the system call entry points are all tagged ENTRY (BCP:
          Why do we care, and if we do then why isn't this part of the
-         kernel invariant?  Could user code possibly change it?) *)
+         monitor invariant?  Could user code possibly change it?) *)
       wf_entry_points (Concrete.mem st') /\
-      (* and the kernel invariant still holds. *)
-      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
+      (* and the monitor invariant still holds. *)
+      mi (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
   syscalls_correct_allowed_case_fwd :
   forall amem areg apc atpc int
          amem' areg' apc' atpc' int'
          cmem creg cache ctpc epc sc,
-    (* and the kernel invariant holds... *)
-    ki cmem creg cache int ->
+    (* and the monitor invariant holds... *)
+    mi cmem creg cache int ->
     (* and the USER-tagged portion of the concrete memory cmem
        corresponds to the abstract (symbolic??) memory amem... *)
     refine_memory amem cmem ->
@@ -720,10 +720,10 @@ Class kernel_code_fwd_correctness : Prop := {
     refine_registers areg creg cmem ->
     (* and the rule cache is correct... *)
     cache_correct cache cmem ->
-    (* and the mvec has been tagged as kernel data (BCP: again, why is this
+    (* and the mvec has been tagged as monitor data (BCP: again, why is this
        important... and why is it now part of the premises whereas
        upstairs it was part of the conclusion??) *)
-    mvec_in_kernel cmem ->
+    mvec_in_monitor cmem ->
     (* and the symbolic system call at addr is the function
        sc... (BCP: This would make more sense after the next
        hypothesis) *)
@@ -739,12 +739,12 @@ Class kernel_code_fwd_correctness : Prop := {
 
     cache_allows_syscall cst ->
 
-    (* THEN if we start the concrete machine in kernel mode at the
+    (* THEN if we start the concrete machine in monitor mode at the
        beginning of the corresponding system call code and let it run
        until it reaches a user-mode state with primes on everything... *)
 
     exists cmem' creg' cache' ctpc' epc',
-      user_kernel_user_step cst
+      user_monitor_user_step cst
                             (Concrete.State cmem' creg' cache'
                                               apc'@ctpc' epc') /\
 
@@ -755,40 +755,40 @@ Class kernel_code_fwd_correctness : Prop := {
       refine_memory amem' cmem' /\
       refine_registers areg' creg' cmem' /\
       cache_correct cache' cmem' /\
-      mvec_in_kernel cmem' /\
+      mvec_in_monitor cmem' /\
       wf_entry_points cmem' /\
-      ki cmem' creg' cache' int'
+      mi cmem' creg' cache' int'
 
 }.
 
-Class kernel_code_bwd_correctness : Prop := {
+Class monitor_code_bwd_correctness : Prop := {
 
   handler_correct_allowed_case_bwd :
   forall mem cmvec reg cache old_pc int st',
-    ki mem reg cache int ->
+    mi mem reg cache int ->
     let mem' := Concrete.store_mvec mem cmvec in
     cache_correct cache mem ->
-    kernel_user_exec
+    monitor_user_exec
         (Concrete.State mem' reg cache
-                          (Concrete.fault_handler_start _)@Concrete.TKernel
+                          (Concrete.fault_handler_start _)@Concrete.TMonitor
                           old_pc)
         st' ->
     exists ivec ovec,
       decode_ivec e mem cmvec = Some ivec /\
       Symbolic.transfer ivec = Some ovec /\
       cache_correct (Concrete.cache st') (Concrete.mem st') /\
-      mvec_in_kernel (Concrete.mem st') /\
+      mvec_in_monitor (Concrete.mem st') /\
       user_tags_unchanged mem (Concrete.mem st') /\
       user_mem_unchanged mem (Concrete.mem st') /\
       user_regs_unchanged reg (Concrete.regs st') mem /\
       Concrete.pc st' = old_pc /\
       wf_entry_points (Concrete.mem st') /\
-      ki (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
+      mi (Concrete.mem st') (Concrete.regs st') (Concrete.cache st') int;
 
   handler_correct_disallowed_case :
   forall mem cmvec reg cache old_pc int st',
-    (* If kernel invariant holds... *)
-    ki mem reg cache int ->
+    (* If monitor invariant holds... *)
+    mi mem reg cache int ->
     (* and calling the handler on mvec FAILS... *)
     match decode_ivec e mem cmvec with
     | Some ivec => ~~ Symbolic.transfer ivec
@@ -796,12 +796,12 @@ Class kernel_code_bwd_correctness : Prop := {
     end ->
     (* and storing the concrete representation of the m-vector yields new memory mem'... *)
     let mem' := Concrete.store_mvec mem cmvec in
-    (* then if we start the concrete machine in kernel mode and let it
+    (* then if we start the concrete machine in monitor mode and let it
        run, it will never reach a user-mode state. *)
-    ~~ in_kernel st' ->
+    ~~ in_monitor st' ->
     ~ exec (Concrete.step _ masks)
       (Concrete.State mem' reg cache
-                        (Concrete.fault_handler_start _)@Concrete.TKernel
+                        (Concrete.fault_handler_start _)@Concrete.TMonitor
                         old_pc)
       st';
 
@@ -809,11 +809,11 @@ Class kernel_code_bwd_correctness : Prop := {
   forall amem areg apc atpc int
          cmem creg cache ctpc epc
          cmem' creg' cache' cpc' ctpc' epc' sc,
-    ki cmem creg cache int ->
+    mi cmem creg cache int ->
     refine_memory amem cmem ->
     refine_registers areg creg cmem ->
     cache_correct cache cmem ->
-    mvec_in_kernel cmem ->
+    mvec_in_monitor cmem ->
     Symbolic.get_syscall table apc = Some sc ->
     decode _ cmem ctpc = Some (USER atpc) ->
     let cst := Concrete.State cmem
@@ -821,7 +821,7 @@ Class kernel_code_bwd_correctness : Prop := {
                                 cache
                                 apc@ctpc epc in
     cache_allows_syscall cst ->
-    user_kernel_user_step cst
+    user_monitor_user_step cst
                           (Concrete.State cmem' creg' cache'
                                             cpc'@ctpc' epc') ->
     exists amem' areg' atpc' int',
@@ -831,9 +831,9 @@ Class kernel_code_bwd_correctness : Prop := {
       refine_memory amem' cmem' /\
       refine_registers areg' creg' cmem' /\
       cache_correct cache' cmem' /\
-      mvec_in_kernel cmem' /\
+      mvec_in_monitor cmem' /\
       wf_entry_points cmem' /\
-      ki cmem' creg' cache' int'
+      mi cmem' creg' cache' int'
 
 }.
 

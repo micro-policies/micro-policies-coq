@@ -225,7 +225,7 @@ Lemma step_lookup_success_or_fault cst cst' :
       cst' = State cmem'
                      (regs cst)
                      (cache cst)
-                     (fault_handler_start mt)@TKernel
+                     (fault_handler_start mt)@TMonitor
                      (pc cst)
     end.
 Proof.
@@ -251,7 +251,7 @@ Lemma lookup_none_step cst cmvec :
   Concrete.step _ masks cst (Concrete.State (Concrete.store_mvec (Concrete.mem cst) cmvec)
                                               (Concrete.regs cst)
                                               (Concrete.cache cst)
-                                              (Concrete.fault_handler_start mt)@Concrete.TKernel
+                                              (Concrete.fault_handler_start mt)@Concrete.TMonitor
                                               (Concrete.pc cst)).
 Proof.
   move=> CMVEC LOOKUP.

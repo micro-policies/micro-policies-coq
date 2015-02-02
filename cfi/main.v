@@ -138,19 +138,19 @@ be reported. *)
 
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable ki : refinement_common.kernel_invariant.
+Variable mi : refinement_common.monitor_invariant.
 Variable stable : seq (Symbolic.syscall mt).
 Variable atable : seq (Abs.syscall mt).
 
 Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
 | rs_intro : forall (sst : Symbolic.state mt),
-               refinement_common.refine_state ki stable sst cst ->
+               refinement_common.refine_state mi stable sst cst ->
                RefinementAS.refine_state stable ast sst ->
                refine_state ast cst.
 Hint Constructors refine_state.
 
 Hypothesis implementation_correct :
-  kernel_code_bwd_correctness ki stable.
+  monitor_code_bwd_correctness mi stable.
 
 Hypothesis refine_syscalls_correct : RefinementAS.refine_syscalls stable atable stable.
 

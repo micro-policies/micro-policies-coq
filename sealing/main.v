@@ -46,10 +46,10 @@ Definition user_registers :=
       ruser2; ruser3; ruser4].
 Definition user_reg_max := last 0%w user_registers.
 
-Definition kernel_data {X} l : @relocatable_segment mt X w :=
+Definition monitor_data {X} l : @relocatable_segment mt X w :=
  (length l, fun _ _ => l).
 
-Definition kernel_code {X} l : @relocatable_segment mt X w :=
+Definition monitor_code {X} l : @relocatable_segment mt X w :=
  (length l,
   fun _ _ => map encode_instr l).
 
@@ -229,10 +229,10 @@ Definition transfer_function : seq (instr mt) :=
  ([:: Halt _])))))))))))))))))))).
 
 Definition fault_handler : @relocatable_segment mt w w :=
- kernel_code (fault_handler.handler fhp transfer_function).
+ monitor_code (fault_handler.handler fhp transfer_function).
 
 Definition extra_state : @relocatable_segment mt w w :=
- kernel_data [:: as_word 13].
+ monitor_data [:: as_word 13].
 
 Definition gen_syscall_code gen : @relocatable_segment mt w w :=
  (length (gen (as_word 0) (as_word 0)),
@@ -528,7 +528,7 @@ Context {sealing_invariant : @policy_invariant mt _ _}.
 
 Let monitor_invariant := fault_handler_invariant ops fhp transfer_function sealing_invariant.
 
-Context {implementation_correct : kernel_code_bwd_correctness monitor_invariant Sym.sealing_syscalls}.
+Context {implementation_correct : monitor_code_bwd_correctness monitor_invariant Sym.sealing_syscalls}.
 
 Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
 | rs_intro : forall sst m,

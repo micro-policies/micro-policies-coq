@@ -53,7 +53,7 @@ Definition inputs (op : opcode) : seq tag_kind :=
                            it just causes it to get stuck as it should *)
   end.
 
-(* Returns true iff an opcode can only be executed by the kernel *)
+(* Returns true iff an opcode can only be executed by the monitor *)
 Definition privileged_op (op : vopcode) : bool :=
   match op with
   | JUMPEPC

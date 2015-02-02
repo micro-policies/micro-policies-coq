@@ -26,18 +26,18 @@ Context {mt : machine_types}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
         {e : encodable mt Symbolic.ttypes}
-        {ki : kernel_invariant}
+        {mi : monitor_invariant}
         {table : seq (Symbolic.syscall mt)}
-        {kcc : kernel_code_fwd_correctness ki table}.
+        {mcc : monitor_code_fwd_correctness mi table}.
 
 Hint Unfold Symbolic.next_state.
 Hint Unfold Symbolic.next_state_reg_and_pc.
 Hint Unfold Symbolic.next_state_pc.
 Hint Unfold Symbolic.next_state_reg.
 
-Hint Resolve kernel_invariant_upd_mem.
-Hint Resolve kernel_invariant_upd_reg.
-Hint Resolve kernel_invariant_store_mvec.
+Hint Resolve monitor_invariant_upd_mem.
+Hint Resolve monitor_invariant_upd_reg.
+Hint Resolve monitor_invariant_store_mvec.
 
 Hint Unfold Concrete.next_state_reg.
 Hint Unfold Concrete.next_state_reg_and_pc.
@@ -288,7 +288,7 @@ Ltac solve_refine_state :=
     destruct REF; constructor; simpl in *;
     eauto using user_mem_unchanged_refine_memory,
                 refine_registers_upd', user_regs_unchanged_refine_registers,
-                mvec_in_kernel_user_upd, wf_entry_points_user_upd,
+                mvec_in_monitor_user_upd, wf_entry_points_user_upd,
                 no_syscall_no_entry_point
   end.
 
@@ -296,17 +296,17 @@ Ltac analyze_cache_miss :=
   match goal with
   | PC : getm ?cmem ?pc = Some ?i@_,
     INST : decode_instr ?i = Some _,
-    MVEC : mvec_in_kernel ?cmem,
-    KINV : kernel_invariant_statement _ ?cmem _ ?cache _,
+    MVEC : mvec_in_monitor ?cmem,
+    MINV : monitor_invariant_statement _ ?cmem _ ?cache _,
     CACHE : cache_correct ?cache,
     LOOKUP : Concrete.cache_lookup ?cache _ _ = None,
     HANDLER : Symbolic.transfer ?mvec = Some _ |- _ =>
     let STORE := fresh "STORE" in
-    pose proof (store_mvec_mvec_in_kernel cmem mvec);
-    pose proof (kernel_invariant_store_mvec ki _ _ _ _ KINV);
-    destruct (handler_correct_allowed_case_fwd _ _ _ pc@(Concrete.ctpc _) _ KINV _ STORE)
+    pose proof (store_mvec_mvec_in_monitor cmem mvec);
+    pose proof (monitor_invariant_store_mvec mi _ _ _ _ MINV);
+    destruct (handler_correct_allowed_case_fwd _ _ _ pc@(Concrete.ctpc _) _ MINV _ STORE)
       as ([? ? ? [? ?] ?] &
-          KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & KINV'');
+          KEXEC & CACHE' & LOOKUP' & MVEC' & USERMEM & USERREGS & PC' & WFENTRYPOINTS' & MINV'');
     simpl in PC'; inv PC';
     match_data
   end.
@@ -358,7 +358,7 @@ Proof.
 Qed.
 
 Lemma refine_ivec sst cst ivec :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   build_ivec table sst = Some ivec ->
   exists2 cmvec,
     build_cmvec cst = Some cmvec &
@@ -391,14 +391,14 @@ Proof.
 Qed.
 
 Lemma forward_simulation_miss sst cst ivec ovec cmvec :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   build_ivec table sst = Some ivec ->
   build_cmvec cst = Some cmvec ->
   Symbolic.transfer ivec = Some ovec ->
   Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None ->
   exists cst' crvec,
     [/\ exec (Concrete.step _ masks) cst cst',
-        refine_state ki table sst cst',
+        refine_state mi table sst cst',
         decode_ovec e _ (Concrete.mem cst') crvec = Some ovec,
         Concrete.cache_lookup (Concrete.cache cst') masks cmvec = Some crvec &
         build_cmvec cst' = Some cmvec ].
@@ -407,9 +407,9 @@ Proof.
   have FAULT := lookup_none_step CMVEC LOOKUP.
   have [cmvec'] := refine_ivec REF IVEC.
   rewrite CMVEC. move => [<-] {cmvec'} DEC.
-  have := handler_correct_allowed_case_fwd (Concrete.pc cst) (rs_kinv REF) DEC TRANS
-                                           (rs_cache REF) => /(_ _ _ kcc).
-  case=> cst' [crvec [EXEC [CACHE [LOOKUP' [DEC' [MVEC [USERPCTAG [USERMEM [USERREGS [PC [ENTRYPOINTS KINV]]]]]]]]]]].
+  have := handler_correct_allowed_case_fwd (Concrete.pc cst) (rs_minv REF) DEC TRANS
+                                           (rs_cache REF) => /(_ _ _ mcc).
+  case=> cst' [crvec [EXEC [CACHE [LOOKUP' [DEC' [MVEC [USERPCTAG [USERMEM [USERREGS [PC [ENTRYPOINTS MINV]]]]]]]]]]].
   exists cst', crvec.
   split=> //.
     eapply re_step; trivial; try eassumption.
@@ -427,7 +427,7 @@ Proof.
 Qed.
 
 Lemma transfer_lookup sst cst ivec ovec cmvec crvec :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   build_ivec table sst = Some ivec ->
   build_cmvec cst = Some cmvec ->
   Symbolic.transfer ivec = Some ovec ->
@@ -445,7 +445,7 @@ Proof.
 Qed.
 
 Lemma forward_simulation_hit sst sst' cst ivec ovec cmvec crvec :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   build_ivec table sst = Some ivec ->
   build_cmvec cst = Some cmvec ->
   Symbolic.transfer ivec = Some ovec ->
@@ -453,7 +453,7 @@ Lemma forward_simulation_hit sst sst' cst ivec ovec cmvec crvec :
   Symbolic.step table sst sst' ->
   exists2 cst',
     exec (Concrete.step _ masks) cst cst' &
-    refine_state ki table sst' cst'.
+    refine_state mi table sst' cst'.
 Proof.
   move=> REF IVEC CMVEC TRANS LOOKUP /stepP STEP.
   case GETi: (getm (Symbolic.mem sst) (Symbolic.pcv sst)) => [[i ti]|]; last first.
@@ -465,21 +465,21 @@ Proof.
     rewrite (rs_pc REF) in GETi'.
     rewrite /build_cmvec GETi' /= ISNOP /= (Symbolic.state_eta sst'). move => [E]. subst cmvec.
     rewrite (Symbolic.state_eta sst') in RUN.
-    have := syscalls_correct_allowed_case_fwd (rs_kinv REF) (rs_refm REF)
+    have := syscalls_correct_allowed_case_fwd (rs_minv REF) (rs_refm REF)
                                               (rs_refr REF) (rs_cache REF)
                                               (rs_mvec REF) GETSC RUN (rs_pct REF)
-            => /(_ _ kcc (Concrete.epc cst)) /=.
+            => /(_ _ mcc (Concrete.epc cst)) /=.
     rewrite /cache_allows_syscall /= GETSC
             /build_cmvec (rs_pc REF) GETi' ISNOP LOOKUP.
     case/(_ erefl) => cmem [creg [cache [ctpc [epc]]]].
-    case=> [[kst INUSER STEP EXEC] [DEC [REFM [REFR [CACHE [MVEC [ENTRYPOINTS KINV]]]]]]].
+    case=> [[kst INUSER STEP EXEC] [DEC [REFM [REFR [CACHE [MVEC [ENTRYPOINTS MINV]]]]]]].
     eexists.
       rewrite (Concrete.state_eta cst).
       eapply re_step; trivial; try eassumption.
       by eapply exec_until_weaken; eauto.
     by constructor=> //.
   suff : match @step masks _ ops cst return Prop with
-         | Some cst' => @refine_state _ ops _ _ ki table sst' cst'
+         | Some cst' => @refine_state _ ops _ _ mi table sst' cst'
          | None => False
          end.
     case STEP': (step _ _) => [cst'|] //= REF'.
@@ -511,11 +511,11 @@ Proof.
 Qed.
 
 Lemma forward_simulation sst sst' cst :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   Symbolic.step table sst sst' ->
   exists2 cst',
     exec (Concrete.step _ masks) cst cst' &
-    refine_state ki table sst' cst'.
+    refine_state mi table sst' cst'.
 Proof.
   move=> Href Hstep.
   have [ivec [ovec [Hbuildi Htrans]]] := step_build_ivec Hstep.

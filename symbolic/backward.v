@@ -25,18 +25,18 @@ Context {mt : machine_types}
         {opss : machine_ops_spec ops}
         {sp : Symbolic.params}
         {e : encodable mt Symbolic.ttypes}
-        {ki : kernel_invariant}
+        {mi : monitor_invariant}
         {table : seq (Symbolic.syscall mt)}
-        {kcc : kernel_code_bwd_correctness ki table}.
+        {mcc : monitor_code_bwd_correctness mi table}.
 
 Hint Unfold Symbolic.next_state.
 Hint Unfold Symbolic.next_state_reg_and_pc.
 Hint Unfold Symbolic.next_state_pc.
 Hint Unfold Symbolic.next_state_reg.
 
-Hint Resolve kernel_invariant_upd_mem.
-Hint Resolve kernel_invariant_upd_reg.
-Hint Resolve kernel_invariant_store_mvec.
+Hint Resolve monitor_invariant_upd_mem.
+Hint Resolve monitor_invariant_upd_reg.
+Hint Resolve monitor_invariant_store_mvec.
 
 Ltac check_conv t1 t2 :=
   let e := constr:(erefl t1 : t1 = t2) in idtac.
@@ -44,9 +44,9 @@ Ltac check_conv t1 t2 :=
 Ltac contradict_in_user :=
   match goal with
   | INUSER : is_true (in_user ?st),
-    ISKERNEL : ?t = Concrete.TKernel |- _ =>
+    ISMONITOR : ?t = Concrete.TMonitor |- _ =>
     check_conv (Concrete.pct st) t;
-    first [ rewrite ISKERNEL /in_user /= decode_kernel_tag in INUSER; done |
+    first [ rewrite ISMONITOR /in_user /= decode_monitor_tag in INUSER; done |
             failwith "contradict_in_user" ]
   end.
 
@@ -114,9 +114,9 @@ Ltac relate_register_upd :=
     UPD : updm ?reg ?r ?v@?t' = Some ?reg',
     DEC' : decode _ ?cmem ?t' = Some (USER _),
     REFR : refine_registers _ ?reg ?cmem,
-    KINV : kernel_invariant_statement ?ki ?cmem _ _ _ |- _ =>
+    MINV : monitor_invariant_statement ?mi ?cmem _ _ _ |- _ =>
     first [ destruct (refine_registers_upd REFR GET DEC UPD DEC') as [? ? ?];
-            pose proof (kernel_invariant_upd_reg KINV GET DEC UPD DEC')
+            pose proof (monitor_invariant_upd_reg MINV GET DEC UPD DEC')
           | failwith "relate_register_upd" ]
   end.
 
@@ -130,10 +130,10 @@ Ltac relate_memory_upd :=
     REFR : refine_registers _ _ ?cmem,
     REFM : refine_memory _ ?cmem,
     WFENTRYPOINTS : wf_entry_points _ ?cmem,
-    MVEC : mvec_in_kernel ?cmem |- _ =>
+    MVEC : mvec_in_monitor ?cmem |- _ =>
     first [ destruct (refine_memory_upd CACHE REFR REFM GET DEC UPD DEC') as [? [? ? ?]];
             pose proof (wf_entry_points_user_upd WFENTRYPOINTS GET DEC UPD DEC');
-            pose proof (mvec_in_kernel_user_upd MVEC GET DEC UPD DEC')
+            pose proof (mvec_in_monitor_user_upd MVEC GET DEC UPD DEC')
           | failwith "relate_memory_upd" ]
   end.
 
@@ -176,7 +176,7 @@ Ltac solve_refine_state :=
         | failwith "solve_refine_state" ].
 
 Lemma refine_ivec_inv sst cst cmvec ivec :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   build_cmvec cst = Some cmvec ->
   decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
   build_ivec table sst = Some ivec.
@@ -219,14 +219,14 @@ Proof.
 Qed.
 
 Lemma cache_hit_simulation sst cst cst' :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   hit_step cst cst' ->
   exists2 sst',
     Symbolic.step table sst sst' &
-    refine_state ki table sst' cst'.
+    refine_state mi table sst' cst'.
 Proof.
   case: sst => smem sregs [pc atpc] int.
-  move => [/= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV] [INUSER INUSER' STEP].
+  move => [/= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS MINV] [INUSER INUSER' STEP].
   rewrite /Symbolic.pcv /= in PC. subst pc.
   inv STEP; subst mv;
   unfold Concrete.next_state_reg, Concrete.next_state_reg_and_pc,
@@ -257,7 +257,7 @@ Lemma initial_handler_state cst kst cmvec :
       kst = Concrete.State (Concrete.store_mvec (Concrete.mem cst) cmvec)
                              (Concrete.regs cst)
                              (Concrete.cache cst)
-                             (Concrete.fault_handler_start mt)@Concrete.TKernel
+                             (Concrete.fault_handler_start mt)@Concrete.TMonitor
                              (Concrete.pc cst).
 Proof.
   move=> BUILD LOOKUP /step_lookup_success_or_fault.
@@ -266,12 +266,12 @@ Proof.
   by rewrite LOOKUP.
 Qed.
 
-Lemma kernel_user_exec_determ k s1 s2 :
-  kernel_user_exec k s1 ->
-  kernel_user_exec k s2 ->
+Lemma monitor_user_exec_determ k s1 s2 :
+  monitor_user_exec k s1 ->
+  monitor_user_exec k s2 ->
   s1 = s2.
 Proof.
-  unfold kernel_user_exec. intros EXEC1 EXEC2.
+  unfold monitor_user_exec. intros EXEC1 EXEC2.
   eapply exec_until_determ; eauto.
   - clear. intros s s1 s2.
     do 2 rewrite <- concrete.exec.stepP in *. congruence.
@@ -279,14 +279,14 @@ Proof.
   - clear. by move=> s /= ->.
 Qed.
 
-Lemma user_kernel_user_step_determ s s1 s2 :
-  user_kernel_user_step s s1 ->
-  user_kernel_user_step s s2 ->
+Lemma user_monitor_user_step_determ s s1 s2 :
+  user_monitor_user_step s s1 ->
+  user_monitor_user_step s s2 ->
   s1 = s2.
 Proof.
   move => [s' USER1 STEP1 EXEC1] [s'' USER2 STEP2 EXEC2].
   have E: (s' = s'') by rewrite <- concrete.exec.stepP in *; congruence. subst s''.
-  eauto using kernel_user_exec_determ.
+  eauto using monitor_user_exec_determ.
 Qed.
 
 Lemma build_cmvec_cache_lookup_pc cst cst' cmvec crvec :
@@ -302,9 +302,9 @@ Proof.
   by rewrite LOOKUP.
 Qed.
 
-Lemma kernel_cache_lookup_fail (cst cst' : Concrete.state mt) cmvec :
+Lemma monitor_cache_lookup_fail (cst cst' : Concrete.state mt) cmvec :
   in_user cst ->
-  in_kernel cst' ->
+  in_monitor cst' ->
   Concrete.step _ masks cst cst' ->
   ~~ cache_allows_syscall table cst ->
   wf_entry_points table (Concrete.mem cst) ->
@@ -312,18 +312,18 @@ Lemma kernel_cache_lookup_fail (cst cst' : Concrete.state mt) cmvec :
   build_cmvec cst = Some cmvec ->
   Concrete.cache_lookup (Concrete.cache cst) masks cmvec = None.
 Proof.
-  move=> INUSER INKERNEL STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT BUILD.
+  move=> INUSER INMONITOR STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT BUILD.
   move/step_lookup_success_or_fault: STEP NOTALLOWED.
   rewrite /cache_allows_syscall BUILD.
   case=> cmvec' [[<-]] {cmvec'}.
   case LOOKUP: (Concrete.cache_lookup _ _ _) => [[ctrpc ctr]|] //= E. subst ctrpc.
   case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.
-  move: INKERNEL LOOKUP.
-  rewrite /in_kernel /Concrete.is_kernel_tag => /eqP -> LOOKUP _.
+  move: INMONITOR LOOKUP.
+  rewrite /in_monitor /Concrete.is_monitor_tag => /eqP -> LOOKUP _.
   rewrite /in_user /= -(build_cmvec_ctpc BUILD) in INUSER.
   case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _]].
   case: DECi ovec DECo => [[E Hpriv _ _ _]|[DECop E _ DECti]].
-    by rewrite {}E {ivec} /decode_ovec /= decode_kernel_tag /= => ovec.
+    by rewrite {}E {ivec} /decode_ovec /= decode_monitor_tag /= => ovec.
   suff : false by done.
   move: {ivec E} (Symbolic.ti ivec) DECti => ti DECti.
   move: (build_cmvec_cop_cti BUILD) DECop => [i [instr [GETPC DECi <-]]] DECop.
@@ -333,33 +333,33 @@ Proof.
 Qed.
 
 Lemma cache_miss_simulation sst cst cst' :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   ~~ cache_allows_syscall table cst ->
-  user_kernel_user_step cst cst' ->
-  refine_state ki table sst cst'.
+  user_monitor_user_step cst cst' ->
+  refine_state mi table sst cst'.
 Proof.
   case: sst => smem sregs [pc tpc] int.
   case: cst => cmem cregs cache [pc' ctpc] epc.
   move => REF NOTALLOWED [kst ISUSER STEP KEXEC].
-  have KER : in_kernel kst = true.
+  have KER : in_monitor kst = true.
   { destruct KEXEC as [? EXEC]. exact (restricted_exec_fst EXEC). }
-  case: REF=> [//= PC DEC REFM REFR CACHECORRECT MVEC WFENTRYPOINTS KINV].
+  case: REF=> [//= PC DEC REFM REFR CACHECORRECT MVEC WFENTRYPOINTS MINV].
   rewrite /Concrete.pcv /= in PC. subst pc'.
-  have ISUSER' : ~~ in_kernel cst' by case: KEXEC.
+  have ISUSER' : ~~ in_monitor cst' by case: KEXEC.
   have [cmvec Hcmvec] := step_build_cmvec STEP.
-  have LOOKUP := kernel_cache_lookup_fail ISUSER KER STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT Hcmvec.
+  have LOOKUP := monitor_cache_lookup_fail ISUSER KER STEP NOTALLOWED WFENTRYPOINTS CACHECORRECT Hcmvec.
   have H := initial_handler_state Hcmvec LOOKUP STEP.
   have EXEC : exec (Concrete.step _ masks) kst cst'.
     case: KEXEC => kst' EXEC _ STEP'.
     apply restricted_exec_weaken in EXEC.
     by apply restricted_exec_trans with kst'; eauto.
   subst kst. rewrite /= in STEP KEXEC EXEC KER LOOKUP.
-  destruct (handler_correct_allowed_case_bwd KINV CACHECORRECT KEXEC)
+  destruct (handler_correct_allowed_case_bwd MINV CACHECORRECT KEXEC)
       as (ivec & ovec & DECivec & TRANS & CACHE' & MVEC' &
-          HPCT & HMEM & HREGS & HPC & WFENTRYPOINTS' & KINV').
+          HPCT & HMEM & HREGS & HPC & WFENTRYPOINTS' & MINV').
   case: cst' {KEXEC EXEC} HPC CACHE'
-             ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' KINV' =>
-        cmem'' cregs'' cache' pc' ? /= -> {pc'} CACHE' ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' KINV'.
+             ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' MINV' =>
+        cmem'' cregs'' cache' pc' ? /= -> {pc'} CACHE' ISUSER' MVEC' HPCT HMEM HREGS WFENTRYPOINTS' MINV'.
   econstructor; eauto.
   - by apply/HPCT.
   - split.
@@ -379,27 +379,27 @@ Proof.
 Qed.
 
 Lemma syscall_simulation sst cst cst' :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   cache_allows_syscall table cst ->
-  user_kernel_user_step cst cst' ->
+  user_monitor_user_step cst cst' ->
   exists2 sst', Symbolic.step table sst sst' &
-                refine_state ki table sst' cst'.
+                refine_state mi table sst' cst'.
 Proof.
   case: sst=> smem sregs [pc tpc] int.
   case: cst=> cmem cregs cache [pc' ctpc] epc.
   intros REF ALLOWED STEP.
-  case: REF=> [//= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS KINV].
+  case: REF=> [//= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS MINV].
   rewrite /Concrete.pcv /= in PC. subst pc'.
   have [sc GETCALL]: (exists sc, Symbolic.get_syscall table pc = Some sc).
   { rewrite /cache_allows_syscall in ALLOWED.
     case GETCALL: (Symbolic.get_syscall table pc) ALLOWED => [sc|//] ALLOWED.
     by eauto. }
   destruct cst' as [cmem' creg' cache' [cpc' ctpc'] epc'].
-  have := syscalls_correct_allowed_case_bwd KINV REFM REFR CACHE MVEC GETCALL
+  have := syscalls_correct_allowed_case_bwd MINV REFM REFR CACHE MVEC GETCALL
                                             DEC ALLOWED STEP.
-  move/(_ kcc).
+  move/(_ mcc).
   intros (smem' & sregs' & stpc' & sint' & RUNSC &
-          HPCT & REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & KINV').
+          HPCT & REFM' & REFR' & CACHE' & MVEC' & WFENTRYPOINTS' & MINV').
   exists (Symbolic.State smem' sregs' cpc'@stpc' sint').
   - eapply Symbolic.step_syscall; eauto.
     eapply wf_entry_points_if in GETCALL; last by exact WFENTRYPOINTS.
@@ -412,26 +412,26 @@ Proof.
   - by econstructor; eauto.
 Qed.
 
-Lemma user_into_kernel sst cst cst' :
-  refine_state ki table sst cst ->
+Lemma user_into_monitor sst cst cst' :
+  refine_state mi table sst cst ->
   Concrete.step _ masks cst cst' ->
   ~~ in_user cst'->
-  in_kernel cst'.
+  in_monitor cst'.
 Proof.
   move=> REF STEP NUSER.
   move: (refine_state_in_user REF) => INUSER.
   case: REF => [? ? ? ? CACHE ? ? ?]. subst.
   move : (valid_pcs STEP CACHE INUSER) NUSER.
-  rewrite /in_kernel /Concrete.is_kernel_tag /in_user.
+  rewrite /in_monitor /Concrete.is_monitor_tag /in_user.
   move => [[t ->]|->] //=.
 Qed.
 
 Definition refine_state_weak sst cst :=
-  refine_state ki table sst cst \/
+  refine_state mi table sst cst \/
   exists cst0 kst,
-    refine_state ki table sst cst0 /\
+    refine_state mi table sst cst0 /\
     Concrete.step _ masks cst0 kst /\
-    kernel_exec kst cst.
+    monitor_exec kst cst.
 
 Lemma backwards_simulation sst cst cst' :
   refine_state_weak sst cst ->
@@ -439,7 +439,7 @@ Lemma backwards_simulation sst cst cst' :
   refine_state_weak sst cst' \/
   exists2 sst',
     Symbolic.step table sst sst' &
-    refine_state ki table sst' cst'.
+    refine_state mi table sst' cst'.
 Proof.
   intros [REF | (cst0 & kst & REF & KSTEP & EXEC)] STEP.
   - have USER : in_user cst by eapply refine_state_in_user; eauto.
@@ -449,32 +449,32 @@ Proof.
       by constructor; auto.
     + left. right. do 2 eexists. do 2 (split; eauto).
       constructor.
-      by eapply user_into_kernel; eauto.
+      by eapply user_into_monitor; eauto.
   - have USER : in_user cst0 by eapply refine_state_in_user; eauto.
-    have [KER'|KER'] := boolP (in_kernel cst').
+    have [KER'|KER'] := boolP (in_monitor cst').
     + left. right.
       do 2 eexists. do 2 (split; eauto).
       eapply restricted_exec_trans; eauto.
-      have KER : in_kernel cst by eapply restricted_exec_snd in EXEC.
-      eapply re_step; by eauto using user_into_kernel.
-    + assert (EXEC' : user_kernel_user_step cst0 cst').
+      have KER : in_monitor cst by eapply restricted_exec_snd in EXEC.
+      eapply re_step; by eauto using user_into_monitor.
+    + assert (EXEC' : user_monitor_user_step cst0 cst').
       { econstructor; eauto.
-        econstructor; eauto using in_user_in_kernel. }
+        econstructor; eauto using in_user_in_monitor. }
       case: (boolP (cache_allows_syscall table cst0)) => [ALLOWED | NOTALLOWED].
       * right. by eapply syscall_simulation; eauto.
       * left. left. by eapply cache_miss_simulation; eauto.
 Qed.
 
-Lemma kernel_step cst cst' ast kst cst0 :
-  refine_state ki table ast cst0 ->
+Lemma monitor_step cst cst' ast kst cst0 :
+  refine_state mi table ast cst0 ->
   Concrete.step ops rules.masks cst0 kst ->
-  kernel_exec kst cst ->
+  monitor_exec kst cst ->
   Concrete.step _ masks cst cst' ->
-  in_kernel cst ->
+  in_monitor cst ->
   ~~ in_user cst' ->
-  in_kernel cst'.
+  in_monitor cst'.
 Proof.
-  intros REF STEP EXEC STEP' INKERNEL INUSER.
+  intros REF STEP EXEC STEP' INMONITOR INUSER.
   assert (REFW: refine_state_weak ast cst).
   { right. eauto. }
   generalize (backwards_simulation REFW STEP').
@@ -485,12 +485,12 @@ Proof.
 Qed.
 
 Theorem backwards_refinement sst cst cst' :
-  refine_state ki table sst cst ->
+  refine_state mi table sst cst ->
   exec (Concrete.step _ masks) cst cst' ->
   in_user cst' ->
   exists2 sst',
     exec (Symbolic.step table) sst sst' &
-    refine_state ki table sst' cst'.
+    refine_state mi table sst' cst'.
 Proof.
   intros REF EXEC USER'.
   have {REF} REF: refine_state_weak sst cst by left.
@@ -499,7 +499,7 @@ Proof.
   - move => sst [? | REF]; first by eauto.
     destruct REF as (? & ? & ? & ? & EXEC).
     apply restricted_exec_snd in EXEC.
-    apply in_user_in_kernel in USER'.
+    apply in_user_in_monitor in USER'.
     by rewrite EXEC in USER'.
   - move => sst REF.
     have [REF' | [sst' SSTEP REF']] := backwards_simulation REF STEP;

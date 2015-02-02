@@ -33,7 +33,7 @@ Variable cfg : id -> id -> bool.
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable stable : seq (Symbolic.syscall mt).
-Variable ki : refinement_common.kernel_invariant.
+Variable mi : refinement_common.monitor_invariant.
 
 Definition masks := symbolic.rules.masks.
 
@@ -76,10 +76,10 @@ Hypothesis syscall_preserves_jal_tags :
     Sym.jals_tagged (Symbolic.mem st').
 
 Definition refine_state_no_inv (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sp _ ki stable sst cst.
+  @refine_state_weak mt ops sp _ mi stable sst cst.
 
 Definition refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
-  @refine_state_weak mt ops sp _ ki stable sst cst /\
+  @refine_state_weak mt ops sp _ mi stable sst cst /\
   Sym.invariants stable sst.
 
 Definition is_user k (x : atom (mword mt) (mword mt)) :=
@@ -217,15 +217,15 @@ Proof.
   }
 Qed.
 
-(*Kernel invariants preserved by attacker*)
-Lemma mvec_in_kernel_preserved_by_equiv
+(*Monitor invariants preserved by attacker*)
+Lemma mvec_in_monitor_preserved_by_equiv
       (mem : Concrete.memory mt) (mem' : Concrete.memory mt) :
-  refinement_common.mvec_in_kernel mem ->
+  refinement_common.mvec_in_monitor mem ->
   Conc.equiv mem mem' ->
-  refinement_common.mvec_in_kernel mem'.
+  refinement_common.mvec_in_monitor mem'.
 Proof.
   intros INV MEQUIV.
-  unfold refinement_common.mvec_in_kernel.
+  unfold refinement_common.mvec_in_monitor.
   intros addr INMVEC.
   specialize (INV addr).
   apply INV in INMVEC.
@@ -237,7 +237,7 @@ Proof.
   - destruct MEQUIV
       as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
     + inversion EQ1; subst. eauto.
-      by rewrite rules.fdecode_kernel_tag in DEC1.
+      by rewrite rules.fdecode_monitor_tag in DEC1.
     + eexists; reflexivity.
   - destruct MEQUIV.
 Qed.
@@ -278,15 +278,15 @@ Proof.
 Qed.
 
 (*Q: Do we want to prove anything about this? Maybe using the other assumptions
-   on ki?*)
-Hypothesis ki_preserved_by_equiv :
+   on mi?*)
+Hypothesis mi_preserved_by_equiv :
   forall mem mem' reg reg' cache int,
-    refinement_common.kernel_invariant_statement ki mem reg cache int ->
+    refinement_common.monitor_invariant_statement mi mem reg cache int ->
     Conc.equiv mem mem' ->
     Conc.reg_equiv reg reg' ->
-    refinement_common.kernel_invariant_statement ki mem' reg' cache int.
+    refinement_common.monitor_invariant_statement mi mem' reg' cache int.
 
-Hint Resolve mvec_in_kernel_preserved_by_equiv.
+Hint Resolve mvec_in_monitor_preserved_by_equiv.
 Hint Resolve wf_entry_points_preserved_by_equiv.
 
 Lemma backwards_simulation_attacker_aux sst cst cst' :
@@ -309,12 +309,12 @@ Proof.
     eexists; split; [idtac | left]; econstructor; eauto.
   - case: CONTRA => [? [? [? [? CONTRA]]]].
     clear REQUIV MEQUIV.
-    unfold refinement_common.kernel_exec in CONTRA.
+    unfold refinement_common.monitor_exec in CONTRA.
     apply restricted_exec_snd in CONTRA.
-    rewrite /refinement_common.in_kernel
-            /= /Concrete.is_kernel_tag in CONTRA.
+    rewrite /refinement_common.in_monitor
+            /= /Concrete.is_monitor_tag in CONTRA.
     move/eqP in CONTRA. rewrite /Concrete.pct /= in CONTRA. subst ctpc.
-    by rewrite rules.fdecode_kernel_tag in INUSER.
+    by rewrite rules.fdecode_monitor_tag in INUSER.
 Qed.
 
 Theorem backwards_simulation_attacker sst cst cst' :
@@ -334,9 +334,9 @@ Qed.
 (* Preservation related stuff, probably move to other file*)
 
 Definition smachine := Sym.symbolic_cfi_machine stable.
-Definition cmachine := Conc.concrete_cfi_machine ki stable masks.
+Definition cmachine := Conc.concrete_cfi_machine mi stable masks.
 
-Context {kcc : kernel_code_bwd_correctness ki stable}. (*should this go to the top?*)
+Context {mcc : monitor_code_bwd_correctness mi stable}. (*should this go to the top?*)
 
 Definition check st st' := in_user st && in_user st'.
 
@@ -377,12 +377,12 @@ Proof.
         unfold refine_state. split.
         + right. exists cst; exists cst'.
           repeat (split; auto).
-          unfold kernel_exec.
-          move: (user_into_kernel UREF STEP NUSER) => ?.
+          unfold monitor_exec.
+          move: (user_into_monitor UREF STEP NUSER) => ?.
           by eapply re_refl; eauto.
         + eauto using Sym.invariants_preserved_by_step.
     }
-  - (*starting from a kernel state*)
+  - (*starting from a monitor state*)
     split.
     { (*and taking a visible step*)
       intro VIS.
@@ -390,14 +390,14 @@ Proof.
       move/andP in VIS.
       destruct VIS as [VIS VIS'].
       destruct KREF as [ust [kst [UREF [UKSTEP KEXEC]]]].
-      unfold kernel_exec in KEXEC.
+      unfold monitor_exec in KEXEC.
       apply restricted_exec_snd in KEXEC.
-      apply @in_user_in_kernel in VIS.
+      apply @in_user_in_monitor in VIS.
       by rewrite KEXEC in VIS.
     }
     { (*and taking an invisible step*)
       intro VIS.
-      assert (REFW : @refine_state_weak mt ops sp _ ki stable ast cst)
+      assert (REFW : @refine_state_weak mt ops sp _ mi stable ast cst)
         by (right; auto).
       destruct (backwards_simulation REFW STEP) as [REFW' | [ast' STEP' REF']].
       - left. split; auto.
@@ -491,13 +491,13 @@ Qed.
 
 Lemma refine_traces_kexec axs cxs cst cst' :
   refine_traces cfi_refinementSC axs (cst :: cxs) ->
-  in_kernel cst ->
+  in_monitor cst ->
   cst' \in cxs ->
-  in_kernel cst' \/ exists cst'',
+  in_monitor cst' \/ exists cst'',
                       in_user cst'' /\
                       exec (Concrete.step ops masks) cst cst''.
 Proof.
-  elim: cxs axs cst => [|a cxs IHcxs] axs cst RTRACE KERNEL IN; first by [].
+  elim: cxs axs cst => [|a cxs IHcxs] axs cst RTRACE MONITOR IN; first by [].
   inversion RTRACE
         as [? ? REF' | ? ? ? ? ? STEP CHECK REF REF' RTRACE'
             | ? ? ? ? ? ? STEP ASTEP REF REF' RTRACE'
@@ -511,11 +511,11 @@ Proof.
       * destruct REF as [WREF INV]; clear INV.
         destruct WREF as [CONTRA | KREF].
         { apply @refine_state_in_user in CONTRA.
-          apply @in_user_in_kernel in CONTRA.
-          by rewrite KERNEL in CONTRA.
+          apply @in_user_in_monitor in CONTRA.
+          by rewrite MONITOR in CONTRA.
         }
         { destruct KREF as [cst0 [kst [KREF [CSTEP KEXEC]]]].
-          assert (KERNEL' := kernel_step KREF CSTEP KEXEC STEP KERNEL USER).
+          assert (MONITOR' := monitor_step KREF CSTEP KEXEC STEP MONITOR USER).
           left. assumption.
         }
     + have [USER|USER] := boolP (in_user a).
@@ -524,13 +524,13 @@ Proof.
       * destruct REF as [WREF INV]; clear INV.
         destruct WREF as [CONTRA | KREF].
         { apply @refine_state_in_user in CONTRA.
-          apply @in_user_in_kernel in CONTRA.
-          by rewrite KERNEL in CONTRA.
+          apply @in_user_in_monitor in CONTRA.
+          by rewrite MONITOR in CONTRA.
         }
         { destruct KREF as [cst0 [kst [KREF [CSTEP KEXEC]]]].
-          assert (KERNEL' := kernel_step KREF CSTEP KEXEC STEP KERNEL USER).
-          destruct (IHcxs (ast :: axs0) a RTRACE' KERNEL' IN)
-            as [KERNEL'' | [cst'' [USER'' EXEC]]].
+          assert (MONITOR' := monitor_step KREF CSTEP KEXEC STEP MONITOR USER).
+          destruct (IHcxs (ast :: axs0) a RTRACE' MONITOR' IN)
+            as [MONITOR'' | [cst'' [USER'' EXEC]]].
           - left; assumption.
           - right. exists cst''.
             split; auto.
@@ -545,11 +545,11 @@ Proof.
       * destruct REF as [WREF INV]; clear INV.
         destruct WREF as [CONTRA | KREF].
         { apply @refine_state_in_user in CONTRA.
-          apply @in_user_in_kernel in CONTRA.
-          by rewrite KERNEL in CONTRA.
+          apply @in_user_in_monitor in CONTRA.
+          by rewrite MONITOR in CONTRA.
         }
         { destruct KREF as [cst0 [kst [KREF [CSTEP KEXEC]]]].
-          assert (KERNEL' := kernel_step KREF CSTEP KEXEC STEP KERNEL USER).
+          assert (MONITOR' := monitor_step KREF CSTEP KEXEC STEP MONITOR USER).
           left. assumption.
         }
     + have [USER|USER] := boolP (in_user a).
@@ -558,25 +558,25 @@ Proof.
       * destruct REF as [WREF INV]; clear INV.
         destruct WREF as [CONTRA | KREF].
         { apply @refine_state_in_user in CONTRA.
-          apply @in_user_in_kernel in CONTRA.
-          by rewrite KERNEL in CONTRA.
+          apply @in_user_in_monitor in CONTRA.
+          by rewrite MONITOR in CONTRA.
         }
         { destruct KREF as [cst0 [kst [KREF [CSTEP KEXEC]]]].
-          assert (KERNEL' := kernel_step KREF CSTEP KEXEC STEP KERNEL USER).
-          destruct (IHcxs (ast' :: axs0) a RTRACE' KERNEL' IN)
-            as [KERNEL'' | [cst'' [USER'' EXEC]]].
+          assert (MONITOR' := monitor_step KREF CSTEP KEXEC STEP MONITOR USER).
+          destruct (IHcxs (ast' :: axs0) a RTRACE' MONITOR' IN)
+            as [MONITOR'' | [cst'' [USER'' EXEC]]].
           - left; assumption.
           - right. exists cst''.
             split; auto.
             by econstructor; eauto.
         }
   }
-  { (*attacker step - attacker not allowed in kernel mode*)
+  { (*attacker step - attacker not allowed in monitor mode*)
     inversion STEPA; subst.
     clear IHcxs RTRACE' RTRACE NSTEP CSTEPA MEQUIV REQUIV IN.
-    move/eqP: KERNEL INUSER.
+    move/eqP: MONITOR INUSER.
     rewrite /Concrete.pct /= => ->.
-    by rewrite rules.fdecode_kernel_tag.
+    by rewrite rules.fdecode_monitor_tag.
   }
 Qed.
 
@@ -782,19 +782,19 @@ Proof.
       assumption.
 Qed.
 
-Lemma user_into_kernel_wrapped sst cst cst' :
+Lemma user_into_monitor_wrapped sst cst cst' :
   in_user cst ->
   refine_state sst cst ->
   Concrete.step ops masks cst cst' ->
-  ~~ in_user cst' -> in_kernel cst'.
+  ~~ in_user cst' -> in_monitor cst'.
 Proof.
   intros USER REF STEP NUSER.
   destruct REF as [REF ?].
   destruct REF as [WREF | CONTRA].
-  - by eauto using user_into_kernel.
+  - by eauto using user_into_monitor.
   - destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
-    apply @in_user_in_kernel in USER.
+    apply @in_user_in_monitor in USER.
     by rewrite KEXEC in USER.
 Qed.
 
@@ -823,29 +823,29 @@ Lemma violation_implies_kexec sst cst cst' umvec sxs cxs :
   Concrete.step ops masks cst cst' ->
   refine_state sst cst ->
   refine_traces cfi_refinementSC (sst :: sxs) (cst' :: cxs) ->
-  all in_kernel (cst' :: cxs).
+  all in_monitor (cst' :: cxs).
 Proof.
   move=> VIOLATION UMVEC USER NUSER' STEP REF RTRACE.
   rewrite /check USER /= in NUSER'.
   assert (UHANDLER := Sym.is_violation_implies_stop VIOLATION UMVEC).
-  assert (KERNEL := user_into_kernel_wrapped USER REF STEP NUSER').
-  rewrite /= KERNEL /=.
-  apply/allP=> kst /(refine_traces_kexec RTRACE KERNEL)
+  assert (MONITOR := user_into_monitor_wrapped USER REF STEP NUSER').
+  rewrite /= MONITOR /=.
+  apply/allP=> kst /(refine_traces_kexec RTRACE MONITOR)
                    [? //|[cst'' [USER'' EXEC]]].
   (*the case where one user step was in the trace contradicts*)
   destruct REF as [[REF | CONTRA] ?].
   - have [//= cmvec CMVEC DEC] := refine_ivec REF UMVEC.
     destruct REF.
-    apply @in_user_in_kernel in USER''.
+    apply @in_user_in_monitor in USER''.
     destruct cst as [cmemt cregt cachet [cpct ctpct] epct].
     destruct sst as [smemt sregt [spct tpct] intt].
     rewrite /Concrete.pcv /= in rs_pc. subst cpct.
     simpl in DEC.
-    have := @handler_correct_disallowed_case mt ops sp _ ki
-                                             stable kcc _
+    have := @handler_correct_disallowed_case mt ops sp _ mi
+                                             stable mcc _
                                              cmvec _
                                              _ spct@ctpct _ cst''
-                                             rs_kinv _ USER''.
+                                             rs_minv _ USER''.
     rewrite DEC UHANDLER => /(_ erefl).
     have LOOKUP := transfer_none_lookup_none rs_cache DEC UHANDLER.
     have /= <- := initial_handler_state CMVEC LOOKUP STEP.
@@ -853,7 +853,7 @@ Proof.
   - (*refinement contradictory case*)
     destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
-    apply @in_user_in_kernel in USER.
+    apply @in_user_in_monitor in USER.
     by rewrite KEXEC in USER.
 Qed.
 
@@ -865,14 +865,14 @@ Lemma no_umvec_implies_kexec sst cst cst' sxs cxs :
   Concrete.step ops masks cst cst' ->
   refine_state sst cst ->
   refine_traces cfi_refinementSC (sst :: sxs) (cst' :: cxs) ->
-  all in_kernel (cst' :: cxs).
+  all in_monitor (cst' :: cxs).
 Proof.
   move=> VIOLATION UMVEC USER NUSER' STEP REF RTRACE.
   rewrite /check USER /= in NUSER'.
   (*assert (UHANDLER := Sym.is_violation_implies_stop stable sst VIOLATION UMVEC).*)
-  assert (KERNEL := user_into_kernel_wrapped USER REF STEP NUSER').
-  rewrite /= KERNEL /=.
-  apply/allP=> kst /(refine_traces_kexec RTRACE KERNEL)
+  assert (MONITOR := user_into_monitor_wrapped USER REF STEP NUSER').
+  rewrite /= MONITOR /=.
+  apply/allP=> kst /(refine_traces_kexec RTRACE MONITOR)
                    [? //|[cst'' [USER'' EXEC]]].
   (*the case where one user step was in the trace contradicts*)
   destruct REF as [[REF | CONTRA] ?].
@@ -880,10 +880,10 @@ Proof.
     case DEC: (rules.decode_ivec _ (Concrete.mem cst) cmvec) => [ivec|].
       by rewrite (refine_ivec_inv REF CMVEC DEC) in UMVEC.
     destruct REF. subst.
-    have := @handler_correct_disallowed_case mt ops sp _ ki
-                                             stable kcc _
+    have := @handler_correct_disallowed_case mt ops sp _ mi
+                                             stable mcc _
                                              cmvec _ _ (Concrete.pc cst) _ cst''
-                                             rs_kinv _ (in_user_in_kernel USER'').
+                                             rs_minv _ (in_user_in_monitor USER'').
     rewrite DEC => /(_ erefl).
     case LOOKUP: (Concrete.cache_lookup (Concrete.cache cst) masks cmvec) => [crvec|].
       rewrite /in_user /= in USER.
@@ -894,7 +894,7 @@ Proof.
   - (*refinement contradictory case*)
     destruct CONTRA as [? [? [? [? KEXEC]]]].
     apply restricted_exec_snd in KEXEC.
-    apply @in_user_in_kernel in USER.
+    apply @in_user_in_monitor in USER.
     by rewrite KEXEC in USER.
 Qed.
 
@@ -912,19 +912,19 @@ Proof.
   - destruct H0 as [REF' INV'].
     destruct REF' as [UREFJ | KREFJ].
     + move: (refine_state_in_user UREFI) (refine_state_in_user UREFJ) => USERI USERJ.
-      assert (NKERNEL : in_kernel csi || in_kernel csj = false).
+      assert (NMONITOR : in_monitor csi || in_monitor csj = false).
       { apply/norP.
-        by rewrite (in_user_in_kernel USERI) (in_user_in_kernel USERJ). }
+        by rewrite (in_user_in_monitor USERI) (in_user_in_monitor USERJ). }
       destruct ssi as [smemi sregi [pci tpci] inti].
       destruct csi as [cmemi cregi cachei [pci' ctpci] epci].
-      destruct UREFI as [PCI DEC REFM REFR CACHE MVE WF KI].
+      destruct UREFI as [PCI DEC REFM REFR CACHE MVE WF MI].
       rewrite /Concrete.pcv /= in PCI. subst pci'.
       destruct ssj as [smemj sregj [pcj tpcj] intj].
       destruct csj as [cmemj cregj cachej [pcj' ctpcj] epcj].
       destruct UREFJ as [PCJ DEC' REFM' REFR' C3 C5 C6 C7].
       rewrite /Concrete.pcv /= in PCJ. subst pcj'.
       unfold Conc.csucc.
-      rewrite NKERNEL /=.
+      rewrite NMONITOR /=.
       unfold Sym.ssucc in H2.
       rewrite /= in H2.
       destruct (getm smemi pci) as [[v tg]|] eqn:GET.
@@ -1026,8 +1026,8 @@ Proof.
   destruct H2 as [USER USER'].
   destruct REF as [REF | CONTRA].
   - destruct REF' as [REF' | CONTRA'].
-    + apply @in_user_in_kernel in USER.
-      apply @in_user_in_kernel in USER'.
+    + apply @in_user_in_monitor in USER.
+      apply @in_user_in_monitor in USER'.
       unfold Conc.csucc. rewrite (negbTE USER) (negbTE USER').
       simpl.
       move: (refine_state_in_user REF) (refine_state_in_user REF') => USERT USERT'.
@@ -1035,7 +1035,7 @@ Proof.
                csi as [cmem creg cache [pc2 ctpc] epc],
                ssj as [smem' sreg' [pc' tpc'] int'],
                csj as [cmem' creg' cache' [pc2' ctpc'] epc'],
-               REF as [PC DEC REFM REFR CACHE MVEC WF KI],
+               REF as [PC DEC REFM REFR CACHE MVEC WF MI],
                REF' as [PC' DEC' REFM' REFR' C3 C5 C6 C7].
       simpl. rewrite /Concrete.pcv /= in PC PC'. subst pc2 pc2'.
       unfold Sym.ssucc in H1.
@@ -1136,11 +1136,11 @@ Proof.
         by rewrite (proj1 REFM _ _ _ _ DECTG GET') in GET. }
     + destruct CONTRA' as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
-      apply @in_user_in_kernel in USER'. rewrite KEXEC in USER'.
+      apply @in_user_in_monitor in USER'. rewrite KEXEC in USER'.
       discriminate.
   - destruct CONTRA as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
-      apply @in_user_in_kernel in USER. rewrite KEXEC in USER.
+      apply @in_user_in_monitor in USER. rewrite KEXEC in USER.
       discriminate.
 Qed.
 
@@ -1168,8 +1168,8 @@ Next Obligation.
       by reflexivity.
   - destruct H as [REF INV].
     destruct REF as [REF | REF].
-    + assert (KERNEL' := user_into_kernel REF H0 NUSER).
-      unfold Conc.csucc. rewrite KERNEL'.
+    + assert (MONITOR' := user_into_monitor REF H0 NUSER).
+      unfold Conc.csucc. rewrite MONITOR'.
       rewrite orbT. reflexivity.
     + destruct REF as [? [? [? [? KEXEC]]]].
       apply restricted_exec_snd in KEXEC.
@@ -1309,23 +1309,23 @@ Proof.
            destruct ctl; [by inversion RTRACE |idtac].
            destruct (build_ivec stable asi') as [umvec|] eqn:UMVEC.
             - (*case the umvec exists*)
-             assert (KERNEL := violation_implies_kexec VIOLATION' UMVEC USERI'
+             assert (MONITOR := violation_implies_kexec VIOLATION' UMVEC USERI'
                                                        CHECK CSTEP REFN RTRACE).
              apply In2_implies_In in IN2.
-             assert (KERNEL' : forall x, x \in (csj' :: s :: ctl) -> in_kernel x)
+             assert (MONITOR' : forall x, x \in (csj' :: s :: ctl) -> in_monitor x)
                by (apply/allP; auto).
-             apply KERNEL' in IN2.
-             apply @in_user_in_kernel in USERN.
+             apply MONITOR' in IN2.
+             apply @in_user_in_monitor in USERN.
              rewrite IN2 in USERN.
              by discriminate.
            - (*case the umvec does not exist*)
-             assert (KERNEL := no_umvec_implies_kexec VIOLATION' UMVEC USERI'
+             assert (MONITOR := no_umvec_implies_kexec VIOLATION' UMVEC USERI'
                                                        CHECK CSTEP REFN RTRACE).
              apply In2_implies_In in IN2.
-             assert (KERNEL' : forall x, x \in (csj' :: s :: ctl) -> in_kernel x)
+             assert (MONITOR' : forall x, x \in (csj' :: s :: ctl) -> in_monitor x)
                by (apply/allP; auto).
-             apply KERNEL' in IN2.
-             apply @in_user_in_kernel in USERN.
+             apply MONITOR' in IN2.
+             apply @in_user_in_monitor in USERN.
              rewrite IN2 in USERN.
              by discriminate.
        }

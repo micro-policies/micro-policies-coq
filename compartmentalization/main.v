@@ -31,55 +31,55 @@ Existing Instance sp.
 
 Implicit Type mem : Concrete.memory mt.
 
-Definition read_kernel_word mem (addr : mword mt) : option (mword mt) :=
+Definition read_monitor_word mem (addr : mword mt) : option (mword mt) :=
   do! x <- mem addr;
-  if Concrete.is_kernel_tag (taga x) then Some (vala x)
+  if Concrete.is_monitor_tag (taga x) then Some (vala x)
   else None.
 
-Lemma read_kernel_word_monotonic mem addr x ct x' ct' :
+Lemma read_monitor_word_monotonic mem addr x ct x' ct' :
   mem addr = Some x@ct ->
-  ~~ Concrete.is_kernel_tag ct ->
-  ~~ Concrete.is_kernel_tag ct' ->
-  read_kernel_word (setm mem addr x'@ct') =1 read_kernel_word mem.
+  ~~ Concrete.is_monitor_tag ct ->
+  ~~ Concrete.is_monitor_tag ct' ->
+  read_monitor_word (setm mem addr x'@ct') =1 read_monitor_word mem.
 Proof.
   move=> Hget Hnk Hnk' addr'.
-  rewrite /read_kernel_word getm_set.
+  rewrite /read_monitor_word getm_set.
   have [-> {addr'} /=|//] := altP (addr' =P addr).
   by rewrite Hget /= (negbTE Hnk) (negbTE Hnk').
 Qed.
 
-Fixpoint read_kernel_array (mem : Concrete.memory mt) (addr : mword mt) (count : nat) : option (seq (mword mt)) :=
+Fixpoint read_monitor_array (mem : Concrete.memory mt) (addr : mword mt) (count : nat) : option (seq (mword mt)) :=
   match count with
   | 0 => Some [::]
   | S count =>
-    do! x <- read_kernel_word mem addr;
-    do! arr <- read_kernel_array mem (addr + 1)%w count;
+    do! x <- read_monitor_word mem addr;
+    do! arr <- read_monitor_array mem (addr + 1)%w count;
     Some (x :: arr)
   end.
 
-Lemma read_kernel_array_monotonic mem addr x ct x' ct' :
+Lemma read_monitor_array_monotonic mem addr x ct x' ct' :
   mem addr = Some x@ct ->
-  ~~ Concrete.is_kernel_tag ct ->
-  ~~ Concrete.is_kernel_tag ct' ->
-  read_kernel_array mem =2 read_kernel_array (setm mem addr x'@ct').
+  ~~ Concrete.is_monitor_tag ct ->
+  ~~ Concrete.is_monitor_tag ct' ->
+  read_monitor_array mem =2 read_monitor_array (setm mem addr x'@ct').
 Proof.
   move=> Hget Hnk Hnk' addr' count.
   elim: count addr' => [|count IH] addr' //=.
-  by rewrite (read_kernel_word_monotonic x' Hget Hnk Hnk') IH.
+  by rewrite (read_monitor_word_monotonic x' Hget Hnk Hnk') IH.
 Qed.
 
 Definition read_set (mem : Concrete.memory mt) (addr : mword mt) : option {set mword mt} :=
   do! count <- mem addr;
-  if Concrete.is_kernel_tag (taga count) then
+  if Concrete.is_monitor_tag (taga count) then
     omap (fun arr => [set x : [finType of mword mt] in arr])
-         (read_kernel_array mem (addr + 1)%w (nat_of_ord (ord_of_word (vala count))))
+         (read_monitor_array mem (addr + 1)%w (nat_of_ord (ord_of_word (vala count))))
   else
     None.
 
 Lemma read_set_monotonic mem addr x ct x' ct' :
   mem addr = Some x@ct ->
-  ~~ Concrete.is_kernel_tag ct ->
-  ~~ Concrete.is_kernel_tag ct' ->
+  ~~ Concrete.is_monitor_tag ct ->
+  ~~ Concrete.is_monitor_tag ct' ->
   read_set mem =1 read_set (setm mem addr x'@ct').
 Proof.
   move=> Hget Hnk Hnk' addr'.
@@ -87,7 +87,7 @@ Proof.
   have [-> {addr'} /=|_] := altP (addr' =P addr).
     by rewrite Hget /= (negbTE Hnk) (negbTE Hnk').
   case: (mem addr') => [count|] //=.
-  by rewrite (read_kernel_array_monotonic x' Hget Hnk Hnk').
+  by rewrite (read_monitor_array_monotonic x' Hget Hnk Hnk').
 Qed.
 
 Definition decode_reg_tag (mem : Concrete.memory mt) (tg : mword mt) : option (tag unit) :=
@@ -102,10 +102,10 @@ Definition decode_data_tag (mem : Concrete.memory mt) (tg : mword mt) : option (
   if w' == 0%w then None
   else if (w' == 1%w) || (w' == as_word 2) then
     let addr : mword mt := as_word (ord_of_word ut) in
-    do! cid <- read_kernel_word mem addr;
-    do! Iaddr <- read_kernel_word  mem (addr + 1)%w;
+    do! cid <- read_monitor_word mem addr;
+    do! Iaddr <- read_monitor_word  mem (addr + 1)%w;
     do! I <- read_set mem Iaddr;
-    do! Waddr <- read_kernel_word mem (addr + as_word 2)%w;
+    do! Waddr <- read_monitor_word mem (addr + as_word 2)%w;
     do! W <- read_set mem Waddr;
     let tg := Sym.DATA cid I W in
     if w' == 1%w then Some (USER tg)
@@ -114,7 +114,7 @@ Definition decode_data_tag (mem : Concrete.memory mt) (tg : mword mt) : option (
 
 Lemma decode_data_tag_user_inv mem tg ut :
   decode_data_tag mem tg = Some (USER ut) ->
-  ~~ Concrete.is_kernel_tag tg.
+  ~~ Concrete.is_monitor_tag tg.
 Proof.
 move=> Hdec; apply/negP => /eqP E; move: Hdec.
 by rewrite {}E /decode_data_tag 2!wunpackS.
@@ -128,7 +128,7 @@ Definition decode_pc_tag (mem : Concrete.memory mt) (tg : mword mt) : option (ta
     let wf := if wf == 0%w then INTERNAL
               else JUMPED in
     let cid_addr := as_word (ord_of_word cid_addr) in
-    do! cid <- read_kernel_word mem cid_addr;
+    do! cid <- read_monitor_word mem cid_addr;
     let tg := Sym.PC wf cid in
     if w' == 1%w then Some (USER tg)
     else Some (ENTRY tg)
@@ -150,10 +150,10 @@ Proof.
     case: (wunpack _) => [ut [w' []]].
     case: (w' == 0%w) => //.
     case: (_ || _) => //.
-    rewrite !(read_kernel_word_monotonic _ Hget Hnk Hnk').
-    case: (read_kernel_word _ (as_word (ord_of_word ut) + 1)%w) => [Iaddr|] //=.
+    rewrite !(read_monitor_word_monotonic _ Hget Hnk Hnk').
+    case: (read_monitor_word _ (as_word (ord_of_word ut) + 1)%w) => [Iaddr|] //=.
     rewrite -(read_set_monotonic _ Hget Hnk Hnk').
-    case: (read_kernel_word _ (as_word (ord_of_word ut) + as_word 2)%w) => [Waddr|] //=.
+    case: (read_monitor_word _ (as_word (ord_of_word ut) + as_word 2)%w) => [Waddr|] //=.
     by rewrite -(read_set_monotonic _ Hget Hnk Hnk').
   + move=> Hget /decode_data_tag_user_inv Hnk
                 /decode_data_tag_user_inv Hnk' addr'.
@@ -162,14 +162,14 @@ Proof.
     case: (w' == 0%w) => //.
     case: (_ || _) => //.
     case: (wunpack _) => [wf [cid_addr []]].
-    by rewrite (read_kernel_word_monotonic _ Hget Hnk Hnk').
+    by rewrite (read_monitor_word_monotonic _ Hget Hnk Hnk').
 - move=> [] m /=.
   + by rewrite /decode_reg_tag 2!wunpackS.
   + by rewrite /decode_data_tag 2!wunpackS.
   by rewrite /decode_pc_tag 2!wunpackS.
 Qed.
 
-Context {monitor_invariant : kernel_invariant}
+Context {monitor_invariant : monitor_invariant}
         {syscall_addrs : compartmentalization_syscall_addrs mt}.
 
 Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
@@ -181,7 +181,7 @@ Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
 Hint Constructors refine_state.
 
 Hypothesis implementation_correct :
-  kernel_code_bwd_correctness monitor_invariant Sym.syscalls.
+  monitor_code_bwd_correctness monitor_invariant Sym.syscalls.
 
 Lemma backwards_refinement_as ast sst sst' :
   Abs.good_state ast ->

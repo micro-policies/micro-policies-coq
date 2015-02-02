@@ -1,4 +1,4 @@
-(* Specializing protected kernel for symbolic machine to 32 bits *)
+(* Specializing protected monitor for symbolic machine to 32 bits *)
 
 Require Import lib.utils.
 Require Import common.types common.segment.
@@ -56,27 +56,27 @@ Fixpoint constants_from {A : Type} (i : word 32) (n : nat) (x : A)
 
 Definition w := mword mt.
 
-Definition kernelize (seg : @relocatable_segment mt w w)
+Definition monitorize (seg : @relocatable_segment mt w w)
                    : @relocatable_segment mt w (atom (word 32) (word 32)) :=
   let (l,gen) := seg in
-  (l, fun b rest => map (fun x => Atom x (Concrete.TKernel : w)) (gen b rest)).
+  (l, fun b rest => map (fun x => Atom x (Concrete.TMonitor : w)) (gen b rest)).
 
 (* FIXME: right now, this definition works only for the sealing
 machine, whose system calls have trivial entry tags. Ideally, the
-system call should provide kernelize_syscall with a tag for its entry
+system call should provide monitorize_syscall with a tag for its entry
 point. *)
-Definition kernelize_syscall (seg : @relocatable_segment mt w w)
+Definition monitorize_syscall (seg : @relocatable_segment mt w w)
                    : relocatable_segment w (atom w w) :=
   let (l,gen) := seg in
   ((l + 1)%nat, fun b rest =>
         (* ENTRY tag with constant ut *)
         (encode_instr (Nop _))@(as_word 2) ::
-        map (fun x => x@Concrete.TKernel) (gen b rest)).
+        map (fun x => x@Concrete.TMonitor) (gen b rest)).
 
-Definition kernelize_user_tag t : word 32 :=
+Definition monitorize_user_tag t : word 32 :=
   (shlw t (as_word 2) + 1)%w.
 
-Definition kernelize_tags
+Definition monitorize_tags
                    {X : Type}
                    (seg : @relocatable_segment mt X (atom w w))
                    : relocatable_segment X (atom w w) :=
@@ -86,7 +86,7 @@ Definition kernelize_tags
   (l,
    fun b rest =>
      map (fun x => Atom (vala x)
-                        (kernelize_user_tag (taga x))) (gen b rest)).
+                        (monitorize_user_tag (taga x))) (gen b rest)).
 
 (* Build the basic monitor memory on top of which we will put user
    programs. Returns a triple with the monitor memory, the base user
@@ -96,24 +96,24 @@ Definition build_monitor_memory
       (handler : relocatable_segment w w)
       (syscalls : seq (relocatable_segment w w))
     : Concrete.memory mt * w * seq w :=
-  let cacheCell := Atom 0%w (Concrete.TKernel : w) in
-  let '((kernel_length,gen_kernel), offsets) :=
+  let cacheCell := Atom 0%w (Concrete.TMonitor : w) in
+  let '((monitor_length,gen_monitor), offsets) :=
     concat_and_measure_relocatable_segments
-      ([:: kernelize handler;
-       kernelize extra_state] ++
-       (map kernelize_syscall syscalls)) in
+      ([:: monitorize handler;
+       monitorize extra_state] ++
+       (map monitorize_syscall syscalls)) in
   match offsets with
   | _ :: extra_state_offset :: syscall_offsets =>
     let base_addr := fault_handler_start _ in
     let extra_state_addr := (base_addr + as_word extra_state_offset)%w in
-    let user_code_addr := (base_addr + as_word kernel_length)%w in
+    let user_code_addr := (base_addr + as_word monitor_length)%w in
     let syscall_addrs :=
         map (fun off : nat => base_addr + as_word off)%w
             syscall_offsets in
-    let kernel := gen_kernel base_addr extra_state_addr in
+    let monitor := gen_monitor base_addr extra_state_addr in
     let mem :=
        ( constants_from 0%w 8 cacheCell
-       ∘ insert_from base_addr kernel )
+       ∘ insert_from base_addr monitor )
        emptym in
      (mem, user_code_addr, syscall_addrs)
    | _ =>
@@ -138,23 +138,23 @@ Program Definition concrete_initial_state
       (user_regs : seq (reg mt))
       (initial_reg_tag : w)
     : Concrete.state mt :=
-  let '(_, user_gen) := kernelize_tags user_mem in
+  let '(_, user_gen) := monitorize_tags user_mem in
   let mem' := insert_from user_mem_addr (user_gen user_mem_addr syscall_addrs) initial_memory in
   let kregs :=
         foldl
           (fun regs r =>
-             setm regs r zerow@(Concrete.TKernel:w))
-          emptym (kernel_regs concrete_int_32_fh) in
+             setm regs r zerow@(Concrete.TMonitor:w))
+          emptym (monitor_regs concrete_int_32_fh) in
   let regs :=
         foldl
           (fun regs r =>
-            setm regs r zerow@(kernelize_user_tag initial_reg_tag))
+            setm regs r zerow@(monitorize_user_tag initial_reg_tag))
           kregs user_regs in
   {|
     Concrete.mem := mem';
     Concrete.regs := regs;
     Concrete.cache := ground_rules _;
-    Concrete.pc := user_mem_addr@(kernelize_user_tag initial_pc_tag);
+    Concrete.pc := user_mem_addr@(monitorize_user_tag initial_pc_tag);
     Concrete.epc := zerow@zerow
   |}.
 

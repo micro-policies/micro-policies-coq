@@ -44,7 +44,7 @@ Context (fhp : fault_handler_params).
 (* Encoding:
 
    USER ut  -> | ut   | 0 | 1 |
-   KERNEL   -> | 0..0 | 0 | 0 |
+   MONITOR  -> | 0..0 | 0 | 0 |
    ENTRY ut -> | ut   | 1 | 0 |
 
    (where "ENTRY ut" means that the entry point carries a specific
@@ -52,7 +52,7 @@ Context (fhp : fault_handler_params).
 
 Definition mvec_regs := [:: rop; rtpc; rti; rt1; rt2; rt3].
 
-Definition kernel_regs := mvec_regs ++ [:: rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
+Definition monitor_regs := mvec_regs ++ [:: rb; ri1; ri2; ri3; ri4; ri5; rtrpc; rtr; raddr].
 
 (* For debugging -- put a telltale marker in the code *)
 Definition got_here : code := [:: Const (as_word 999) ri5; Const 0%w ri5].
@@ -90,7 +90,7 @@ Definition wrap_user_tag (rut rdst : reg mt) : code :=
   [:: Const 1%w rdst] ++
   [:: Binop OR rdst ri2 rdst].
 
-(* Similar to [extract_user_tag], but for kernel entry-point tags. *)
+(* Similar to [extract_user_tag], but for monitor entry-point tags. *)
 Definition extract_entry_tag (rsrc rsucc rut : reg mt) : code :=
   [:: Const (as_word 3) ri2] ++
   [:: Binop AND rsrc ri2 rsucc] ++
@@ -145,7 +145,7 @@ Definition handler : code :=
        if_ ri4
            (* THEN: We are entering a system call routine.
                     Change opcode to SERVICE and invoke policy
-                    fault handler. If call is allowed, put KERNEL
+                    fault handler. If call is allowed, put MONITOR
                     tags in rvector. NB: system calls are now
                     required to begin with a Nop to simplify the
                     specification of the fault handler. *)
@@ -154,8 +154,8 @@ Definition handler : code :=
             if_ ri4 [::] [:: Halt _] ++
             [:: Const (as_word (pickle SERVICE)) rop] ++
             policy_handler ++
-            load_const Concrete.TKernel rtrpc ++
-            load_const Concrete.TKernel rtr)
+            load_const Concrete.TMonitor rtrpc ++
+            load_const Concrete.TMonitor rtr)
            (* ELSE: We are not in a system call. *)
            (extract_user_tag rti rb rti ++
             if_ rb
@@ -204,7 +204,7 @@ Record policy_invariant : Type := {
 
   policy_invariant_store_mvec :
     forall mem mem' mvec int
-           (KINV : policy_invariant_statement mem int)
+           (MINV : policy_invariant_statement mem int)
            (MVEC : Concrete.store_mvec mem mvec = mem'),
     policy_invariant_statement mem' int
 
@@ -217,11 +217,11 @@ Let invariant (mem : Concrete.memory mt)
               (cache : Concrete.rules mt)
               (int : Symbolic.internal_state) : Prop :=
   (forall addr : mword mt, addr \in Concrete.rvec_fields _ ->
-                          exists w : mword mt, mem addr = Some w@Concrete.TKernel) /\
+                          exists w : mword mt, mem addr = Some w@Concrete.TMonitor) /\
   (forall (addr : 'I_(size handler)) instr,
      tnth (in_tuple handler) addr = instr ->
      mem (Concrete.fault_handler_start mt + as_word addr)%w =
-     Some (encode_instr instr)@Concrete.TKernel) /\
+     Some (encode_instr instr)@Concrete.TMonitor) /\
   (* FIXME:
      This really shouldn't be included here, since it doesn't mention
      either the memory or the register bank. Try to put this somewhere else. *)
@@ -229,32 +229,32 @@ Let invariant (mem : Concrete.memory mt)
                 Concrete.fault_handler_start mt + as_word addr \notin
                 Concrete.mvec_and_rvec_fields _)%w /\
   (forall mvec rvec,
-     Concrete.ctpc mvec = Concrete.TKernel ->
+     Concrete.ctpc mvec = Concrete.TMonitor ->
      Concrete.cache_lookup cache masks mvec = Some rvec ->
      Concrete.cache_lookup (ground_rules mt) masks mvec = Some rvec) /\
   (forall mvec rvec,
      Concrete.cache_lookup (ground_rules mt) masks mvec = Some rvec ->
      Concrete.cache_lookup cache masks mvec = Some rvec) /\
-  (forall r, r \in kernel_regs ->
-   exists x, regs r = Some x@Concrete.TKernel) /\
+  (forall r, r \in monitor_regs ->
+   exists x, regs r = Some x@Concrete.TMonitor) /\
   pinv mem int.
 
 Lemma invariant_upd_mem :
   forall regs mem1 mem2 cache addr w1 ct ut w2 int
-         (KINV : invariant mem1 regs cache int)
+         (MINV : invariant mem1 regs cache int)
          (GET : mem1 addr = Some w1@ct)
          (DEC : decode Symbolic.M mem1 ct = Some (USER ut))
          (UPD : updm mem1 addr w2 = Some mem2),
     invariant mem2 regs cache int.
 Proof.
-  intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
+  intros. destruct MINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   repeat split; eauto.
   - intros addr' IN.
     move: UPD; rewrite /updm GET /= => - [<-]; rewrite getm_set.
     move: IN; have [-> {addr'}|_] := altP (_ =P _) => IN; last by eauto.
     apply RVEC in IN. destruct IN as [w1' IN].
-    assert (EQ : Concrete.TKernel = ct) by congruence. subst ct.
-    by rewrite decode_kernel_tag in DEC.
+    assert (EQ : Concrete.TMonitor = ct) by congruence. subst ct.
+    by rewrite decode_monitor_tag in DEC.
   - intros addr' i GET'.
     move: UPD; rewrite /updm GET /= => - [<-] {mem2}; rewrite getm_set.
     have [Heq|Hne] := altP (_ =P _).
@@ -262,34 +262,34 @@ Proof.
       specialize (@PROG _ _ GET').
       rewrite PROG in GET.
       move: GET => [_ CONTRA]. subst ct.
-      by rewrite decode_kernel_tag in DEC.
+      by rewrite decode_monitor_tag in DEC.
     + by eauto.
   - by eapply policy_invariant_upd_mem; eauto.
 Qed.
 
 Lemma invariant_upd_reg :
   forall mem regs regs' cache r w1 ct1 ut1 w2 ct2 ut2 int
-         (KINV : invariant mem regs cache int)
+         (MINV : invariant mem regs cache int)
          (GET : regs r = Some w1@ct1)
          (DEC : decode Symbolic.R mem ct1 = Some (USER ut1))
          (UPD : updm regs r w2@ct2 = Some regs')
          (DEC' : decode Symbolic.R mem ct2 = Some (USER ut2)),
     invariant mem regs' cache int.
 Proof.
-  intros. destruct KINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
+  intros. destruct MINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   do 6 (split; eauto).
   move=> r' IN; move: UPD; rewrite /updm GET /= => - [<-] {regs'}.
   rewrite getm_set.
   have [Heq|Hneq] := altP (_ =P _).
   - rewrite {}Heq {r'} in IN.
     move: IN => /REGS [x GET'].
-    have ? : ct1 = Concrete.TKernel by congruence. subst ct1.
-    by rewrite decode_kernel_tag in DEC.
+    have ? : ct1 = Concrete.TMonitor by congruence. subst ct1.
+    by rewrite decode_monitor_tag in DEC.
   - by eauto.
 Qed.
 
 Lemma invariant_store_mvec mem mvec regs cache int :
-  forall (KINV : invariant mem regs cache int),
+  forall (MINV : invariant mem regs cache int),
     invariant (Concrete.store_mvec mem mvec) regs cache int.
 Proof.
 intros (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
@@ -301,7 +301,7 @@ do 7 (try split; eauto).
   have [Hin | Hnin] := boolP (addr \in Concrete.mvec_fields mt); last by eauto.
   have: addr \in m by rewrite mem_mkpartmap.
   rewrite inE; case Heq: (m addr)=> [v|] //= _.
-  suff: taga v = Concrete.TKernel.
+  suff: taga v = Concrete.TMonitor.
     by case: v {Heq} => [w t] /= ->; eauto.
   apply/eqP; move/getm_mkpartmap': Heq.
   rewrite -{2}[v]/((addr, v).2); move: (addr, v).
@@ -314,11 +314,11 @@ do 7 (try split; eauto).
 - by eapply policy_invariant_store_mvec; eauto.
 Qed.
 
-Definition fault_handler_invariant : kernel_invariant := {|
-  kernel_invariant_statement := invariant;
-  kernel_invariant_upd_reg := invariant_upd_reg;
-  kernel_invariant_upd_mem := invariant_upd_mem;
-  kernel_invariant_store_mvec := invariant_store_mvec
+Definition fault_handler_invariant : monitor_invariant := {|
+  monitor_invariant_statement := invariant;
+  monitor_invariant_upd_reg := invariant_upd_reg;
+  monitor_invariant_upd_mem := invariant_upd_mem;
+  monitor_invariant_store_mvec := invariant_store_mvec
 |}.
 
 End invariant.

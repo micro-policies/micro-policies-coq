@@ -164,7 +164,7 @@ Qed.
 
 Instance sp : Symbolic.params := Sym.sym_memory_safety mt.
 
-Context {monitor_invariant : @kernel_invariant _ _ enc}
+Context {monitor_invariant : @monitor_invariant _ _ enc}
         {syscall_addrs : @memory_syscall_addrs mt}
         {alloc : @Abstract.allocator mt color}
         {allocspec : Abstract.allocator_spec alloc}.
@@ -177,7 +177,7 @@ Inductive refine_state (ast : Abstract.state mt color) (cst : Concrete.state mt)
 Hint Constructors refine_state.
 
 Hypothesis implementation_correct :
-  kernel_code_bwd_correctness monitor_invariant (@Sym.memsafe_syscalls _ _ _ _ _).
+  monitor_code_bwd_correctness monitor_invariant (@Sym.memsafe_syscalls _ _ _ _ _).
 
 Lemma backwards_refinement_as ast m sst sst' :
   refinementAS.refine_state m ast sst ->

@@ -4,7 +4,7 @@ Require Import common.
 Require Import concrete.
 Require Import concrete_exec.
 Require Import concrete_int_32.
-Require Import concrete_kernel.
+Require Import concrete_monitor.
 Require Import fault_handler.
 Require Import testing.
 
@@ -18,7 +18,7 @@ Import Concrete.
 
 Definition state       := state       concrete_int_32_t.
 Definition word        := word        concrete_int_32_t.
-Definition kernel_regs := kernel_regs concrete_int_32_t concrete_int_32_fh.
+Definition monitor_regs := monitor_regs concrete_int_32_t concrete_int_32_fh.
 Definition reg         := reg         concrete_int_32_t.
 Definition atom        := atom        concrete_int_32_t.
 Definition mkatom      := mkatom      concrete_int_32_t.
@@ -27,16 +27,16 @@ Definition memory      := memory      concrete_int_32_t.
 
 Definition word_eq_dec : forall (x y : word), {x = y} + {~ (x = y)} :=
   word_mt_eq_dec reflect_eq_word.
-  
+
 Definition gen_word : Gen word := liftGen Z_to_word arbitrary.
 
-(* Generates a valid register : 
+(* Generates a valid register :
    - The value of the register is an arbitrary integer (TODO: Fix? Does it matter?)
-   - The tag of the register depends on the register ID (kernel/non-kernel) *)
-Definition gen_register (r : reg) : Gen atom := 
-  liftGen2 mkatom gen_word 
-           (if in_dec word_eq_dec r kernel_regs then 
-              returnGen TKernel
+   - The tag of the register depends on the register ID (monitor/non-monitor) *)
+Definition gen_register (r : reg) : Gen atom :=
+  liftGen2 mkatom gen_word
+           (if in_dec word_eq_dec r monitor_regs then
+              returnGen TMonitor
             else returnGen TNone).
 
 Definition nat_to_reg (n : nat) : reg :=
@@ -53,11 +53,11 @@ Definition gen_registers (n : nat) : Gen registers :=
 (* TODO: Maybe we want to generate random cache configurations? *)
 Definition gen_cache : Gen (rules word) := returnGen concrete_ground_rules.
 
-(* First thousand  -> Kernel constants 
+(* First thousand  -> Monitor constants
    Second thousand -> User Program
    Third thousand  -> Faulthandler *)
 Definition gen_memory : Gen memory := returnGen initial_memory.
-  
+
 (*
 Fixpoint constants_from {A : Type} (i : int) (n : nat) (x : A)
                         (mem : Int32PMap.t A) : Int32PMap.t A :=
@@ -68,9 +68,9 @@ Fixpoint constants_from {A : Type} (i : int) (n : nat) (x : A)
 
 
 Definition initial_memory : Concrete.memory concrete_int_32_t :=
-  let kernelZero := Concrete.mkatom concrete_int_32_t zero Concrete.TKernel in
+  let monitorZero := Concrete.mkatom concrete_int_32_t zero Concrete.TMonitor in
   let withNone w := w @ Concrete.TNone
-  in ( constants_from zero        1000 kernelZero
+  in ( constants_from zero        1000 monitorZero
      ∘ insert_from_as (repr 1000) hello_world      withNone
      ∘ insert_from_as (repr 2000) faulthandler_bin withNone )
      (Int32PMap.empty _).
@@ -78,11 +78,11 @@ Definition initial_memory : Concrete.memory concrete_int_32_t :=
 
 Definition gen_pc : Gen atom := returnGen (pc initial_state).
 
-Definition gen_state : Gen state := 
+Definition gen_state : Gen state :=
   bindGen gen_memory         (fun m  =>
   bindGen (gen_registers 42) (fun r  =>
   bindGen gen_cache          (fun c  =>
-  bindGen gen_pc             (fun pc => 
+  bindGen gen_pc             (fun pc =>
   returnGen {|
     mem   := m;
     regs  := r;
@@ -93,12 +93,12 @@ Definition gen_state : Gen state :=
 
 Require Import Integers.
 
-Definition prop_ki :=
-  forAllShrink (fun _ => "Foo"%string) (returnGen initial_state) (fun _ => [])  
+Definition prop_mi :=
+  forAllShrink (fun _ => "Foo"%string) (returnGen initial_state) (fun _ => [])
                (fun s =>
-   invariant_exec concrete_int_32_fh reflect_eq_word (Z_to_word 2000) 
+   invariant_exec concrete_int_32_fh reflect_eq_word (Z_to_word 2000)
                   (mem s) (regs s) (cache s)).
-                                                     
-Definition toTest := quickCheck prop_ki.
+
+Definition toTest := quickCheck prop_mi.
 
 QuickCheck toTest.

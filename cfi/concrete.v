@@ -86,7 +86,7 @@ Local Open Scope word_scope.
 Definition csucc (st : Concrete.state mt) (st' : Concrete.state mt) : bool :=
   let pc_s := vala (Concrete.pc st) in
   let pc_s' := vala (Concrete.pc st') in
-  if in_kernel st || in_kernel st' then true else
+  if in_monitor st || in_monitor st' then true else
   match (getm (Concrete.mem st) pc_s) with
     | Some i =>
       match (@fdecode _ _ e Symbolic.M (taga i)) with
@@ -121,7 +121,7 @@ Definition csucc (st : Concrete.state mt) (st' : Concrete.state mt) : bool :=
             | _ => pc_s' == pc_s .+1
           end
        (* this says that if cst,cst' is in user mode then it's
-          not sensible to point to kernel memory*)
+          not sensible to point to monitor memory*)
         | Some (USER DATA)
         | Some (ENTRY _)
         | None => false
@@ -131,13 +131,13 @@ Definition csucc (st : Concrete.state mt) (st' : Concrete.state mt) : bool :=
 
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable ki : refinement_common.kernel_invariant.
+Variable mi : refinement_common.monitor_invariant.
 
 Variable stable : seq (Symbolic.syscall mt).
 
 (* This is basically the initial_refine assumption on preservation *)
 Definition cinitial (cs : Concrete.state mt) :=
-  exists ss, Sym.initial stable ss /\ refine_state ki stable ss cs.
+  exists ss, Sym.initial stable ss /\ refine_state mi stable ss cs.
 
 Variable masks : Concrete.Masks.
 
@@ -158,10 +158,10 @@ Qed.
 Definition stopping (ss : seq (Concrete.state mt)) : Prop :=
   (all_attacker ss /\ all in_user ss)
   \/
-  (exists user kernel,
-    ss = user ++ kernel /\
+  (exists user monitor,
+    ss = user ++ monitor /\
     all_attacker user /\ all in_user user /\
-    all in_kernel kernel).
+    all in_monitor monitor).
 
 Program Instance concrete_cfi_machine : cfi_machine := {
   state := [eqType of Concrete.state mt];

@@ -1,4 +1,4 @@
-(* Definition of symbolic rules and tags used for kernel protection,
+(* Definition of symbolic rules and tags used for monitor protection,
    along with conversion functions towards concrete integer tags. *)
 
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
@@ -75,8 +75,8 @@ Definition masks : Masks :=
              | mvp_t3 => dcm_t3
            end)
          (mkCTMask cm_trpc cm_tr) in
-  fun kernel opcode =>
-    if kernel then
+  fun monitor opcode =>
+    if monitor then
       match opcode with
         | NOP => mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
         | CONST =>  mk_mask (false,false,true,true,true) (Some mvp_tpc,None)
@@ -128,19 +128,19 @@ Class encodable (ut : Symbolic.tag_kind -> eqType) := {
                        decode Symbolic.M mem ct = Some (USER st) ->
                        decode Symbolic.M mem ct' = Some (USER st') ->
                        decode tk (setm mem addr y@ct') =1 decode tk mem;
-  decode_kernel_tag : forall tk m, decode tk m Concrete.TKernel = None
+  decode_monitor_tag : forall tk m, decode tk m Concrete.TMonitor = None
 }.
 
 (* Special case where encoding doesn't depend on memory *)
 Class fencodable (ut : Symbolic.tag_kind -> eqType) := {
   fdecode : forall tk, mword mt -> option (tag (ut tk));
-  fdecode_kernel_tag : forall tk, fdecode tk Concrete.TKernel = None
+  fdecode_monitor_tag : forall tk, fdecode tk Concrete.TMonitor = None
 }.
 
 Global Instance encodable_of_fencodable ut (e : fencodable ut) : encodable ut := {
   decode tk m w := fdecode tk w;
   decode_monotonic mem add x y ct st ct' st' tk H1 H2 H4 w := erefl;
-  decode_kernel_tag tk m := fdecode_kernel_tag tk
+  decode_monitor_tag tk m := fdecode_monitor_tag tk
 }.
 
 End encoding.
@@ -247,7 +247,7 @@ Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
     Some {| Symbolic.trpc := trpc; Symbolic.tr := tr |}
 
   | SERVICE =>
-    if Concrete.ctrpc rvec == Concrete.TKernel then
+    if Concrete.ctrpc rvec == Concrete.TMonitor then
       Some tt
     else None
   end.
@@ -256,20 +256,20 @@ Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
 Let TCopy : mword mt := TNone.
 
 Definition ground_rules : Concrete.rules mt :=
-  let mk op := Concrete.MVec op TKernel TKernel TNone TNone TNone in
+  let mk op := Concrete.MVec op TMonitor TMonitor TNone TNone TNone in
   [partmap
    (mk NOP, Concrete.RVec TCopy TNone);
-   (mk CONST, Concrete.RVec TCopy TKernel);
+   (mk CONST, Concrete.RVec TCopy TMonitor);
    (mk MOV, Concrete.RVec TCopy TCopy);
-   (mk (BINOP ADD), Concrete.RVec TCopy TKernel);
-   (mk (BINOP SUB), Concrete.RVec TCopy TKernel);
-   (mk (BINOP MUL), Concrete.RVec TCopy TKernel);
-   (mk (BINOP EQ),  Concrete.RVec TCopy TKernel);
-   (mk (BINOP LEQ),  Concrete.RVec TCopy TKernel);
-   (mk (BINOP AND),  Concrete.RVec TCopy TKernel);
-   (mk (BINOP OR),  Concrete.RVec TCopy TKernel);
-   (mk (BINOP SHRU),  Concrete.RVec TCopy TKernel);
-   (mk (BINOP SHL),  Concrete.RVec TCopy TKernel);
+   (mk (BINOP ADD), Concrete.RVec TCopy TMonitor);
+   (mk (BINOP SUB), Concrete.RVec TCopy TMonitor);
+   (mk (BINOP MUL), Concrete.RVec TCopy TMonitor);
+   (mk (BINOP EQ),  Concrete.RVec TCopy TMonitor);
+   (mk (BINOP LEQ),  Concrete.RVec TCopy TMonitor);
+   (mk (BINOP AND),  Concrete.RVec TCopy TMonitor);
+   (mk (BINOP OR),  Concrete.RVec TCopy TMonitor);
+   (mk (BINOP SHRU),  Concrete.RVec TCopy TMonitor);
+   (mk (BINOP SHL),  Concrete.RVec TCopy TMonitor);
    (mk LOAD, Concrete.RVec TCopy TCopy);
    (mk STORE, Concrete.RVec TCopy TCopy);
    (mk JUMP, Concrete.RVec TCopy TNone);
@@ -277,7 +277,7 @@ Definition ground_rules : Concrete.rules mt :=
    (mk JAL, Concrete.RVec TCopy TCopy);
    (mk JUMPEPC, Concrete.RVec TCopy TNone);
    (mk ADDRULE, Concrete.RVec TCopy TNone);
-   (mk GETTAG, Concrete.RVec TCopy TKernel);
+   (mk GETTAG, Concrete.RVec TCopy TMonitor);
    (mk PUTTAG, Concrete.RVec TCopy TNone)
   ].
 
