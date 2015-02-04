@@ -86,10 +86,10 @@ Definition is_user k (x : atom (mword mt) (mword mt)) :=
   oapp (fun t => rules.tag_of_wtag t : bool)
        false (@rules.fdecode _ _ e k (taga x)).
 
-Definition coerce k (x : atom (mword mt) (mword mt)) : atom (mword mt) (cfi_tag) :=
+Definition coerce k (x : atom (mword mt) (mword mt)) : atom (mword mt) (Symbolic.tag_type cfi_tags k) :=
   match obind (fun t => rules.tag_of_wtag t) (rules.fdecode k (taga x)) with
     | Some tg => (vala x)@tg
-    | _ => (vala x)@DATA (*this is unreachable in our case, dummy value*)
+    | _ => (vala x)@(Conc.cast' k DATA) (*this is unreachable in our case, dummy value*)
   end.
 
 Lemma mem_refinement_equiv :
@@ -809,7 +809,8 @@ Proof.
   move=> CACHE DEC TRANS.
   case LOOKUP: (Concrete.cache_lookup cache masks cmvec) => [crvec|] //=.
   have [t E] : exists t, rules.decode Symbolic.P cmem (Concrete.ctpc cmvec) = Some t.
-    by have [[?]|[]] := rules.decode_ivec_inv DEC; eauto.
+    have := rules.decode_ivec_inv DEC.
+    by case: ivec {DEC TRANS} => [[?|] ? ? ?] => [[?]|[]]; eauto.
   have := CACHE _ _ LOOKUP.
   rewrite {}E => /(_ erefl) [ivec' [ovec [DEC' _ TRANS']]].
   rewrite DEC in DEC'. case: DEC' TRANS => ->.

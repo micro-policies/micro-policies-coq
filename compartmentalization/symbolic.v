@@ -160,12 +160,12 @@ Definition data_tag_incoming (L : data_tag) : {set mword mt} :=
 Definition data_tag_writers (L : data_tag) : {set mword mt} :=
   match L with DATA _ _ W => W end.
 
-Definition stags (tk : Symbolic.tag_kind) : eqType :=
-  match tk with
-  | Symbolic.R => [eqType of unit]
-  | Symbolic.M => [eqType of data_tag]
-  | Symbolic.P => [eqType of pc_tag]
-  end.
+Definition stags := {|
+  Symbolic.pc_tag_type := [eqType of pc_tag];
+  Symbolic.reg_tag_type := [eqType of unit];
+  Symbolic.mem_tag_type := [eqType of data_tag];
+  Symbolic.entry_tag_type := [eqType of data_tag]
+|}.
 
 Import Symbolic.
 
@@ -179,7 +179,7 @@ Definition compartmentalization_rvec (op : opcode)
                                      (F : where_from)
                                      (c : mword mt)
                                      (tr : type_of_result stags (outputs op)) : ovec stags op :=
-  OVec (PC F c) tr.
+  @OVec stags _ (PC F c) tr.
 
 Definition rvec_step op
                      (rv : mword mt -> option (ovec stags op))

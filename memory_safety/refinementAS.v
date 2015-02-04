@@ -1376,11 +1376,6 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
   by eauto.
 
   by split; eassumption.
-
-move: CALL.
-rewrite /= /Symbolic.run_syscall /=.
-case: (Symbolic.entry_tag sc) => // b [] //.
-by case: ifP.
 Qed.
 
 End refinement.

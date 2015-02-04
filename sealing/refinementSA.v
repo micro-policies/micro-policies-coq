@@ -180,10 +180,10 @@ Proof.
     apply (refine_get_pointwise_inv rmem) in PC;
       destruct PC as [iv [PC riv]];
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT;
-    apply refine_val_data in riv; subst).
+    try apply refine_val_data in riv; subst).
   Ltac destruct_pc := repeat
     match goal with
-    | [pc: Equality.sort (Symbolic.ttypes Symbolic.P) |- _] => destruct pc
+    | [pc: Equality.sort (Symbolic.tag_type Symbolic.ttypes Symbolic.P) |- _] => destruct pc
     end.
   intros km [amem aregs apc akeys] sst sst' ref sstep. move: ref.
   destruct sstep; destruct sst as [smem sregs spc skey];

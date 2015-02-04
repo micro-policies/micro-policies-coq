@@ -51,7 +51,7 @@ Definition refine_registers (areg : Abs.registers mt)
 
 Definition refine_pc
            (apc : mword mt)
-           (spc : atom (mword mt) (Symbolic.ttypes Symbolic.P)) :=
+           (spc : atom (mword mt) (Symbolic.tag_type Symbolic.ttypes Symbolic.P)) :=
   apc = vala spc /\
   (taga spc = DATA \/
    exists id, taga spc = INSTR (Some id)).

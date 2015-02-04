@@ -133,8 +133,7 @@ Instance encodable_tag : @encodable mt Sym.stags := {|
             do! ut <- decode_sealing_tag ut;
             Some (@User Symbolic.ttypes ut)
         else if w' == as_word 2 then
-          do! ut <- decode_sealing_tag ut;
-          Some (@Entry Symbolic.ttypes ut)
+          Some (@Entry Symbolic.ttypes tt)
         else None
       | Symbolic.R =>
         if w' == 1%w then

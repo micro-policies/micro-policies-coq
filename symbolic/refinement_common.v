@@ -264,7 +264,8 @@ Proof.
       rewrite Hdec_eq in Hdec_ct'.
       move: Hget''; rewrite !getm_set.
       have [Heq|Hneq] := w =P addr.
-      * subst w; move=> [? ?]; subst; congruence.
+      * subst w; move=> [? ?]; subst.
+        by move: Hdec_ct'; rewrite Hdec' => -[->].
       * by eapply (proj1 Hmem); eauto.
     + move=> w x st Hget''; move: Hget'' Hdec_eq; rewrite /updm !getm_set.
       have [_ {w}|Hneq] := altP (w =P addr).
@@ -465,10 +466,10 @@ Lemma analyze_cache cache cmem cmvec crvec :
   decode Symbolic.P cmem (Concrete.ctpc cmvec) ->
   let op := Concrete.cop cmvec in
   if Symbolic.privileged_op op then False else
-  exists tpc : Symbolic.ttypes Symbolic.P, decode Symbolic.P cmem (Concrete.ctpc cmvec) = Some tpc /\
-  ((exists (ti : Symbolic.ttypes Symbolic.M)
-           (ts : hseq Symbolic.ttypes (Symbolic.inputs op))
-           (rtpc : Symbolic.ttypes Symbolic.P)
+  exists tpc : Symbolic.tag_type Symbolic.ttypes Symbolic.P, decode Symbolic.P cmem (Concrete.ctpc cmvec) = Some tpc /\
+  ((exists (ti : Symbolic.tag_type Symbolic.ttypes Symbolic.M)
+           (ts : hseq (Symbolic.tag_type Symbolic.ttypes) (Symbolic.inputs op))
+           (rtpc : Symbolic.tag_type Symbolic.ttypes Symbolic.P)
            (rt : Symbolic.type_of_result Symbolic.ttypes (Symbolic.outputs op)),
     let ovec := Symbolic.OVec rtpc rt in
     [/\ decode Symbolic.M cmem (Concrete.cti cmvec) = Some (User ti) ,
@@ -476,16 +477,15 @@ Lemma analyze_cache cache cmem cmvec crvec :
         Symbolic.transfer (Symbolic.IVec op tpc ti ts) = Some ovec &
         decode_fields e _ cmem (Concrete.ct1 cmvec, Concrete.ct2 cmvec, Concrete.ct3 cmvec) =
         Some (hmap (fun k x => Some (wtag_of_tag x)) ts) ]) \/
-   exists t : Symbolic.ttypes Symbolic.M,
+   exists t : Symbolic.entry_tag_type Symbolic.ttypes,
      [/\ op = NOP ,
          decode Symbolic.M cmem (Concrete.cti cmvec) = Some (Entry t) &
          Concrete.ctrpc crvec = Concrete.TMonitor ]).
 Proof.
   case: cmvec => op tpc ti t1 t2 t3 /= CACHE LOOKUP INUSER.
   case: (CACHE _ crvec LOOKUP INUSER) =>
-        [[op' tpc' ti' ts] /= [ovec /= [/decode_ivec_inv /= [E1|E1] E2 E3]]];
-    last first.
-    case: E1 => [? ? -> ->]. subst op op'.
+  [[[op'|] tpc' ti' ts] /= [ovec /= [/decode_ivec_inv /= E1 E2 E3]]]; last first.
+    case: E1 => [? ? ->]. subst op.
     move: E2 => /=.
     have [-> _| //] := (Concrete.ctrpc _ =P _).
     by eauto 11 using And3.
@@ -521,9 +521,12 @@ Proof.
     rewrite (build_cmvec_ctpc Hcmvec) => /(_ Huser) [ivec [ovec [Hdec_i Hdec_o Htrans]]] Hpc_cst'.
     have := build_cmvec_cop_cti Hcmvec.
     rewrite Hget => [[i [instr [[<- -> {i}] _ _]]]].
-    have [[? ? ? -> ?] //|[_ Hservice _ _]] := decode_ivec_inv Hdec_i.
+    have := decode_ivec_inv Hdec_i.
+    case: ivec ovec {Hdec_i} Hdec_o Htrans => [[op'|] tpc' ti' ts'] /= ovec Hdec_o Htrans.
+      by move=> [? ? ? -> ?].
+    move=> [_ _ _].
     move: ovec Huser' {Htrans} Hdec_o.
-    rewrite /in_user {}Hservice /= -{}Hpc_cst' => [[]].
+    rewrite /in_user /= -{}Hpc_cst' => [[]].
     have [->|//] := (_ =P _).
     by rewrite decode_monitor_tag.
   rewrite /= => Hcst'.
@@ -544,10 +547,12 @@ Proof.
   case Hlookup: (Concrete.cache_lookup _ _ _) => [crvec|].
     have := Hcache _ _ Hlookup.
     rewrite (build_cmvec_ctpc Hcmvec) => /(_ Huser) [ivec [ovec [Hdec_i Hdec_o Htrans]]] Hpc_st'.
-    have [[Hop Hpriv _ _ _]|] := decode_ivec_inv Hdec_i.
-      move: ovec {Htrans} Hdec_o.
-      rewrite Hop /= -{}Hpc_st' => ovec.
-      case Hdec: (decode Symbolic.P (Concrete.mem st) _) => [st''|] //= Hdec_o.
+    have := decode_ivec_inv Hdec_i.
+    case: ivec ovec Hdec_i Hdec_o Htrans=> [[op|] tpc ti ts] ovec Hdec_i Hdec_o Htrans.
+      move=> [Hop Hpriv _ _ _].
+      move: ti ts ovec {Htrans} Hdec_i Hdec_o.
+      rewrite Hop /= -{}Hpc_st' => ti ts ovec.
+      case Hdec: (decode Symbolic.P (Concrete.mem st) _) => [st''|] //= Hdec_i Hdec_o.
       suff : @decode _ _ e Symbolic.P (Concrete.mem st') =1
              @decode _ _ e Symbolic.P (Concrete.mem st).
         move=> E. rewrite -E in Hdec. by eauto.
@@ -577,9 +582,9 @@ Proof.
       move: E1; rewrite /updm; case: (getm _ _) => /= [_|] // [<-].
       by eapply decode_monotonic; eauto.
     rewrite {}Hpc_st'.
-    case=> _ Hop _ _.
+    case=> [_ _ _].
     move: ovec {Htrans} Hdec_o.
-    rewrite {}Hop /= => [[]].
+    rewrite /= => [[]].
     by have [->|//] := _ =P Concrete.TMonitor; auto.
   by rewrite /= => ->; auto.
 Qed.

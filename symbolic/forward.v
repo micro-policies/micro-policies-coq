@@ -323,9 +323,9 @@ Lemma build_cmvec_preserve cst cst' cmvec ivec :
   decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
   build_cmvec cst' = Some cmvec.
 Proof.
-  move=> Hpc Htags Hmem Hregs Hentry Hentry' Hbuild
-         /decode_ivec_inv [Hdec | Hdec]; last first.
-    case: Hdec => Hop _ Hdec_pc Hdec_ti.
+  move=> Hpc Htags Hmem Hregs Hentry Hentry' Hbuild.
+  move: ivec => [[op|] tpc ti ts] /decode_ivec_inv => [Hdec | Hdec]; last first.
+    case: Hdec => Hop Hdec_pc Hdec_ti.
     have Hctpc := build_cmvec_ctpc Hbuild.
     have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
     have Hinstr : instr = Nop _.
@@ -337,10 +337,10 @@ Proof.
     move/(Hmem _ _ _ _ Hdec_ti): (Hget_i) => Hget_i'.
     move: Hbuild.
     by rewrite /build_cmvec /Concrete.pcv -Hpc Hget_i Hget_i' Hdec_i /Concrete.pct Hpc.
-  case: cmvec Hbuild ivec Hdec
+  case: cmvec Hbuild Hdec
         => [cop ctpc cti ct1 ct2 ct3] /= Hbuild
-           [op' tpc ti ts] /= [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts].
-  move: ts Hdec_ts. rewrite {}Hop {op'} => ts Hdec_ts.
+           /= [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts].
+  move: ts Hdec_ts. rewrite {}Hop => ts Hdec_ts.
   have [i [instr [//= Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
   subst cop.
   move: Hbuild ts Hdec_ts.
@@ -438,7 +438,8 @@ Proof.
   have [cmvec'] := refine_ivec REF IVEC.
   rewrite CMVEC. move=> [<-] {cmvec'} DEC.
   have [ |ivec' [ovec' [DEC' DECo TRANS']]] := rs_cache REF LOOKUP _.
-    by case/decode_ivec_inv: DEC => [[? ? ->]|[? ? ->]].
+    move/decode_ivec_inv: DEC.
+    by case: ivec ovec TRANS IVEC => [[?|] ? ? ?] ? ? ? /= => [[? ? ->]|[? ->]].
   move: DEC' ovec' DECo TRANS'.
   rewrite DEC. move=> [<-]. rewrite TRANS.
   by move=> ? -> [<-].

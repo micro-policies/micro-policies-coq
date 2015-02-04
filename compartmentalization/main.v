@@ -109,8 +109,8 @@ Definition decode_data_tag (mem : Concrete.memory mt) (tg : mword mt) :
     do! Waddr <- read_monitor_word mem (addr + as_word 2)%w;
     do! W <- read_set mem Waddr;
     let tg := Sym.DATA cid I W in
-    if w' == 1%w then Some (User tg)
-    else Some (Entry tg)
+    if w' == 1%w then Some (@User Sym.stags tg)
+    else Some (@Entry Sym.stags tg)
   else None.
 
 Lemma decode_data_tag_user_inv mem tg ut :

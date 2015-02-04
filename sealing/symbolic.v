@@ -54,11 +54,12 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Definition stags : tag_kind -> eqType := fun k =>
-  match k with
-  | P => [eqType of unit]
-  | _ => [eqType of stag]
-  end.
+Definition stags := {|
+  pc_tag_type := [eqType of unit];
+  reg_tag_type := [eqType of stag];
+  mem_tag_type := [eqType of stag];
+  entry_tag_type := [eqType of unit]
+|}.
 
 Section WithHSeqs.
 
@@ -131,9 +132,9 @@ Definition unseal (s : state mt) : option (state mt) :=
   end.
 
 Definition sealing_syscalls : seq (syscall mt) :=
-  [:: Syscall mkkey_addr DATA mkkey;
-      Syscall seal_addr DATA seal;
-      Syscall unseal_addr DATA unseal].
+  [:: Syscall mkkey_addr tt mkkey;
+      Syscall seal_addr tt seal;
+      Syscall unseal_addr tt unseal].
 
 Definition step := step sealing_syscalls.
 

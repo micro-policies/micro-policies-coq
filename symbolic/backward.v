@@ -181,9 +181,9 @@ Lemma refine_ivec_inv sst cst cmvec ivec :
   decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
   build_ivec table sst = Some ivec.
 Proof.
-  case: ivec => [vop tpc ti ts].
-  move=> Href Hbuild /decode_ivec_inv /= [Hdec | Hdec]; last first.
-    case: Hdec => [Hop ? Hdec_tpc Hdec_ti]. subst vop.
+  move=> Href Hbuild /decode_ivec_inv /=.
+  case: ivec => [[op|] tpc ti ts]; last first.
+    case=> [Hop Hdec_tpc Hdec_ti].
     rewrite (build_cmvec_ctpc Hbuild) in Hdec_tpc.
     have [i [instr [Hget Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
     move: Hop. rewrite -{}Hop'.
@@ -198,7 +198,8 @@ Proof.
     rewrite (rs_pct Href) in Hdec_tpc.
     case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
     by rewrite [in RHS]hseq0.
-  case: Hdec => [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts]. subst vop.
+  case=> [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts].
+  move: ti ts Hdec_ti Hdec_ts; rewrite {}Hop => ti ts Hdec_ti Hdec_ts.
   rewrite (build_cmvec_ctpc Hbuild) (rs_pct Href) in Hdec_tpc.
   case: Hdec_tpc => ?. subst tpc.
   have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
@@ -322,10 +323,9 @@ Proof.
   rewrite /in_monitor /Concrete.is_monitor_tag => /eqP -> LOOKUP _.
   rewrite /in_user /= -(build_cmvec_ctpc BUILD) in INUSER.
   case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _]].
-  case: DECi ovec DECo => [[E Hpriv _ _ _]|[DECop E _ DECti]].
-    by rewrite {}E {ivec} /decode_ovec /= decode_monitor_tag /= => ovec.
+  case: ivec DECi ovec DECo => [[op|] tpc ti ts] /= => [[E Hpriv _ _ _]|[DECop _ DECti]].
+    by rewrite {}E /decode_ovec /= decode_monitor_tag /= => ovec.
   suff : false by done.
-  move: {ivec E} (Symbolic.ti ivec) DECti => ti DECti.
   move: (build_cmvec_cop_cti BUILD) DECop => [i [instr [GETPC DECi <-]]] DECop.
   have {DECi} ISNOP : is_nop i by rewrite /is_nop {}DECi; case: instr DECop.
   move: (wf_entry_points_only_if WFENTRYPOINTS GETPC DECti ISNOP).

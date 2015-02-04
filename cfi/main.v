@@ -116,14 +116,14 @@ Instance encodable_tag : encodable mt cfi_tags := {
     let: [hseq ut; w'] := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
     else
-      match k with
+      match k return option (wtag cfi_tags k) with
       | Symbolic.M =>
         if w' == 1%w then
           do! ut <- decode_cfi_tag ut;
-          Some (User ut)
+          Some (@User cfi_tags ut)
         else if w' == as_word 2 then
           do! ut <- decode_cfi_tag ut;
-          Some (Entry ut)
+          Some (@Entry cfi_tags ut)
         else None
       | Symbolic.P =>
         if w' == 1%w then

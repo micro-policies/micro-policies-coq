@@ -68,11 +68,11 @@ Definition masks : Masks :=
 Section encoding.
 
 Context (mt : machine_types).
-Context (ut : Symbolic.tag_kind -> eqType).
+Context (tty : Symbolic.tag_types).
 
 Inductive mtag :=
-| User of ut Symbolic.M
-| Entry of ut Symbolic.M.
+| User of Symbolic.mem_tag_type tty
+| Entry of Symbolic.entry_tag_type tty.
 
 Definition is_user t :=
   if t is User _ then true else false.
@@ -100,9 +100,9 @@ Canonical mtag_eqType := Eval hnf in EqType mtag mtag_eqMixin.
 
 Definition wtag tk : eqType :=
   if tk == Symbolic.M then [eqType of mtag]%type
-  else ut tk.
+  else Symbolic.tag_type tty tk.
 
-Definition tag_of_wtag tk : wtag tk -> option (ut tk) :=
+Definition tag_of_wtag tk : wtag tk -> option (Symbolic.tag_type tty tk) :=
   match tk with
   | Symbolic.M => fun tg =>
                     match tg with
@@ -112,7 +112,7 @@ Definition tag_of_wtag tk : wtag tk -> option (ut tk) :=
   | _          => fun tg => Some tg
   end.
 
-Definition wtag_of_tag tk : ut tk -> wtag tk :=
+Definition wtag_of_tag tk : Symbolic.tag_type tty tk -> wtag tk :=
   match tk with
   | Symbolic.M => fun tg => User tg
   | _          => fun tg => tg
@@ -152,7 +152,7 @@ End encoding.
 Section tag_encoding.
 
 Context (mt : machine_types)
-        (tty : Symbolic.tag_kind -> eqType)
+        (tty : Symbolic.tag_types)
         (et : encodable mt tty).
 
 Variable transfer : forall ivec : Symbolic.ivec tty, option (Symbolic.vovec tty (Symbolic.op ivec)).
@@ -183,8 +183,8 @@ Definition decode_fields (fs : seq Symbolic.tag_kind)
 
 Fixpoint ensure_no_entry (ks : seq Symbolic.tag_kind) :
                          hseq (fun x => option (wtag tty x)) ks ->
-                         option (hseq tty ks) :=
-  match ks return hseq (fun x => option (wtag tty x)) ks -> option (hseq tty ks) with
+                         option (hseq (Symbolic.tag_type tty) ks) :=
+  match ks return hseq (fun x => option (wtag tty x)) ks -> option (hseq (Symbolic.tag_type tty) ks) with
   | [::]    => fun _  => Some [hseq]
   | k :: ks => fun ts =>
                  match obind (@tag_of_wtag _ k) (hshead ts), ensure_no_entry (hsbehead ts) with
@@ -194,7 +194,7 @@ Fixpoint ensure_no_entry (ks : seq Symbolic.tag_kind) :
   end.
 
 Lemma ensure_no_entry_inv (ks : seq Symbolic.tag_kind)
-                          (l : hseq (fun x => option (wtag tty x)) ks) (l' : hseq tty ks)
+                          (l : hseq (fun x => option (wtag tty x)) ks) (l' : hseq (Symbolic.tag_type tty) ks)
                           : ensure_no_entry l = Some l' ->
                             l = hmap (fun k x => Some (wtag_of_tag x)) l'.
 Proof.
@@ -223,7 +223,7 @@ Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
       else Some (@Symbolic.IVec tty (OP op) tpc ti ts)
     | Some (Entry ti) =>
       match op with
-      | NOP => Some (@Symbolic.IVec tty SERVICE tpc (ti : tty Symbolic.M) [hseq])
+      | NOP => Some (@Symbolic.IVec tty SERVICE tpc ti [hseq])
       | _ => None
       end
     | None => None
@@ -285,32 +285,38 @@ Definition ground_rules : Concrete.rules mt :=
 
 Lemma decode_ivec_inv mvec m ivec :
   decode_ivec m mvec = Some ivec ->
-  [/\ Symbolic.op ivec = OP (Concrete.cop mvec),
-      ~~ Symbolic.privileged_op (Concrete.cop mvec),
-      decode Symbolic.P m (Concrete.ctpc mvec) = Some (Symbolic.tpc ivec),
-      decode Symbolic.M m (Concrete.cti mvec) = Some (User (Symbolic.ti ivec)) &
-      decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
-      Some (hmap (fun k tg => Some (wtag_of_tag tg)) (Symbolic.ts ivec)) ] \/
-  [/\ Concrete.cop mvec = NOP ,
-      Symbolic.op ivec = SERVICE ,
-      decode Symbolic.P m (Concrete.ctpc mvec) = Some (Symbolic.tpc ivec) &
-      decode Symbolic.M m (Concrete.cti mvec) = Some (Entry (Symbolic.ti ivec)) ].
+  match ivec with
+  | Symbolic.IVec (OP op) tpc ti ts =>
+    [/\ op = Concrete.cop mvec,
+        ~~ Symbolic.privileged_op (Concrete.cop mvec),
+        decode Symbolic.P m (Concrete.ctpc mvec) = Some tpc,
+        decode Symbolic.M m (Concrete.cti mvec) = Some (User ti) &
+        decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
+        Some (hmap (fun k tg => Some (wtag_of_tag tg)) ts) ]
+  | Symbolic.IVec SERVICE tpc ti _ =>
+    [/\ Concrete.cop mvec = NOP ,
+        decode Symbolic.P m (Concrete.ctpc mvec) = Some tpc &
+        decode Symbolic.M m (Concrete.cti mvec) = Some (Entry ti) ]
+  end.
 Proof.
   case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts].
   rewrite /decode_ivec (lock Symbolic.privileged_op) /=.
   case: (decode _ m ctpc) => [tpc'|] //=.
   case: (decode _ m cti) => [[ti'|ti']|] //=; last first.
-    case: cop => //= [] [? ? ?]. subst op tpc' ti'. right.
+    case: cop => //= E.
+    move: {E} (Symbolic.ivec_eq_inv (Some_inj E)) => [E1 E2].
+    move: ti ts; rewrite -{}E1 {}E2 {op tpc'} /= => ti [] /eqP E _.
+    rewrite eq_Tagged /= in E; move/eqP: E=>->.
     by constructor; eauto.
   case DEC: (decode_fields _ m _) => [ts'|] //=.
   case ENSURE: (ensure_no_entry _) => [ts''|] //=.
   rewrite -lock.
   case Hpriv: (Symbolic.privileged_op cop) => //=.
   move/ensure_no_entry_inv in ENSURE. subst ts'.
-  case: op ts => [op|] //= ts.
-  move=> E. move: (Symbolic.ivec_eq_inv (Some_inj E)) DEC => [] {E} [E1] E2 E3.
-  subst cop tpc' ti' => /(@pair2_inj _ _ _ _ _) H. subst ts'' => ->.
-  by left; eauto.
+  move=> E; move: (Symbolic.ivec_eq_inv (Some_inj E)) DEC => [] {E} E1 E2.
+  move: Hpriv ti ts; rewrite -{}E1 {}E2 {op tpc'} => Hpriv ti ts.
+  move=> /(@pair2_inj _ _ _ _ _) -> /(@pair2_inj _ _ _ _ _) -> {ti' ts''} E.
+  by constructor; eauto.
 Qed.
 
 Lemma decode_ivec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)})

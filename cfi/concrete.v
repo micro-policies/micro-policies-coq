@@ -46,6 +46,18 @@ Definition no_violation (cst : Concrete.state mt) :=
      exists dst,
        ti = INSTR (Some dst) /\ cfg src dst).
 
+Definition cast k : Symbolic.tag_type cfi_tags k -> cfi_tag :=
+  match k return Symbolic.tag_type cfi_tags k -> cfi_tag with
+  | Symbolic.M => fun t => t
+  | _ => fun t => t
+  end.
+
+Definition cast' k (t : cfi_tag) : Symbolic.tag_type cfi_tags k :=
+  match k with
+  | Symbolic.M => t
+  | _ => t
+  end.
+
 (*Defined in terms of atom_equiv for symbolic tags*)
 (* TODO: as a sanity check, please prove reflexivity for this and
    the other attacker relations. That will ensure that the attacker
@@ -56,7 +68,7 @@ Inductive atom_equiv k (a : atom (mword mt) (mword mt)) (a' : atom (mword mt) (m
                    @fdecode _ _ e k ct = Some (wtag_of_tag ut) ->
                    a' = v'@ct' ->
                    @fdecode _ _ e k ct' = Some (wtag_of_tag ut') ->
-                   Sym.atom_equiv v@ut v'@ut' ->
+                   Sym.atom_equiv v@(cast ut) v'@(cast ut') ->
                    atom_equiv k a a'
   | any_equiv : (~ exists ut, @fdecode _ _ e k (taga a) = Some (wtag_of_tag ut)) ->
                 a = a' ->

@@ -150,14 +150,13 @@ Instance enc: encodable mt Sym.ms_tags := {
     let: [hseq ut; w']%w := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
     else
-      match k with
+      match k return option (wtag Sym.ms_tags k) with
       | Symbolic.M =>
         if w' == 1%w then
           do! ut <- decode_mtag ut;
-          Some (User ut)
+          Some (@User Sym.ms_tags ut)
         else if w' == as_word 2 then
-          do! ut <- decode_mtag ut;
-          Some (Entry ut)
+          Some (@Entry Sym.ms_tags tt)
         else None
       | Symbolic.P =>
         if w' == 1%w then
