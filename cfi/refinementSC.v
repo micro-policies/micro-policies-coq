@@ -83,12 +83,13 @@ Definition refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
   Sym.invariants stable sst.
 
 Definition is_user k (x : atom (mword mt) (mword mt)) :=
-  oapp (fun t => rules.is_user t) false (@rules.fdecode _ _ e k (taga x)).
+  oapp (fun t => rules.tag_of_wtag t : bool)
+       false (@rules.fdecode _ _ e k (taga x)).
 
-Definition coerce k (x : atom (mword mt) (mword mt)) : atom (mword mt) (cfi_tag) :=
-  match rules.fdecode k (taga x) with
-    | Some (rules.USER tg) => (vala x)@tg
-    | _ => (vala x)@DATA (*this is unreachable in our case, dummy value*)
+Definition coerce k (x : atom (mword mt) (mword mt)) : atom (mword mt) (Symbolic.tag_type cfi_tags k) :=
+  match obind (fun t => rules.tag_of_wtag t) (rules.fdecode k (taga x)) with
+    | Some tg => (vala x)@tg
+    | _ => (vala x)@(Conc.cast' k DATA) (*this is unreachable in our case, dummy value*)
   end.
 
 Lemma mem_refinement_equiv :
@@ -178,7 +179,7 @@ Proof.
       rewrite getm_map /= getm_filter /=.
       case CGET': (creg' n)=> [[v' t']|] //=.
       rewrite /is_user /= /coerce /=.
-      case CTG: (rules.fdecode _ _) => [[ut|?]|] //=.
+      case CTG: (rules.fdecode _ _) => [ut|] //=.
       rewrite CTG /= => - [? ?]. subst v' ut.
       by eauto. }
   }
@@ -207,13 +208,13 @@ Proof.
         as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
        + inv EQ1.
          rewrite /is_user /coerce /=.
-         case DEC: (rules.fdecode _ _) => [[?|?]|] //=.
+         case DEC: (rules.fdecode _ _) => [?|] //=.
          by rewrite (proj1 REF _ _ _ _ DEC1 E1) in SGET.
        + inv EQ.
          rewrite /is_user /coerce /=.
-         case DEC: (rules.fdecode _ t2) => [[?|?]|] //=.
+         case DEC: (rules.fdecode _ t2) => [?|] //=.
          apply: NEQ.
-         by rewrite DEC; eauto.
+         by rewrite /= DEC; eauto.
   }
 Qed.
 
@@ -807,8 +808,9 @@ Lemma transfer_none_lookup_none cmvec ivec cmem cache :
 Proof.
   move=> CACHE DEC TRANS.
   case LOOKUP: (Concrete.cache_lookup cache masks cmvec) => [crvec|] //=.
-  have [t E] : exists t, rules.decode Symbolic.P cmem (Concrete.ctpc cmvec) = Some (rules.USER t).
-    by have [[?]|[]] := rules.decode_ivec_inv DEC; eauto.
+  have [t E] : exists t, rules.decode Symbolic.P cmem (Concrete.ctpc cmvec) = Some t.
+    have := rules.decode_ivec_inv DEC.
+    by case: ivec {DEC TRANS} => [[?|] ? ? ?] => [[?]|[]]; eauto.
   have := CACHE _ _ LOOKUP.
   rewrite {}E => /(_ erefl) [ivec' [ovec [DEC' _ TRANS']]].
   rewrite DEC in DEC'. case: DEC' TRANS => ->.

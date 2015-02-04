@@ -111,8 +111,7 @@ Lemma stepP :
 Proof.
   intros st st'. split; intros STEP.
   { destruct st as [mem reg [pc tpc] int].
-    simpl in STEP.
-    destruct (mem pc) as [[i ti]|] eqn:GET;
+    move: STEP => /=; case GET: (mem pc) => [[i ti]|] //= STEP;
     apply obind_inv in STEP.
     - destruct STEP as (instr & INSTR & STEP).
       destruct instr; try discriminate;
@@ -124,7 +123,7 @@ Proof.
              | rv : ovec _ |- _ =>
                destruct rv; simpl in *
              | H : Some _ = Some _ |- _ =>
-               inversion H; subst
+               inversion H; subst; clear H
            end;
       s_econstructor (solve [eauto]).
 
@@ -155,7 +154,7 @@ Definition build_ivec st : option (ivec ttypes)  :=
       match decode_instr (vala i) with
         | Some op =>
           let part := @IVec ttypes (opcode_of op) (pct st) (taga i) in
-          match op return (hseq ttypes (inputs (opcode_of op)) ->
+          match op return (hseq (tag_type ttypes) (inputs (opcode_of op)) ->
                            ivec ttypes) -> option (ivec ttypes) with
             | Nop => fun part => Some (part [hseq])
             | Const n r => fun part =>

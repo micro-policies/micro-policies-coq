@@ -86,7 +86,7 @@ Ltac relate_register_get :=
   match goal with
   | REFR : refine_registers ?areg ?creg ?cmem,
     GET : getm ?creg ?r = Some _@?t,
-    DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
+    DEC : decode Symbolic.R ?cmem ?t = Some _ |- _ =>
     match goal with
     | GET' : getm areg r = Some _ |- _ => fail 1
     | |- _ => first [ pose proof (proj1 REFR _ _ _ _ DEC GET) |
@@ -98,7 +98,7 @@ Ltac relate_memory_get :=
   match goal with
   | MEM : getm ?cmem ?addr = Some _@?t,
     REFM : refine_memory ?smem ?cmem,
-    DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
+    DEC : decode Symbolic.M ?cmem ?t = Some (User _) |- _ =>
     match goal with
     | _ : getm smem addr = Some _ |- _ => fail 1
     | |- _ => idtac
@@ -110,9 +110,9 @@ Ltac relate_memory_get :=
 Ltac relate_register_upd :=
   match goal with
   | GET : getm ?reg ?r = Some _@?t,
-    DEC : decode _ ?cmem ?t = Some (USER _),
+    DEC : decode Symbolic.R ?cmem ?t = Some _,
     UPD : updm ?reg ?r ?v@?t' = Some ?reg',
-    DEC' : decode _ ?cmem ?t' = Some (USER _),
+    DEC' : decode Symbolic.R ?cmem ?t' = Some _,
     REFR : refine_registers _ ?reg ?cmem,
     MINV : monitor_invariant_statement ?mi ?cmem _ _ _ |- _ =>
     first [ destruct (refine_registers_upd REFR GET DEC UPD DEC') as [? ? ?];
@@ -123,9 +123,9 @@ Ltac relate_register_upd :=
 Ltac relate_memory_upd :=
   match goal with
   | GET : getm ?cmem ?addr = Some _@?t,
-    DEC : decode _ ?cmem ?t = Some (USER _),
+    DEC : decode Symbolic.M ?cmem ?t = Some (User _),
     UPD : updm ?cmem ?addr _@?t' = Some _,
-    DEC' : decode _ ?cmem ?t' = Some (USER _),
+    DEC' : decode Symbolic.M ?cmem ?t' = Some (User _),
     CACHE : cache_correct _ ?cmem,
     REFR : refine_registers _ _ ?cmem,
     REFM : refine_memory _ ?cmem,
@@ -139,9 +139,9 @@ Ltac relate_memory_upd :=
 
 Ltac update_decodings :=
   match goal with
-  | DEC : decode ?k ?cmem ?ct = Some (USER ?ut),
+  | DEC : decode ?k ?cmem ?ct = Some ?ut,
     UPD : updm ?cmem _ _ = Some ?cmem' |-
-    decode ?k ?cmem' ?ct = Some (USER ?ut) =>
+    decode ?k ?cmem' ?ct = Some ?ut =>
     first [ solve [ rewrite /= -DEC (updm_set UPD);
                     erewrite decode_monotonic; eauto ] |
             failwith "update_decodings" ]
@@ -181,9 +181,9 @@ Lemma refine_ivec_inv sst cst cmvec ivec :
   decode_ivec e (Concrete.mem cst) cmvec = Some ivec ->
   build_ivec table sst = Some ivec.
 Proof.
-  case: ivec => [vop tpc ti ts].
-  move=> Href Hbuild /decode_ivec_inv /= [Hdec | Hdec]; last first.
-    case: Hdec => [Hop ? Hdec_tpc Hdec_ti]. subst vop.
+  move=> Href Hbuild /decode_ivec_inv /=.
+  case: ivec => [[op|] tpc ti ts]; last first.
+    case=> [Hop Hdec_tpc Hdec_ti].
     rewrite (build_cmvec_ctpc Hbuild) in Hdec_tpc.
     have [i [instr [Hget Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
     move: Hop. rewrite -{}Hop'.
@@ -198,7 +198,8 @@ Proof.
     rewrite (rs_pct Href) in Hdec_tpc.
     case: Hdec_tpc => ->. rewrite Hget_sc Hsct.
     by rewrite [in RHS]hseq0.
-  case: Hdec => [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts]. subst vop.
+  case=> [Hop Hpriv Hdec_tpc Hdec_ti Hdec_ts].
+  move: ti ts Hdec_ti Hdec_ts; rewrite {}Hop => ti ts Hdec_ti Hdec_ts.
   rewrite (build_cmvec_ctpc Hbuild) (rs_pct Href) in Hdec_tpc.
   case: Hdec_tpc => ?. subst tpc.
   have [i [instr [Hget_i Hdec_i Hop']]] := build_cmvec_cop_cti Hbuild.
@@ -322,10 +323,9 @@ Proof.
   rewrite /in_monitor /Concrete.is_monitor_tag => /eqP -> LOOKUP _.
   rewrite /in_user /= -(build_cmvec_ctpc BUILD) in INUSER.
   case/(_ cmvec _ LOOKUP INUSER): CACHECORRECT => ivec [ovec [/decode_ivec_inv DECi DECo _]].
-  case: DECi ovec DECo => [[E Hpriv _ _ _]|[DECop E _ DECti]].
-    by rewrite {}E {ivec} /decode_ovec /= decode_monitor_tag /= => ovec.
+  case: ivec DECi ovec DECo => [[op|] tpc ti ts] /= => [[E Hpriv _ _ _]|[DECop _ DECti]].
+    by rewrite {}E /decode_ovec /= decode_monitor_tag /= => ovec.
   suff : false by done.
-  move: {ivec E} (Symbolic.ti ivec) DECti => ti DECti.
   move: (build_cmvec_cop_cti BUILD) DECop => [i [instr [GETPC DECi <-]]] DECop.
   have {DECi} ISNOP : is_nop i by rewrite /is_nop {}DECi; case: instr DECop.
   move: (wf_entry_points_only_if WFENTRYPOINTS GETPC DECti ISNOP).

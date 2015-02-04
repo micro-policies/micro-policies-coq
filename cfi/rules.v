@@ -44,7 +44,12 @@ Definition cfi_tag_eqMixin := EqMixin cfi_tag_eqP.
 Canonical cfi_tag_eqType := Eval hnf in EqType cfi_tag cfi_tag_eqMixin.
 
 (* XXX: Refine this later to use different types *)
-Definition cfi_tags : Symbolic.tag_kind -> eqType := fun _ => [eqType of cfi_tag].
+Definition cfi_tags := {|
+  Symbolic.pc_tag_type := [eqType of cfi_tag];
+  Symbolic.reg_tag_type := [eqType of cfi_tag];
+  Symbolic.mem_tag_type := [eqType of cfi_tag];
+  Symbolic.entry_tag_type := [eqType of cfi_tag]
+|}.
 
 Variable cfg : id -> id -> bool.
 
