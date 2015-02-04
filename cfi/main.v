@@ -111,18 +111,32 @@ Qed.
 
 Import DoNotation.
 
-Instance encodable_tag : encodable mt cfi_tags := {|
+Instance encodable_tag : encodable mt cfi_tags := {
   decode k m := fun (w : mword mt) =>
     let: [hseq ut; w'] := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
-    else if w' == 1%w then
-      do! ut <- decode_cfi_tag ut;
-      Some (@USER cfi_tag_eqType ut)
-    else if w' == as_word 2 then
-      do! ut <- decode_cfi_tag ut;
-      Some (@ENTRY cfi_tag_eqType ut)
-    else None
-|}.
+    else
+      match k with
+      | Symbolic.M =>
+        if w' == 1%w then
+          do! ut <- decode_cfi_tag ut;
+          Some (User ut)
+        else if w' == as_word 2 then
+          do! ut <- decode_cfi_tag ut;
+          Some (Entry ut)
+        else None
+      | Symbolic.P =>
+        if w' == 1%w then
+          do! ut <- decode_cfi_tag ut;
+          Some ut
+        else None
+      | Symbolic.R =>
+        if w' == 1%w then
+          do! ut <- decode_cfi_tag ut;
+          Some ut
+        else None
+      end
+}.
 Proof.
   - by eauto.
   - by move=> tk _; rewrite 2!wunpackS.

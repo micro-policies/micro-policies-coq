@@ -90,14 +90,15 @@ Proof.
   by rewrite (read_monitor_array_monotonic x' Hget Hnk Hnk').
 Qed.
 
-Definition decode_reg_tag (mem : Concrete.memory mt) (tg : mword mt) : option (tag unit) :=
+Definition decode_reg_tag (mem : Concrete.memory mt) (tg : mword mt) : option unit :=
   let: [hseq ut; w']%w := @wunpack [:: 30; 2] tg in
   if w' == 1%w then
-    if ut == 0%w then Some (USER tt)
+    if ut == 0%w then Some tt
     else None
   else None.
 
-Definition decode_data_tag (mem : Concrete.memory mt) (tg : mword mt) : option (tag (Sym.data_tag mt)) :=
+Definition decode_data_tag (mem : Concrete.memory mt) (tg : mword mt) :
+  option (mtag (@Sym.stags mt)) :=
   let: [hseq ut; w']%w := @wunpack [:: 30; 2] tg in
   if w' == 0%w then None
   else if (w' == 1%w) || (w' == as_word 2) then
@@ -108,19 +109,19 @@ Definition decode_data_tag (mem : Concrete.memory mt) (tg : mword mt) : option (
     do! Waddr <- read_monitor_word mem (addr + as_word 2)%w;
     do! W <- read_set mem Waddr;
     let tg := Sym.DATA cid I W in
-    if w' == 1%w then Some (USER tg)
-    else Some (ENTRY tg)
+    if w' == 1%w then Some (User tg)
+    else Some (Entry tg)
   else None.
 
 Lemma decode_data_tag_user_inv mem tg ut :
-  decode_data_tag mem tg = Some (USER ut) ->
+  decode_data_tag mem tg = Some (User ut) ->
   ~~ Concrete.is_monitor_tag tg.
 Proof.
 move=> Hdec; apply/negP => /eqP E; move: Hdec.
 by rewrite {}E /decode_data_tag 2!wunpackS.
 Qed.
 
-Definition decode_pc_tag (mem : Concrete.memory mt) (tg : mword mt) : option (tag (Sym.pc_tag mt)) :=
+Definition decode_pc_tag (mem : Concrete.memory mt) (tg : mword mt) : option (Sym.pc_tag mt) :=
   let: [hseq ut; w']%w := @wunpack [:: 30; 2] tg in
   if w' == 0%w then None
   else if (w' == 1%w) || (w' == as_word 2) then
@@ -130,16 +131,16 @@ Definition decode_pc_tag (mem : Concrete.memory mt) (tg : mword mt) : option (ta
     let cid_addr := as_word (ord_of_word cid_addr) in
     do! cid <- read_monitor_word mem cid_addr;
     let tg := Sym.PC wf cid in
-    if w' == 1%w then Some (USER tg)
-    else Some (ENTRY tg)
+    if w' == 1%w then Some tg
+    else None
   else None.
 
 Instance encodable_stags : encodable mt (@Sym.stags mt) := {
-  decode tk mem tg :=
-    match tk with
-    | Symbolic.R => decode_reg_tag mem tg
-    | Symbolic.M => decode_data_tag mem tg
-    | Symbolic.P => decode_pc_tag mem tg
+  decode tk :=
+    match tk return Concrete.memory mt -> mword mt -> option (wtag _ tk) with
+    | Symbolic.R => decode_reg_tag
+    | Symbolic.M => decode_data_tag
+    | Symbolic.P => decode_pc_tag
     end
 }.
 Proof.

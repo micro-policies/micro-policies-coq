@@ -97,7 +97,7 @@ Ltac match_mem_get REF sst cst :=
 Ltac match_mem_upd REF sst cst :=
   match goal with
   | UPD : updm ?smem ?addr ?w@?t = Some ?smem',
-    DEC : decode Symbolic.M ?cmem ?ct = Some (USER ?t) |- _ =>
+    DEC : decode Symbolic.M ?cmem ?ct = Some (User ?t) |- _ =>
     check_conv smem (Symbolic.mem sst);
     match goal with
     | _ : refine_memory smem' ?cmem',
@@ -129,7 +129,7 @@ Ltac match_mem_unchanged REF sst cst :=
 Ltac match_mem_unchanged_tags :=
   match goal with
   | GET : getm ?mem1 ?addr = Some ?x@?ct,
-    DEC : decode Symbolic.M ?mem1 ?ct = Some (USER ?t),
+    DEC : decode Symbolic.M ?mem1 ?ct = Some (User ?t),
     USERMEM : user_mem_unchanged ?mem1 ?mem2 |- _ =>
     match goal with
     | _ : getm mem2 addr = _ |- _ => fail 1
@@ -155,7 +155,7 @@ Ltac match_reg_get REF sst cst :=
 Ltac match_reg_upd REF sst cst :=
   match goal with
   | UPD : updm ?sregs ?r ?w@?t = Some ?sregs',
-    DEC : decode Symbolic.R ?cmem ?ct = Some (USER ?t) |- _ =>
+    DEC : decode Symbolic.R ?cmem ?ct = Some ?t |- _ =>
     check_conv sregs (Symbolic.regs sst);
     match goal with
     | _ : refine_registers sregs' ?cregs' cmem,
@@ -185,16 +185,16 @@ Ltac match_reg_unchanged REF sst cst :=
 Ltac match_pc_tag :=
   match goal with
   | GET : getm ?cmem ?addr = Some ?w@?ct,
-    DEC : decode Symbolic.M ?cmem ?ct = Some (USER ?st),
+    DEC : decode Symbolic.M ?cmem ?ct = Some (User ?st),
     UPD : updm ?cmem ?addr ?w'@?ct' = Some ?cmem',
-    DEC' : decode Symbolic.M ?cmem ?ct' = Some (USER ?st'),
-    DECPC : decode Symbolic.P ?cmem ?cpct = Some (USER ?spct) |- _ =>
+    DEC' : decode Symbolic.M ?cmem ?ct' = Some (User ?st'),
+    DECPC : decode Symbolic.P ?cmem ?cpct = Some ?spct |- _ =>
     match goal with
-    | _ : decode Symbolic.P cmem' cpct = Some (USER spct) |- _ => fail 1
+    | _ : decode Symbolic.P cmem' cpct = Some spct |- _ => fail 1
     | |- _ => idtac
     end;
     let DECPC' := fresh "DECPC'" in
-    first [ have DECPC' : decode Symbolic.P cmem' cpct = Some (USER spct)
+    first [ have DECPC' : decode Symbolic.P cmem' cpct = Some spct
             by rewrite (updm_set UPD) /=; erewrite decode_monotonic; eauto |
             failwith "match_pc_tag" ]
   end.
@@ -215,7 +215,7 @@ Ltac match_data :=
 Ltac user_data_unchanged_mem cmem1 cmem2 :=
   match goal with
   | GET : getm cmem1 ?addr = Some ?w@?ct,
-    DEC : decode Symbolic.M cmem1 ?ct = Some (USER ?t),
+    DEC : decode Symbolic.M cmem1 ?ct = Some (User ?t),
     USERMEM : user_mem_unchanged cmem1 cmem2 |- _ =>
     match goal with
     | _ : getm cmem2 addr = Some _ |- _ => fail 1
@@ -228,7 +228,7 @@ Ltac user_data_unchanged_mem cmem1 cmem2 :=
 Ltac user_data_unchanged_regs cmem1 cmem2 :=
   match goal with
   | GET : getm ?regs1 ?r = Some ?w@?ct,
-    DEC : decode Symbolic.R cmem1 ?ct = Some (USER ?t),
+    DEC : decode Symbolic.R cmem1 ?ct = Some ?t,
     USERREGS : user_regs_unchanged ?regs1 ?regs2 cmem1 |- _ =>
     match goal with
     | _ : getm regs2 r = Some _ |- _ => fail 1
@@ -249,7 +249,7 @@ Lemma no_syscall_no_entry_point mem addr t :
   wf_entry_points table mem ->
   Symbolic.get_syscall table addr = None ->
   ~~ match getm mem addr with
-     | Some i@it => (is_nop i) && (decode Symbolic.M mem it == Some (ENTRY t))
+     | Some i@it => (is_nop i) && (decode Symbolic.M mem it == Some (Entry t))
      | None => false
      end.
 Proof.

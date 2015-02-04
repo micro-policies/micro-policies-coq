@@ -35,14 +35,14 @@ Definition no_violation (cst : Concrete.state mt) :=
   let '(Concrete.State mem _  _ pc@tpc _) := cst in
   (forall i cti ti src,
     getm mem pc = Some i@cti ->
-    @fdecode _ _ e Symbolic.M cti = Some (USER ti) ->
-    @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
+    @fdecode _ _ e Symbolic.M cti = Some (User ti) ->
+    @fdecode _ _ e Symbolic.P tpc = Some (INSTR (Some src)) ->
     exists dst,
         ti = INSTR (Some dst) /\ cfg src dst) /\
   (forall i cti ti src,
      getm mem pc = Some i@cti ->
-     @fdecode _ _ e Symbolic.M cti = Some (ENTRY ti) ->
-     @fdecode _ _ e Symbolic.P tpc = Some (USER (INSTR (Some src))) ->
+     @fdecode _ _ e Symbolic.M cti = Some (Entry ti) ->
+     @fdecode _ _ e Symbolic.P tpc = Some (INSTR (Some src)) ->
      exists dst,
        ti = INSTR (Some dst) /\ cfg src dst).
 
@@ -53,12 +53,12 @@ Definition no_violation (cst : Concrete.state mt) :=
 Inductive atom_equiv k (a : atom (mword mt) (mword mt)) (a' : atom (mword mt) (mword mt)) : Prop :=
   | user_equiv : forall v v' ct ut ct' ut',
                    a = v@ct ->
-                   @fdecode _ _ e k ct = Some (USER ut) ->
+                   @fdecode _ _ e k ct = Some (wtag_of_tag ut) ->
                    a' = v'@ct' ->
-                   @fdecode _ _ e k ct' = Some (USER ut') ->
+                   @fdecode _ _ e k ct' = Some (wtag_of_tag ut') ->
                    Sym.atom_equiv v@ut v'@ut' ->
                    atom_equiv k a a'
-  | any_equiv : (~ exists ut, @fdecode _ _ e k (taga a) = Some (USER ut)) ->
+  | any_equiv : (~ exists ut, @fdecode _ _ e k (taga a) = Some (wtag_of_tag ut)) ->
                 a = a' ->
                 atom_equiv k a a'.
 
@@ -74,7 +74,7 @@ Definition reg_equiv (regs : Concrete.registers mt) (regs' : Concrete.registers 
 Inductive step_a : Concrete.state mt ->
                    Concrete.state mt -> Prop :=
 | step_attack : forall mem reg cache pc tpc epc mem' reg'
-                  (INUSER: oapp (fun x => is_user x) false (@fdecode _ _ e Symbolic.P tpc))
+                  (INUSER: @fdecode _ _ e Symbolic.P tpc)
                   (REQUIV: reg_equiv reg reg')
                   (MEQUIV: equiv mem mem'),
                   step_a (Concrete.State mem reg cache pc@tpc epc)
@@ -90,16 +90,16 @@ Definition csucc (st : Concrete.state mt) (st' : Concrete.state mt) : bool :=
   match (getm (Concrete.mem st) pc_s) with
     | Some i =>
       match (@fdecode _ _ e Symbolic.M (taga i)) with
-        | Some (USER (INSTR (Some src))) =>
+        | Some (User (INSTR (Some src))) =>
           match decode_instr (vala i) with
             | Some (Jump r)
             | Some (Jal r) =>
               match (getm (Concrete.mem st) pc_s') with
                 | Some i' =>
                   match (@fdecode _ _ e Symbolic.M (taga i')) with
-                    | Some (USER (INSTR (Some dst))) =>
+                    | Some (User (INSTR (Some dst))) =>
                       cfg src dst
-                    | Some (ENTRY (INSTR (Some dst))) =>
+                    | Some (Entry (INSTR (Some dst))) =>
                       is_nop (vala i') && cfg src dst
                     | _ => false
                   end
@@ -110,7 +110,7 @@ Definition csucc (st : Concrete.state mt) (st' : Concrete.state mt) : bool :=
             | None => false
             | _ => pc_s' == pc_s .+1
           end
-        | Some (USER (INSTR None)) =>
+        | Some (User (INSTR None)) =>
           match decode_instr (vala i) with
             | Some (Jump r)
             | Some (Jal r) =>
@@ -122,8 +122,8 @@ Definition csucc (st : Concrete.state mt) (st' : Concrete.state mt) : bool :=
           end
        (* this says that if cst,cst' is in user mode then it's
           not sensible to point to monitor memory*)
-        | Some (USER DATA)
-        | Some (ENTRY _)
+        | Some (User DATA)
+        | Some (Entry _)
         | None => false
       end
     | None => false

@@ -13,54 +13,6 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-(* Type of decoded tags. [USER ut] denotes a regular user-level
-tag. [ENTRY ut] is used only for items in memory, and is used to mark
-monitor-service entry points. *)
-
-Inductive tag T : Type :=
-| USER (ut : T)
-| ENTRY (sct : T).
-
-Section tag.
-
-Variable user_tag : eqType.
-
-Open Scope nat_scope.
-
-Definition tag_eq (u v : tag user_tag) :=
-  match u, v with
-    | USER ut1, USER ut2 => ut1 == ut2
-    | ENTRY sct1, ENTRY sct2 => sct1 == sct2
-    | _, _ => false
-  end.
-
-Lemma tag_eqP : Equality.axiom tag_eq.
-Proof.
-move=> [ut1|sct1] [ut2|sct2] /=;
-try (by apply: (iffP idP));
-apply: (iffP eqP) => [|[<-]] //;
-congruence.
-Qed.
-
-Definition tag_eqMixin := EqMixin tag_eqP.
-Canonical tag_eqType := Eval hnf in EqType (tag _) tag_eqMixin.
-
-Definition is_user (t : tag user_tag) : bool :=
-  match t with
-  | USER _ => true
-  | _ => false
-  end.
-
-Definition is_entry_tag (t : tag user_tag) : bool :=
-  match t with
-  | ENTRY _ => true
-  | _ => false
-  end.
-
-End tag.
-
-Arguments ENTRY {T} _.
-
 Definition masks : Masks :=
   let mk_mask dcm cm :=
       let '(dcm_tcp,dcm_ti,dcm_t1,dcm_t2,dcm_t3) := dcm in
@@ -116,28 +68,80 @@ Definition masks : Masks :=
 Section encoding.
 
 Context (mt : machine_types).
+Context (ut : Symbolic.tag_kind -> eqType).
 
-(* TODO: Define the operations below in terms of a concrete encoding
-   for tags. *)
+Inductive mtag :=
+| User of ut Symbolic.M
+| Entry of ut Symbolic.M.
 
-Class encodable (ut : Symbolic.tag_kind -> eqType) := {
-  decode : forall tk, {partmap mword mt -> atom (mword mt) (mword mt)} -> mword mt -> option (tag (ut tk));
+Definition is_user t :=
+  if t is User _ then true else false.
+
+Definition is_entry_tag t :=
+  if t is Entry _ then true else false.
+
+Definition sum_of_mtag (t : mtag) :=
+  match t with
+  | User t => inl t
+  | Entry t => inr t
+  end.
+
+Definition mtag_of_sum t :=
+  match t with
+  | inl t => User t
+  | inr t => Entry t
+  end.
+
+Lemma sum_of_mtagK : cancel sum_of_mtag mtag_of_sum.
+Proof. by case. Qed.
+
+Definition mtag_eqMixin := CanEqMixin sum_of_mtagK.
+Canonical mtag_eqType := Eval hnf in EqType mtag mtag_eqMixin.
+
+Definition wtag tk : eqType :=
+  if tk == Symbolic.M then [eqType of mtag]%type
+  else ut tk.
+
+Definition tag_of_wtag tk : wtag tk -> option (ut tk) :=
+  match tk with
+  | Symbolic.M => fun tg =>
+                    match tg with
+                    | User tg => Some tg
+                    | Entry _ => None
+                    end
+  | _          => fun tg => Some tg
+  end.
+
+Definition wtag_of_tag tk : ut tk -> wtag tk :=
+  match tk with
+  | Symbolic.M => fun tg => User tg
+  | _          => fun tg => tg
+  end.
+
+Lemma tag_of_wtagK tk : ocancel (@tag_of_wtag tk) (@wtag_of_tag tk).
+Proof. by case: tk=> //= -[tg|tg]. Qed.
+
+Lemma wtag_of_tagK tk : pcancel (@wtag_of_tag tk) (@tag_of_wtag tk).
+Proof. by case: tk. Qed.
+
+Class encodable := {
+  decode : forall tk, {partmap mword mt -> atom (mword mt) (mword mt)} -> mword mt -> option (wtag tk);
   decode_monotonic : forall (mem : {partmap mword mt -> atom (mword mt) (mword mt)})
                             addr x y ct st ct' st' tk,
                        mem addr = Some x@ct ->
-                       decode Symbolic.M mem ct = Some (USER st) ->
-                       decode Symbolic.M mem ct' = Some (USER st') ->
+                       decode Symbolic.M mem ct = Some (User st) ->
+                       decode Symbolic.M mem ct' = Some (User st') ->
                        decode tk (setm mem addr y@ct') =1 decode tk mem;
   decode_monitor_tag : forall tk m, decode tk m Concrete.TMonitor = None
 }.
 
 (* Special case where encoding doesn't depend on memory *)
-Class fencodable (ut : Symbolic.tag_kind -> eqType) := {
-  fdecode : forall tk, mword mt -> option (tag (ut tk));
+Class fencodable := {
+  fdecode : forall tk, mword mt -> option (wtag tk);
   fdecode_monitor_tag : forall tk, fdecode tk Concrete.TMonitor = None
 }.
 
-Global Instance encodable_of_fencodable ut (e : fencodable ut) : encodable ut := {
+Global Instance encodable_of_fencodable (e : fencodable) : encodable := {
   decode tk m w := fdecode tk w;
   decode_monotonic mem add x y ct st ct' st' tk H1 H2 H4 w := erefl;
   decode_monitor_tag tk m := fdecode_monitor_tag tk
@@ -151,27 +155,25 @@ Context (mt : machine_types)
         (tty : Symbolic.tag_kind -> eqType)
         (et : encodable mt tty).
 
-Local Notation wrapped_tag := (fun tk => [eqType of tag (tty tk)]).
-
 Variable transfer : forall ivec : Symbolic.ivec tty, option (Symbolic.vovec tty (Symbolic.op ivec)).
 
 Definition decode_fields (fs : seq Symbolic.tag_kind)
                          (m : {partmap mword mt -> atom (mword mt) (mword mt)})
                          (ts : mword mt * mword mt * mword mt)
-                         : option (hseq (fun x => option (wrapped_tag x)) fs) :=
-  match fs return option (hseq (fun x => option (wrapped_tag x)) fs) with
+                         : option (hseq (fun x => option (wtag tty x)) fs) :=
+  match fs return option (hseq (fun x => option (wtag tty x)) fs) with
   | [::] => Some [hseq]
   | k1 :: fs' =>
     let t1 := decode k1 m (fst (fst ts)) in
-    match fs' return option (hseq (fun x => option (wrapped_tag x)) (k1 :: fs')) with
+    match fs' return option (hseq (fun x => option (wtag tty x)) (k1 :: fs')) with
     | [::] => Some [hseq t1]
     | k2 :: fs'' =>
       let t2 := decode k2 m (snd (fst ts)) in
-      match fs'' return option (hseq (fun x => option (wrapped_tag x)) (k1 :: k2 :: fs'')) with
+      match fs'' return option (hseq (fun x => option (wtag tty x)) (k1 :: k2 :: fs'')) with
       | [::] => Some [hseq t1; t2]
       | k3 :: fs''' =>
         let t3 := decode k3 m (snd ts) in
-        match fs''' return option (hseq (fun x => option (wrapped_tag x)) (k1 :: k2 :: k3 :: fs''')) with
+        match fs''' return option (hseq (fun x => option (wtag tty x)) (k1 :: k2 :: k3 :: fs''')) with
         | [::] => Some [hseq t1; t2; t3]
         | _ :: _ => None
         end
@@ -179,46 +181,49 @@ Definition decode_fields (fs : seq Symbolic.tag_kind)
     end
   end.
 
-Fixpoint ensure_all_user (ks : seq Symbolic.tag_kind) :
-                         hseq (fun x => option (wrapped_tag x)) ks ->
+Fixpoint ensure_no_entry (ks : seq Symbolic.tag_kind) :
+                         hseq (fun x => option (wtag tty x)) ks ->
                          option (hseq tty ks) :=
-  match ks with
-  | [::]      => fun _  => Some [hseq]
-  | k :: ks => fun ts => match hshead ts, ensure_all_user (hsbehead ts) with
-                         | Some (USER t), Some ts => Some (t :: ts)%hseq
-                         | _, _ => None
-                         end
+  match ks return hseq (fun x => option (wtag tty x)) ks -> option (hseq tty ks) with
+  | [::]    => fun _  => Some [hseq]
+  | k :: ks => fun ts =>
+                 match obind (@tag_of_wtag _ k) (hshead ts), ensure_no_entry (hsbehead ts) with
+                 | Some t, Some ts => Some (t :: ts)%hseq
+                 | _, _ => None
+                 end
   end.
 
-Lemma ensure_all_user_inv (ks : seq Symbolic.tag_kind)
-                          (l : hseq (fun x => option (wrapped_tag x)) ks) (l' : hseq tty ks)
-                          : ensure_all_user l = Some l' ->
-                            l = hmap (fun k x => Some (USER x)) l'.
+Lemma ensure_no_entry_inv (ks : seq Symbolic.tag_kind)
+                          (l : hseq (fun x => option (wtag tty x)) ks) (l' : hseq tty ks)
+                          : ensure_no_entry l = Some l' ->
+                            l = hmap (fun k x => Some (wtag_of_tag x)) l'.
 Proof.
 elim: ks l l' => [|k ks IH] /= => [[] []|[x l] [x' l']] //=.
-case: x=> [[x|x]|] //.
-case E: (ensure_all_user _) l' => [l'|] // _ [<- <-]; move/IH in E=> {IH}.
-by rewrite E.
+case: x=> [x|] //=.
+move: (tag_of_wtagK x).
+case: (tag_of_wtag x)=> [x''|] //= Hx''.
+case E: (ensure_no_entry _) l' => [l'|] // _ [<- <-]; move/IH in E=> {IH}.
+by rewrite E Hx''.
 Qed.
 
 Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
                        (mvec : Concrete.mvec mt)
                        : option (Symbolic.ivec tty) :=
   let op := Concrete.cop mvec in
-  match decode Symbolic.P m (Concrete.ctpc mvec) with
-  | Some (USER tpc) =>
+  match decode Symbolic.P m (Concrete.ctpc mvec) return option (Symbolic.ivec tty) with
+  | Some tpc =>
     match decode Symbolic.M m (Concrete.cti mvec) with
-    | Some (USER ti) =>
-      do! ts  <- decode_fields (Symbolic.vinputs (OP op)) m
-                               (Concrete.ct1 mvec,
-                                Concrete.ct2 mvec,
-                                Concrete.ct3 mvec);
-      do! ts <- ensure_all_user ts;
+    | Some (User ti) =>
+      do! ts <- decode_fields (Symbolic.vinputs (OP op)) m
+                              (Concrete.ct1 mvec,
+                               Concrete.ct2 mvec,
+                               Concrete.ct3 mvec);
+      do! ts <- ensure_no_entry ts;
       if Symbolic.privileged_op (OP op) then None
-      else Some (Symbolic.IVec (OP op) tpc ti ts)
-    | Some (ENTRY ti) =>
+      else Some (@Symbolic.IVec tty (OP op) tpc ti ts)
+    | Some (Entry ti) =>
       match op with
-      | NOP => Some (Symbolic.IVec SERVICE tpc ti [hseq])
+      | NOP => Some (@Symbolic.IVec tty SERVICE tpc (ti : tty Symbolic.M) [hseq])
       | _ => None
       end
     | None => None
@@ -232,16 +237,13 @@ Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
   match op return option (Symbolic.vovec tty op) with
   | OP op =>
     do! trpc <- match decode Symbolic.P m (Concrete.ctrpc rvec) with
-                | Some (USER trpc) => Some trpc
+                | Some trpc => Some trpc
                 | _ => None
                 end;
     do! tr <- match Symbolic.outputs op as o
                                         return option (Symbolic.type_of_result tty o)
               with
-              | Some o => match decode o m (Concrete.ctr rvec) with
-                          | Some (USER t) => Some t
-                          | _ => None
-                          end
+              | Some o => obind (@tag_of_wtag _ _) (decode o m (Concrete.ctr rvec))
               | None => Some tt
               end;
     Some {| Symbolic.trpc := trpc; Symbolic.tr := tr |}
@@ -285,26 +287,26 @@ Lemma decode_ivec_inv mvec m ivec :
   decode_ivec m mvec = Some ivec ->
   [/\ Symbolic.op ivec = OP (Concrete.cop mvec),
       ~~ Symbolic.privileged_op (Concrete.cop mvec),
-      decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)),
-      decode Symbolic.M m (Concrete.cti mvec) = Some (USER (Symbolic.ti ivec)) &
+      decode Symbolic.P m (Concrete.ctpc mvec) = Some (Symbolic.tpc ivec),
+      decode Symbolic.M m (Concrete.cti mvec) = Some (User (Symbolic.ti ivec)) &
       decode_fields _ m (Concrete.ct1 mvec, Concrete.ct2 mvec, Concrete.ct3 mvec) =
-      Some (hmap (fun k x => Some (USER x)) (Symbolic.ts ivec)) ] \/
+      Some (hmap (fun k tg => Some (wtag_of_tag tg)) (Symbolic.ts ivec)) ] \/
   [/\ Concrete.cop mvec = NOP ,
       Symbolic.op ivec = SERVICE ,
-      decode Symbolic.P m (Concrete.ctpc mvec) = Some (USER (Symbolic.tpc ivec)) &
-      decode Symbolic.M m (Concrete.cti mvec) = Some (ENTRY (Symbolic.ti ivec)) ].
+      decode Symbolic.P m (Concrete.ctpc mvec) = Some (Symbolic.tpc ivec) &
+      decode Symbolic.M m (Concrete.cti mvec) = Some (Entry (Symbolic.ti ivec)) ].
 Proof.
   case: mvec ivec => [cop ctpc cti ct1 ct2 ct3] [op tpc ti ts].
   rewrite /decode_ivec (lock Symbolic.privileged_op) /=.
-  case: (decode _ m ctpc) => [[tpc'|?]|] //=.
+  case: (decode _ m ctpc) => [tpc'|] //=.
   case: (decode _ m cti) => [[ti'|ti']|] //=; last first.
     case: cop => //= [] [? ? ?]. subst op tpc' ti'. right.
-    constructor; eauto.
+    by constructor; eauto.
   case DEC: (decode_fields _ m _) => [ts'|] //=.
-  case ENSURE: (ensure_all_user _) => [ts''|] //=.
+  case ENSURE: (ensure_no_entry _) => [ts''|] //=.
   rewrite -lock.
   case Hpriv: (Symbolic.privileged_op cop) => //=.
-  move/ensure_all_user_inv in ENSURE. subst ts'.
+  move/ensure_no_entry_inv in ENSURE. subst ts'.
   case: op ts => [op|] //= ts.
   move=> E. move: (Symbolic.ivec_eq_inv (Some_inj E)) DEC => [] {E} [E1] E2 E3.
   subst cop tpc' ti' => /(@pair2_inj _ _ _ _ _) H. subst ts'' => ->.
@@ -314,8 +316,8 @@ Qed.
 Lemma decode_ivec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)})
       addr x y ct st (ct' : mword mt) st' :
   cmem addr = Some x@ct ->
-  decode Symbolic.M cmem ct = Some (USER st) ->
-  decode Symbolic.M cmem ct' = Some (USER st') ->
+  decode Symbolic.M cmem ct = Some (User st) ->
+  decode Symbolic.M cmem ct' = Some (User st') ->
   decode_ivec (setm cmem addr y@ct') =1 decode_ivec cmem.
 Proof.
   move=> Hget Hdec Hdec' [cop ctpc cti ct1 ct2 ct3].
@@ -326,8 +328,8 @@ Qed.
 
 Lemma decode_ovec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)}) op addr x y ct st ct' st' :
   cmem addr = Some x@ct ->
-  decode Symbolic.M cmem ct = Some (USER st) ->
-  decode Symbolic.M cmem ct' = Some (USER st') ->
+  decode Symbolic.M cmem ct = Some (User st) ->
+  decode Symbolic.M cmem ct' = Some (User st') ->
   decode_ovec op (setm cmem addr y@ct') =1 decode_ovec op cmem.
 Proof.
   move=> Hget Hdec Hdec' [ctrpc ctr].

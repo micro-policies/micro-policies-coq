@@ -86,7 +86,7 @@ Ltac relate_register_get :=
   match goal with
   | REFR : refine_registers ?areg ?creg ?cmem,
     GET : getm ?creg ?r = Some _@?t,
-    DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
+    DEC : decode Symbolic.R ?cmem ?t = Some _ |- _ =>
     match goal with
     | GET' : getm areg r = Some _ |- _ => fail 1
     | |- _ => first [ pose proof (proj1 REFR _ _ _ _ DEC GET) |
@@ -98,7 +98,7 @@ Ltac relate_memory_get :=
   match goal with
   | MEM : getm ?cmem ?addr = Some _@?t,
     REFM : refine_memory ?smem ?cmem,
-    DEC : decode _ ?cmem ?t = Some (USER _) |- _ =>
+    DEC : decode Symbolic.M ?cmem ?t = Some (User _) |- _ =>
     match goal with
     | _ : getm smem addr = Some _ |- _ => fail 1
     | |- _ => idtac
@@ -110,9 +110,9 @@ Ltac relate_memory_get :=
 Ltac relate_register_upd :=
   match goal with
   | GET : getm ?reg ?r = Some _@?t,
-    DEC : decode _ ?cmem ?t = Some (USER _),
+    DEC : decode Symbolic.R ?cmem ?t = Some _,
     UPD : updm ?reg ?r ?v@?t' = Some ?reg',
-    DEC' : decode _ ?cmem ?t' = Some (USER _),
+    DEC' : decode Symbolic.R ?cmem ?t' = Some _,
     REFR : refine_registers _ ?reg ?cmem,
     MINV : monitor_invariant_statement ?mi ?cmem _ _ _ |- _ =>
     first [ destruct (refine_registers_upd REFR GET DEC UPD DEC') as [? ? ?];
@@ -123,9 +123,9 @@ Ltac relate_register_upd :=
 Ltac relate_memory_upd :=
   match goal with
   | GET : getm ?cmem ?addr = Some _@?t,
-    DEC : decode _ ?cmem ?t = Some (USER _),
+    DEC : decode Symbolic.M ?cmem ?t = Some (User _),
     UPD : updm ?cmem ?addr _@?t' = Some _,
-    DEC' : decode _ ?cmem ?t' = Some (USER _),
+    DEC' : decode Symbolic.M ?cmem ?t' = Some (User _),
     CACHE : cache_correct _ ?cmem,
     REFR : refine_registers _ _ ?cmem,
     REFM : refine_memory _ ?cmem,
@@ -139,9 +139,9 @@ Ltac relate_memory_upd :=
 
 Ltac update_decodings :=
   match goal with
-  | DEC : decode ?k ?cmem ?ct = Some (USER ?ut),
+  | DEC : decode ?k ?cmem ?ct = Some ?ut,
     UPD : updm ?cmem _ _ = Some ?cmem' |-
-    decode ?k ?cmem' ?ct = Some (USER ?ut) =>
+    decode ?k ?cmem' ?ct = Some ?ut =>
     first [ solve [ rewrite /= -DEC (updm_set UPD);
                     erewrite decode_monotonic; eauto ] |
             failwith "update_decodings" ]

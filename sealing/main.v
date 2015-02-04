@@ -80,6 +80,8 @@ Instance sk_defs : Sym.sealing_key := {
  ltb_inc sk := @leqw_succ _ sk monew
 }.
 
+Instance sp : Symbolic.params := @Sym.sym_sealing sk_defs.
+
 Definition encode_sealing_tag (t : Sym.stag) : word 30 :=
  match t with
    Sym.DATA => @wpack [:: 28; 2] [hseq 0; 0]%w
@@ -124,15 +126,20 @@ Instance encodable_tag : @encodable mt Sym.stags := {|
     let: [hseq ut; w'] := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
     else
-      match k return option (tag (Sym.stags k)) with
-      | Symbolic.P => Some (USER tt)
-      | _ =>
+      match k return option (wtag Sym.stags k) with
+      | Symbolic.P => Some tt
+      | Symbolic.M =>
         if w' == 1%w then
             do! ut <- decode_sealing_tag ut;
-            Some (@USER Sym.stag_eqType ut)
+            Some (@User Symbolic.ttypes ut)
         else if w' == as_word 2 then
           do! ut <- decode_sealing_tag ut;
-          Some (@ENTRY Sym.stag_eqType ut)
+          Some (@Entry Symbolic.ttypes ut)
+        else None
+      | Symbolic.R =>
+        if w' == 1%w then
+            do! ut <- decode_sealing_tag ut;
+            Some ut
         else None
       end
 |}.
@@ -521,8 +528,6 @@ Definition hello_world5 : @relocatable_segment mt (@classes.sealing_syscall_addr
   ).
 
 Section Refinement.
-
-Instance sp : Symbolic.params := @Sym.sym_sealing sk_defs.
 
 Context {sealing_invariant : @policy_invariant mt _ _}.
 
