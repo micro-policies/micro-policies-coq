@@ -94,7 +94,7 @@ Definition mkkey (s : state mt) : option (state mt) :=
   let 'State mem reg pc@pct key := s in
   if key < max_key then
     let key' := inc_key key in
-    do! reg' <- updm reg syscall_ret monew@(KEY key);
+    do! reg' <- updm reg syscall_ret 0%w@(KEY key);
     do! ret  <- reg ra;
     match ret with
     | pc'@DATA => Some (State mem reg' (pc'@tt) key')

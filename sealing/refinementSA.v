@@ -348,7 +348,7 @@ Proof.
 
     assert(refine_val_atom (setm km (Abs.mkkey_f akeys) skey)
               (Abs.VKey mt (Abs.mkkey_f akeys))
-              (monew@(Sym.KEY skey))) as rva.
+              (0%w@(Sym.KEY skey))) as rva.
       unfold refine_val_atom, refine_key. by rewrite getm_set eqxx.
 
     (* need to show freshness for new abstract key to be able to use
