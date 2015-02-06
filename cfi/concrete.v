@@ -145,7 +145,7 @@ Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable mi : refinement_common.monitor_invariant.
 
-Variable stable : seq (Symbolic.syscall mt).
+Variable stable : Symbolic.syscall_table mt.
 
 (* This is basically the initial_refine assumption on preservation *)
 Definition cinitial (cs : Concrete.state mt) :=

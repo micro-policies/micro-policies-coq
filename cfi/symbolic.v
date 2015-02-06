@@ -39,7 +39,7 @@ Program Instance sym_cfi : Symbolic.params := {
 Local Notation memory := (Symbolic.memory mt sym_cfi).
 Local Notation registers := (Symbolic.registers mt sym_cfi).
 
-Variable table : seq (Symbolic.syscall mt).
+Variable table : Symbolic.syscall_table mt.
 
 (* The rest of the file is defining an instance of the cfi_machine *)
 
@@ -52,7 +52,7 @@ Definition no_violation (sst : Symbolic.state mt) :=
         ti = INSTR (Some dst) /\ cfg src dst) /\
   (forall sc,
      mem pc = None ->
-     Symbolic.get_syscall table pc = Some sc ->
+     table pc = Some sc ->
      forall src,
        tpc = INSTR (Some src) ->
        exists dst, (Symbolic.entry_tag sc) = INSTR (Some dst) /\ cfg src dst).
@@ -102,7 +102,7 @@ Definition ssucc (st : Symbolic.state mt) (st' : Symbolic.state mt) : bool :=
             | Some _@(INSTR (Some dst)) =>
               cfg src dst
             | None =>
-              match Symbolic.get_syscall table pc_s' with
+              match table pc_s' with
                 | Some sc => match Symbolic.entry_tag sc with
                                | INSTR (Some dst) =>
                                  cfg src dst
@@ -128,7 +128,7 @@ Definition ssucc (st : Symbolic.state mt) (st' : Symbolic.state mt) : bool :=
         | _ => pc_s' == pc_s .+1
       end
     | None =>
-      match Symbolic.get_syscall table pc_s with
+      match table pc_s with
         | Some sc => true
         | None => false
       end
@@ -143,7 +143,7 @@ Definition instructions_tagged (mem : memory) :=
 Definition entry_points_tagged (mem : memory) :=
   forall addr sc id,
     getm mem addr = None ->
-    Symbolic.get_syscall table addr = Some sc ->
+    table addr = Some sc ->
     Symbolic.entry_tag sc = INSTR (Some id) ->
     word_to_id addr = Some id.
 
@@ -153,7 +153,7 @@ Definition valid_jmp_tagged (mem : memory) :=
     (exists i, getm mem src = Some i@(INSTR (word_to_id src))) /\
     ((exists i', getm mem dst = Some i'@(INSTR (word_to_id dst))) \/
      getm mem dst = None /\
-     exists sc, Symbolic.get_syscall table dst = Some sc /\
+     exists sc, table dst = Some sc /\
                 (Symbolic.entry_tag sc) = INSTR (word_to_id dst)).
 
 Definition registers_tagged (reg : registers) :=
@@ -764,7 +764,7 @@ Definition get_ti sst :=
   match getm (Symbolic.mem sst) (vala (Symbolic.pc sst)) with
     | Some i@ti => Some ti
     | None =>
-      match Symbolic.get_syscall table (vala (Symbolic.pc sst)) with
+      match table (vala (Symbolic.pc sst)) with
         | Some sc => Some (Symbolic.entry_tag sc)
         | None => None
       end
@@ -909,7 +909,7 @@ Proof.
   -  (*get mem pc = None*)
     rewrite GET in VIO UMVEC.
     unfold Symbolic.pcv in *. simpl in UMVEC.
-    destruct (Symbolic.get_syscall table pc) as [sc|] eqn:GETCALL.
+    destruct (table pc) as [sc|] eqn:GETCALL.
     + destruct tpc as [[src|]|], (Symbolic.entry_tag sc) as [[dst|]|];
       try (by inversion VIO);
       inv UMVEC; try reflexivity.
