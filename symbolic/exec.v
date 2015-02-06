@@ -14,7 +14,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {sp : Symbolic.params}.
 
-Variable table : seq (Symbolic.syscall mt).
+Variable table : Symbolic.syscall_table mt.
 
 Import Symbolic.
 
@@ -97,7 +97,7 @@ Definition stepf (st : state mt) : option (state mt) :=
   | None =>
     match mem pc with
     | None =>
-      do! sc <- get_syscall table pc;
+      do! sc <- table pc;
       run_syscall sc st
     | Some _ =>
       None
@@ -198,7 +198,7 @@ Definition build_ivec st : option (ivec ttypes)  :=
         | None => None
       end
     | None =>
-      match get_syscall table (pcv st) with
+      match table (pcv st) with
         | Some sc =>
           Some (IVec SERVICE (pct st) (entry_tag sc) [hseq])
         | None => None
@@ -214,7 +214,7 @@ Proof.
   move/stepP.
   rewrite {1}(state_eta st) /= /build_ivec.
   case: (getm _ _) => [[i ti]|] //=; last first.
-    case: (get_syscall _ _) => [sc|] //=.
+    case: (getm _ _) => [sc|] //=.
     rewrite /run_syscall /=.
     case TRANS: (transfer _) => [ovec|] //= _.
     by eauto.

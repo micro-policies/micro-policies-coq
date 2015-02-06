@@ -26,7 +26,7 @@ Context {mt : machine_types}
         {sp : Symbolic.params}
         {e : encodable mt Symbolic.ttypes}
         {mi : monitor_invariant}
-        {table : seq (Symbolic.syscall mt)}
+        {table : Symbolic.syscall_table mt}
         {mcc : monitor_code_bwd_correctness mi table}.
 
 Hint Unfold Symbolic.next_state.
@@ -318,7 +318,7 @@ Proof.
   rewrite /cache_allows_syscall BUILD.
   case=> cmvec' [[<-]] {cmvec'}.
   case LOOKUP: (Concrete.cache_lookup _ _ _) => [[ctrpc ctr]|] //= E. subst ctrpc.
-  case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.
+  case GETSC: (getm table _) => [sc|] //=.
   move: INMONITOR LOOKUP.
   rewrite /in_monitor /Concrete.is_monitor_tag => /eqP -> LOOKUP _.
   rewrite /in_user /= -(build_cmvec_ctpc BUILD) in INUSER.
@@ -390,9 +390,9 @@ Proof.
   intros REF ALLOWED STEP.
   case: REF=> [//= PC DEC REFM REFR CACHE MVEC WFENTRYPOINTS MINV].
   rewrite /Concrete.pcv /= in PC. subst pc'.
-  have [sc GETCALL]: (exists sc, Symbolic.get_syscall table pc = Some sc).
+  have [sc GETCALL]: (exists sc, table pc = Some sc).
   { rewrite /cache_allows_syscall in ALLOWED.
-    case GETCALL: (Symbolic.get_syscall table pc) ALLOWED => [sc|//] ALLOWED.
+    case GETCALL: (table pc) ALLOWED => [sc|//] ALLOWED.
     by eauto. }
   destruct cst' as [cmem' creg' cache' [cpc' ctpc'] epc'].
   have := syscalls_correct_allowed_case_bwd MINV REFM REFR CACHE MVEC GETCALL

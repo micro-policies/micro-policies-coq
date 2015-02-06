@@ -187,15 +187,13 @@ Proof. by case: st=> ? ? [? ?] ?. Qed.
 (* CH: TODO: should make the entry_tags part of the state
    (for compartmentalization they need to be mutable) *)
 Record syscall := Syscall {
-  address : word;
   entry_tag : entry_tag_type ttypes;
   sem : state -> option state
 }.
 
-Variable table : seq syscall.
+Definition syscall_table := {partmap mword mt -> syscall}.
 
-Definition get_syscall (addr : word) : option syscall :=
-  ofind (fun sc => address sc == addr) table.
+Variable table : syscall_table.
 
 Definition run_syscall (sc : syscall) (st : state) : option state :=
   match transfer (IVec SERVICE (taga (pc st)) (entry_tag sc) [hseq]) with
@@ -316,7 +314,7 @@ Inductive step (st st' : state) : Prop :=
 | step_syscall : forall mem reg pc sc tpc extra
     (ST : st = State mem reg pc@tpc extra)
     (PC : mem pc = None)
-    (GETCALL : get_syscall pc = Some sc)
+    (GETCALL : table pc = Some sc)
     (CALL : run_syscall sc st = Some st'), step st st'.
 
 End WithClasses.
@@ -356,5 +354,6 @@ Export Exports.
 Arguments Symbolic.state mt {_}.
 Arguments Symbolic.State {_ _} _ _ _ _.
 Arguments Symbolic.syscall mt {_}.
+Arguments Symbolic.syscall_table mt {_}.
 Arguments Symbolic.IVec {tty} op _ _ _.
 Arguments Symbolic.OVec {tty op} _ _.
