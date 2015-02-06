@@ -84,15 +84,20 @@ dist: clean
 	tar czvf ../micropolicies.tar.gz . --transform 's/^\./micropolicies/' $(EXCLUDE)
 
 DIR=../micropolicies-coq-anon
+COQ_UTILS=../coq-utils
 
-# TODO: this should include the coq-utils library!
 dist-anon: clean
 	rm -dfr rm $(DIR) ../micropolicies-coq-anon.tar.gz
 	cp -R . $(DIR)
 	rm -dfr $(DIR)/.git
+	cd $(COQ_UTILS); make clean
+	cp -R $(COQ_UTILS) $(DIR)
+	rm -dfr $(DIR)/coq-utils/.git
+	perl -0777 -i -pe 's/Copyright.*Permission/Copyright Anonymized\n\nPermission/igs' $(DIR)/coq-utils/LICENSE
 	perl -0777 -i -pe 's/Copyright.*Permission/Copyright Anonymized\n\nPermission/igs' $(DIR)/LICENSE
 	perl -0777 -i -pe 's/Description.*Prerequisites/Prerequisites/igs' $(DIR)/README.md
-        # Next command doesn't work for nested comments, please don't add any until Saturday
+	perl -0777 -i -pe 's/The CoqUtils library \(https.*coq-utils\)/The CoqUtils library \(included in coq-utils subdir\)/igs' $(DIR)/README.md
+        # Next command doesn't work for nested comments, please don't add any
 	find $(DIR) -name '*.v' -exec perl -0777 -i -pe 's/\(\*.*?\*\)//igs' {} \;
 	cd $(DIR); tar czvf ../micropolicies-coq-anon.tar.gz . --transform 's/^\./micropolicies-coq-anon/' $(EXCLUDE)
 
