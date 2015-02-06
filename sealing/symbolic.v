@@ -131,10 +131,10 @@ Definition unseal (s : state mt) : option (state mt) :=
   | _, _ => None
   end.
 
-Definition sealing_syscalls : seq (syscall mt) :=
-  [:: Syscall mkkey_addr tt mkkey;
-      Syscall seal_addr tt seal;
-      Syscall unseal_addr tt unseal].
+Definition sealing_syscalls : syscall_table mt :=
+  [partmap (mkkey_addr,  Syscall tt mkkey);
+           (seal_addr,   Syscall tt seal);
+           (unseal_addr, Syscall tt unseal)].
 
 Definition step := step sealing_syscalls.
 

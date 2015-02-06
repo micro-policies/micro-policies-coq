@@ -56,14 +56,12 @@ Canonical cfi_abs_state_eqType :=
 (* Para-virtualizing system calls, since CFI doesn't have any system
    calls of its own and dealing with them is an interesting problem *)
 Record syscall := Syscall {
-  address : word;
   sem : state -> option state
 }.
 
-Variable table : seq syscall.
+Definition syscall_table := {partmap word -> syscall}.
 
-Definition get_syscall (addr : word) : option syscall :=
-  ofind (fun sc => address sc == addr) table.
+Variable table : syscall_table.
 
 Context {ids : cfi_id mt}.
 
@@ -134,7 +132,7 @@ Inductive step : state -> state -> Prop :=
 | step_syscall : forall imem dmem dmem' reg reg' pc pc' sc,
                  forall (FETCH : imem pc = None),
                  forall (NOUSERM : dmem pc = None),
-                 forall (GETCALL : get_syscall pc = Some sc),
+                 forall (GETCALL : table pc = Some sc),
                  forall (CALL : sem sc (State imem dmem reg pc true) =
                                 Some (State imem dmem' reg' pc' true)),
                  step (State imem dmem reg pc true)
@@ -164,7 +162,7 @@ Definition succ (st : state) (st' : state) : bool :=
       match dmem pc with
         | Some _ => false
         | None =>
-          match get_syscall pc with
+          match table pc with
             | Some sc => true
               (* This allows monitor service to return anywhere *)
               (* An alternative would be restricting this to the value

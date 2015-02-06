@@ -153,8 +153,8 @@ be reported. *)
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable mi : refinement_common.monitor_invariant.
-Variable stable : seq (Symbolic.syscall mt).
-Variable atable : seq (Abs.syscall mt).
+Variable stable : Symbolic.syscall_table mt.
+Variable atable : Abs.syscall_table mt.
 
 Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
 | rs_intro : forall (sst : Symbolic.state mt),

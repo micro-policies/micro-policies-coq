@@ -2562,7 +2562,7 @@ Proof.
       * erewrite getm_upd_neq with (m' := regs') by eauto.
         apply RREGS.
   - (* Syscall *)
-    rewrite /Symbolic.get_syscall /= in GETCALL.
+    rewrite getm_mkpartmap /= !(eq_sym pc) in GETCALL.
     destruct (isolate_addr == pc) eqn:EQ;
       [ move/eqP in EQ; subst
       | clear EQ; destruct (add_to_jump_targets_addr == pc) eqn:EQ;
@@ -2593,11 +2593,12 @@ Proof.
       end;
       rewrite /refine_syscall_addrs_b in RSC;
       case/and3P: RSC => /= RS1 RS2 /and3P [RS3 RS4 _];
-      rewrite /Abs.get_syscall /= eq_refl;
+      rewrite getm_mkpartmap /= -!(eq_sym isolate_addr) eq_refl;
       rewrite !in_cons /= in RS3 RS4.
       * done.
       * by destruct (isolate_addr == add_to_jump_targets_addr).
-      * by destruct (isolate_addr == add_to_jump_targets_addr),
+      * by rewrite (eq_sym add_to_store_targets_addr);
+           destruct (isolate_addr == add_to_jump_targets_addr),
                     (isolate_addr == add_to_store_targets_addr),
                     (add_to_jump_targets_addr == add_to_store_targets_addr).
 Qed.

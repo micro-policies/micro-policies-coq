@@ -136,7 +136,7 @@ Proof.
   by rewrite decode_monitor_tag.
 Qed.
 
-Variable table : seq (Symbolic.syscall mt).
+Variable table : Symbolic.syscall_table mt.
 
 Definition is_nop (i : mword mt) : bool :=
   match decode_instr i with
@@ -153,7 +153,7 @@ Qed.
 
 Definition wf_entry_points (cmem : Concrete.memory mt) :=
   forall addr t,
-    (exists2 sc, Symbolic.get_syscall table addr = Some sc &
+    (exists2 sc, table addr = Some sc &
                  Symbolic.entry_tag sc = t) <->
     is_true match cmem addr with
             | Some i@it => is_nop i && (decode Symbolic.M cmem it == Some (Entry t))
@@ -162,14 +162,14 @@ Definition wf_entry_points (cmem : Concrete.memory mt) :=
 
 Lemma wf_entry_points_if cmem addr sc :
   wf_entry_points cmem ->
-  Symbolic.get_syscall table addr = Some sc ->
+  table addr = Some sc ->
   exists i it,
   [/\ cmem addr = Some i@it,
       decode Symbolic.M cmem it = Some (Entry (Symbolic.entry_tag sc)) &
       is_nop i ].
 Proof.
   move => WFENTRYPOINTS GETCALL.
-  have: exists2 sc', Symbolic.get_syscall table addr = Some sc' &
+  have: exists2 sc', table addr = Some sc' &
                      Symbolic.entry_tag sc' = Symbolic.entry_tag sc by eauto.
   move/WFENTRYPOINTS.
   case: (cmem addr) => [[i it]|] //.
@@ -184,7 +184,7 @@ Lemma wf_entry_points_only_if cmem addr i it t :
   decode Symbolic.M cmem it = Some (Entry t) ->
   is_nop i ->
   exists2 sc,
-    Symbolic.get_syscall table addr = Some sc &
+    table addr = Some sc &
     Symbolic.entry_tag sc = t.
 Proof.
   move => WF GET DEC ISNOP.
@@ -631,7 +631,7 @@ definition, we assume that system calls are only allowed to begin with
 Nop, which is consistent with how we've defined our symbolic handler
 in rules.v. *)
 Definition cache_allows_syscall (cst : Concrete.state mt) : bool :=
-  match Symbolic.get_syscall table (Concrete.pcv cst) with
+  match table (Concrete.pcv cst) with
   | Some _ =>
     match build_cmvec cst with
     | Some cmvec => Concrete.cache_lookup (Concrete.cache cst) masks cmvec
@@ -709,7 +709,7 @@ Class monitor_code_fwd_correctness : Prop := {
     (* and the symbolic system call at addr is the function
        sc... (BCP: This would make more sense after the next
        hypothesis) *)
-    Symbolic.get_syscall table apc = Some sc ->
+    table apc = Some sc ->
     (* and running sc on the current abstract machine state reaches a
        new state with primes on everything... *)
     Symbolic.run_syscall sc (Symbolic.State amem areg apc@atpc int) = Some (Symbolic.State amem' areg' apc'@atpc' int') ->
@@ -796,7 +796,7 @@ Class monitor_code_bwd_correctness : Prop := {
     refine_registers areg creg cmem ->
     cache_correct cache cmem ->
     mvec_in_monitor cmem ->
-    Symbolic.get_syscall table apc = Some sc ->
+    table apc = Some sc ->
     decode Symbolic.P cmem ctpc = Some atpc ->
     let cst := Concrete.State cmem
                                 creg

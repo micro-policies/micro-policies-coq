@@ -27,8 +27,8 @@ Variable cfg : id -> id -> bool.
 (* Instantiate the symbolic machine with the CFI stuff*)
 Instance sym_params : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable atable : seq (Abs.syscall mt).
-Variable stable : seq (Symbolic.syscall mt).
+Variable atable : Abs.syscall_table mt.
+Variable stable : Symbolic.syscall_table mt.
 
 (*Refinement related definitions*)
 Definition refine_dmemory (admem : Abs.dmemory mt)
@@ -151,7 +151,7 @@ Definition refine_state (ast : Abs.state mt)
     (forall src, tpc = INSTR (Some src) ->
        exists dst, ti = INSTR (Some dst) /\ cfg src dst))) /\
   (forall sc, getm smem spc = None ->
-   Symbolic.get_syscall stable spc = Some sc ->
+   stable spc = Some sc ->
    (cont <->
     (forall src,
        tpc = INSTR (Some src) ->
@@ -169,29 +169,29 @@ Definition refine_syscall acall scall :=
     end.
 
 Definition syscall_domains
-           (atbl : seq (Abs.syscall mt))
-           (stbl : seq (@Symbolic.syscall mt sym_params)) : Prop :=
+           (atbl : Abs.syscall_table mt)
+           (stbl : Symbolic.syscall_table mt) : Prop :=
   forall addr,
-    (exists acall, Abs.get_syscall atbl addr = Some acall) <->
-    (exists scall, Symbolic.get_syscall stbl addr = Some scall).
+    (exists acall, atbl addr = Some acall) <->
+    (exists scall, stbl addr = Some scall).
 
 Lemma same_domain_total :
   forall atbl stbl,
     syscall_domains atbl stbl ->
-    forall addr', Abs.get_syscall atbl addr' = None <->
-                  Symbolic.get_syscall stbl addr' = None.
+    forall addr', atbl addr' = None <->
+                  stbl addr' = None.
 Proof.
   intros atbl stbl SAME addr'.
-  assert (ACALL: forall addr'', Abs.get_syscall atbl addr'' = None \/
-                         exists ac, Abs.get_syscall atbl addr'' = Some ac).
+  assert (ACALL: forall addr'', atbl addr'' = None \/
+                         exists ac, atbl addr'' = Some ac).
   { intros addr'';
-    destruct (Abs.get_syscall atbl addr'');
+    destruct (atbl addr'');
     [right; eexists; eauto | left; reflexivity].
   }
-  assert (SCALL: forall addr'', Symbolic.get_syscall stbl addr'' = None \/
-                         exists sc, Symbolic.get_syscall stbl addr'' = Some sc).
+  assert (SCALL: forall addr'', stbl addr'' = None \/
+                         exists sc, stbl addr'' = Some sc).
   { intros addr''.
-    destruct (Symbolic.get_syscall stbl addr'');
+    destruct (stbl addr'');
       [right; eexists; eauto | left; reflexivity].
   }
   split.
@@ -206,10 +206,10 @@ Qed.
 (* Might need absence of duplicates in these maps? *)
 (* Could use pointwise, and pointwise -> same_domains *)
 Definition refine_syscalls
-           (atbl : seq (Abs.syscall mt))
-           (stbl : seq (@Symbolic.syscall mt sym_params)) : Prop :=
+           (atbl : Abs.syscall_table mt)
+           (stbl : Symbolic.syscall_table mt) : Prop :=
   forall addr,
-    match Abs.get_syscall atbl addr, Symbolic.get_syscall stbl addr with
+    match atbl addr, stbl addr with
     | Some acall, Some scall =>
       refine_syscall (@Abs.sem mt acall)
                      (@Symbolic.run_syscall mt sym_params scall)
@@ -227,12 +227,12 @@ Proof.
   split.
   - intros [? AGET].
     rewrite AGET in REFS.
-    destruct (Symbolic.get_syscall stbl addr) eqn:SGET.
+    destruct (stbl addr) eqn:SGET.
     + eexists; reflexivity.
     + destruct REFS.
   - intros [? SGET].
     rewrite SGET in REFS.
-    destruct (Abs.get_syscall atbl addr) eqn:AGET.
+    destruct (atbl addr) eqn:AGET.
     + eexists; reflexivity.
     + destruct REFS.
 Qed.
@@ -241,16 +241,16 @@ Hypothesis refine_syscalls_correct : refine_syscalls atable stable.
 
 Lemma syscalls_backwards_simulation ast sst addr sc sst' :
     refine_syscalls atable stable ->
-    Symbolic.get_syscall stable addr = Some sc ->
+    stable addr = Some sc ->
     refine_state ast sst ->
     Symbolic.run_syscall sc sst = Some sst' ->
     exists ac ast',
-      Abs.get_syscall atable addr = Some ac /\
+      atable addr = Some ac /\
       Abs.sem ac ast = Some ast' /\
       refine_state ast' sst'.
 Proof.
   intros. unfold refine_syscalls in *. specialize (H addr).
-  rewrite H0 in H. destruct (Abs.get_syscall atable addr); [| contradiction H].
+  rewrite H0 in H. destruct (atable addr); [| contradiction H].
   specialize (H _ _ H1). rewrite H2 in H.
   destruct (Abs.sem s ast) eqn:?; [| contradiction H].
   do 2 eexists. split. reflexivity. split. eassumption. assumption.
@@ -490,10 +490,10 @@ Proof.
     pose proof (refine_syscalls_domains refine_syscalls_correct) as DOMAIN;
     (* put into context stuff required for syscalls *)
     match goal with
-      | [H1: Symbolic.get_syscall _ ?W = Some _,
-             H2: Symbolic.run_syscall _ _ = Some ?St
+      | [H1: getm _ ?W = Some ?Sc,
+             H2: Symbolic.run_syscall ?Sc _ = Some ?St
          |- _] => (
-          assert (EGETCALL: exists sc, Symbolic.get_syscall stable W = Some sc)
+          assert (EGETCALL: exists sc, stable W = Some sc)
           by (eexists; eauto);
           destruct (DOMAIN W) as [ASDOM SADOM];
           apply SADOM in EGETCALL; destruct EGETCALL;
@@ -539,7 +539,7 @@ Proof.
                      H2: refine_dmemory _ _ |- _] =>
                   destruct (refine_memory_total H1 H2 Pc) as [? NOMEM];
                   destruct (NOMEM H)
-              | [H1: Symbolic.get_syscall _ _ = Some _
+              | [H1: getm stable _ = Some _
                  |- Abs.step _ _ _ _] =>
                  eapply Abs.step_syscall; eauto
             end); auto; (*this auto solves syscall ref*)
@@ -571,8 +571,8 @@ Proof.
                rewrite H in H1; inv H1
              | [H: _ = word_to_id _ |- _] =>
                symmetry in H
-             | [H:Symbolic.get_syscall _ ?W = _,
-                H1: Symbolic.get_syscall _ ?W = _ |- _] =>
+             | [H:getm stable ?W = _,
+                H1: getm stable ?W = _ |- _] =>
                rewrite H in H1; inv H1
            end;
      try match goal with
@@ -608,7 +608,7 @@ Proof.
            end;
     (*for syscall*)
     repeat match goal with
-          | [H: getm ?Mem ?W = None, H1: Symbolic.get_syscall _ ?W = Some ?Sc,
+          | [H: getm ?Mem ?W = None, H1: getm stable ?W = Some ?Sc,
              H2: Symbolic.entry_tag ?Sc = _
              |- is_true (Abs.valid_jmp _ _ _)] =>
               assert (ETAG := ETG _ _ _ H H1 H2)
@@ -644,7 +644,7 @@ Proof.
       | [H : refine_pc _ ?Pc@_, H': getm _ ?Pc = Some ?I@?Ti |- _] =>
         destruct (CORRECTNESS I Ti H') as [? ABSURD]
       | [H : refine_pc _ ?Pc@_, H' : getm _ ?Pc = None,
-             H'': Symbolic.get_syscall _ _ = Some _ |- _] =>
+             H'': getm stable _ = Some _ |- _] =>
         destruct (SYSCORRECT _ H' H'') as [? ABSURD]
     end;
     (*unfoldings and case analysis on tags*)

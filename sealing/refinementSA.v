@@ -329,7 +329,7 @@ Proof.
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     erewrite (@pointwise_none _ _ _ _ amem smem apc rmem) in PC.
     simpl in GETCALL.
-    rewrite /Symbolic.get_syscall /= in GETCALL. move : GETCALL.
+    rewrite getm_mkpartmap /= !(eq_sym apc) in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
       have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];
@@ -484,7 +484,7 @@ Definition forward_simulation := forall km ast ast' sst,
       (getm (Symbolic.mem sst) (vala (Symbolic.pc sst)) = Some i@ti) /\
       (decode_instr i = Some (Jal r)) /\
       (getm (Symbolic.regs sst) r = Some mkkey_addr@t1) /\
-      (Symbolic.get_syscall Sym.sealing_syscalls mkkey_addr = Some sc) /\
+      (Sym.sealing_syscalls mkkey_addr = Some sc) /\
       (Symbolic.sem sc sst = None))
   ).
 

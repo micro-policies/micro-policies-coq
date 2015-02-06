@@ -27,7 +27,7 @@ Context {mt : machine_types}
         {sp : Symbolic.params}
         {e : encodable mt Symbolic.ttypes}
         {mi : monitor_invariant}
-        {table : seq (Symbolic.syscall mt)}
+        {table : Symbolic.syscall_table mt}
         {mcc : monitor_code_fwd_correctness mi table}.
 
 Hint Unfold Symbolic.next_state.
@@ -247,7 +247,7 @@ Ltac user_data_unchanged :=
 
 Lemma no_syscall_no_entry_point mem addr t :
   wf_entry_points table mem ->
-  Symbolic.get_syscall table addr = None ->
+  table addr = None ->
   ~~ match getm mem addr with
      | Some i@it => (is_nop i) && (decode Symbolic.M mem it == Some (Entry t))
      | None => false
@@ -372,7 +372,7 @@ Proof.
   move: Hbuild.
   rewrite /build_ivec /build_cmvec /decode_ivec (rs_pc Href).
   case Hget: (getm _ _) => [[i ti]|] //=; last first.
-    case Hget_sc: (Symbolic.get_syscall _ _) => [sc|] //= [<-] {ivec}.
+    case Hget_sc: (table _) => [sc|] //= [<-] {ivec}.
     have [i' [cti [Hget' Hdec_cti /is_nopP Hi]]] :=
       wf_entry_points_if (rs_entry_points Href) Hget_sc.
     rewrite Hget' Hi /=.
@@ -460,7 +460,7 @@ Proof.
   case GETi: (getm (Symbolic.mem sst) (Symbolic.pcv sst)) => [[i ti]|]; last first.
     move: STEP ivec ovec TRANS IVEC CMVEC.
     rewrite {1}(Symbolic.state_eta sst) /build_ivec /= GETi.
-    case GETSC: (Symbolic.get_syscall _ _) => [sc|] //=.
+    case GETSC: (table _) => [sc|] //=.
     move=> RUN ivec ovec TRANS [E]. subst ivec.
     have [i [cti [GETi' DECti /is_nopP ISNOP]]] := wf_entry_points_if (rs_entry_points REF) GETSC.
     rewrite (rs_pc REF) in GETi'.

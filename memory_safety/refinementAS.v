@@ -1137,21 +1137,21 @@ have [miP get_amem] := rmem;
 try have [rpcb [mi_apcb rpci]] := refine_pc_inv rpc;
 
 try match goal with
-| GETCALL : Symbolic.get_syscall _ _ = Some _,
-  CALL : Symbolic.run_syscall _ _ = Some _,
+| GETCALL : getm _ _ = Some ?sc,
+  CALL : Symbolic.run_syscall ?sc _ = Some _,
   PC : getm _ ?pc = None |- _ =>
   (move: GETCALL CALL;
   case: extra rist => color info rist;
-  rewrite /Symbolic.get_syscall /Symbolic.run_syscall /=;
+  rewrite getm_mkpartmap /Symbolic.run_syscall /=;
   match goal with
   | rpc : refine_val _ _ ?pc (PTR ?s) |- _ =>
     (have->: s = pc by inversion rpc);
-    repeat case: ifP=> [/eqP <- /= [<-] /= | ? //];
+    repeat case: ifP=> [/eqP -> /= [<-] /= | ? //];
     rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
     match_inv
   | rpc : refine_val _ (Abstract.VData _ ?s) ?pc _ |- _ =>
     (have->: s = pc by inversion rpc);
-    repeat case: ifP=> [/eqP <- /= [<-] /= | ? //];
+    repeat case: ifP=> [/eqP -> /= [<-] /= | ? //];
     rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
     match_inv
   end) || let op := current_instr_opcode in fail 5 "system_calls"
