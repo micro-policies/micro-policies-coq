@@ -30,44 +30,48 @@ SYM_DEF=symbolic/symbolic.v symbolic/exec.v
 SYM_CON_PROOF=symbolic/backward.v symbolic/forward.v symbolic/refinement_common.v
 HANDLER=symbolic/rules.v symbolic/fault_handler.v symbolic/int_32.v
 
-REGEXP="s/([[:digit:]]+) ([[:digit:]]+)/scale=1; \(\1+\2\)\/1000/p"
-PROCESS=grep total | tr -s ' ' | cut -d ' ' -f 2-3 | sed -rn $(REGEXP) | bc
+REGEXP="s/([[:digit:]]+) ([[:digit:]]+)/scale=1; x=\(\1+\2\)\/1000; if(x<1) print 0; x/p"
+PROCESS=grep total | tr -s ' ' | cut -d ' ' -f 2-3 | sed -rn $(REGEXP) | bc | tr -d '\n'
 
 bc:
-	@echo "The shared/common/framework part"
+	@echo -n -e "%The shared/common/framework part\n\\\\newcommand{\\SHARED}{"
 	@coqwc $(SHARED) | $(PROCESS)
-	@echo "The policy-specific parts"
+	@echo -n -e "}\n%The policy-specific parts\n\\\\newcommand{\\SPECIF}{"
 	@coqwc $(SPECIF) | $(PROCESS)
-	@echo "The total"
+	@echo -n -e "}\n%The total\n\\\\newcommand{\\TOTAL}{"
 	@coqwc $(SHARED) $(SPECIF) | $(PROCESS)
+	@echo "}"
 
-bc-shared:
-	@echo "Generic libraries"
+	@echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+	@echo -n -e "%Generic libraries\n\\\\newcommand{\\LIB}{"
 	@coqwc $(LIB) | $(PROCESS)
-	@echo "Shared syntax and lemma used by all machines"
+	@echo -n -e "}\n%Shared syntax and lemma used by all machines\n\\\\newcommand{\\COMMON}{"
 	@coqwc $(COMMON) | $(PROCESS)
-	@echo "Concrete machine"
+	@echo -n -e "}\n%Concrete machine\n\\\\newcommand{\\CONCRETE}{"
 	@coqwc $(CONCRETE) | $(PROCESS)
-	@echo "Everything else (symbolic dir)"
+	@echo -n -e "}\n%Everything else (symbolic dir)\n\\\\newcommand{\\SYMBOLIC}{"
 	@coqwc $(SYMBOLIC) | $(PROCESS)
+	@echo "}"
 
-bc-specif:
-	@echo "Memory safety"
+	@echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+	@echo -n -e "%Memory safety\n\\\\newcommand{\\MEMSAFE}{"
 	@coqwc $(MEMSAFE) | $(PROCESS)
-	@echo "Dynamic sealing"
+	@echo -n -e "}\n%Dynamic sealing\n\\\\newcommand{\\SEALING}{"
 	@coqwc $(SEALING) | $(PROCESS)
-	@echo "Compartmentalization"
+	@echo -n -e "}\n%Compartmentalization\n\\\\newcommand{\\COMPART}{"
 	@coqwc $(COMPART) | $(PROCESS)
-	@echo "Control Flow Integrity"
+	@echo -n -e "}\n%Control Flow Integrity\n\\\\newcommand{\\CFI}{"
 	@coqwc $(CFI) | $(PROCESS)
+	@echo "}"
 
-bc-sym:
-	@echo "The symbolic machine definition"
+	@echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+	@echo -n -e "%The symbolic machine definition\n\\\\newcommand{\\SYMDEF}{"
 	@coqwc $(SYM_DEF) | $(PROCESS)
-	@echo "The symbolic-concrete refinement proof"
+	@echo -n -e "}\n%The symbolic-concrete refinement proof\n\\\\newcommand{\\SYMCONPROOF}{"
 	@coqwc $(SYM_CON_PROOF) | $(PROCESS)
-	@echo "The generic fault handler (or something like that)"
+	@echo -n -e "}\n%The generic fault handler (or something like that)\n\\\\newcommand{\\HANDLER}{"
 	@coqwc $(HANDLER) | $(PROCESS)
+	@echo "}"
 
 EXCLUDE=--exclude=testing --exclude=.gitignore --exclude=compartmentalization/global-hint.el
 
