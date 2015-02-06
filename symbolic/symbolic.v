@@ -2,7 +2,6 @@ Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.
 Require Import CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils common.types.
-Require Import lib.ssr_list_utils.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
