@@ -635,7 +635,7 @@ Proof.
 move=> fresh_col malloc [w'|b base' col' off mi_b]; first by constructor.
 constructor.
 have neq_col: col' <> col.
-  by move=> eq_col; move/fresh_col: mi_b; rewrite eq_col Ord.leqxx.
+  by move=> eq_col; move/fresh_col: mi_b; rewrite eq_col Ord.ltxx.
 by rewrite getm_set (introF eqP neq_col).
 Qed.
 
@@ -690,7 +690,7 @@ rewrite (get_write_block _ H1) => //.
 have [/andP [? ?] [<- <- <-]|_ /rmem get_w1] :=
   boolP (inbounds base sz w1).
   rewrite getm_set eqxx (Abstract.malloc_get malloc); last first.
-    rewrite -2!val_ordE (lock subw) /= -lock valw_sub // /Ord.leq /= -ltnNge.
+    rewrite Ord.ltNge -2!val_ordE (lock subw) /= -lock valw_sub // /Ord.leq /= -ltnNge.
     by rewrite -(ltn_add2r base) subnK // addnC.
   apply: (refine_val_malloc _ fresh_col malloc).
   by constructor.
@@ -699,7 +699,7 @@ have neq_col: col' <> col.
   move: get_w1; rewrite eq_col.
   move: (fresh_col col).
   case: (mi col) => // [[b' base']] /(_ b' base' erefl) lt_col.
-  by rewrite Ord.leqxx in lt_col.
+  by rewrite Ord.ltxx in lt_col.
 
 move: get_w1.
 set mi' := mi_malloc _ _ _ _.
@@ -923,7 +923,7 @@ have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
     move=> col b color_bi' [? ?] mi_col get_bi'.
     apply: (@BlockInfoLive _ _ _ col b) => //.
       have neq_col: col <> color.
-        by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.leqxx.
+        by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.ltxx.
       by rewrite getm_set (introF eqP neq_col).
     move=> off lt_off.
     rewrite (get_write_block _ write_bi).
@@ -1002,7 +1002,7 @@ case=> //.
   move=> col b color_bi' [? ?] mi_col get_bi'.
   apply: (@BlockInfoLive _ _ _ col b) => //.
     have neq_col: col <> color.
-      by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.leqxx.
+      by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.ltxx.
     by rewrite getm_set (introF eqP neq_col).
   move=> off lt_off.
   rewrite (get_write_block _ write_bi).
@@ -1288,7 +1288,7 @@ by solve_pc rpci.
   case: biP E E0 E1 color_x in_x => [|->] //.
   move=> col b color_bi [? ?] mi_col get_x E E0 E1 color_x in_x.
   case/andP: E1 => lb_val ub_val.
-  rewrite (lock addw) /= -!val_ordE /= /Ord.leq /= -lock in ub_val.
+  rewrite Ord.ltNge (lock addw) /= -!val_ordE /= /Ord.leq /= -lock in ub_val.
   rewrite valw_add' // -ltnNge in ub_val.
   have /andP [E1 E2]:
     Sym.block_base x <= vala < Sym.block_base x + Sym.block_size x.

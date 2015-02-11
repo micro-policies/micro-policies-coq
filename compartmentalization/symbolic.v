@@ -1024,7 +1024,7 @@ Proof.
   { move=> sc cid I W sc_is_sc Hsget.
     apply/negP=> /eqP ?. subst cid.
     move: (Hbounds sc cnew I W Hsget cnew).
-    by rewrite -setUA in_setU1 eqxx /= Ord.leqxx => /(_ erefl). }
+    by rewrite -setUA in_setU1 eqxx /= Ord.ltxx => /(_ erefl). }
   elim: ps s Hpreserved Hisolated Hretag
         => [ s _ _ [<-] //
            | p ps IH ] s Hpreserved Hisolated.

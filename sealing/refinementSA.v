@@ -389,7 +389,7 @@ Proof.
       - (* injectivity *)
         apply fresh_set_inj. by destruct rins as [_ [_ rins3]].
         destruct rins as [_ [rins2 _]].
-        intros ? Hc. apply rins2 in Hc. by rewrite Ord.leqxx in Hc.
+        intros ? Hc. apply rins2 in Hc. by rewrite Ord.ltxx in Hc.
     }
     + {(* seal *)
     (* break up the effects of the system call *)

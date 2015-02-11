@@ -27,7 +27,7 @@ Qed.
 
 Lemma leqw_succ : forall n (x y : word n), x < y -> x < x + 1.
 Proof.
-move=> n [[x Px]] [[y Py]]; do !rewrite !/Ord.leq /=.
+move=> n [[x Px]] [[y Py]]; rewrite !Ord.ltNge; do !rewrite !/Ord.leq /=.
 rewrite -!ltnNge !modz_nat !absz_nat !modn_mod.
 case: n Px Py => [|k Px Py Pxy] /=.
   by rewrite expn0 modn1; case: x y => [|x] [|y].
@@ -39,7 +39,7 @@ Qed.
 Lemma addw_le : forall n (x y : word n),
   x < y -> x + 1 <= y.
 Proof.
-move=> n [[x Px]] [[y Py]]; do !rewrite !/Ord.leq /=.
+move=> n [[x Px]] [[y Py]]; rewrite !Ord.ltNge; do !rewrite !/Ord.leq /=.
 rewrite -!ltnNge /= !modz_nat !absz_nat !modn_mod.
 case: n Px Py => [|k Px Py Pxy] /=.
   by rewrite expn0 modn1; case: x y => [|x] [|y].

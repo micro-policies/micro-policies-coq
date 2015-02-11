@@ -56,6 +56,9 @@ Definition mvec_of_tuple tup : mvec mt :=
 Lemma tuple_of_mvecK : cancel tuple_of_mvec mvec_of_tuple.
 Proof. by case. Qed.
 
+Definition mvec_partOrdMixin := CanPartOrdMixin tuple_of_mvecK.
+Canonical mvec_partOrdType :=
+  Eval hnf in PartOrdType (mvec mt) mvec_partOrdMixin.
 Definition mvec_ordMixin := CanOrdMixin tuple_of_mvecK.
 Canonical mvec_ordType := Eval hnf in OrdType (mvec mt) mvec_ordMixin.
 
