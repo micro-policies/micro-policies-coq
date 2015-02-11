@@ -145,18 +145,31 @@ Proof.
     by move => H [<-].
 Qed.
 
-Instance enc: encodable mt Sym.ms_tags := {|
+Instance enc: encodable mt Sym.ms_tags := {
   decode k m := fun (w : mword mt) =>
     let: [hseq ut; w']%w := @wunpack [:: 30; 2] w in
     if w' == 0%w then None
-    else if w' == 1%w then
-      do! ut <- decode_mtag ut;
-      Some (@USER Sym.tag_eqType ut)
-    else if w' == as_word 2 then
-      do! ut <- decode_mtag ut;
-      Some (@ENTRY Sym.tag_eqType ut)
-    else None
-|}.
+    else
+      match k return option (wtag Sym.ms_tags k) with
+      | Symbolic.M =>
+        if w' == 1%w then
+          do! ut <- decode_mtag ut;
+          Some (@User Sym.ms_tags ut)
+        else if w' == as_word 2 then
+          Some (@Entry Sym.ms_tags tt)
+        else None
+      | Symbolic.P =>
+        if w' == 1%w then
+          do! ut <- decode_mtag ut;
+          Some ut
+        else None
+      | Symbolic.R =>
+        if w' == 1%w then
+          do! ut <- decode_mtag ut;
+          Some ut
+        else None
+      end
+}.
 Proof.
   - move=> * ?. reflexivity.
   - by move=> tk _; rewrite 2!wunpackS.

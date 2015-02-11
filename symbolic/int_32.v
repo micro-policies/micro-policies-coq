@@ -162,7 +162,7 @@ Program Definition concrete_initial_state
 
 Context {sp: Symbolic.params}.
 
-Let sym_atom k := atom (mword mt) (@Symbolic.ttypes sp k).
+Let sym_atom k := atom (mword mt) (Symbolic.tag_type (@Symbolic.ttypes sp) k).
 
 Program Definition symbolic_initial_state
       {Addrs}

@@ -1,7 +1,7 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.seq.
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 Require Import lib.utils.
-Require Import lib.ssr_list_utils lib.partmap_utils.
+Require Import lib.partmap_utils.
 Require Import common.types symbolic.symbolic.
 Require Import sealing.classes sealing.symbolic sealing.abstract.
 
@@ -180,10 +180,10 @@ Proof.
     apply (refine_get_pointwise_inv rmem) in PC;
       destruct PC as [iv [PC riv]];
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT;
-    apply refine_val_data in riv; subst).
+    try apply refine_val_data in riv; subst).
   Ltac destruct_pc := repeat
     match goal with
-    | [pc: Equality.sort (Symbolic.ttypes Symbolic.P) |- _] => destruct pc
+    | [pc: Equality.sort (Symbolic.tag_type Symbolic.ttypes Symbolic.P) |- _] => destruct pc
     end.
   intros km [amem aregs apc akeys] sst sst' ref sstep. move: ref.
   destruct sstep; destruct sst as [smem sregs spc skey];
@@ -329,7 +329,7 @@ Proof.
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     erewrite (@pointwise_none _ _ _ _ amem smem apc rmem) in PC.
     simpl in GETCALL.
-    rewrite /Symbolic.get_syscall /= in GETCALL. move : GETCALL.
+    rewrite getm_mkpartmap /= !(eq_sym apc) in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
       have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];
@@ -348,7 +348,7 @@ Proof.
 
     assert(refine_val_atom (setm km (Abs.mkkey_f akeys) skey)
               (Abs.VKey mt (Abs.mkkey_f akeys))
-              (monew@(Sym.KEY skey))) as rva.
+              (0%w@(Sym.KEY skey))) as rva.
       unfold refine_val_atom, refine_key. by rewrite getm_set eqxx.
 
     (* need to show freshness for new abstract key to be able to use
@@ -389,7 +389,7 @@ Proof.
       - (* injectivity *)
         apply fresh_set_inj. by destruct rins as [_ [_ rins3]].
         destruct rins as [_ [rins2 _]].
-        intros ? Hc. apply rins2 in Hc. by rewrite Ord.leqxx in Hc.
+        intros ? Hc. apply rins2 in Hc. by rewrite Ord.ltxx in Hc.
     }
     + {(* seal *)
     (* break up the effects of the system call *)
@@ -484,7 +484,7 @@ Definition forward_simulation := forall km ast ast' sst,
       (getm (Symbolic.mem sst) (vala (Symbolic.pc sst)) = Some i@ti) /\
       (decode_instr i = Some (Jal r)) /\
       (getm (Symbolic.regs sst) r = Some mkkey_addr@t1) /\
-      (Symbolic.get_syscall Sym.sealing_syscalls mkkey_addr = Some sc) /\
+      (Sym.sealing_syscalls mkkey_addr = Some sc) /\
       (Symbolic.sem sc sst = None))
   ).
 

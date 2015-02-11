@@ -14,7 +14,7 @@ Context {mt : machine_types}
         {ops : machine_ops mt}
         {sp : Symbolic.params}.
 
-Variable table : seq (Symbolic.syscall mt).
+Variable table : Symbolic.syscall_table mt.
 
 Import Symbolic.
 
@@ -97,7 +97,7 @@ Definition stepf (st : state mt) : option (state mt) :=
   | None =>
     match mem pc with
     | None =>
-      do! sc <- get_syscall table pc;
+      do! sc <- table pc;
       run_syscall sc st
     | Some _ =>
       None
@@ -111,8 +111,7 @@ Lemma stepP :
 Proof.
   intros st st'. split; intros STEP.
   { destruct st as [mem reg [pc tpc] int].
-    simpl in STEP.
-    destruct (mem pc) as [[i ti]|] eqn:GET;
+    move: STEP => /=; case GET: (mem pc) => [[i ti]|] //= STEP;
     apply obind_inv in STEP.
     - destruct STEP as (instr & INSTR & STEP).
       destruct instr; try discriminate;
@@ -124,7 +123,7 @@ Proof.
              | rv : ovec _ |- _ =>
                destruct rv; simpl in *
              | H : Some _ = Some _ |- _ =>
-               inversion H; subst
+               inversion H; subst; clear H
            end;
       s_econstructor (solve [eauto]).
 
@@ -155,7 +154,7 @@ Definition build_ivec st : option (ivec ttypes)  :=
       match decode_instr (vala i) with
         | Some op =>
           let part := @IVec ttypes (opcode_of op) (pct st) (taga i) in
-          match op return (hseq ttypes (inputs (opcode_of op)) ->
+          match op return (hseq (tag_type ttypes) (inputs (opcode_of op)) ->
                            ivec ttypes) -> option (ivec ttypes) with
             | Nop => fun part => Some (part [hseq])
             | Const n r => fun part =>
@@ -199,7 +198,7 @@ Definition build_ivec st : option (ivec ttypes)  :=
         | None => None
       end
     | None =>
-      match get_syscall table (pcv st) with
+      match table (pcv st) with
         | Some sc =>
           Some (IVec SERVICE (pct st) (entry_tag sc) [hseq])
         | None => None
@@ -215,7 +214,7 @@ Proof.
   move/stepP.
   rewrite {1}(state_eta st) /= /build_ivec.
   case: (getm _ _) => [[i ti]|] //=; last first.
-    case: (get_syscall _ _) => [sc|] //=.
+    case: (getm _ _) => [sc|] //=.
     rewrite /run_syscall /=.
     case TRANS: (transfer _) => [ovec|] //= _.
     by eauto.

@@ -160,12 +160,12 @@ Definition data_tag_incoming (L : data_tag) : {set mword mt} :=
 Definition data_tag_writers (L : data_tag) : {set mword mt} :=
   match L with DATA _ _ W => W end.
 
-Definition stags (tk : Symbolic.tag_kind) : eqType :=
-  match tk with
-  | Symbolic.R => [eqType of unit]
-  | Symbolic.M => [eqType of data_tag]
-  | Symbolic.P => [eqType of pc_tag]
-  end.
+Definition stags := {|
+  Symbolic.pc_tag_type := [eqType of pc_tag];
+  Symbolic.reg_tag_type := [eqType of unit];
+  Symbolic.mem_tag_type := [eqType of data_tag];
+  Symbolic.entry_tag_type := [eqType of data_tag]
+|}.
 
 Import Symbolic.
 
@@ -179,7 +179,7 @@ Definition compartmentalization_rvec (op : opcode)
                                      (F : where_from)
                                      (c : mword mt)
                                      (tr : type_of_result stags (outputs op)) : ovec stags op :=
-  OVec (PC F c) tr.
+  @OVec stags _ (PC F c) tr.
 
 Definition rvec_step op
                      (rv : mword mt -> option (ovec stags op))
@@ -447,11 +447,11 @@ Definition add_to_store_targets (s : Symbolic.state mt)
       Some (Symbolic.State M_next R_next (pc' @ (PC JUMPED c_sys)) si_next)
   end.
 
-Definition syscalls : seq (Symbolic.syscall mt) :=
+Definition syscalls : Symbolic.syscall_table mt :=
   let dummy := DATA 0%w set0 set0 in
-  [:: Symbolic.Syscall isolate_addr              dummy isolate;
-      Symbolic.Syscall add_to_jump_targets_addr  dummy add_to_jump_targets;
-      Symbolic.Syscall add_to_store_targets_addr dummy add_to_store_targets].
+  [partmap (isolate_addr,              Symbolic.Syscall dummy isolate);
+           (add_to_jump_targets_addr,  Symbolic.Syscall dummy add_to_jump_targets);
+           (add_to_store_targets_addr, Symbolic.Syscall dummy add_to_store_targets)].
 
 Definition step := Symbolic.step syscalls.
 
@@ -1024,7 +1024,7 @@ Proof.
   { move=> sc cid I W sc_is_sc Hsget.
     apply/negP=> /eqP ?. subst cid.
     move: (Hbounds sc cnew I W Hsget cnew).
-    by rewrite -setUA in_setU1 eqxx /= Ord.leqxx => /(_ erefl). }
+    by rewrite -setUA in_setU1 eqxx /= Ord.ltxx => /(_ erefl). }
   elim: ps s Hpreserved Hisolated Hretag
         => [ s _ _ [<-] //
            | p ps IH ] s Hpreserved Hisolated.

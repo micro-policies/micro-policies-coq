@@ -27,8 +27,8 @@ Variable cfg : classes.id -> classes.id -> bool.
 
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable atable : seq (Abs.syscall mt).
-Variable stable : seq (Symbolic.syscall mt).
+Variable atable : Abs.syscall_table mt.
+Variable stable : Symbolic.syscall_table mt.
 
 Definition amachine :=  Abs.abstract_cfi_machine atable cfg.
 Definition smachine := Sym.symbolic_cfi_machine stable.
@@ -197,7 +197,7 @@ Proof.
           destruct Expr
       end; try discriminate; by auto.
     - by discriminate.
-  + destruct (Abs.get_syscall atable spc) eqn:GETCALL.
+  + destruct (atable spc) eqn:GETCALL.
     - destruct (getm mem spc) eqn:GET'.
       { destruct a as [v ut].
         destruct ut.
@@ -214,7 +214,7 @@ Proof.
       { rewrite GET'.
         unfold refine_sc in *. unfold RefinementAS.refine_syscalls in ref_sc_correct.
         assert (CALLDOMAINS := RefinementAS.refine_syscalls_domains ref_sc_correct).
-        assert (EGETCALL: exists ac, Abs.get_syscall atable spc = Some ac)
+        assert (EGETCALL: exists ac, atable spc = Some ac)
           by (eexists; eauto).
         apply CALLDOMAINS in EGETCALL.
         destruct EGETCALL as [sc GETCALL'].
@@ -253,8 +253,8 @@ Proof.
       destruct (getm mem pc') as [[v [[id|]|]]|] eqn:GET';
       rewrite GET';
       try match goal with
-        | [|- is_true (~~ match Symbolic.get_syscall _ _ with _ => _ end)] =>
-          destruct (Symbolic.get_syscall stable pc') eqn:?
+        | [|- is_true (~~ match getm stable _ with _ => _ end)] =>
+          destruct (stable pc') eqn:?
       end;
       repeat match goal with
                | [H: ?Expr = _ |- context[?Expr]] =>
@@ -268,7 +268,7 @@ Proof.
                | [H: getm _ _ = Some _@(INSTR (Some _)) |- _] =>
                  apply ITG in H
                | [H: getm _ ?Addr = None,
-                  H1: Symbolic.get_syscall _ ?Addr = Some _,
+                  H1: getm stable ?Addr = Some _,
                   H2: Symbolic.entry_tag _ = INSTR (Some _) |- _] =>
                  apply (ETG _ _ _ H H1) in H2
                | [H: context[?Expr], H1: ?Expr = _ |- _] =>
@@ -277,7 +277,7 @@ Proof.
     }
     { simpl. rewrite GET. rewrite INST. destruct id; by reflexivity. }
   }
-  { destruct (Abs.get_syscall atable pc) eqn:GETCALL.
+  { destruct (atable pc) eqn:GETCALL.
     { simpl.
       destruct (getm dmem pc) eqn:GET'.
       { apply REFD in GET'. rewrite GET'. reflexivity. }

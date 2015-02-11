@@ -32,7 +32,7 @@ Variable cfg : id -> id -> bool.
 
 Instance sp : Symbolic.params := Sym.sym_cfi cfg.
 
-Variable stable : seq (Symbolic.syscall mt).
+Variable stable : Symbolic.syscall_table mt.
 Variable mi : refinement_common.monitor_invariant.
 
 Definition masks := symbolic.rules.masks.
@@ -83,12 +83,13 @@ Definition refine_state (sst : Symbolic.state mt) (cst : Concrete.state mt) :=
   Sym.invariants stable sst.
 
 Definition is_user k (x : atom (mword mt) (mword mt)) :=
-  oapp (fun t => rules.is_user t) false (@rules.fdecode _ _ e k (taga x)).
+  oapp (fun t => rules.tag_of_wtag t : bool)
+       false (@rules.fdecode _ _ e k (taga x)).
 
-Definition coerce k (x : atom (mword mt) (mword mt)) : atom (mword mt) (cfi_tag) :=
-  match rules.fdecode k (taga x) with
-    | Some (rules.USER tg) => (vala x)@tg
-    | _ => (vala x)@DATA (*this is unreachable in our case, dummy value*)
+Definition coerce k (x : atom (mword mt) (mword mt)) : atom (mword mt) (Symbolic.tag_type cfi_tags k) :=
+  match obind (fun t => rules.tag_of_wtag t) (rules.fdecode k (taga x)) with
+    | Some tg => (vala x)@tg
+    | _ => (vala x)@(Conc.cast' k DATA) (*this is unreachable in our case, dummy value*)
   end.
 
 Lemma mem_refinement_equiv :
@@ -178,7 +179,7 @@ Proof.
       rewrite getm_map /= getm_filter /=.
       case CGET': (creg' n)=> [[v' t']|] //=.
       rewrite /is_user /= /coerce /=.
-      case CTG: (rules.fdecode _ _) => [[ut|?]|] //=.
+      case CTG: (rules.fdecode _ _) => [ut|] //=.
       rewrite CTG /= => - [? ?]. subst v' ut.
       by eauto. }
   }
@@ -207,13 +208,13 @@ Proof.
         as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
        + inv EQ1.
          rewrite /is_user /coerce /=.
-         case DEC: (rules.fdecode _ _) => [[?|?]|] //=.
+         case DEC: (rules.fdecode _ _) => [?|] //=.
          by rewrite (proj1 REF _ _ _ _ DEC1 E1) in SGET.
        + inv EQ.
          rewrite /is_user /coerce /=.
-         case DEC: (rules.fdecode _ t2) => [[?|?]|] //=.
+         case DEC: (rules.fdecode _ t2) => [?|] //=.
          apply: NEQ.
-         by rewrite DEC; eauto.
+         by rewrite /= DEC; eauto.
   }
 Qed.
 
@@ -807,8 +808,9 @@ Lemma transfer_none_lookup_none cmvec ivec cmem cache :
 Proof.
   move=> CACHE DEC TRANS.
   case LOOKUP: (Concrete.cache_lookup cache masks cmvec) => [crvec|] //=.
-  have [t E] : exists t, rules.decode Symbolic.P cmem (Concrete.ctpc cmvec) = Some (rules.USER t).
-    by have [[?]|[]] := rules.decode_ivec_inv DEC; eauto.
+  have [t E] : exists t, rules.decode Symbolic.P cmem (Concrete.ctpc cmvec) = Some t.
+    have := rules.decode_ivec_inv DEC.
+    by case: ivec {DEC TRANS} => [[?|] ? ? ?] => [[?]|[]]; eauto.
   have := CACHE _ _ LOOKUP.
   rewrite {}E => /(_ erefl) [ivec' [ovec [DEC' _ TRANS']]].
   rewrite DEC in DEC'. case: DEC' TRANS => ->.
@@ -941,12 +943,12 @@ Proof.
                 rewrite GET' in H2.
                 by rewrite CGET' DECctg'.
               - rewrite GET' in H2.
-                destruct (Symbolic.get_syscall stable pcj) eqn:GETCALL.
+                destruct (stable pcj) eqn:GETCALL.
                 + rewrite GETCALL in H2.
                   unfold wf_entry_points in WF.
                   specialize (WF pcj (Symbolic.entry_tag s)).
                   assert (ECALL : exists2 sc : Symbolic.syscall mt,
-                                    Symbolic.get_syscall stable pcj = Some sc &
+                                    stable pcj = Some sc &
                                     Symbolic.entry_tag sc = Symbolic.entry_tag s)
                     by (eexists; eauto).
                   apply WF in ECALL.
@@ -966,12 +968,12 @@ Proof.
                 rewrite GET' in H2.
                 by rewrite CGET' DECctg'.
               - rewrite GET' in H2.
-                destruct (Symbolic.get_syscall stable pcj) eqn:GETCALL.
+                destruct (stable pcj) eqn:GETCALL.
                 + rewrite GETCALL in H2.
                   unfold wf_entry_points in WF.
                   specialize (WF pcj (Symbolic.entry_tag s)).
                   assert (ECALL : exists2 sc : Symbolic.syscall mt,
-                                    Symbolic.get_syscall stable pcj = Some sc &
+                                    stable pcj = Some sc &
                                     Symbolic.entry_tag sc = Symbolic.entry_tag s)
                     by (eexists; eauto).
                   apply WF in ECALL.
@@ -991,9 +993,9 @@ Proof.
         { by trivial. }
         { by discriminate. }
         { rewrite GET in H2.
-          case GETSC: (Symbolic.get_syscall _ _) H2 => [sc|] //= _.
+          case GETSC: (stable _) H2 => [sc|] //= _.
           remember (Symbolic.entry_tag sc) as sct eqn:ETAG. symmetry in ETAG.
-          have /WF: exists2 sc, Symbolic.get_syscall stable pci = Some sc &
+          have /WF: exists2 sc, stable pci = Some sc &
                                Symbolic.entry_tag sc = sct by eexists; eauto.
           case GET': (getm cmemi  pci) => [[v ctg]|] //=.
           assert (CONTRA := fun CACHE GET' =>
@@ -1065,11 +1067,11 @@ Proof.
                 case DEC'': (rules.fdecode _ ctg') => [[ut|ut]|] //=.
                 - by rewrite (proj1 REFM _ _ _ _ DEC'' GET') in SGET'.
                 - unfold wf_entry_points in WF.
-                  destruct (Symbolic.get_syscall stable pc') eqn:GETCALL.
+                  destruct (stable pc') eqn:GETCALL.
                   + rewrite GETCALL in H1.
                     specialize (WF pc' (Symbolic.entry_tag s0)).
                     assert (ECALL: (exists2 sc : Symbolic.syscall mt,
-                               Symbolic.get_syscall stable pc' = Some sc &
+                               stable pc' = Some sc &
                                Symbolic.entry_tag sc = Symbolic.entry_tag s0))
                       by (eexists; eauto).
                     apply WF in ECALL.
@@ -1103,11 +1105,11 @@ Proof.
                 case DEC'': (rules.fdecode _ ctg') => [[ut|ut]|] //=.
                 - by rewrite (proj1 REFM _ _ _ _ DEC'' GET') in SGET'.
                 - unfold wf_entry_points in WF.
-                  destruct (Symbolic.get_syscall stable pc') eqn:GETCALL.
+                  destruct (stable pc') eqn:GETCALL.
                   + rewrite GETCALL in H1.
                     specialize (WF pc' (Symbolic.entry_tag s0)).
                     assert (ECALL: (exists2 sc : Symbolic.syscall mt,
-                               Symbolic.get_syscall stable pc' = Some sc &
+                               stable pc' = Some sc &
                                Symbolic.entry_tag sc = Symbolic.entry_tag s0))
                       by (eexists; eauto).
                     apply WF in ECALL.

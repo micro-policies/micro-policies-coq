@@ -54,11 +54,12 @@ Qed.
 Definition stag_eqMixin := EqMixin stag_eqP.
 Canonical stag_eqType := Eval hnf in EqType stag stag_eqMixin.
 
-Definition stags : tag_kind -> eqType := fun k =>
-  match k with
-  | P => [eqType of unit]
-  | _ => [eqType of stag]
-  end.
+Definition stags := {|
+  pc_tag_type := [eqType of unit];
+  reg_tag_type := [eqType of stag];
+  mem_tag_type := [eqType of stag];
+  entry_tag_type := [eqType of unit]
+|}.
 
 Section WithHSeqs.
 
@@ -93,7 +94,7 @@ Definition mkkey (s : state mt) : option (state mt) :=
   let 'State mem reg pc@pct key := s in
   if key < max_key then
     let key' := inc_key key in
-    do! reg' <- updm reg syscall_ret monew@(KEY key);
+    do! reg' <- updm reg syscall_ret 0%w@(KEY key);
     do! ret  <- reg ra;
     match ret with
     | pc'@DATA => Some (State mem reg' (pc'@tt) key')
@@ -130,10 +131,10 @@ Definition unseal (s : state mt) : option (state mt) :=
   | _, _ => None
   end.
 
-Definition sealing_syscalls : seq (syscall mt) :=
-  [:: Syscall mkkey_addr DATA mkkey;
-      Syscall seal_addr DATA seal;
-      Syscall unseal_addr DATA unseal].
+Definition sealing_syscalls : syscall_table mt :=
+  [partmap (mkkey_addr,  Syscall tt mkkey);
+           (seal_addr,   Syscall tt seal);
+           (unseal_addr, Syscall tt unseal)].
 
 Definition step := step sealing_syscalls.
 

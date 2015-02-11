@@ -2,7 +2,6 @@ Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.
 Require Import CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
 Require Import lib.utils common.types.
-Require Import lib.ssr_list_utils.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -90,19 +89,40 @@ Definition outputs (op : opcode) : option tag_kind :=
 
 Section WithTagTypes.
 
-Variable tag_type : tag_kind -> eqType.
+Structure tag_types := {
+  pc_tag_type : eqType;
+  reg_tag_type : eqType;
+  mem_tag_type : eqType;
+  entry_tag_type : eqType
+}.
+
+Variable tty : tag_types.
+
+Definition tag_type tk :=
+  match tk with
+  | P => pc_tag_type tty
+  | R => reg_tag_type tty
+  | M => mem_tag_type tty
+  end.
+
+Definition instr_tag (op : vopcode) :=
+  match op with
+  | SERVICE => entry_tag_type tty
+  | _ => mem_tag_type tty
+  end.
 
 Record ivec : Type := IVec {
   op  : vopcode;
   tpc : tag_type P;
-  ti  : tag_type M;
+  ti  : instr_tag op;
   ts  : hseq tag_type (vinputs op)
 }.
 
 Lemma ivec_eq_inv op op' tpc tpc' ti ti' ts ts'
                   (p : @IVec op tpc ti ts = @IVec op' tpc' ti' ts') :
-  [/\ op = op', tpc = tpc', ti = ti' &
-      existT (hseq tag_type \o vinputs) op ts = existT _ op' ts'].
+  [/\ op = op', tpc = tpc',
+      Tagged instr_tag ti = Tagged instr_tag ti' &
+      Tagged (hseq tag_type \o vinputs) ts = existT _ op' ts'].
 Proof. inversion p. by constructor. Qed.
 
 Definition type_of_result (o : option tag_kind) :=
@@ -131,7 +151,7 @@ Context (mt : machine_types)
         {ops : machine_ops mt}.
 
 Class params := {
-  ttypes :> tag_kind -> eqType;
+  ttypes :> tag_types;
 
   transfer : forall (iv : ivec ttypes), option (vovec ttypes (op iv));
 
@@ -146,13 +166,13 @@ Local Notation word := (mword mt).
 Let atom := (atom word).
 Local Notation "x .+1" := (x + 1).
 
-Local Notation memory := {partmap word -> atom (ttypes M)}.
-Local Notation registers := {partmap reg mt -> atom (ttypes R)}.
+Local Notation memory := {partmap word -> atom (tag_type ttypes M)}.
+Local Notation registers := {partmap reg mt -> atom (tag_type ttypes R)}.
 
 Record state := State {
   mem : memory;
   regs : registers;
-  pc : atom (ttypes P);
+  pc : atom (tag_type ttypes P);
   internal : internal_state
 }.
 
@@ -166,15 +186,13 @@ Proof. by case: st=> ? ? [? ?] ?. Qed.
 (* CH: TODO: should make the entry_tags part of the state
    (for compartmentalization they need to be mutable) *)
 Record syscall := Syscall {
-  address : word;
-  entry_tag : ttypes M;
+  entry_tag : entry_tag_type ttypes;
   sem : state -> option state
 }.
 
-Variable table : seq syscall.
+Definition syscall_table := {partmap mword mt -> syscall}.
 
-Definition get_syscall (addr : word) : option syscall :=
-  ofind (fun sc => address sc == addr) table.
+Variable table : syscall_table.
 
 Definition run_syscall (sc : syscall) (st : state) : option state :=
   match transfer (IVec SERVICE (taga (pc st)) (entry_tag sc) [hseq]) with
@@ -222,7 +240,7 @@ Inductive step (st st' : state) : Prop :=
     (INST : decode_instr i = Some (Nop _)),
     let mvec := IVec NOP tpc ti [hseq] in forall
     (NEXT : next_state_pc st mvec (pc.+1) = Some st'),    step st st'
-| step_const : forall mem reg pc tpc i ti n r old (told : ttypes R) extra
+| step_const : forall mem reg pc tpc i ti n r old (told : tag_type ttypes R) extra
     (ST   : st = State mem reg pc@tpc extra)
     (PC   : mem pc = Some i@ti)
     (INST : decode_instr i = Some (Const n r))
@@ -295,13 +313,13 @@ Inductive step (st st' : state) : Prop :=
 | step_syscall : forall mem reg pc sc tpc extra
     (ST : st = State mem reg pc@tpc extra)
     (PC : mem pc = None)
-    (GETCALL : get_syscall pc = Some sc)
+    (GETCALL : table pc = Some sc)
     (CALL : run_syscall sc st = Some st'), step st st'.
 
 End WithClasses.
 
-Notation memory mt s := {partmap mword mt -> atom (mword mt) (@ttypes s M)}.
-Notation registers mt s := {partmap reg mt -> atom (mword mt) (@ttypes s R)}.
+Notation memory mt s := {partmap mword mt -> atom (mword mt) (@tag_type (@ttypes s) M)}.
+Notation registers mt s := {partmap reg mt -> atom (mword mt) (@tag_type (@ttypes s) R)}.
 
 End Symbolic.
 
@@ -335,5 +353,6 @@ Export Exports.
 Arguments Symbolic.state mt {_}.
 Arguments Symbolic.State {_ _} _ _ _ _.
 Arguments Symbolic.syscall mt {_}.
-Arguments Symbolic.IVec {tag_type} op _ _ _.
-Arguments Symbolic.OVec {tag_type op} _ _.
+Arguments Symbolic.syscall_table mt {_}.
+Arguments Symbolic.IVec {tty} op _ _ _.
+Arguments Symbolic.OVec {tty op} _ _.

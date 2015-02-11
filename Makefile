@@ -13,36 +13,89 @@ clean:
 test: coq
 	$(MAKE) -C sealing runtest
 
-SHARED=lib/*.v common/*.v concrete/*.v symbolic/*.v
+LIB=lib/*.v
+COMMON=common/*.v
+CONCRETE=concrete/*.v
+SYMBOLIC=symbolic/*.v
+SHARED=$(LIB) $(COMMON) $(CONCRETE) $(SYMBOLIC)
 
-SPECIF=memory_safety/*.v sealing/*.v compartmentalization/*.v cfi/*.v
+MEMSAFE=memory_safety/*.v
+SEALING=sealing/*.v
+COMPART=compartmentalization/*.v
+CFI    =cfi/*.v
+SPECIF=$(MEMSAFE) $(SEALING) $(COMPART) $(CFI)
+
+# Further breaking it down for symbolic dir
+SYM_DEF=symbolic/symbolic.v symbolic/exec.v
+SYM_CON_PROOF=symbolic/backward.v symbolic/forward.v symbolic/refinement_common.v
+HANDLER=symbolic/rules.v symbolic/fault_handler.v symbolic/int_32.v
+
+REGEXP="s/([[:digit:]]+) ([[:digit:]]+)/scale=1; x=\(\1+\2\)\/1000; if(x<1) print 0; x/p"
+PROCESS=grep total | tr -s ' ' | cut -d ' ' -f 2-3 | sed -rn $(REGEXP) | bc | tr -d '\n'
 
 bc:
-	@echo "The shared/common/framework part"
-	@echo "     spec    proof comments"
-	@coqwc $(SHARED) | grep total
-	@echo "The policy-specific parts"
-	@echo "     spec    proof comments"
-	@coqwc $(SPECIF) | grep total
-	@echo "The total"
-	@echo "     spec    proof comments"
-	@coqwc $(SHARED) $(SPECIF) | grep total
+	@echo -n -e "%The shared/common/framework part\n\\\\newcommand{\\SHARED}{"
+	@coqwc $(SHARED) | $(PROCESS)
+	@echo -n -e "}\n%The policy-specific parts\n\\\\newcommand{\\SPECIF}{"
+	@coqwc $(SPECIF) | $(PROCESS)
+	@echo -n -e "}\n%The total\n\\\\newcommand{\\TOTAL}{"
+	@coqwc $(SHARED) $(SPECIF) | $(PROCESS)
+	@echo "}"
+
+	@echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+	@echo -n -e "%Generic libraries\n\\\\newcommand{\\LIB}{"
+	@coqwc $(LIB) | $(PROCESS)
+	@echo -n -e "}\n%Shared syntax and lemma used by all machines\n\\\\newcommand{\\COMMON}{"
+	@coqwc $(COMMON) | $(PROCESS)
+	@echo -n -e "}\n%Concrete machine\n\\\\newcommand{\\CONCRETE}{"
+	@coqwc $(CONCRETE) | $(PROCESS)
+	@echo -n -e "}\n%Everything else (symbolic dir)\n\\\\newcommand{\\SYMBOLIC}{"
+	@coqwc $(SYMBOLIC) | $(PROCESS)
+	@echo "}"
+
+	@echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+	@echo -n -e "%Memory safety\n\\\\newcommand{\\MEMSAFE}{"
+	@coqwc $(MEMSAFE) | $(PROCESS)
+	@echo -n -e "}\n%Dynamic sealing\n\\\\newcommand{\\SEALING}{"
+	@coqwc $(SEALING) | $(PROCESS)
+	@echo -n -e "}\n%Compartmentalization\n\\\\newcommand{\\COMPART}{"
+	@coqwc $(COMPART) | $(PROCESS)
+	@echo -n -e "}\n%Control Flow Integrity\n\\\\newcommand{\\CFI}{"
+	@coqwc $(CFI) | $(PROCESS)
+	@echo "}"
+
+	@echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%"
+	@echo -n -e "%The symbolic machine definition\n\\\\newcommand{\\SYMDEF}{"
+	@coqwc $(SYM_DEF) | $(PROCESS)
+	@echo -n -e "}\n%The symbolic-concrete refinement proof\n\\\\newcommand{\\SYMCONPROOF}{"
+	@coqwc $(SYM_CON_PROOF) | $(PROCESS)
+	@echo -n -e "}\n%The generic fault handler (or something like that)\n\\\\newcommand{\\HANDLER}{"
+	@coqwc $(HANDLER) | $(PROCESS)
+	@echo "}"
+
+EXCLUDE=--exclude=testing --exclude=.gitignore --exclude=compartmentalization/global-hint.el
 
 dist: clean
 	rm -f rm ../micropolicies.tar.gz
-	tar czvf ../micropolicies.tar.gz . --transform 's/^\./micropolicies/' --exclude=testing --exclude=.gitignore --exclude=cfi/review.org --exclude=compartmentalization/global-hint.el
+	tar czvf ../micropolicies.tar.gz . --transform 's/^\./micropolicies/' $(EXCLUDE)
 
 DIR=../micropolicies-coq-anon
+COQ_UTILS=../coq-utils
 
 dist-anon: clean
 	rm -dfr rm $(DIR) ../micropolicies-coq-anon.tar.gz
 	cp -R . $(DIR)
 	rm -dfr $(DIR)/.git
+	cd $(COQ_UTILS); make clean
+	cp -R $(COQ_UTILS) $(DIR)
+	rm -dfr $(DIR)/coq-utils/.git
+	perl -0777 -i -pe 's/Copyright.*Permission/Copyright Anonymized\n\nPermission/igs' $(DIR)/coq-utils/LICENSE
 	perl -0777 -i -pe 's/Copyright.*Permission/Copyright Anonymized\n\nPermission/igs' $(DIR)/LICENSE
 	perl -0777 -i -pe 's/Description.*Prerequisites/Prerequisites/igs' $(DIR)/README.md
-        # Next command doesn't work for nested comments, please don't add any until Saturday
+	perl -0777 -i -pe 's/The CoqUtils library \(https.*coq-utils\)/The CoqUtils library \(included in coq-utils subdir\)/igs' $(DIR)/README.md
+        # Next command doesn't work for nested comments, please don't add any
 	find $(DIR) -name '*.v' -exec perl -0777 -i -pe 's/\(\*.*?\*\)//igs' {} \;
-	cd $(DIR); tar czvf ../micropolicies-coq-anon.tar.gz . --transform 's/^\./micropolicies-coq-anon/' --exclude=testing --exclude=.gitignore --exclude=cfi/review.org --exclude=compartmentalization/global-hint.el
+	cd $(DIR); tar czvf ../micropolicies-coq-anon.tar.gz . --transform 's/^\./micropolicies-coq-anon/' $(EXCLUDE)
 
 coqide:
 	coqide -R . MicroPolicies

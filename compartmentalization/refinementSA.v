@@ -598,7 +598,7 @@ Proof.
 Qed.
 
 Lemma sget_supd_good_internal (sst sst' : sstate) p c I1 W1 I2 W2 :
-  (forall c', c' \in I2 :|: W2 -> (c' < Sym.next_id (Symbolic.internal sst))%ord) ->
+  (forall c' : word, c' \in I2 :|: W2 -> (c' < Sym.next_id (Symbolic.internal sst))%ord) ->
   Sym.sget sst p ?= Sym.DATA c I1 W1 ->
   Sym.supd sst p (Sym.DATA c I2 W2) ?= sst' ->
   Sym.good_internal sst ->
@@ -1554,13 +1554,13 @@ Proof.
   have DIFF : cid <> Snext. {
     intros ?; subst.
     eapply Sym.sget_lt_next in RINT; [simpl in RINT | eassumption].
-    by rewrite Ord.leqxx in RINT.
+    by rewrite Ord.ltxx in RINT.
   }
 
   have DIFF_sys : cid_sys <> Snext. {
     intros ?; subst.
     eapply Sym.sget_lt_next in RINT; [simpl in RINT | eassumption].
-    by rewrite Ord.leqxx in RINT.
+    by rewrite Ord.ltxx in RINT.
   }
 
   have NIN : pc' \notin A'. {
@@ -1798,7 +1798,7 @@ Proof.
       case GETp': (Sym.sget _ _) => [[cp' Ip' Wp']|] //= [E].
       subst cp'.
       move: (Sym.sget_lt_next RINT GETp') => /=.
-      by rewrite Ord.leqxx.
+      by rewrite Ord.ltxx.
     + rewrite -RPREV RC_rest // => NEW.
       rewrite in_rem_all in c1_in_AC.
       case/andP: c1_in_AC => [/eqP ? ?].
@@ -1811,7 +1811,7 @@ Proof.
       case GETp': (Sym.sget _ _) => [[cp' Ip' Wp']|] //= [E].
       subst cp'.
       move: (Sym.sget_lt_next RINT GETp') => /=.
-      by rewrite Ord.leqxx.
+      by rewrite Ord.ltxx.
     + rewrite !RC_rest //.
       rewrite !in_rem_all in c1_in_AC c2_in_AC.
       case/andP: c1_in_AC => ? ?; case/andP: c2_in_AC => ? ?.
@@ -1835,7 +1835,7 @@ Proof.
       case: OR_Is => [-> // | <-{I2}].
       rewrite inE in_set1.
       suff: cid != Snext by move=> /negbTE-> //.
-      suff: (cid < Snext)%ord by apply: contra => /eqP ->; rewrite Ord.leqxx.
+      suff: (cid < Snext)%ord by rewrite Ord.ltNge; apply: contra => /eqP ->; rewrite Ord.leqxx.
       move: RPREV; rewrite /get_compartment_id.
       case: pickP => // x /eqP cid_set []?; subst x.
       have: Some cid == Some cid by apply eq_refl.
@@ -1860,7 +1860,7 @@ Proof.
         case: (p' \in J'); first by rewrite in_setU1 eqxx.
         apply/esym/negbTE/negP=> Snext_in_I'.
         have /(_ Snext)/= := bounded_tags RINT Hold'.
-        by rewrite in_setU Snext_in_I' Ord.leqxx => /(_ erefl).
+        by rewrite in_setU Snext_in_I' Ord.ltxx => /(_ erefl).
       * have /(_ p') := Sym.retag_set_not_in def_s'.
         move: (p'_nin_sets).
         rewrite -(mem_enum (mem (A' :|: J' :|: S'))) {2 3}/Sym.sget /= => H /(_ H) {H} <-.
@@ -1869,7 +1869,7 @@ Proof.
         case Hold': (Sym.sget _ _)=> [[cid' I' W']|//] /=.
         apply/esym/negbTE/negP=> Snext_in_I'.
         have /(_ Snext)/= := bounded_tags RINT Hold'.
-        by rewrite in_setU Snext_in_I' Ord.leqxx => /(_ erefl).
+        by rewrite in_setU Snext_in_I' Ord.ltxx => /(_ erefl).
     + move/(_ c' c'_in_AC') in RC_rest.
       rewrite RC_rest => GCI_cid'.
       move: (c'_in_AC'); rewrite in_rem_all => /andP [c'_neq_prev c'_in_AC].
@@ -1886,7 +1886,7 @@ Proof.
       case: OR_Is => [-> // | <-{I2}].
       rewrite inE in_set1.
       suff: cid' != Snext by move=> /negbTE-> //.
-      suff: (cid' < Snext)%ord by apply: contra => /eqP ->; rewrite Ord.leqxx.
+      suff: (cid' < Snext)%ord by rewrite Ord.ltNge; apply: contra => /eqP ->; rewrite Ord.leqxx.
       move: GCI_cid'; rewrite /get_compartment_id.
       case: pickP => // x /eqP cid'_set []?; subst x.
       have: Some cid' == Some cid' by apply eq_refl.
@@ -1918,7 +1918,7 @@ Proof.
       case: OR_Ws => [-> // | <-{W2}].
       rewrite inE in_set1.
       suff: cid != Snext by move=> /negbTE-> //.
-      suff: (cid < Snext)%ord by apply: contra => /eqP ->; rewrite Ord.leqxx.
+      suff: (cid < Snext)%ord by rewrite Ord.ltNge; apply: contra => /eqP ->; rewrite Ord.leqxx.
       move: RPREV; rewrite /get_compartment_id.
       case: pickP => // x /eqP cid_set []?; subst x.
       have: Some cid == Some cid by apply eq_refl.
@@ -1943,7 +1943,7 @@ Proof.
         case: (p' \in S'); first by rewrite in_setU1 eqxx.
         apply/esym/negbTE/negP=> Snext_in_W'.
         have /(_ Snext)/= := bounded_tags RINT Hold'.
-        by rewrite in_setU Snext_in_W' orbT Ord.leqxx => /(_ erefl).
+        by rewrite in_setU Snext_in_W' orbT Ord.ltxx => /(_ erefl).
       * have /(_ p') := Sym.retag_set_not_in def_s'.
         move: (p'_nin_sets).
         rewrite -(mem_enum (mem (A' :|: J' :|: S'))) {2 3}/Sym.sget /= => H /(_ H) {H} <-.
@@ -1952,7 +1952,7 @@ Proof.
         case Hold': (Sym.sget _ _)=> [[cid' I' W']|//] /=.
         apply/esym/negbTE/negP=> Snext_in_W'.
         have /(_ Snext)/= := bounded_tags RINT Hold'.
-        by rewrite in_setU Snext_in_W' orbT Ord.leqxx => /(_ erefl).
+        by rewrite in_setU Snext_in_W' orbT Ord.ltxx => /(_ erefl).
     + move/(_ c' c'_in_AC') in RC_rest.
       rewrite RC_rest => GCI_cid'.
       move: (c'_in_AC'); rewrite in_rem_all => /andP [c'_neq_prev c'_in_AC].
@@ -1969,7 +1969,7 @@ Proof.
       case: OR_Ws => [-> // | <-{W2}].
       rewrite inE in_set1.
       suff: cid' != Snext by move=> /negbTE-> //.
-      suff: (cid' < Snext)%ord by apply: contra => /eqP ->; rewrite Ord.leqxx.
+      suff: (cid' < Snext)%ord by rewrite Ord.ltNge; apply: contra => /eqP ->; rewrite Ord.leqxx.
       move: GCI_cid'; rewrite /get_compartment_id.
       case: pickP => // x /eqP cid'_set []?; subst x.
       have: Some cid' == Some cid' by apply eq_refl.
@@ -2562,7 +2562,7 @@ Proof.
       * erewrite getm_upd_neq with (m' := regs') by eauto.
         apply RREGS.
   - (* Syscall *)
-    rewrite /Symbolic.get_syscall /= in GETCALL.
+    rewrite getm_mkpartmap /= !(eq_sym pc) in GETCALL.
     destruct (isolate_addr == pc) eqn:EQ;
       [ move/eqP in EQ; subst
       | clear EQ; destruct (add_to_jump_targets_addr == pc) eqn:EQ;
@@ -2593,11 +2593,12 @@ Proof.
       end;
       rewrite /refine_syscall_addrs_b in RSC;
       case/and3P: RSC => /= RS1 RS2 /and3P [RS3 RS4 _];
-      rewrite /Abs.get_syscall /= eq_refl;
+      rewrite getm_mkpartmap /= -!(eq_sym isolate_addr) eq_refl;
       rewrite !in_cons /= in RS3 RS4.
       * done.
       * by destruct (isolate_addr == add_to_jump_targets_addr).
-      * by destruct (isolate_addr == add_to_jump_targets_addr),
+      * by rewrite (eq_sym add_to_store_targets_addr);
+           destruct (isolate_addr == add_to_jump_targets_addr),
                     (isolate_addr == add_to_store_targets_addr),
                     (add_to_jump_targets_addr == add_to_store_targets_addr).
 Qed.

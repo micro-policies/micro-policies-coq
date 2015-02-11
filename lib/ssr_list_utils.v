@@ -18,9 +18,3 @@ Definition rem_all {T : eqType} : T -> seq T -> seq T :=
 Corollary in_rem_all (T : eqType) (a b : T) (xs : seq T) :
   a \in rem_all b xs = (a != b) && (a \in xs).
 Proof. by rewrite mem_filter. Qed.
-
-Fixpoint ofind T (p : pred T) (s : seq T) : option T :=
-  match s with
-  | [::] => None
-  | x :: s => if p x then Some x else ofind p s
-  end.

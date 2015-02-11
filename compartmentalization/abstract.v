@@ -157,8 +157,7 @@ Definition permitted_now_in (C : seq compartment)
   Some c.
 Arguments permitted_now_in C !sk prev pc /.
 
-Record syscall := Syscall { address   : word
-                          ; semantics : state -> option state }.
+Record syscall := Syscall { semantics : state -> option state }.
 
 Definition isolate_fn (MM : state) : option state :=
   let '(State pc R M C sk c) := MM in
@@ -186,8 +185,7 @@ Definition isolate_fn (MM : state) : option state :=
   Some (State pc' R M C' JUMPED c_sys).
 
 Definition isolate :=
-  {| address   := isolate_addr
-   ; semantics := isolate_fn |}.
+  {| semantics := isolate_fn |}.
 
 (* There are two possible design choices for this function: either it takes a
    single address to add to the jump table, or it takes a pointer to memory with
@@ -216,21 +214,19 @@ Definition add_to_compartment_component
   Some (State pc' R M C' JUMPED c_sys).
 
 Definition add_to_jump_targets :=
-  {| address   := add_to_jump_targets_addr
-   ; semantics := add_to_compartment_component
+  {| semantics := add_to_compartment_component
                     jump_targets
                     (fun J' c => let '<<Aprev,_,Sprev>> := c in <<Aprev,J',Sprev>>) |}.
 
 Definition add_to_store_targets :=
-  {| address   := add_to_store_targets_addr
-   ; semantics := add_to_compartment_component
+  {| semantics := add_to_compartment_component
                     store_targets
                     (fun S' c => let '<<A,J,_>> := c in <<A,J,S'>>) |}.
 
-Let table := [:: isolate; add_to_jump_targets; add_to_store_targets].
-
-Definition get_syscall (addr : value) : option syscall :=
-  ofind (fun sc => address sc == addr) table.
+Definition syscall_table :=
+  [partmap (isolate_addr, isolate);
+           (add_to_jump_targets_addr, add_to_jump_targets);
+           (add_to_store_targets_addr, add_to_store_targets)].
 
 Definition user_address_space (M : memory) (c : compartment) : bool :=
   [forall x in address_space c, M x].
@@ -362,7 +358,7 @@ Inductive step (MM MM' : state) : Prop :=
 | step_syscall : forall pc R M C sk prev sc
                         (ST : MM = State pc R M C sk prev)
                    (INST  : M pc = None)
-                   (GETSC : get_syscall pc ?= sc)
+                   (GETSC : syscall_table pc ?= sc)
                    (CALL  : semantics sc MM ?= MM'),
                         step MM MM'.
 
@@ -961,7 +957,7 @@ Proof.
   - (* syscalls_present *)
     assert (SP : syscalls_present C) by
       (eapply good_state_decomposed__syscalls_present; eassumption).
-    rewrite /syscalls_present /table in SP *.
+    rewrite /syscalls_present /syscall_table in SP *.
     move/allP in SP. apply/allP.
     move=> sc /SP IN_sc.
     cbv [funcomp] in *.
@@ -1023,15 +1019,15 @@ Proof.
           - by exists d'; rewrite inE in_rem_all NEQ' IN_d' orbT. }
 Qed.
 
-Lemma add_to_compartment_component_good : forall addr rd wr MM,
+Lemma add_to_compartment_component_good : forall rd wr MM,
   (forall X c, address_space c = address_space (wr X c)) ->
   (forall X c, jump_targets (wr X c) = jump_targets c \/
                jump_targets (wr X c) = X /\ rd c = jump_targets c) ->
   (forall X c, store_targets (wr X c) = store_targets c \/
                store_targets (wr X c) = X /\ rd c = store_targets c) ->
-  good_syscall (Syscall addr (add_to_compartment_component rd wr)) MM.
+  good_syscall (Syscall (add_to_compartment_component rd wr)) MM.
 Proof.
-  rewrite /good_syscall /= => _ rd wr MM ADDR eqJ eqS.
+  rewrite /good_syscall /= => rd wr MM ADDR eqJ eqS.
   destruct (good_state MM) eqn:GOOD; [simpl|reflexivity].
   destruct (in_compartment_opt _ _) as [c_sys0|] eqn:ICO_pc;
     [simpl|reflexivity].
@@ -1079,7 +1075,7 @@ Proof.
   - apply/allP=> c''. rewrite in_rem_all=> /andP [_].
     move/allP: SS. by apply.
   - move/id in SP.
-    rewrite /syscalls_present /table /is_true in SP *.
+    rewrite /syscalls_present /syscall_table /is_true in SP *.
     move/allP in SP.
     apply/allP => sc /SP.
     cbv [funcomp] in *.
@@ -1113,22 +1109,13 @@ Proof.
 Qed.
 (*Global*) Hint Resolve add_to_store_targets_good.
 
-Corollary good_syscalls_b : forall MM,
-  all (fun sc => good_syscall sc MM) table.
-Proof. rewrite /table /= => MM; apply/and4P; split; auto. Qed.
-(*Global*) Hint Resolve good_syscalls_b.
-
 Lemma get_syscall_good addr sc :
-  get_syscall addr ?= sc -> forall MM, good_syscall sc MM.
+  syscall_table addr ?= sc -> forall MM, good_syscall sc MM.
 Proof.
-  move: good_syscalls_b.
-  rewrite /get_syscall /table /= => Hgood.
-  have [_ /= {addr sc} [<-] MM|_] := isolate_addr =P addr.
-    by case/and4P: (Hgood MM).
-  have [_ /= {addr sc} [<-] MM|_] := add_to_jump_targets_addr =P addr.
-    by case/and4P: (Hgood MM).
-  have [_ /= {addr sc} [<-] MM|//] := add_to_store_targets_addr =P addr.
-  by case/and4P: (Hgood MM).
+  rewrite /syscall_table /getm_mkpartmap /= !getm_set.
+  have [_ /= {addr sc} [<-] MM|_] := addr =P isolate_addr; first by auto.
+  have [_ /= {addr sc} [<-] MM|_] := addr =P add_to_jump_targets_addr; first by auto.
+  by have [_ /= {addr sc} [<-] MM|//] := addr =P add_to_store_targets_addr; auto.
 Qed.
 (*Global*) Hint Resolve get_syscall_good.
 
@@ -1162,11 +1149,11 @@ Qed.
 
 Lemma stepping_syscall_preserves_good : forall MM MM' sc,
   mem MM (pc MM)                                          = None       ->
-  pc MM                                                   = address sc ->
-  isSome (in_compartment_opt (compartments MM) (pc MM))        ->
-  good_syscall sc MM                                            ->
+  syscall_table (pc MM)                                  ?= sc         ->
+  in_compartment_opt (compartments MM) (pc MM)                         ->
+  good_syscall sc MM                                                   ->
   semantics sc MM                                        ?= MM'        ->
-  good_state MM                                                 ->
+  good_state MM                                                        ->
   good_state MM'                                         .
 Proof.
   intros MM MM' sc INST PC ICO GOODSC CALL GOOD.
@@ -1180,29 +1167,28 @@ Proof.
   assert (SS : syscalls_separated M C) by eauto; simpl in *.
   move: SS => /allP/(_ c IN) /= SS.
   rewrite SAS orbF /user_address_space /= in SS.
-  move/forallP/(_ (address sc))/implyP/(_ IN') in SS.
+  move/forallP/(_ pc)/implyP/(_ IN') in SS.
   by rewrite INST in SS.
 Qed.
 
 Lemma syscall_step_preserves_good : forall MM MM' sc,
-  mem MM (pc MM)        = None ->
-  get_syscall (pc MM)  ?= sc   ->
-  semantics sc MM      ?= MM'  ->
-  good_state MM         ->
+  mem MM (pc MM)         = None ->
+  syscall_table (pc MM) ?= sc   ->
+  semantics sc MM       ?= MM'  ->
+  good_state MM                 ->
   good_state MM'       .
 Proof.
   intros MM MM' sc INST GETSC CALL GOOD; generalize GETSC => GETSC'.
-  unfold get_syscall,table in GETSC; simpl in *.
+  rewrite /syscall_table getm_mkpartmap in GETSC; simpl in *.
   assert (SP : syscalls_present (compartments MM)) by eauto.
   unfold syscalls_present,is_true in SP; move/allP in SP.
-  unfold get_syscall,table in *; simpl in *.
   move: SP GETSC GETSC' CALL => /(_ (pc MM))/=.
-  rewrite !in_cons !(eq_sym _ (pc MM)).
-  have [E /(_ erefl) ? [<-] _ ?|NE1] //= := pc MM =P _.
+  rewrite !in_cons.
+  have [E /(_ erefl) ? [<-] ? ?|NE1] //= := pc MM =P _.
     eapply stepping_syscall_preserves_good; try eassumption; eauto 3.
-  have [E /(_ erefl) ? [<-] _ ?|NE2] //= := pc MM =P _.
+  have [E /(_ erefl) ? [<-] ? ?|NE2] //= := pc MM =P _.
     eapply stepping_syscall_preserves_good; try eassumption; eauto 3.
-  have [E /(_ erefl) ? [<-] _ ?|NE3] //= := pc MM =P _.
+  have [E /(_ erefl) ? [<-] ? ?|NE3] //= := pc MM =P _.
   by eapply stepping_syscall_preserves_good; try eassumption; eauto 3.
 Qed.
 
@@ -1306,7 +1292,7 @@ Proof.
   intros MM MM' STEP GOOD; destruct STEP; subst; simpl in *;
     try (eexists; eassumption).
   (* Syscalls *)
-  unfold get_syscall in GETSC; unfold table in GETSC; simpl in GETSC.
+  rewrite /syscall_table getm_mkpartmap /= in GETSC.
   repeat match type of GETSC with
     | context[if ?EQ then _ else _] => destruct EQ
     | None ?= _ => discriminate
@@ -1351,7 +1337,7 @@ Proof.
         left; move/andP in IC'; tauto ].
   (* Syscalls *)
   move: (GOOD) => /and4P /= [ELEM /andP [NOL CC] SS SP].
-  unfold get_syscall in GETSC; unfold table in GETSC; simpl in GETSC.
+  rewrite /syscall_table getm_mkpartmap /= in GETSC.
   repeat match type of GETSC with
     | context[if ?EQ then _ else _] => destruct EQ
     | None ?= _ => discriminate
@@ -1450,7 +1436,7 @@ Proof.
     + move: UPDR DIFF; rewrite /updm; case: (M p) => [?|] //= [<-].
       by rewrite getm_set (negbTE NE).
   - (* Syscall *)
-    unfold get_syscall,table in *; simpl in *.
+    rewrite /syscall_table getm_mkpartmap /= in GETSC.
     repeat match type of GETSC with
       | (if ?COND then Some _ else _) ?= _ =>
         destruct COND
@@ -1519,7 +1505,6 @@ Module Hints.
   Hint Resolve isolate_good.
   Hint Resolve add_to_jump_targets_good.
   Hint Resolve add_to_store_targets_good.
-  Hint Resolve good_syscalls_b.
   Hint Resolve get_syscall_good.
   Hint Resolve previous_compartment.
   Hint Resolve good_compartments_preserved.

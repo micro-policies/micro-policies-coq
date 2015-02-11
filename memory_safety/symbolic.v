@@ -105,10 +105,15 @@ Qed.
 Definition tag_eqMixin := EqMixin tag_eqP.
 Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
 
-Definition ms_tags : tag_kind -> eqType := fun _ => [eqType of tag].
+Definition ms_tags := {|
+  pc_tag_type := [eqType of tag];
+  reg_tag_type := [eqType of tag];
+  mem_tag_type := [eqType of tag];
+  entry_tag_type := [eqType of unit]
+|}.
 
 Definition rules_normal (op : opcode) (c : color)
-           (ts : hseq ms_tags (inputs op)) : option (ovec ms_tags op) :=
+           (ts : hseq (tag_type ms_tags) (inputs op)) : option (ovec ms_tags op) :=
   let ret  := fun rtpc (rt : type_of_result ms_tags (outputs op)) => Some (@OVec ms_tags op rtpc rt) in
   let retv := fun (rt : type_of_result ms_tags (outputs op)) => ret V(PTR c) rt in
   match op, ts, ret, retv with
@@ -164,22 +169,15 @@ Definition rules_normal (op : opcode) (c : color)
 
 Definition rules (ivec : ivec ms_tags) : option (vovec ms_tags (op ivec)) :=
   match ivec return option (vovec ms_tags (op ivec)) with
-  | IVec op tpc ti ts =>
+  | IVec (OP op) tpc ti ts =>
     match tpc, ti with
-    | V(DATA), _ =>
-      match op return option (vovec ms_tags op) with
-      | SERVICE => Some tt
-      | _ => None
-      end
     | V(PTR b), M(b', DATA) =>
-      if b == b' then
-        match op return hseq _ (vinputs op) -> option (vovec ms_tags op) with
-        | SERVICE => fun _ => None
-        | OP op => rules_normal b
-        end ts
+      if b == b' then rules_normal b ts
       else None
     | _, _ => None
     end
+  | IVec SERVICE V(DATA) _ _ => Some tt
+  | IVec SERVICE _ _ _ => None
   end.
 
 Variable initial_color : color.
@@ -306,12 +304,12 @@ Definition eqp_fun (st : state mt) : option (state mt) :=
   | _, _ => None
   end.
 
-Definition memsafe_syscalls : seq (syscall mt) :=
-  [:: Syscall malloc_addr V(DATA) malloc_fun;
-      Syscall free_addr V(DATA) free_fun;
-   (* Syscall size_addr V(DATA) sizeof_fun; *)
-      Syscall base_addr V(DATA) basep_fun;
-      Syscall eq_addr V(DATA) eqp_fun].
+Definition memsafe_syscalls : syscall_table mt :=
+  [partmap (malloc_addr, Syscall tt malloc_fun);
+           (free_addr,   Syscall tt free_fun);
+         (*(size_addr,   Syscall tt sizeof_fun); *)
+           (base_addr,   Syscall tt basep_fun);
+           (eq_addr,     Syscall tt eqp_fun)].
 
 Definition step := step memsafe_syscalls.
 
