@@ -287,4 +287,5 @@ Arguments Abstract.state mt block.
 Arguments Abstract.memory mt block.
 Arguments Abstract.registers mt block.
 
+Canonical Abstract.value_eqType.
 Canonical Abstract.state_eqType.
