@@ -61,11 +61,8 @@ CoInductive valid_step s bs s' bs' : Prop :=
 | ValidNop of mem s = mem s' & {subset bs' <= bs}
 | ValidWrite p v of updv (mem s) p v = Some (mem s')
                   & {subset bs' <= bs} & p.1 \in bs
-(* FIXME: removing the typing annotation below causes Coq to miss
-   the coercion fset >-> predType. Should probably change the
-   coercion definition to get it to work. *)
 | ValidAlloc b of malloc_fun (mem s) (blocks s) 0%w = (mem s', b)
-                & {subset bs' <= b |: bs : {fset block}}
+                & {subset bs' <= b |: bs}
 | ValidFree b of Abstract.free_fun (Abstract.mem s) b = Some (Abstract.mem s')
                & {subset bs' <= bs} & b \in bs.
 
