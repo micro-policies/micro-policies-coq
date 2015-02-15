@@ -2,7 +2,6 @@
 
 module Main (printHelp, main) where
 
-import Control.Applicative
 import Data.Monoid
 
 import qualified Data.Text    as T

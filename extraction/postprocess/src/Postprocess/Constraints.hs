@@ -6,7 +6,6 @@ module Postprocess.Constraints (
   ) where
 
 import Control.Arrow
-import Control.Applicative
 import Control.Monad
 import Data.Monoid
 

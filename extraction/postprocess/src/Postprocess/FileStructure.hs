@@ -7,7 +7,6 @@ module Postprocess.FileStructure (
   ) where
 
 import Control.Arrow
-import Control.Applicative
 
 import Data.Char
 import Data.List

@@ -2,8 +2,6 @@
 
 module Postprocess.Imports (getImportedModules, getReferencedModules) where
 
-import Control.Applicative
-
 import Data.Char
 import Data.Maybe
 

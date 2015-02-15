@@ -2,3 +2,6 @@ dist/build/postprocess/postprocess: Setup.hs src/Postprocess/Util/Tuple.hs src/P
 	cabal configure
 	cabal install --only-dependencies
 	cabal	build
+
+clean:
+	cabal clean

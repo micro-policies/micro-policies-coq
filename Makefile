@@ -32,7 +32,7 @@ SYM_CON_PROOF=symbolic/backward.v symbolic/forward.v symbolic/refinement_common.
 HANDLER=symbolic/rules.v symbolic/fault_handler.v symbolic/int_32.v
 
 REGEXP="s/([[:digit:]]+) ([[:digit:]]+)/scale=1; x=\(\1+\2\)\/1000; if(x<1) print 0; x/p"
-PROCESS=grep total | tr -s ' ' | cut -d ' ' -f 2-3 | sed -rn $(REGEXP) | bc | tr -d '\n'
+PROCESS=grep total | tr -s ' ' | cut -d ' ' -f 2-3 | sed -rn $(REGEXP) | bc | tr '\n' 'k'
 
 bc:
 	@echo -n -e "%The shared/common/framework part\n\\\\newcommand{\\SHARED}{"

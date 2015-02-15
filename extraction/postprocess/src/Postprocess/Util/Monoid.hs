@@ -1,7 +1,5 @@
 module Postprocess.Util.Monoid (nonemptyIfNonnull, (?+++), (+++?), (??++), (++??)) where
 
-import Data.Monoid
-
 nonemptyIfNonnull :: Monoid m => [a] -> [m]
 nonemptyIfNonnull xs = [mempty | not $ null xs]
 

@@ -2,7 +2,6 @@
 
 module Postprocess (fixExtractedCode, fixExtractedCodeDirectory) where
 
-import Control.Applicative
 import Control.Monad
 import Data.Monoid
 
