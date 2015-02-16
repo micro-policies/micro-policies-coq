@@ -5,7 +5,7 @@ Require Import MathComp.path MathComp.fingraph.
 
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.fset.
 
-Require Import lib.utils common.types.
+Require Import lib.utils lib.partmap_utils common.types.
 Require Import memory_safety.property memory_safety.abstract.
 Require Import memory_safety.classes.
 
@@ -61,8 +61,8 @@ CoInductive valid_step s bs s' bs' : Prop :=
 | ValidNop of mem s = mem s' & {subset bs' <= bs}
 | ValidWrite p v of updv (mem s) p v = Some (mem s')
                   & {subset bs' <= bs} & p.1 \in bs
-| ValidAlloc b of malloc_fun (mem s) (blocks s) 0%w = (mem s', b)
-                & {subset bs' <= b |: bs}
+| ValidAlloc b sz of malloc_fun (mem s) (blocks s) sz = (mem s', b)
+                   & {subset bs' <= b |: bs}
 | ValidFree b of Abstract.free_fun (Abstract.mem s) b = Some (Abstract.mem s')
                & {subset bs' <= bs} & b \in bs.
 
@@ -147,6 +147,28 @@ Ltac simple_intros :=
   end;
   apply: ValidNop; first done.
 
+Lemma getv_upd m m' p v :
+  updv m p v = Some m' ->
+  forall p', getv m' p' = if p' == p then Some v else getv m p'.
+Proof.
+rewrite /updv/getv/= => get_p p'; move: get_p.
+case get_m: (m p.1) => [fr|] //.
+have [leq_size_fr [<-]|//] := boolP (p.2 < size fr)%N.
+rewrite getm_set -pair_eqE /=.
+have [eq_p1|neq_p1 //] := altP (p'.1 =P p.1).
+rewrite size_cat size_take /= size_drop leq_size_fr.
+rewrite addnS -addSn addnC subnK //.
+have [eq_p2|neq_p2] := altP (p'.2 =P p.2).
+  by rewrite eq_p2 leq_size_fr nth_cat size_take leq_size_fr ltnn subnn.
+rewrite eq_p1 get_m.
+case: ifP => // leq_size_fr'.
+rewrite nth_cat size_take /= leq_size_fr; move: neq_p2; rewrite -!val_eqE /=.
+case: (ltngtP p'.2 p.2) => [leq_p2|leq_p2'|eq_p2 //].
+  by rewrite nth_take //.
+move: (leq_p2'); rewrite -{1}(addn0 p.2) -ltn_subRL => leq_subn.
+by rewrite -(@prednK (p'.2 - p.2))//= -subnS nth_drop addnC subnK // subnn.
+Qed.
+
 Ltac solve_simple_cases :=
   simple_intros;
   first [ solve [ eapply upd_reachable; try eassumption;
@@ -161,19 +183,57 @@ Lemma safe_step s bs s' bs' :
   valid_step s bs s' bs'.
 Proof.
 case: s s' / => /=; try solve_simple_cases.
-- move=> m m' rs b pc ptr i r1 r2 v _ _ get_ptr _ upd_m [/= hbs _] [/= hbs' _].
+- move=> m m' rs b pc ptr i r1 r2 v _ _ get_ptr get_v upd_m [/= hbs _] [/= hbs' _].
   eapply ValidWrite; eauto.
-    admit.
+    move=> b' /hbs' b'_in_bs'; apply/hbs => {hbs hbs'}.
+    elim: b' / b'_in_bs'
+          => [b' p [<-] {p} <-|b' r p get_p <-
+             |b' b'' _ IH /existsP /= [off /eqP get_b'']] /=.
+    + by eapply ReachBasePc; eauto.
+    + by eapply ReachBaseReg; eauto.
+    move: get_b''; rewrite (getv_upd upd_m).
+    have [ptr_eq [v_eq]|ptr_neq get_b''] := altP (_ =P ptr).
+      by rewrite v_eq {get_ptr} in get_v; eapply ReachBaseReg; eauto.
+    by eapply ReachHop; eauto; apply/existsP; exists off; apply/eqP.
   by apply/hbs; apply/(@ReachBaseReg _ _ _ ptr.1 r1 ptr); simpl; eauto.
-- move=> m m' rs rs' bs'' sz b pc' _ hm' hrs' _ [/= hbs hsub] [/= hbs' hsub'].
-  generalize (Abstract.malloc_fresh hm'); rewrite hsub //; apply/hbs'.
-  apply: (@ReachBase _ _ syscall_ret 0%w) => /=.
-  by rewrite (updm_set hrs') getm_set eqxx.
-move=> m m' r ptr bs' pc' harg hm' _ [hbs1 _] hbs2 _.
-right; eapply ValidFree; simpl; first by eauto.
-apply/hbs1.
-eapply (@ReachBase _ _ syscall_arg1 ptr.2); simpl; eauto.
-case: ptr harg {hm'} => /=; eauto.
+- move=> m m' rs rs' bs'' sz b pc' _ hm' hrs' get_pc' [/= hbs hsub] [/= hbs' hsub'].
+  eapply ValidAlloc; simpl; eauto=> b' /hbs' b'_in_bs' {hbs'}.
+  elim: b' / b'_in_bs'
+        => [b' p [<-] {p} <-|b' r p get_p <-
+           |b' b'' _ IH /existsP /= [off /eqP get_b']] /=.
+  + rewrite in_fsetU1; apply/orP; right; apply/hbs.
+    by eapply ReachBaseReg; eauto.
+  + move: get_p; rewrite (getm_upd hrs') in_fsetU1.
+    have [_{r} [<-]|r_neq get_p] := altP eqP; first by rewrite eqxx.
+    by apply/orP; right; apply/hbs; eapply ReachBaseReg; eauto.
+  rewrite !in_fsetU1 in IH *; have [//|neq_b' /=] := eqP.
+  case/orP: IH => [/eqP eq_b''|/hbs b''_in_bs].
+    move: get_b'; rewrite {}eq_b'' {b''}.
+    generalize (malloc_fresh hm').
+    (* The proof apparently fails here! In theory, the allocator could
+       return a frame that contains pointers to blocks that aren't
+       allocated yet, to which our program should not have access. *)
+    admit.
+  apply/hbs; eapply ReachHop; eauto; apply/existsP; exists off; apply/eqP.
+  move: get_b'; rewrite /getv/=.
+  have [eq_b''|neq_b''] := b'' =P b.
+    rewrite {}eq_b'' {b''} in b''_in_bs *.
+    by generalize (malloc_fresh hm'); move/hbs/hsub: b''_in_bs => ->.
+  by rewrite (malloc_get_neq hm' neq_b'').
+move=> m m' rs ptr bs'' pc' harg hm' get_pc' [/= hbs _] [/= hbs' _].
+eapply ValidFree; simpl; first by eauto.
+  move=> b' /hbs' b'_in_bs'; apply/hbs.
+  elim: b' / b'_in_bs'
+        => [b' p [<-] {p} <-|b' r p get_p <-
+           |b' b'' _ IH /existsP /= [off /eqP get_b']] /=.
+  - by eapply ReachBaseReg; eauto.
+  - by eapply ReachBaseReg; eauto.
+  eapply ReachHop; eauto; apply/existsP; exists off; apply/eqP.
+  move: get_b'; rewrite /getv/=.
+  have [eq_b''|neq_b''] := altP (b'' =P ptr.1).
+    by rewrite eq_b'' (free_get_fail hm').
+  by rewrite (free_get hm') // eq_sym.
+by apply/hbs => {get_pc'}; eapply ReachBaseReg; eauto.
 Qed.
 
 Definition get_events (s : state) : seq (event pointer block) :=
