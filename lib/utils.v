@@ -30,7 +30,7 @@ Ltac invh f :=
     | [ id: f _ _ _ _ _ _ _ _ _ _ _ _ _ _ |- _ ] => inv id
     end.
 
-Require String. Open Scope string_scope.
+Require Coq.Strings.String. Open Scope string_scope.
 
 Ltac move_to_top x :=
   match reverse goal with

@@ -1,6 +1,6 @@
 Require Import common.types.
-Require Import String.
-Require Import Ascii.
+Require Import Coq.Strings.String.
+Require Import Coq.Strings.Ascii.
 Require Import ZArith.
 Require Import NPeano.
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.

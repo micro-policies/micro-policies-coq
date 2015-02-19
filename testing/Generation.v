@@ -11,7 +11,7 @@ Require Import testing.
 Require Import ZArith.
 Require Import Integers.
 Require Import List.
-Require Import String.
+Require Import Coq.Strings.String.
 Import ListNotations.
 
 Import Concrete.
