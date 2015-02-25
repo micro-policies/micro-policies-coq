@@ -209,11 +209,10 @@ case: s s' / => /=; try solve_simple_cases.
   rewrite !in_fsetU1 in IH *; have [//|neq_b' /=] := eqP.
   case/orP: IH => [/eqP eq_b''|/hbs b''_in_bs].
     move: get_b'; rewrite {}eq_b'' {b''}.
-    generalize (malloc_fresh hm').
-    (* The proof apparently fails here! In theory, the allocator could
-       return a frame that contains pointers to blocks that aren't
-       allocated yet, to which our program should not have access. *)
-    admit.
+    have [in_bounds|off_bounds] := boolP (off.1 < sz)%ord.
+      by rewrite (malloc_get hm' in_bounds).
+    rewrite -Ord.leqNgt in off_bounds.
+    by rewrite (malloc_get_out_of_bounds hm' off_bounds).
   apply/hbs; eapply ReachHop; eauto; apply/existsP; exists off; apply/eqP.
   move: get_b'; rewrite /getv/=.
   have [eq_b''|neq_b''] := b'' =P b.

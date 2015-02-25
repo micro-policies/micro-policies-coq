@@ -113,6 +113,10 @@ Class allocator_spec (alloc : allocator) := {
     malloc_fun mem bl sz = (mem',b) ->
       (off < sz)%ord -> getv mem' (b,off) = Some (VData 0);
 
+  malloc_get_out_of_bounds : forall mem sz mem' bl b off,
+    malloc_fun mem bl sz = (mem', b) ->
+    (sz <= off)%ord -> getv mem' (b,off) = None;
+
   malloc_get_neq : forall mem bl b sz mem' b',
     malloc_fun mem bl sz = (mem',b') ->
     b <> b' ->
