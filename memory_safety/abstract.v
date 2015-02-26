@@ -1,5 +1,7 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype MathComp.ssrint.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
+Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
+Require Import MathComp.ssrint.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.fset.
 Require Import lib.utils.
 Require Import common.types memory_safety.classes.
 
@@ -56,7 +58,7 @@ Local Notation "x .+1" := (fst x, snd x + 1).
 Record state := State {
   mem : memory;
   regs : registers;
-  blocks: seq block;
+  blocks: {fset block};
   pc : value
 }.
 
@@ -79,7 +81,7 @@ Implicit Type reg : registers.
 Class allocator := {
 
 (* The Coq function representing the allocator. *)
-  malloc_fun : memory -> seq block -> word -> memory * block;
+  malloc_fun : memory -> {fset block} -> word -> memory * block;
 
   free_fun : memory -> block -> option memory
 
@@ -234,7 +236,7 @@ Inductive step : state -> state -> Prop :=
     (ALLOC : malloc_fun mem bl sz = (mem', b))
     (UPD   : updm reg syscall_ret (VPtr (b,0)) = Some reg')
     (RA    : reg ra = Some (VPtr pc')),
-    step (State mem reg bl (VData malloc_addr)) (State mem' reg' (b::bl) (VPtr pc'))
+    step (State mem reg bl (VData malloc_addr)) (State mem' reg' (b |: bl)%fset (VPtr pc'))
 | step_free : forall mem mem' reg ptr bl pc'
     (PTR  : reg syscall_arg1 = Some (VPtr ptr))
     (FREE : free_fun mem ptr.1 = Some mem')
@@ -281,7 +283,7 @@ Variable initial_regs : registers.
 Hypothesis initial_ra : initial_regs ra = Some (VPtr initial_pc).
 
 Definition initial_state : state :=
-  State initial_mem initial_regs [::] (VPtr initial_pc).
+  State initial_mem initial_regs fset0 (VPtr initial_pc).
 
 End WithClasses.
 

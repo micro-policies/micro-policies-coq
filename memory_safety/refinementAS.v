@@ -1,8 +1,10 @@
 Ltac type_of x := type of x.
 
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
+Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import Ssreflect.fintype.
 Require Import MathComp.ssrint MathComp.ssralg.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.fset.
 Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
@@ -227,7 +229,7 @@ Definition cover (smem : Sym.memory mt) (info : seq (Sym.block_info mt)) :=
   forall w v, smem w = Some v ->
   exists bi, bi \in info /\ inbounds (Sym.block_base bi) (Sym.block_size bi) w.
 
-Definition refine_internal_state (bl : seq block) smem (ist : Sym.color * seq (Sym.block_info mt)) :=
+Definition refine_internal_state (bl : {fset block}) smem (ist : Sym.color * seq (Sym.block_info mt)) :=
   let: (col, info) := ist in
   fresh_color col /\
   (forall col b base, mi col = Some (b,base) -> b \in bl) /\
@@ -729,7 +731,7 @@ Lemma refine_internal_state_malloc mi amem amem' bl smem info (sz : mword mt) ne
   refine_internal_state mi bl smem (color, info) ->
   Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz = Some smem' ->
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
-    (newb :: bl) smem' (Sym.inc_color color, Sym.update_block_info info bi color sz).
+    (newb |: bl)%fset smem' (Sym.inc_color color, Sym.update_block_info info bi color sz).
 Proof.
 move=> /andP [nneg_sz le_sz] malloc lt_color color_bi in_bi.
 case=> [fresh_color [in_bl [no_overlap [cover_info biP]]]] write_bi.
@@ -750,8 +752,8 @@ split. (* freshness of color *)
 split. (* list of block is complete *)
   move=> col b base.
   have [->|neq_col] := col =P color.
-    by rewrite getm_set eqxx => [[<- _]]; rewrite inE eqxx.
-  by rewrite getm_set (introF eqP neq_col) inE => /in_bl ->; rewrite orbT.
+    by rewrite getm_set eqxx => [[<- _]]; rewrite in_fsetU1 eqxx.
+  by rewrite getm_set (introF eqP neq_col) in_fsetU1 => /in_bl ->; rewrite orbT.
 split. (* no overlap *)
   move=> i j def w.
   rewrite /Sym.update_block_info.

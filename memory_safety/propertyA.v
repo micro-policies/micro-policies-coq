@@ -54,7 +54,7 @@ Definition reachable_blocks pc rs m bs :=
 
 Definition live_blocks s bs :=
   reachable_blocks (pc s) (regs s) (mem s) bs /\
-  (forall b, b \in bs -> b \in blocks s).
+  {subset bs <= blocks s}.
 
 (* FIXME: Right now, this doesn't say anything about memory reads. *)
 CoInductive valid_step s bs s' bs' : Prop :=
@@ -233,52 +233,6 @@ eapply ValidFree; simpl; first by eauto.
     by rewrite eq_b'' (free_get_fail hm').
   by rewrite (free_get hm') // eq_sym.
 by apply/hbs => {get_pc'}; eapply ReachBaseReg; eauto.
-Qed.
-
-Definition get_events (s : state) : seq (event pointer block) :=
-  match Abstract.pc s with
-  | Abstract.VData _ => [::]
-  | Abstract.VPtr ptr =>
-    match Abstract.getv (Abstract.mem s) ptr with
-    | Some (Abstract.VData i) =>
-      match decode_instr i with
-      | Some (Load r1 r2) =>
-        match Abstract.regs s r1 with
-        | Some (Abstract.VPtr ptr') => [:: MemRead ptr ptr.1; MemRead ptr' ptr'.1]
-        | _ => [:: MemRead ptr ptr.1]
-        end
-      | Some (Store r1 r2) =>
-        match Abstract.regs s r2 with
-        | Some (Abstract.VPtr ptr') => [:: MemRead ptr ptr.1; MemWrite ptr' ptr'.1]
-        | _ => [:: MemRead ptr ptr.1]
-        end
-      | _ => [:: MemRead ptr ptr.1]
-      end
-    | _ => [:: MemRead ptr ptr.1]
-    end
-  end.
-
-Definition abstract_msm : memory_safety_machine :=
-  @MSMachine [eqType of state] pointer block (fun ptr b => ptr.1 == b)
-             get_events (fun s s' => Abstract.step s s').
-
-Lemma abstract_machine_has_memory_safety : memory_safety abstract_msm.
-Proof.
-move=> t x y H.
-elim: t x y / H=> [s|s s' s'' ss] /=.
-  rewrite cats0 /get_events.
-  case pcE: (Abstract.pc s) => [?|ptr] //=.
-  case iE: (Abstract.getv _ _)=> [[i|?]|] //=; try by rewrite eqxx.
-  case instrE: (decode_instr i)=> [[]|]; try by move => *; rewrite /= eqxx.
-    case: (Abstract.regs s _)=> [[]|]; by move=> *; rewrite /= !eqxx.
-  case: (Abstract.regs s _)=> [[]|]; by move=> *; rewrite /= !eqxx.
-rewrite all_cat => _ _ ->.
-rewrite /get_events.
-case pcE: (Abstract.pc s) => [?|ptr] //=.
-case iE: (Abstract.getv _ _)=> [[i|?]|] //=; try by rewrite eqxx.
-case instrE: (decode_instr i)=> [[]|]; try by move => *; rewrite /= eqxx.
-  case: (Abstract.regs s _)=> [[]|]; by move=> *; rewrite /= !eqxx.
-case: (Abstract.regs s _)=> [[]|]; by move=> *; rewrite /= !eqxx.
 Qed.
 
 End MemorySafety.
