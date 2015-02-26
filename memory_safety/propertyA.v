@@ -23,7 +23,7 @@ Variable mt : machine_types.
 Variable ops : machine_ops mt.
 Variable sr : syscall_regs mt.
 Variable block : ordType.
-Variable alloc : allocator mt block.
+Variable alloc : allocator block.
 Variable addrs : memory_syscall_addrs mt.
 
 Hypothesis allocP : allocator_spec alloc.

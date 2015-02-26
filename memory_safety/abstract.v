@@ -80,10 +80,7 @@ Implicit Type reg : registers.
 
 Class allocator := {
 
-(* The Coq function representing the allocator. *)
-  malloc_fun : memory -> {fset block} -> word -> memory * block;
-
-  free_fun : memory -> block -> option memory
+  fresh_block : {fset block} -> block
 
 }.
 
@@ -108,39 +105,74 @@ Definition updv (mem : memory) (ptr : pointer) (v : value) :=
 
 Class allocator_spec (alloc : allocator) := {
 
-  malloc_fresh : forall mem sz mem' bl b,
-    malloc_fun mem bl sz = (mem',b) -> b \notin bl;
-
-  malloc_get : forall mem sz mem' bl b off,
-    malloc_fun mem bl sz = (mem',b) ->
-      (off < sz)%ord -> getv mem' (b,off) = Some (VData 0);
-
-  malloc_get_out_of_bounds : forall mem sz mem' bl b off,
-    malloc_fun mem bl sz = (mem', b) ->
-    (sz <= off)%ord -> getv mem' (b,off) = None;
-
-  malloc_get_neq : forall mem bl b sz mem' b',
-    malloc_fun mem bl sz = (mem',b') ->
-    b <> b' ->
-    mem' b = mem b;
-
-(* Similar requirements on upd_mem are not necessary because they follow from
-   the above and PartMaps.axioms. *)
-
-  free_Some : forall (mem : memory) b fr,
-    mem b = Some fr ->
-    exists mem', free_fun mem b = Some mem';
-
-  free_get_fail : forall mem mem' b,
-    free_fun mem b = Some mem' -> mem' b = None;
-
-  free_get : forall mem mem' b b',
-    free_fun mem b = Some mem' ->
-    b != b' -> mem' b' = mem b'
+  fresh_blockP : forall bl, fresh_block bl \notin bl
 
 }.
 
-Context `{syscall_regs mt} `{allocator} `{memory_syscall_addrs mt}.
+Context {a : allocator} {asp : allocator_spec a}.
+
+Definition malloc_fun (mem : memory) bl (sz : word) : memory * block :=
+  let b  := fresh_block bl in
+  let fr := nseq sz (VData 0) in
+  (setm mem b fr, b).
+
+Lemma malloc_fresh : forall mem sz mem' bl b,
+  malloc_fun mem bl sz = (mem',b) -> b \notin bl.
+Proof.
+move=> m sz m' bl b; rewrite /malloc_fun => - [_ <-].
+exact: fresh_blockP.
+Qed.
+
+Lemma malloc_get : forall mem sz mem' bl b off,
+  malloc_fun mem bl sz = (mem',b) ->
+  (off < sz)%ord -> getv mem' (b,off) = Some (VData 0).
+Proof.
+move=> m sz m' bl b off; rewrite /malloc_fun/getv => - [<- <-] {m' b} /=.
+rewrite getm_set eqxx size_nseq Ord.ltNge -!val_ordE /= /Ord.leq/= -ltnNge.
+by move=> in_bounds; rewrite in_bounds nth_nseq in_bounds.
+Qed.
+
+Lemma malloc_get_out_of_bounds : forall mem sz mem' bl b off,
+  malloc_fun mem bl sz = (mem', b) ->
+  (sz <= off)%ord -> getv mem' (b,off) = None.
+Proof.
+move=> m sz m' bl b off; rewrite /malloc_fun/getv => - [<- <-] {m' b} /=.
+by rewrite getm_set eqxx size_nseq -!val_ordE /= /Ord.leq/= ltnNge => ->.
+Qed.
+
+Lemma malloc_get_neq : forall mem bl b sz mem' b',
+  malloc_fun mem bl sz = (mem',b') ->
+  b <> b' ->
+  mem' b = mem b.
+Proof.
+move=> m bl b sz m' b'; rewrite /malloc_fun=> -[<- <-] /(introF eqP).
+by rewrite getm_set => ->.
+Qed.
+
+Definition free_fun (m : memory) b :=
+  if m b then Some (remm m b) else None.
+
+Lemma free_Some : forall (mem : memory) b fr,
+  mem b = Some fr ->
+  exists mem', free_fun mem b = Some mem'.
+Proof. by move=> m b fr h; rewrite /free_fun h /=; eauto. Qed.
+
+Lemma free_get_fail : forall mem mem' b,
+  free_fun mem b = Some mem' -> mem' b = None.
+Proof.
+move=> m m' b; rewrite /free_fun.
+by case: (m b) => [fr|] //= [<-]; rewrite getm_rem eqxx.
+Qed.
+
+Lemma free_get : forall mem mem' b b',
+  free_fun mem b = Some mem' ->
+  b != b' -> mem' b' = mem b'.
+Proof.
+move=> m m' b b'; rewrite /free_fun.
+by case: (m b) => [fr|] //= [<-]; rewrite getm_rem eq_sym => /negbTE ->.
+Qed.
+
+Context `{syscall_regs mt} `{memory_syscall_addrs mt}.
 
 Definition syscall_addrs := [:: malloc_addr; free_addr].
 

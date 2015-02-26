@@ -35,7 +35,7 @@ Context {mt : machine_types}
 
         {opss : machine_ops_spec ops}.
 
-Context `{syscall_regs mt} `{a_alloc : @Abstract.allocator mt block}
+Context `{syscall_regs mt} `{a_alloc : Abstract.allocator block}
          {a_allocP : Abstract.allocator_spec a_alloc}
         `{@memory_syscall_addrs mt}.
 
@@ -628,6 +628,8 @@ Definition refine_state (ast : Abstract.state mt block) (sst : @Symbolic.state m
   end.
 
 End memory_injections.
+
+Implicit Type amem : Abstract.memory mt block.
 
 Lemma refine_val_malloc mi amem bl sz amem' newb base col v w ty :
   fresh_color mi col ->

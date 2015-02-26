@@ -179,7 +179,7 @@ Instance sp : Symbolic.params := Sym.sym_memory_safety mt.
 
 Context {monitor_invariant : @monitor_invariant _ _ enc}
         {syscall_addrs : @memory_syscall_addrs mt}
-        {alloc : @Abstract.allocator mt color}
+        {alloc : @Abstract.allocator color}
         {allocspec : Abstract.allocator_spec alloc}.
 
 Inductive refine_state (ast : Abstract.state mt color) (cst : Concrete.state mt) : Prop :=
