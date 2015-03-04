@@ -37,7 +37,7 @@ Context {mt : machine_types}
 
 Context `{syscall_regs mt} `{a_alloc : Abstract.allocator block}
          {a_allocP : Abstract.allocator_spec a_alloc}
-        `{@memory_syscall_addrs mt}.
+        `{addrs : @memory_syscall_addrs mt}.
 
 Definition meminj := {partmap Sym.color -> block * mword mt (* base *)}.
 
@@ -151,7 +151,7 @@ Proof.
 move=> [miP rmem] rpt get_w1.
 move/(_ _ _ _ _ get_w1): rmem.
 inversion rpt.
-rewrite H4 (addwC base).
+rewrite H3 (addwC base).
 rewrite (_ : off + base - base = off); try exact: GRing.addrK.
 case: (Abstract.getv amem (b, off)) => // v rvw3.
 by inversion rvw3.
@@ -186,7 +186,7 @@ Proof.
 move=> [miP rmem] rpt get_w1.
 move/(_ _ _ _ _ get_w1): rmem.
 inversion rpt.
-rewrite H4 (addwC base).
+rewrite H3 (addwC base).
 rewrite (_ : off + base - base = off); last exact: GRing.addrK.
 rewrite /Abstract.getv.
 case: (amem b) => //= get_off.
@@ -314,7 +314,7 @@ case=> bi_base bi_size [bi_col in_bi|in_bi]; last first.
   inversion biP => //.
   apply: BlockInfoFree => //=.
   move=> off lt_off.
-  case/(_ off lt_off): H3 => v /=.
+  case/(_ off lt_off): H2 => v /=.
   have [->|/eqP neq_w1] := altP (bi_base + off =P base + pt.2).
      by rewrite get_w1.
   by rewrite (getm_upd_neq neq_w1 upd_w1); move => ?; exists v.
@@ -322,13 +322,13 @@ have [eq_coln|neq_coln] := altP (bi_col =P n).
   rewrite eq_coln in in_bi *.
   move/(_ _ in_bi): rist => biP.
   inversion biP => //.
-  case: H1 => eq_col.
-  rewrite -eq_col in H3 H4.
-  apply: (BlockInfoLive _ H2 H3) => //=.
+  case: H0 => eq_col.
+  rewrite -eq_col in H2 H3.
+  apply: (BlockInfoLive _ H1 H2) => //=.
   move=> off lt_off.
-  case/(_ off lt_off): H4 => v [ty''].
+  case/(_ off lt_off): H3 => v [ty''].
   destruct pt as [pt_b pt_off].
-  rewrite (refine_ptr_inv miP rpt H3) in get_w1 upd_w1.
+  rewrite (refine_ptr_inv miP rpt H2) in get_w1 upd_w1.
   have [->|/eqP neq_off] := altP (off =P pt_off).
     by move=> _; rewrite (getm_upd_eq upd_w1); eexists; eexists.
   have neq_w1 : bi_base + off <> bi_base + pt_off.
@@ -337,11 +337,11 @@ have [eq_coln|neq_coln] := altP (bi_col =P n).
   by rewrite (getm_upd_neq neq_w1 upd_w1) => ?; eexists; eexists.
 move/(_ _ in_bi): rist => biP.
 inversion biP => //=.
-case: H1 => eq_col.
-rewrite -eq_col in H3 H4.
-apply: (BlockInfoLive _ H2 H3) => //.
+case: H0 => eq_col.
+rewrite -eq_col in H2 H3.
+apply: (BlockInfoLive _ H1 H2) => //.
 move=> off lt_off.
-case/(_ off lt_off): H4 => v [ty''].
+case/(_ off lt_off): H3 => v [ty''].
 have [->|/eqP neq_w1] := altP (bi_base + off =P base + pt.2).
   by rewrite get_w1 => [[_ eq_coln _]]; rewrite eq_coln eqxx in neq_coln.
 by rewrite (getm_upd_neq neq_w1 upd_w1); move => ?; eexists; eexists.
@@ -698,7 +698,7 @@ case=> miP rmem rist malloc.
 case: (rist) => [fresh_col in_bl no_overlap biP ?].
 split; first exact: (meminj_spec_malloc _ rist malloc).
 move=> w1 w2 col' ty.
-rewrite (get_write_block _ H1) => //.
+rewrite (get_write_block _ H0) => //.
 have [/andP [? ?] [<- <- <-]|_ /rmem get_w1] :=
   boolP (inbounds base sz w1).
   rewrite getm_set eqxx (Abstract.malloc_get malloc); last first.
@@ -1311,8 +1311,8 @@ by solve_pc rpci.
     by case: (a_mem b) => // fr _; exists fr.
   have eq_col: col = s by congruence.
   have eq_s4b: s2 = b.
-    inversion H3.
-    by rewrite eq_col H8 in mi_col; injection mi_col.
+    inversion H2.
+    by rewrite eq_col H7 in mi_col; injection mi_col.
 
   case: (Abstract.free_Some get_b)=> ? free_b.
 
@@ -1335,8 +1335,8 @@ by solve_pc rpci.
   move=> col b color_x [? ?] mi_col get_x ? E0 ?.
   have eq_col: col = s by congruence.
   have eq_s4b: s2 = b.
-    inversion H3.
-    by rewrite eq_col H8 in mi_col; injection mi_col.
+    inversion H2.
+    by rewrite eq_col H7 in mi_col; injection mi_col.
 
 rewrite -eq_col -[Sym.block_base x]addw0 in E0.
   eapply (refine_registers_upd rregs) in E0; last exact: (RefinePtr _ mi_col).
@@ -1372,15 +1372,15 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
   inversion rarg2.
 
   have [eq_arg1b|neq_arg1b] := altP (arg1b =P s).
-    move: H4 H8; rewrite eq_arg1b => -> [-> ->].
+    move: H3 H7; rewrite eq_arg1b => -> [-> ->].
     have -> /= : (base0 + off == base0 + off0) = (off == off0).
       by apply/inj_eq/GRing.addrI.
     rewrite [in as_word _]eqE /= eqxx /=.
     by case: (_ == _).
   rewrite [in as_word _]eqE /=.
   have/negbTE->//: b != b0.
-    apply/eqP=> eq_b; rewrite eq_b in H4 H8.
-    by rewrite (miIr miP H4 H8) eqxx in neq_arg1b.
+    apply/eqP=> eq_b; rewrite eq_b in H3 H7.
+    by rewrite (miIr miP H3 H7) eqxx in neq_arg1b.
   by eauto.
 
   by split; eassumption.
