@@ -58,23 +58,42 @@ Local Notation "x .+1" := (fst x, snd x + 1).
 Record state := State {
   mem : memory;
   regs : registers;
-  blocks: {fset block};
   pc : value
 }.
 
 Definition state_eq s1 s2 :=
-  [&& mem s1 == mem s2, regs s1 == regs s2,
-      blocks s1 == blocks s2 & pc s1 == pc s2].
+  [&& mem s1 == mem s2, regs s1 == regs s2 & pc s1 == pc s2].
 
 Lemma state_eqP : Equality.axiom state_eq.
 Proof.
-case=> [m1 r1 b1 pc1] [m2 r2 b2 pc2] /=; apply/(iffP and4P) => /=.
-  by case; do 4!move/eqP => ->.
-by case; do 4!move=> ->; rewrite !eqxx.
+case=> [m1 r1 pc1] [m2 r2 pc2] /=; apply/(iffP and3P) => /=.
+  by case; do 3!move/eqP => ->.
+by case; do 3!move=> ->; rewrite !eqxx.
 Qed.
 
 Definition state_eqMixin := EqMixin state_eqP.
 Canonical state_eqType := Eval hnf in EqType state state_eqMixin.
+
+Local Open Scope fset_scope.
+
+Definition blocks s :=
+  let addv v bs :=
+    match v with
+    | VPtr ptr => ptr.1 |: bs
+    | _ => bs
+    end in
+  let addfr b_fr bs := b_fr.1 |: foldr addv bs b_fr.2 in
+  let addr r_v bs := addv r_v.2 bs in
+  addv (pc s) (foldr addfr (foldr addr fset0 (regs s)) (mem s)).
+
+CoInductive blocks_spec b s : Prop :=
+| BlocksReg r ptr of regs s r = Some (VPtr ptr) & ptr.1 = b
+| BlocksFrame of b \in mem s
+| BlocksMem b' ptr fr of mem s b' = Some fr & ptr.1 = b & VPtr ptr \in fr
+| BlocksPc ptr of pc s = VPtr ptr & ptr.1 = b.
+
+Lemma in_blocks b s : reflect (blocks_spec b s) (b \in blocks s).
+Proof. admit. Qed.
 
 Implicit Type reg : registers.
 
@@ -207,73 +226,73 @@ Definition lift_binop (f : binop) (x y : value) :=
   end.
 
 Inductive step : state -> state -> Prop :=
-| step_nop : forall mem reg bl pc i,
+| step_nop : forall mem reg pc i,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Nop _)),
-             step (State mem reg bl (VPtr pc)) (State mem reg bl (VPtr pc.+1))
-| step_const : forall mem reg reg' bl pc i n r,
+             step (State mem reg (VPtr pc)) (State mem reg (VPtr pc.+1))
+| step_const : forall mem reg reg' pc i n r,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Const n r)),
              forall (UPD :   updm reg r (VData (swcast n)) = Some reg'),
-             step (State mem reg bl (VPtr pc)) (State mem reg' bl (VPtr pc.+1))
-| step_mov : forall mem reg reg' bl pc i r1 r2 w1,
+             step (State mem reg (VPtr pc)) (State mem reg' (VPtr pc.+1))
+| step_mov : forall mem reg reg' pc i r1 r2 w1,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Mov r1 r2)),
              forall (R1W :   reg r1 = Some w1),
              forall (UPD :   updm reg r2 w1 = Some reg'),
-             step (State mem reg bl (VPtr pc)) (State mem reg' bl (VPtr pc.+1))
-| step_binop : forall mem reg reg' bl pc i f r1 r2 r3 v1 v2 v3,
+             step (State mem reg (VPtr pc)) (State mem reg' (VPtr pc.+1))
+| step_binop : forall mem reg reg' pc i f r1 r2 r3 v1 v2 v3,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Binop f r1 r2 r3)),
              forall (R1W :   reg r1 = Some v1),
              forall (R2W :   reg r2 = Some v2),
              forall (BINOP : lift_binop f v1 v2 = Some v3),
              forall (UPD :   updm reg r3 v3 = Some reg'),
-             step (State mem reg bl (VPtr pc)) (State mem reg' bl (VPtr pc.+1))
-| step_load : forall mem reg reg' bl pc i r1 r2 pt v,
+             step (State mem reg (VPtr pc)) (State mem reg' (VPtr pc.+1))
+| step_load : forall mem reg reg' pc i r1 r2 pt v,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Load r1 r2)),
              forall (R1W :   reg r1 = Some (VPtr pt)),
              forall (MEM1 :  getv mem pt = Some v),
              forall (UPD :   updm reg r2 v = Some reg'),
-             step (State mem reg bl (VPtr pc)) (State mem reg' bl (VPtr pc.+1))
-| step_store : forall mem mem' reg bl pc ptr i r1 r2 v,
+             step (State mem reg (VPtr pc)) (State mem reg' (VPtr pc.+1))
+| step_store : forall mem mem' reg pc ptr i r1 r2 v,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Store r1 r2)),
              forall (R1W :   reg r1 = Some (VPtr ptr)),
              forall (R2W :   reg r2 = Some v),
              forall (UPD :   updv mem ptr v = Some mem'),
-             step (State mem reg bl (VPtr pc)) (State mem' reg bl (VPtr pc.+1))
-| step_jump : forall mem reg bl pc i r pt,
+             step (State mem reg (VPtr pc)) (State mem' reg (VPtr pc.+1))
+| step_jump : forall mem reg pc i r pt,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Jump r)),
              forall (RW :    reg r = Some (VPtr pt)),
-             step (State mem reg bl (VPtr pc)) (State mem reg bl (VPtr pt))
-| step_bnz : forall mem reg bl pc i r n w,
+             step (State mem reg (VPtr pc)) (State mem reg (VPtr pt))
+| step_bnz : forall mem reg pc i r n w,
              forall (PC :    getv mem pc = Some (VData i)),
              forall (INST :  decode_instr i = Some (Bnz r n)),
              forall (RW :    reg r = Some (VData w)),
              let             off_pc' := snd pc + (if w == 0
                                                   then 1
                                                   else swcast n) in
-             step (State mem reg bl (VPtr pc)) (State mem reg bl (VPtr (fst pc,off_pc')))
-| step_jal : forall mem reg reg' bl pc i r v,
+             step (State mem reg (VPtr pc)) (State mem reg (VPtr (fst pc,off_pc')))
+| step_jal : forall mem reg reg' pc i r v,
              forall (PC :       getv mem pc = Some (VData i)),
              forall (INST :     decode_instr i = Some (Jal r)),
              forall (RW :       reg r = Some v),
              forall (UPD :      updm reg ra (VPtr (pc.+1)) = Some reg'),
-             step (State mem reg bl (VPtr pc)) (State mem reg' bl v)
-| step_malloc : forall mem mem' reg reg' bl sz b pc'
+             step (State mem reg (VPtr pc)) (State mem reg' v)
+| step_malloc : forall mem mem' reg reg' sz b pc'
     (SIZE  : reg syscall_arg1 = Some (VData sz))
-    (ALLOC : malloc_fun mem bl sz = (mem', b))
+    (ALLOC : malloc_fun mem (blocks (State mem reg (VData malloc_addr))) sz = (mem', b))
     (UPD   : updm reg syscall_ret (VPtr (b,0)) = Some reg')
     (RA    : reg ra = Some (VPtr pc')),
-    step (State mem reg bl (VData malloc_addr)) (State mem' reg' (b |: bl)%fset (VPtr pc'))
-| step_free : forall mem mem' reg ptr bl pc'
+    step (State mem reg (VData malloc_addr)) (State mem' reg' (VPtr pc'))
+| step_free : forall mem mem' reg ptr pc'
     (PTR  : reg syscall_arg1 = Some (VPtr ptr))
     (FREE : free_fun mem ptr.1 = Some mem')
     (RA   : reg ra = Some (VPtr pc')),
-    step (State mem reg bl (VData free_addr)) (State mem' reg bl (VPtr pc'))
+    step (State mem reg (VData free_addr)) (State mem' reg (VPtr pc'))
 (*
 | step_size : forall mem reg reg' b o fr bl pc'
     (PTR  : reg syscall_arg1 = Some (VPtr (b,o)))
@@ -283,30 +302,23 @@ Inductive step : state -> state -> Prop :=
     (RA   : reg ra = Some (VPtr pc')),
     step (State mem reg bl (VData size_addr)) (State mem reg' bl (VPtr pc'))
 *)
-| step_base : forall mem reg reg' b o bl pc'
+| step_base : forall mem reg reg' b o pc'
     (PTR  : reg syscall_arg1 = Some (VPtr (b,o)))
     (UPD  : updm reg syscall_ret (VPtr (b,0)) = Some reg')
     (RA   : reg ra = Some (VPtr pc')),
-    step (State mem reg bl (VData base_addr)) (State mem reg' bl (VPtr pc'))
-| step_eq : forall mem reg reg' v1 v2 bl pc'
+    step (State mem reg (VData base_addr)) (State mem reg' (VPtr pc'))
+| step_eq : forall mem reg reg' v1 v2 pc'
     (V1   : reg syscall_arg1 = Some v1)
     (V2   : reg syscall_arg2 = Some v2),
     let v := VData (as_word (value_eq v1 v2)) in forall
     (UPD  : updm reg syscall_ret v = Some reg')
     (RA   : reg ra = Some (VPtr pc')),
-    step (State mem reg bl (VData eq_addr)) (State mem reg' bl (VPtr pc')).
+    step (State mem reg (VData eq_addr)) (State mem reg' (VPtr pc')).
 
 (* CH: Is the next part only a way of exposing State? *)
 
 (* Not used anywhere
 Variable initial_block : block.
-*)
-
-(* Hypothesis: alloc never returns initial_block.
-   CH: Isn't this simply a consequence of alloc never returning
-       something that is already allocated, and that the initial block
-       is already allocated from the start?
-   Q: Can the initial block be freed?
 *)
 
 Variable initial_pc : pointer.
@@ -315,7 +327,7 @@ Variable initial_regs : registers.
 Hypothesis initial_ra : initial_regs ra = Some (VPtr initial_pc).
 
 Definition initial_state : state :=
-  State initial_mem initial_regs fset0 (VPtr initial_pc).
+  State initial_mem initial_regs (VPtr initial_pc).
 
 End WithClasses.
 
