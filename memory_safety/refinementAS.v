@@ -1194,12 +1194,6 @@ apply/Abstract.in_blocks.
 by eapply Abstract.BlocksPc.
 Qed.
 
-(* MOVE *)
-Lemma val_zerow k : (@zerow k : nat) = 0%N.
-Proof.
-admit.
-Qed.
-
 Lemma refine_internal_state_weaken mi amem aregs apc smem ist :
   refine_internal_state mi smem ist ->
   refine_memory mi amem smem ->
@@ -1219,7 +1213,7 @@ rewrite getm_filter /= mi_col /=.
 suff ->: b \in Abstract.blocks (Abstract.State amem aregs apc) by [].
 apply/Abstract.in_blocks; eapply Abstract.BlocksFrame => /=.
 case: h_add => [gt0 _].
-move: (h_def zerow); rewrite val_zerow => /(_ gt0) [v [ty h_v_ty]].
+move: (h_def zerow); rewrite valw_zero => /(_ gt0) [v [ty h_v_ty]].
 move: (r_mem _ _ _ _ h_v_ty); rewrite mi_col inE /Abstract.getv /=.
 by case: (amem b).
 Qed.
