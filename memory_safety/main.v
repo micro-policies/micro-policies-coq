@@ -202,7 +202,7 @@ Proof.
   move => REF EXEC.
   elim: EXEC m ast REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] m ast REF; first by eauto 7.
   have := @backward_simulation _ _ _ _ _ _ allocspec _ _ _ _ _ REF STEPS.
-  intros (ast' & m' & STEPA & REF').
+  intros (ast' & STEPA & m' & REF').
   have := IH m' ast' REF'; eauto.
   intros (ast'' & m'' & EXECA & REF'').
   eauto 7.

@@ -53,8 +53,23 @@ Definition reachable_blocks pc rs m bs :=
   forall b, b \in bs <-> reachable pc rs m b.
 
 Definition live_blocks s bs :=
-  reachable_blocks (pc s) (regs s) (mem s) bs /\
-  {subset bs <= blocks s}.
+  reachable_blocks (pc s) (regs s) (mem s) bs.
+
+Lemma live_blocks_blocks s bs :
+  live_blocks s bs -> {subset bs <= blocks s}.
+Proof.
+move=> live b /live in_bs; apply/in_blocks.
+elim: b / in_bs
+      => [b ptr ? ?|b r ptr|b b' _ IH /existsP [[/= off off'] /eqP hget]].
+- by eapply BlocksPc; eauto.
+- by eapply BlocksReg; eauto.
+move: hget; rewrite /getv /=.
+case mem_b': (mem s b') => [fr|] //=.
+have [in_bounds [hnth]|] //= := boolP (off < size fr).
+have ?: VPtr (b, off') \in fr.
+  by rewrite -hnth; apply mem_nth.
+by eapply BlocksMem; eauto.
+Qed.
 
 (* FIXME: Right now, this doesn't say anything about memory reads. *)
 CoInductive valid_step s bs s' bs' : Prop :=
@@ -141,9 +156,15 @@ Ltac simple_intros :=
   move=> /= *;
   repeat match goal with
   | H : live_blocks ?s ?bs |- _ =>
+    match goal with
+    | _ : {subset bs <= blocks s} |- _ => fail 1
+    | |- _ => idtac
+    end;
     let live := fresh "live" in
     let sub := fresh "sub" in
-    case: H => [/= live sub]
+    move: H => live;
+    have sub := live_blocks_blocks live;
+    simpl in live, sub; simpl
   end;
   apply: ValidNop; first done.
 
@@ -172,6 +193,7 @@ Qed.
 Ltac solve_simple_cases :=
   simple_intros;
   first [ solve [ eapply upd_reachable; try eassumption;
+                  unfold pc, regs, mem;
                   eauto using get_reg_ok, get_mem_ok, lift_binop_ok;
                   done ]
         | failwith "solve_simple_cases" ].
@@ -183,7 +205,7 @@ Lemma safe_step s bs s' bs' :
   valid_step s bs s' bs'.
 Proof.
 case: s s' / => /=; try solve_simple_cases.
-- move=> m m' rs b pc ptr i r1 r2 v _ _ get_ptr get_v upd_m [/= hbs _] [/= hbs' _].
+- move=> m m' rs pc ptr i r1 r2 v _ _ get_ptr get_v upd_m /= hbs hbs'.
   eapply ValidWrite; eauto.
     move=> b' /hbs' b'_in_bs'; apply/hbs => {hbs hbs'}.
     elim: b' / b'_in_bs'
@@ -196,7 +218,9 @@ case: s s' / => /=; try solve_simple_cases.
       by rewrite v_eq {get_ptr} in get_v; eapply ReachBaseReg; eauto.
     by eapply ReachHop; eauto; apply/existsP; exists off; apply/eqP.
   by apply/hbs; apply/(@ReachBaseReg _ _ _ ptr.1 r1 ptr); simpl; eauto.
-- move=> m m' rs rs' bs'' sz b pc' _ hm' hrs' get_pc' [/= hbs hsub] [/= hbs' hsub'].
+- move=> m m' rs rs' sz b pc' _ hm' hrs' get_pc' hbs hbs'.
+  have hsub := live_blocks_blocks hbs.
+  have hsub' := live_blocks_blocks hbs'.
   eapply ValidAlloc; simpl; eauto=> b' /hbs' b'_in_bs' {hbs'}.
   elim: b' / b'_in_bs'
         => [b' p [<-] {p} <-|b' r p get_p <-
@@ -219,7 +243,7 @@ case: s s' / => /=; try solve_simple_cases.
     rewrite {}eq_b'' {b''} in b''_in_bs *.
     by generalize (malloc_fresh hm'); move/hbs/hsub: b''_in_bs => ->.
   by rewrite (malloc_get_neq hm' neq_b'').
-move=> m m' rs ptr bs'' pc' harg hm' get_pc' [/= hbs _] [/= hbs' _].
+move=> m m' rs ptr pc' harg hm' get_pc' /= hbs hbs'.
 eapply ValidFree; simpl; first by eauto.
   move=> b' /hbs' b'_in_bs'; apply/hbs.
   elim: b' / b'_in_bs'
