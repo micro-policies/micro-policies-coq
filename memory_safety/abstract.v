@@ -1,6 +1,6 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
 Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
-Require Import MathComp.ssrint.
+Require Import MathComp.tuple MathComp.ssrint MathComp.bigop.
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.fset.
 Require Import lib.utils.
 Require Import common.types memory_safety.classes.
@@ -77,14 +77,11 @@ Canonical state_eqType := Eval hnf in EqType state state_eqMixin.
 Local Open Scope fset_scope.
 
 Definition blocks s :=
-  let addv v bs :=
-    match v with
-    | VPtr ptr => ptr.1 |: bs
-    | _ => bs
-    end in
-  let addfr b_fr bs := b_fr.1 |: foldr addv bs b_fr.2 in
-  let addr r_v bs := addv r_v.2 bs in
-  addv (pc s) (foldr addfr (foldr addr fset0 (regs s)) (mem s)).
+  let is_ptr v := if v is VPtr ptr then Some ptr.1 else None in
+  mkfset (pmap is_ptr (unzip2 (regs s))) :|:
+  mkfset (unzip1 (mem s)) :|:
+  (\bigcup_(fr <- unzip2 (mem s)) mkfset (pmap is_ptr fr)) :|:
+  mkfset (pmap is_ptr [:: pc s]).
 
 CoInductive blocks_spec b s : Prop :=
 | BlocksReg r ptr of regs s r = Some (VPtr ptr) & ptr.1 = b
@@ -93,7 +90,40 @@ CoInductive blocks_spec b s : Prop :=
 | BlocksPc ptr of pc s = VPtr ptr & ptr.1 = b.
 
 Lemma in_blocks b s : reflect (blocks_spec b s) (b \in blocks s).
-Proof. admit. Qed.
+Proof.
+apply/(iffP idP).
+  rewrite /blocks !in_fsetU -!orbA; case/or4P.
+  - rewrite in_mkfset mem_pmap=> /mapP [[?|ptr]] //.
+    move/mapP=> [[r v]] /= /getm_in get_r ? [?]; subst b v.
+    by eapply BlocksReg; eauto.
+  - rewrite in_mkfset => /mapP [[b' fr]] //= /getm_in get_b ?; subst b'.
+    by apply BlocksFrame; rewrite inE get_b.
+  - rewrite big_tnth; move/bigcupP=> [i _].
+    rewrite in_mkfset mem_pmap=> /mapP [[?//|ptr] in_fr [?]]; subst b.
+    move: (mem_tnth i (in_tuple (unzip2 (mem s)))).
+    rewrite (tnth_nth [::]) /= in in_fr * => /mapP [[b fr] /= /getm_in in_mem ?].
+    by subst fr; eapply BlocksMem; eauto.
+  case pcE: (pc s) => [w|ptr] /=; rewrite ?in_fsetU1 in_fset0 // orbF=> /eqP ?.
+  by subst b; eapply BlocksPc; eauto.
+rewrite /blocks !in_fsetU -!orbA; case=> [r ptr| |b' ptr fr|ptr].
+- move=> /getm_in get_r <- {b}; rewrite in_mkfset mem_pmap.
+  by rewrite -map_comp (@map_f _ _ _ _ _ get_r).
+- rewrite inE; case get_b: (mem s b) => [fr|] // _; apply/orP; right.
+  move/getm_in in get_b.
+  by rewrite in_mkfset (@map_f _ _ (@fst _ _) _ _ get_b).
+- move=> /getm_in in_mem ? in_fr; subst b; apply/or4P/Or43.
+  rewrite big_tnth; apply/bigcupP => /=.
+  have P : find (pred1 (b', fr)) (mem s) < size (unzip2 (mem s)).
+    rewrite size_map -has_find; apply/hasP; eexists; first by eassumption.
+    by rewrite /=.
+  exists (Ordinal P)=> //; rewrite in_mkfset mem_pmap; apply/mapP.
+  exists (VPtr ptr); eauto; rewrite (tnth_nth [::]) /=.
+  rewrite (nth_map (b', [::])) /=; last by rewrite size_map in P.
+  set a := nth _ _ _; suff /eqP -> : pred1 (b', fr) a by [].
+  rewrite nth_find //; apply/hasP; exists (b', fr) => //=.
+move=> ptrE ?; subst b; apply/or4P/Or44.
+by rewrite in_mkfset mem_pmap ptrE /= inE.
+Qed.
 
 Implicit Type reg : registers.
 
