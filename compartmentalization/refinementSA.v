@@ -135,8 +135,8 @@ Definition refine_previous_b (sk : where_from) (prev : Abs.compartment mt)
   end.
 
 Definition refine_syscall_addrs_b (AM : memory mt) (SM : Sym.memory mt) : bool :=
-  [&& all (fun x => x \notin AM) syscall_addrs ,
-      all (fun x => x \notin SM) syscall_addrs &
+  [&& all (fun x => ~~ AM x) syscall_addrs ,
+      all (fun x => ~~ SM x) syscall_addrs &
       uniq syscall_addrs ].
 
 Record refine (ast : astate) (sst : sstate) : Prop := RefineState
@@ -577,7 +577,7 @@ Proof.
   rewrite /Sym.supd /=.
   move=> UPD REF p'.
   case REP: (repm m p _) UPD => [m''|].
-  - generalize (getm_rep REP p') => {REP} REP [<- _ _ _ _ _ _].
+  - generalize (repmE REP p') => {REP} REP [<- _ _ _ _ _ _].
     rewrite REP.
     have [->|NE] := (p' =P p); last exact: REF.
     move: {REF} (REF p).
@@ -593,7 +593,7 @@ Lemma supd_refine_syscall_addrs_b AM sst sst' p l :
 Proof.
   move=> UPD /and3P [Ha Hs Hu].
   apply/and3P; split=> // {Ha Hu}; apply/allP=> x /(allP Hs).
-  rewrite !inE; case E: (getm _ _) => [//|] _.
+  case E: (getm _ _) => [//|] _.
   by rewrite (Sym.get_supd_none E UPD).
 Qed.
 
@@ -1609,7 +1609,7 @@ Proof.
     move: ASS => /allP/(_ _ AIN)/orP [UAS | SAS].
     - have IN' : sc \in Aprev by move/subsetP in SUBSET_A'; apply SUBSET_A'.
       move/forall_inP/(_ _ IN') in UAS.
-      by rewrite inE UAS in ANGET.
+      by rewrite UAS in ANGET.
     - rewrite /Abs.syscall_address_space /Abs.address_space /= in SAS.
       move: SAS => /existsP [sc' /and3P [NONE ELEM /eqP?]]; subst Aprev.
       move: SUBSET_A'; rewrite subset1; move => /orP [] /eqP?; subst A'.
@@ -1713,7 +1713,7 @@ Proof.
     specialize (UAS _ pc_in_c_sys); simpl in UAS.
     rewrite -(lock eq) in IS_ISOLATE; subst.
 
-    by rewrite /= inE UAS in ANGET.
+    by rewrite /= UAS in ANGET.
   }
 
   have SYSCALL_c_sys : Abs.syscall_address_space AM c_sys. {
@@ -1986,8 +1986,8 @@ Proof.
   - rewrite /refine_syscall_addrs_b.
     case/and3P: RSC => ? Hs ?.
     apply/and3P.
-    split=> //; apply/allP=> x /(allP Hs); rewrite inE.
-    by rewrite -(Sym.retag_set_preserves_get_definedness def_s') /= inE.
+    split=> //; apply/allP=> x /(allP Hs).
+    by rewrite -(Sym.retag_set_preserves_get_definedness def_s') /=.
   - have := (Sym.retag_set_preserves_good_internal _ RINT def_s').
     apply => //.
     + move=> sc cid' I' W' sc_is_sc.
@@ -2138,7 +2138,7 @@ Proof.
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       rewrite /refine_registers /pointwise in RREGS *; intros r'.
-      rewrite getm_set.
+      rewrite setmE.
       destruct (r' == r) eqn:EQ_r; move/eqP in EQ_r; [subst r'|].
       * erewrite getm_upd_eq by eauto.
         by unfold refine_reg_b.
@@ -2180,7 +2180,7 @@ Proof.
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       rewrite /refine_registers /pointwise in RREGS *; intros r2'.
-      rewrite getm_set.
+      rewrite setmE.
       destruct (r2' == r2) eqn:EQ_r2; move/eqP in EQ_r2; [subst r2'|].
       * erewrite getm_upd_eq by eauto.
         by specialize RREGS with r1; rewrite GET1 R1W /refine_reg_b in RREGS *.
@@ -2225,7 +2225,7 @@ Proof.
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       unfold updm; rewrite /refine_registers /pointwise in RREGS *; intros r3'.
-      rewrite getm_set.
+      rewrite setmE.
       destruct (r3' == r3) eqn:EQ_r3; move/eqP in EQ_r3; [subst r3'|].
       * erewrite getm_upd_eq by eauto.
         { unfold refine_reg_b. apply/eqP; f_equal.
@@ -2280,7 +2280,7 @@ Proof.
                                 | eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       unfold updm; rewrite /refine_registers /pointwise in RREGS *; intros r2'.
-      rewrite getm_set.
+      rewrite setmE.
       destruct (r2' == r2) eqn:EQ_r2; move/eqP in EQ_r2; [subst r2'|].
       * erewrite getm_upd_eq by eauto.
         by specialize RMEMS with w1;
@@ -2364,7 +2364,7 @@ Proof.
       * { unfold updm;
             rewrite /refine_memory /refine_mem_loc_b /pointwise in RMEMS *;
             intros p.
-        rewrite getm_set.
+        rewrite setmE.
         destruct (p == w1) eqn:EQ_w1; move/eqP in EQ_w1; [subst p|].
         - erewrite getm_upd_eq by eauto.
           by specialize RMEMS with w1; rewrite GETM1 in RMEMS *.
@@ -2375,7 +2375,7 @@ Proof.
         move: def_mem' Hc'.
         rewrite !/Sym.sget /updm.
         case GET': (getm mem w1) => [[x tg]|] // [<-].
-        rewrite getm_set.
+        rewrite setmE.
         by have [->|NE //] := (c' =P w1); rewrite GET'.
       * move=> c' c'_in_AC.
         rewrite -(get_compartment_id_same _ SAME).
@@ -2408,13 +2408,13 @@ Proof.
           rewrite /Sym.sget /= PC; reflexivity.
       * have not_syscall : w1 \notin syscall_addrs.
         { apply/negP => contra; case/and3P: RSC => /allP /(_ _ contra).
-          by rewrite inE GETM1. }
+          by rewrite GETM1. }
         case/and3P: RSC => [Ha Hs Hu]; apply/and3P; split=> //.
-          apply/allP=> x x_in_sc; rewrite inE getm_set; move: x_in_sc not_syscall.
+          apply/allP=> x x_in_sc; rewrite setmE; move: x_in_sc not_syscall.
           by have [{x}-> ->|_ /(allP Ha _)] := altP (x =P _).
-        apply/allP=> x x_in_sc; rewrite inE.
+        apply/allP=> x x_in_sc.
         move: def_mem'; rewrite /updm OLD /= => - [<-].
-        rewrite getm_set; move: x_in_sc not_syscall.
+        rewrite setmE; move: x_in_sc not_syscall.
         by have [{x}-> ->|_ /(allP Hs _)] := altP (x =P _).
       * rewrite /Sym.good_internal /= in RINT *.
         case: RINT=> /= Hbounded Hisolate.
@@ -2555,14 +2555,14 @@ Proof.
                           solve [ eassumption
                                 | rewrite /Sym.sget /= PC; reflexivity ]].
       rewrite /refine_registers /pointwise in RREGS *; intros r'.
-      rewrite getm_set.
+      rewrite setmE.
       destruct (r' == ra) eqn:EQ_r'; move/eqP in EQ_r'; [subst r'|].
       * erewrite getm_upd_eq by eauto.
         by simpl.
       * erewrite getm_upd_neq with (m' := regs') by eauto.
         apply RREGS.
   - (* Syscall *)
-    rewrite getm_mkpartmap /= !(eq_sym pc) in GETCALL.
+    rewrite mkpartmapE /= !(eq_sym pc) in GETCALL.
     destruct (isolate_addr == pc) eqn:EQ;
       [ move/eqP in EQ; subst
       | clear EQ; destruct (add_to_jump_targets_addr == pc) eqn:EQ;
@@ -2593,7 +2593,7 @@ Proof.
       end;
       rewrite /refine_syscall_addrs_b in RSC;
       case/and3P: RSC => /= RS1 RS2 /and3P [RS3 RS4 _];
-      rewrite getm_mkpartmap /= -!(eq_sym isolate_addr) eq_refl;
+      rewrite mkpartmapE /= -!(eq_sym isolate_addr) eq_refl;
       rewrite !in_cons /= in RS3 RS4.
       * done.
       * by destruct (isolate_addr == add_to_jump_targets_addr).

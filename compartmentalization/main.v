@@ -43,7 +43,7 @@ Lemma read_monitor_word_monotonic mem addr x ct x' ct' :
   read_monitor_word (setm mem addr x'@ct') =1 read_monitor_word mem.
 Proof.
   move=> Hget Hnk Hnk' addr'.
-  rewrite /read_monitor_word getm_set.
+  rewrite /read_monitor_word setmE.
   have [-> {addr'} /=|//] := altP (addr' =P addr).
   by rewrite Hget /= (negbTE Hnk) (negbTE Hnk').
 Qed.
@@ -83,7 +83,7 @@ Lemma read_set_monotonic mem addr x ct x' ct' :
   read_set mem =1 read_set (setm mem addr x'@ct').
 Proof.
   move=> Hget Hnk Hnk' addr'.
-  rewrite /read_set getm_set.
+  rewrite /read_set setmE.
   have [-> {addr'} /=|_] := altP (addr' =P addr).
     by rewrite Hget /= (negbTE Hnk) (negbTE Hnk').
   case: (mem addr') => [count|] //=.

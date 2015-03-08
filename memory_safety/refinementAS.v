@@ -1,6 +1,7 @@
 Ltac type_of x := type of x.
 
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
+Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
 Require Import MathComp.ssrint MathComp.ssralg.
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
 Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
@@ -270,7 +271,7 @@ eexists; split; first by []; do!split=> //.
     rewrite hn /Abstract.getv.
     have -> /=: base + pt.2 - base = pt.2.
       rewrite addwC; exact: GRing.addrK.
-    rewrite getm_set eqxx size_cat /= size_take size_drop gt_pt.
+    rewrite setmE eqxx size_cat /= size_take size_drop gt_pt.
     rewrite addnS -addSn addnC subnK // gt_pt.
     by rewrite nth_cat size_take gt_pt ltnn subnn /=.
   have [{n'}-> /rmem|neq_n] := altP (n' =P n).
@@ -280,7 +281,7 @@ eexists; split; first by []; do!split=> //.
       rewrite addwC; apply/eqP/esym.
       exact: GRing.subrK.
     move: {w1'}(w1' - base) => w1' neq_w1'.
-    rewrite /Abstract.getv /= get_pt getm_set eqxx.
+    rewrite /Abstract.getv /= get_pt setmE eqxx.
     rewrite size_cat size_take /= size_drop gt_pt.
     rewrite addnS -addSn addnC subnK //.
     have [lt_w1'|//] := boolP (w1' < _).
@@ -292,7 +293,7 @@ eexists; split; first by []; do!split=> //.
       by rewrite nth_drop addnC subnK.
     by rewrite eq_w1' eqxx in neq_w1'.
   move/rmem; case hn': (mi n') => [[b base']|//].
-  rewrite /Abstract.getv (lock subw) /= -lock getm_set.
+  rewrite /Abstract.getv (lock subw) /= -lock setmE.
   case hb: (amem b) => [fr'|] //.
   suff /negbTE -> : b != pt.1 by [].
   apply: contra neq_n => /eqP ?; subst b.
@@ -636,7 +637,7 @@ move=> fresh_col malloc [w'|b base' col' off mi_b]; first by constructor.
 constructor.
 have neq_col: col' <> col.
   by move=> eq_col; move/fresh_col: mi_b; rewrite eq_col Ord.ltxx.
-by rewrite getm_set (introF eqP neq_col).
+by rewrite setmE (introF eqP neq_col).
 Qed.
 
 
@@ -666,12 +667,12 @@ move=> [fresh_col [in_bl rist]] malloc miP.
 constructor => b col' col'' base' base''.
 have [->|/eqP neq_col'] := altP (col' =P col);
 have [-> //|/eqP neq_col''] := altP (col'' =P col).
-+ rewrite !getm_set eqxx (introF eqP neq_col'') => [[<- _]] /in_bl.
++ rewrite !setmE eqxx (introF eqP neq_col'') => [[<- _]] /in_bl.
   by rewrite (negbTE (Abstract.malloc_fresh malloc)).
-+ rewrite !getm_set eqxx (introF eqP neq_col') => get_col' [eq_b _].
++ rewrite !setmE eqxx (introF eqP neq_col') => get_col' [eq_b _].
   move/in_bl: get_col'.
   by rewrite -eq_b (negbTE (Abstract.malloc_fresh malloc)).
-+ rewrite !getm_set (introF eqP neq_col') (introF eqP neq_col'').
++ rewrite !setmE (introF eqP neq_col') (introF eqP neq_col'').
 exact: (miIr miP).
 Qed.
 
@@ -689,7 +690,7 @@ move=> w1 w2 col' ty.
 rewrite (get_write_block _ H1) => //.
 have [/andP [? ?] [<- <- <-]|_ /rmem get_w1] :=
   boolP (inbounds base sz w1).
-  rewrite getm_set eqxx (Abstract.malloc_get malloc); last first.
+  rewrite setmE eqxx (Abstract.malloc_get malloc); last first.
     rewrite Ord.ltNge -2!val_ordE (lock subw) /= -lock valw_sub // /Ord.leq /= -ltnNge.
     by rewrite -(ltn_add2r base) subnK // addnC.
   apply: (refine_val_malloc _ fresh_col malloc).
@@ -705,13 +706,13 @@ move: get_w1.
 set mi' := mi_malloc _ _ _ _.
 have mi'P := (meminj_spec_malloc base rist malloc miP).
 have eq_mi: mi' col' = mi col'.
-  by rewrite getm_set (introF eqP neq_col).
+  by rewrite setmE (introF eqP neq_col).
 rewrite eq_mi; move: eq_mi.
 case: (mi col') => // [[b' base']] mi'_col'.
 have neq_b': b' <> newb.
   move=> eq_b'; rewrite eq_b' in mi'_col'.
   have mi'_col: mi' col = Some (newb, base).
-    by rewrite getm_set eqxx.
+    by rewrite setmE eqxx.
   exact/neq_col/(miIr mi'P mi'_col' mi'_col).
 rewrite /Abstract.getv (Abstract.malloc_get_neq malloc neq_b').
 case: (amem b') => // fr.
@@ -743,15 +744,15 @@ split. (* freshness of color *)
   move=> col b base.
   have [-> _|neq_col] := col =P color.
     exact/Sym.ltb_inc.
-  rewrite getm_set (introF eqP neq_col).
+  rewrite setmE (introF eqP neq_col).
   move/fresh_color => lt_col.
   apply: (@Ord.lt_trans _ color col) => //=.
   exact/Sym.ltb_inc.
 split. (* list of block is complete *)
   move=> col b base.
   have [->|neq_col] := col =P color.
-    by rewrite getm_set eqxx => [[<- _]]; rewrite inE eqxx.
-  by rewrite getm_set (introF eqP neq_col) inE => /in_bl ->; rewrite orbT.
+    by rewrite setmE eqxx => [[<- _]]; rewrite inE eqxx.
+  by rewrite setmE (introF eqP neq_col) inE => /in_bl ->; rewrite orbT.
 split. (* no overlap *)
   move=> i j def w.
   rewrite /Sym.update_block_info.
@@ -905,7 +906,7 @@ have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
     (* Showing invariant for the new block *)
     apply: (@BlockInfoLive _ _ _ color newb) => //.
     * by rewrite /bounded_add /= eq_sz.
-    * by rewrite getm_set eqxx.
+    * by rewrite setmE eqxx.
     move=> off /= lt_off.
     rewrite (get_write_block _ write_bi).
     suff ->: inbounds (Sym.block_base bi) sz (Sym.block_base bi + off)%w.
@@ -924,7 +925,7 @@ have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
     apply: (@BlockInfoLive _ _ _ col b) => //.
       have neq_col: col <> color.
         by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.ltxx.
-      by rewrite getm_set (introF eqP neq_col).
+      by rewrite setmE (introF eqP neq_col).
     move=> off lt_off.
     rewrite (get_write_block _ write_bi).
     have [bounds_bi|] := boolP (inbounds _ _ _).
@@ -988,7 +989,7 @@ have [eq_i <-|neq_i] := i =P index bi info.
   * rewrite /= /bounded_add; split=> //.
     rewrite -(leq_add2l (Sym.block_base bi)) in le_sz.
     by rewrite (leq_ltn_trans le_sz).
-  * by rewrite getm_set eqxx.
+  * by rewrite setmE eqxx.
   move=> off /= lt_off.
   rewrite (get_write_block _ write_bi).
   suff ->: inbounds (Sym.block_base bi) sz (Sym.block_base bi + off)%w
@@ -1003,7 +1004,7 @@ case=> //.
   apply: (@BlockInfoLive _ _ _ col b) => //.
     have neq_col: col <> color.
       by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.ltxx.
-    by rewrite getm_set (introF eqP neq_col).
+    by rewrite setmE (introF eqP neq_col).
   move=> off lt_off.
   rewrite (get_write_block _ write_bi).
   have [/andP [lbbi ubbi]|] := boolP (inbounds _ _ _).
@@ -1142,7 +1143,7 @@ try match goal with
   PC : getm _ ?pc = None |- _ =>
   (move: GETCALL CALL;
   case: extra rist => color info rist;
-  rewrite getm_mkpartmap /Symbolic.run_syscall /=;
+  rewrite mkpartmapE /Symbolic.run_syscall /=;
   match goal with
   | rpc : refine_val _ _ ?pc (PTR ?s) |- _ =>
     (have->: s = pc by inversion rpc);
@@ -1256,7 +1257,7 @@ by solve_pc rpci.
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
   have rnewb: refine_val mi' (Abstract.VPtr (newb, 0)) (Sym.block_base bi) (PTR color).
     rewrite -[Sym.block_base bi]addw0; constructor.
-    by rewrite /mi' /mi_malloc getm_set eqxx.
+    by rewrite /mi' /mi_malloc setmE eqxx.
 
   move/(refine_registers_malloc (Sym.block_base bi) fresh_color malloc): rregs => rregs.
   eapply (refine_registers_upd rregs rnewb) in E2.

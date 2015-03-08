@@ -1112,7 +1112,7 @@ Qed.
 Lemma get_syscall_good addr sc :
   syscall_table addr ?= sc -> forall MM, good_syscall sc MM.
 Proof.
-  rewrite /syscall_table /getm_mkpartmap /= !getm_set.
+  rewrite /syscall_table /= !setmE.
   have [_ /= {addr sc} [<-] MM|_] := addr =P isolate_addr; first by auto.
   have [_ /= {addr sc} [<-] MM|_] := addr =P add_to_jump_targets_addr; first by auto.
   by have [_ /= {addr sc} [<-] MM|//] := addr =P add_to_store_targets_addr; auto.
@@ -1179,7 +1179,7 @@ Lemma syscall_step_preserves_good : forall MM MM' sc,
   good_state MM'       .
 Proof.
   intros MM MM' sc INST GETSC CALL GOOD; generalize GETSC => GETSC'.
-  rewrite /syscall_table getm_mkpartmap in GETSC; simpl in *.
+  rewrite /syscall_table mkpartmapE in GETSC; simpl in *.
   assert (SP : syscalls_present (compartments MM)) by eauto.
   unfold syscalls_present,is_true in SP; move/allP in SP.
   move: SP GETSC GETSC' CALL => /(_ (pc MM))/=.
@@ -1242,7 +1242,7 @@ Proof.
         [clear GET; rename GET' into GET | discriminate].
       move: GET UPDR; rewrite /updm.
       case: (M p) => [m'|] //= GET [<-].
-      rewrite getm_set GET.
+      rewrite setmE GET.
       by case: (_ == _).
     + unfold syscall_address_space in *; cbv [address_space] in *.
       move: SAS => /existsP [sc /and3P [NGET TABLED /eqP ->]].
@@ -1250,7 +1250,7 @@ Proof.
       move: (UPDR); rewrite /updm /= => SET.
       destruct (M p) as [old|] eqn:GET; [|discriminate].
       assert (NEQ : sc <> p) by by intro; subst; rewrite GET in NGET.
-      by move: SET => /= [<-]; rewrite getm_set (introF eqP NEQ).
+      by move: SET => /= [<-]; rewrite setmE (introF eqP NEQ).
   - (* Syscall *)
     assert (GOOD' : good_state MM') by
       (apply syscall_step_preserves_good with MM sc; subst; assumption);
@@ -1292,7 +1292,7 @@ Proof.
   intros MM MM' STEP GOOD; destruct STEP; subst; simpl in *;
     try (eexists; eassumption).
   (* Syscalls *)
-  rewrite /syscall_table getm_mkpartmap /= in GETSC.
+  rewrite /syscall_table mkpartmapE /= in GETSC.
   repeat match type of GETSC with
     | context[if ?EQ then _ else _] => destruct EQ
     | None ?= _ => discriminate
@@ -1337,7 +1337,7 @@ Proof.
         left; move/andP in IC'; tauto ].
   (* Syscalls *)
   move: (GOOD) => /and4P /= [ELEM /andP [NOL CC] SS SP].
-  rewrite /syscall_table getm_mkpartmap /= in GETSC.
+  rewrite /syscall_table mkpartmapE /= in GETSC.
   repeat match type of GETSC with
     | context[if ?EQ then _ else _] => destruct EQ
     | None ?= _ => discriminate
@@ -1434,9 +1434,9 @@ Proof.
         in STEP; eauto 3.
       by rewrite inE in VALID; replace c0 with c in * by eauto 3; apply/orP.
     + move: UPDR DIFF; rewrite /updm; case: (M p) => [?|] //= [<-].
-      by rewrite getm_set (negbTE NE).
+      by rewrite setmE (negbTE NE).
   - (* Syscall *)
-    rewrite /syscall_table getm_mkpartmap /= in GETSC.
+    rewrite /syscall_table mkpartmapE /= in GETSC.
     repeat match type of GETSC with
       | (if ?COND then Some _ else _) ?= _ =>
         destruct COND
