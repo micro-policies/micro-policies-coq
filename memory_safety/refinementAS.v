@@ -277,7 +277,7 @@ eexists; split; first by []; do!split=> //.
     rewrite hn /Abstract.getv.
     have -> /=: base + pt.2 - base = pt.2.
       rewrite addwC; exact: GRing.addrK.
-    rewrite getm_set eqxx size_cat /= size_take size_drop gt_pt.
+    rewrite setmE eqxx size_cat /= size_take size_drop gt_pt.
     rewrite addnS -addSn addnC subnK // gt_pt.
     by rewrite nth_cat size_take gt_pt ltnn subnn /=.
   have [{n'}-> /rmem|neq_n] := altP (n' =P n).
@@ -287,7 +287,7 @@ eexists; split; first by []; do!split=> //.
       rewrite addwC; apply/eqP/esym.
       exact: GRing.subrK.
     move: {w1'}(w1' - base) => w1' neq_w1'.
-    rewrite /Abstract.getv /= get_pt getm_set eqxx.
+    rewrite /Abstract.getv /= get_pt setmE eqxx.
     rewrite size_cat size_take /= size_drop gt_pt.
     rewrite addnS -addSn addnC subnK //.
     have [lt_w1'|//] := boolP (w1' < _).
@@ -299,7 +299,7 @@ eexists; split; first by []; do!split=> //.
       by rewrite nth_drop addnC subnK.
     by rewrite eq_w1' eqxx in neq_w1'.
   move/rmem; case hn': (mi n') => [[b base']|//].
-  rewrite /Abstract.getv (lock subw) /= -lock getm_set.
+  rewrite /Abstract.getv (lock subw) /= -lock setmE.
   case hb: (amem b) => [fr'|] //.
   suff /negbTE -> : b != pt.1 by [].
   apply: contra neq_n => /eqP ?; subst b.
@@ -649,7 +649,7 @@ move=> fresh_col malloc [w'|b base' col' off mi_b]; first by constructor.
 constructor.
 have neq_col: col' <> col.
   by move=> eq_col; move/fresh_col: mi_b; rewrite eq_col Ord.ltxx.
-by rewrite getm_set (introF eqP neq_col).
+by rewrite setmE (introF eqP neq_col).
 Qed.
 
 
@@ -680,12 +680,12 @@ move=> [fresh_col ? ? ?] in_bl malloc miP.
 constructor => b col' col'' base' base''.
 have [->|/eqP neq_col'] := altP (col' =P col);
 have [-> //|/eqP neq_col''] := altP (col'' =P col).
-+ rewrite !getm_set eqxx (introF eqP neq_col'') => [[<- _]] /in_bl.
++ rewrite !setmE eqxx (introF eqP neq_col'') => [[<- _]] /in_bl.
   by rewrite (negbTE (Abstract.malloc_fresh malloc)).
-+ rewrite !getm_set eqxx (introF eqP neq_col') => get_col' [eq_b _].
++ rewrite !setmE eqxx (introF eqP neq_col') => get_col' [eq_b _].
   move/in_bl: get_col'.
   by rewrite -eq_b (negbTE (Abstract.malloc_fresh malloc)).
-+ rewrite !getm_set (introF eqP neq_col') (introF eqP neq_col'').
++ rewrite !setmE (introF eqP neq_col') (introF eqP neq_col'').
 exact: (miIr miP).
 Qed.
 
@@ -704,7 +704,7 @@ move=> w1 w2 col' ty.
 rewrite (get_write_block _ H0) => //.
 have [/andP [? ?] [<- <- <-]|_ /rmem get_w1] :=
   boolP (inbounds base sz w1).
-  rewrite getm_set eqxx (Abstract.malloc_get malloc); last first.
+  rewrite setmE eqxx (Abstract.malloc_get malloc); last first.
     rewrite Ord.ltNge -2!val_ordE (lock subw) /= -lock valw_sub // /Ord.leq /= -ltnNge.
     by rewrite -(ltn_add2r base) subnK // addnC.
   apply: (refine_val_malloc _ fresh_col malloc).
@@ -720,13 +720,13 @@ move: get_w1.
 set mi' := mi_malloc _ _ _ _.
 have mi'P := (meminj_spec_malloc base rist in_bl malloc miP).
 have eq_mi: mi' col' = mi col'.
-  by rewrite getm_set (introF eqP neq_col).
+  by rewrite setmE (introF eqP neq_col).
 rewrite eq_mi; move: eq_mi.
 case: (mi col') => // [[b' base']] mi'_col'.
 have neq_b': b' <> newb.
   move=> eq_b'; rewrite eq_b' in mi'_col'.
   have mi'_col: mi' col = Some (newb, base).
-    by rewrite getm_set eqxx.
+    by rewrite setmE eqxx.
   exact/neq_col/(miIr mi'P mi'_col' mi'_col).
 rewrite /Abstract.getv (Abstract.malloc_get_neq malloc neq_b').
 case: (amem b') => // fr.
@@ -757,7 +757,7 @@ split.
   move=> col b base.
   have [-> _|neq_col] := col =P color.
     exact/Sym.ltb_inc.
-  rewrite getm_set (introF eqP neq_col).
+  rewrite setmE (introF eqP neq_col).
   move/fresh_color => lt_col.
   apply: (@Ord.lt_trans _ color col) => //=.
   exact/Sym.ltb_inc.
@@ -914,7 +914,7 @@ have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
     (* Showing invariant for the new block *)
     apply: (@BlockInfoLive _ _ _ color newb) => //.
     * by rewrite /bounded_add /= eq_sz.
-    * by rewrite getm_set eqxx.
+    * by rewrite setmE eqxx.
     move=> off /= lt_off.
     rewrite (get_write_block _ write_bi).
     suff ->: inbounds (Sym.block_base bi) sz (Sym.block_base bi + off)%w.
@@ -933,7 +933,7 @@ have [eq_sz|neq_sz] := sz =P Sym.block_size bi.
     apply: (@BlockInfoLive _ _ _ col b) => //.
       have neq_col: col <> color.
         by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.ltxx.
-      by rewrite getm_set (introF eqP neq_col).
+      by rewrite setmE (introF eqP neq_col).
     move=> off lt_off.
     rewrite (get_write_block _ write_bi).
     have [bounds_bi|] := boolP (inbounds _ _ _).
@@ -997,7 +997,7 @@ have [eq_i <-|neq_i] := i =P index bi info.
   * rewrite /= /bounded_add; split=> //.
     rewrite -(leq_add2l (Sym.block_base bi)) in le_sz.
     by rewrite (leq_ltn_trans le_sz).
-  * by rewrite getm_set eqxx.
+  * by rewrite setmE eqxx.
   move=> off /= lt_off.
   rewrite (get_write_block _ write_bi).
   suff ->: inbounds (Sym.block_base bi) sz (Sym.block_base bi + off)%w
@@ -1012,7 +1012,7 @@ case=> //.
   apply: (@BlockInfoLive _ _ _ col b) => //.
     have neq_col: col <> color.
       by move=> eq_col; move/fresh_color: mi_col; rewrite eq_col Ord.ltxx.
-    by rewrite getm_set (introF eqP neq_col).
+    by rewrite setmE (introF eqP neq_col).
   move=> off lt_off.
   rewrite (get_write_block _ write_bi).
   have [/andP [lbbi ubbi]|] := boolP (inbounds _ _ _).
@@ -1120,11 +1120,11 @@ Transparent binop_denote.
 Qed.
 
 Definition meminj_weaken (mi : meminj) (bl : {fset block}) :=
-  filterm [pred b_base | b_base.1 \in bl] mi.
+  filterm (fun _ b_base => b_base.1 \in bl) mi.
 
 Lemma meminj_weaken_ok mi bl : meminj_ok (meminj_weaken mi bl) bl.
 Proof.
-move=> col [b base]; rewrite getm_filter /=.
+move=> col [b base]; rewrite filtermE /=.
 case: (mi col) => [[b' base']|] //=.
 by case: ifP => // ? [<-].
 Qed.
@@ -1134,24 +1134,24 @@ Lemma refine_memory_weaken mi amem areg apc smem :
   refine_memory (meminj_weaken mi (Abstract.blocks (Abstract.State amem areg apc))) amem smem.
 Proof.
 move=> [[mi_inj] r_mem]; split.
-  constructor=> b col col' base base'; rewrite !getm_filter /=.
+  constructor=> b col col' base base'; rewrite !filtermE /=.
   case mi_col: (mi col) => [[b' base'']|] //=.
   case: ifP => // _ [??]; subst b' base''.
   case mi_col': (mi col') => [[b' base'']|] //=.
   case: ifP => // _ [??]; subst b' base''.
   by eauto.
-move=> w1 w2 col ty /r_mem; rewrite getm_filter /=.
+move=> w1 w2 col ty /r_mem; rewrite filtermE /=.
 case mi_col: (mi col) => [[b base]|] //=.
 case getv_b: (Abstract.getv _ _) => [v|] //= r_v.
 have /Abstract.in_blocks ->:
   Abstract.blocks_spec b (Abstract.State amem areg apc).
   eapply Abstract.BlocksFrame.
-  rewrite inE /=.
+  rewrite mem_domm /=.
   move: getv_b; rewrite /Abstract.getv /=.
   by case: (amem b).
 rewrite getv_b.
 case: r_v getv_b => [w|b' base' col' off mi_col'] getv_b {v}; first by constructor.
-constructor; rewrite getm_filter /= mi_col' /=.
+constructor; rewrite filtermE /= mi_col' /=.
 suff /Abstract.in_blocks ->:
   Abstract.blocks_spec b' (Abstract.State amem areg apc) by [].
 move: getv_b; rewrite /Abstract.getv (lock subw) /=.
@@ -1173,7 +1173,7 @@ case aregs_r: (aregs r) => [v1|]; case sregs_r: (sregs r) => [v2|] //=.
   case: v2 sregs_r => [w [ty| |]] //= sregs_r r_v1.
   case: r_v1 aregs_r sregs_r => [w'|b base col off mi_col] aregs_r sregs_r.
     by constructor.
-  constructor; rewrite getm_filter /= mi_col /=.
+  constructor; rewrite filtermE /= mi_col /=.
   suff ->:
     b \in Abstract.blocks (Abstract.State amem aregs apc) by [].
   apply/Abstract.in_blocks.
@@ -1187,7 +1187,7 @@ Lemma refine_pc_weaken mi amem aregs apc w ty :
   refine_val (meminj_weaken mi (Abstract.blocks (Abstract.State amem aregs apc))) apc w ty.
 Proof.
 case: apc w ty / => [w|b base col off mi_col]; first by constructor.
-constructor; rewrite getm_filter /= mi_col /=.
+constructor; rewrite filtermE /= mi_col /=.
 suff ->:
   b \in Abstract.blocks (Abstract.State amem aregs (Abstract.VPtr (b, off))) by [].
 apply/Abstract.in_blocks.
@@ -1201,7 +1201,7 @@ Lemma refine_internal_state_weaken mi amem aregs apc smem ist :
 Proof.
 move=> [fresh no_overlap cover_info rist] [_ r_mem].
 constructor=> //.
-  move=> col b base; rewrite getm_filter /=.
+  move=> col b base; rewrite filtermE /=.
   case mi_col: (mi col) => [[b' base']|] //=.
   case: ifP => // in_blocks [??]; subst b' base'.
   by apply (fresh col b base).
@@ -1209,12 +1209,12 @@ move=> bi /rist.
 case=> [col b bi_col h_add mi_col h_def|h_bi h_add h_free];
   last by constructor.
 apply (@BlockInfoLive _ _ _ col b) => //.
-rewrite getm_filter /= mi_col /=.
+rewrite filtermE /= mi_col /=.
 suff ->: b \in Abstract.blocks (Abstract.State amem aregs apc) by [].
 apply/Abstract.in_blocks; eapply Abstract.BlocksFrame => /=.
 case: h_add => [gt0 _].
 move: (h_def zerow); rewrite valw_zero => /(_ gt0) [v [ty h_v_ty]].
-move: (r_mem _ _ _ _ h_v_ty); rewrite mi_col inE /Abstract.getv /=.
+move: (r_mem _ _ _ _ h_v_ty); rewrite mi_col mem_domm /Abstract.getv /=.
 by case: (amem b).
 Qed.
 
@@ -1267,7 +1267,7 @@ try match goal with
   PC : getm _ ?pc = None |- _ =>
   (move: GETCALL CALL;
   case: extra rist => color info rist;
-  rewrite getm_mkpartmap /Symbolic.run_syscall /=;
+  rewrite mkpartmapE /Symbolic.run_syscall /=;
   match goal with
   | rpc : refine_val _ _ ?pc (PTR ?s) |- _ =>
     (have->: s = pc by inversion rpc);
@@ -1381,7 +1381,7 @@ by solve_pc rpci.
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
   have rnewb: refine_val mi' (Abstract.VPtr (newb, 0)) (Sym.block_base bi) (PTR color).
     rewrite -[Sym.block_base bi]addw0; constructor.
-    by rewrite /mi' /mi_malloc getm_set eqxx.
+    by rewrite /mi' /mi_malloc setmE eqxx.
 
   move/(refine_registers_malloc (Sym.block_base bi) fresh_color malloc): rregs => rregs.
   eapply (refine_registers_upd rregs rnewb) in E2.

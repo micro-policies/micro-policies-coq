@@ -40,7 +40,7 @@ Lemma fresh_set_inj : forall (km : {partmap Abs.key -> Sym.key}) akey skey,
   key_map_inj (setm km akey skey).
 Proof.
 move => km akey skey kmi nk ak ak' sk sk' E1 E2 Esk.
-rewrite -{}Esk {sk'} in E2; move: E1 E2; rewrite !getm_set.
+rewrite -{}Esk {sk'} in E2; move: E1 E2; rewrite !setmE.
 have [-> {ak}|Hne] := altP (_ =P _).
   move=> [<-] {sk}.
   have [-> {ak'} //|Hne'] := altP (_ =P _).
@@ -132,7 +132,7 @@ Lemma refine_key_set_km : forall km ak sk akey skey,
   refine_key km ak sk ->
   refine_key (setm km akey skey) ak sk.
 Proof.
-  unfold refine_key. intros. rewrite getm_set.
+  unfold refine_key. intros. rewrite setmE.
   by have [eq_ak | /eqP neq_ak] := altP (ak =P akey); congruence.
 Qed.
 
@@ -329,7 +329,7 @@ Proof.
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     erewrite (@pointwise_none _ _ _ _ amem smem apc rmem) in PC.
     simpl in GETCALL.
-    rewrite getm_mkpartmap /= !(eq_sym apc) in GETCALL. move : GETCALL.
+    rewrite mkpartmapE /= !(eq_sym apc) in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
       have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];
@@ -349,7 +349,7 @@ Proof.
     assert(refine_val_atom (setm km (Abs.mkkey_f akeys) skey)
               (Abs.VKey mt (Abs.mkkey_f akeys))
               (0%w@(Sym.KEY skey))) as rva.
-      unfold refine_val_atom, refine_key. by rewrite getm_set eqxx.
+      unfold refine_val_atom, refine_key. by rewrite setmE eqxx.
 
     (* need to show freshness for new abstract key to be able to use
        refine...set lemmas to port refinements to the extended km *)
@@ -373,16 +373,16 @@ Proof.
         have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)).
         + subst. apply False_ind. by rewrite inE eqxx in ninak.
         + simpl in ninak.
-          rewrite getm_set (introF eqP neq_ak).
+          rewrite setmE (introF eqP neq_ak).
           destruct rins as [rins1 _]. apply rins1. by case/norP: ninak.
       - (* symbolic keys *)
         move => ak sk /=.
         have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)) => hsk.
-        + subst. rewrite getm_set eqxx in hsk => //.
+        + subst. rewrite setmE eqxx in hsk => //.
           injection hsk => hsk'. clear hsk.
           rewrite hsk'.
           by rewrite Sym.ltb_inc -?hsk' ?lt_skey //.
-        + rewrite getm_set (introF eqP neq_ak) in hsk => //.
+        + rewrite setmE (introF eqP neq_ak) in hsk => //.
           destruct rins as [_ [rins2 _]]. eapply Ord.lt_trans. eapply rins2.
           eassumption.
           by rewrite /= Sym.ltb_inc ?lt_skey.

@@ -1,5 +1,5 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.word CoqUtils.partmap.
+Require Import CoqUtils.word CoqUtils.fset CoqUtils.partmap.
 Require Import lib.utils common.types.
 Require Import cfi.property cfi.classes.
 
@@ -140,8 +140,8 @@ Inductive step : state -> state -> Prop :=
 
 Inductive step_a : state -> state -> Prop :=
 | step_attack : forall imem dmem dmem' reg reg' pc b
-             (MSAME: dmem =i dmem')
-             (RSAME: reg =i reg'),
+             (MSAME: domm dmem = domm dmem')
+             (RSAME: domm reg = domm reg'),
              step_a (State imem dmem reg pc b)
                     (State imem dmem' reg' pc b).
 

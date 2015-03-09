@@ -1,8 +1,10 @@
 (* Fault handler implementation for concrete realization of symbolic machine *)
 
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.seq Ssreflect.choice Ssreflect.fintype.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
+Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.seq.
+Require Import Ssreflect.choice Ssreflect.fintype.
 Require Import MathComp.tuple MathComp.ssrint.
-Require Import CoqUtils.word CoqUtils.partmap.
+Require Import CoqUtils.word CoqUtils.fset CoqUtils.partmap.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -250,13 +252,13 @@ Proof.
   intros. destruct MINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   repeat split; eauto.
   - intros addr' IN.
-    move: UPD; rewrite /updm GET /= => - [<-]; rewrite getm_set.
+    move: UPD; rewrite /updm GET /= => - [<-]; rewrite setmE.
     move: IN; have [-> {addr'}|_] := altP (_ =P _) => IN; last by eauto.
     apply RVEC in IN. destruct IN as [w1' IN].
     assert (EQ : Concrete.TMonitor = ct) by congruence. subst ct.
     by rewrite decode_monitor_tag in DEC.
   - intros addr' i GET'.
-    move: UPD; rewrite /updm GET /= => - [<-] {mem2}; rewrite getm_set.
+    move: UPD; rewrite /updm GET /= => - [<-] {mem2}; rewrite setmE.
     have [Heq|Hne] := altP (_ =P _).
     + rewrite -{}Heq {addr} in GET.
       specialize (@PROG _ _ GET').
@@ -279,7 +281,7 @@ Proof.
   intros. destruct MINV as (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
   do 6 (split; eauto).
   move=> r' IN; move: UPD; rewrite /updm GET /= => - [<-] {regs'}.
-  rewrite getm_set.
+  rewrite setmE.
   have [Heq|Hneq] := altP (_ =P _).
   - rewrite {}Heq {r'} in IN.
     move: IN => /REGS [x GET'].
@@ -295,20 +297,15 @@ Proof.
 intros (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
 do 7 (try split; eauto).
 - move=> addr IN.
-  rewrite /Concrete.store_mvec getm_union.
-  set m := mkpartmap _.
-  rewrite -[isSome (m addr)]/(addr \in m) mem_mkpartmap /=.
-  have [Hin | Hnin] := boolP (addr \in Concrete.mvec_fields mt); last by eauto.
-  have: addr \in m by rewrite mem_mkpartmap.
-  rewrite inE; case Heq: (m addr)=> [v|] //= _.
-  suff: taga v = Concrete.TMonitor.
-    by case: v {Heq} => [w t] /= ->; eauto.
-  apply/eqP; move/getm_mkpartmap': Heq.
-  rewrite -{2}[v]/((addr, v).2); move: (addr, v).
-  by apply/allP => /=; rewrite !eqxx /=.
-- move=> addr instr Hget; rewrite getm_union.
+  rewrite /Concrete.store_mvec unionmE.
+  set m := mkpartmap _; case m_addr: (m addr) => [[w t]|] /=; eauto.
+  suff ->: t = Concrete.TMonitor by eauto.
+  apply/eqP; move/mkpartmap_Some: m_addr.
+  rewrite -{2}[t]/(taga (addr, w@t).2); move: (addr, w@t).
+  by apply/allP=> /=; rewrite !eqxx.
+- move=> addr instr Hget; rewrite unionmE.
   set m := mkpartmap _; set addr' := (_ + _)%w.
-  rewrite -[isSome (m addr')]/(addr' \in m) mem_mkpartmap /=.
+  rewrite -mem_domm  domm_mkpartmap /=.
   have: addr' \notin Concrete.mvec_and_rvec_fields mt by apply: MEM.
   by rewrite mem_cat=> /norP [/negbTE -> _]; eauto.
 - by eapply policy_invariant_store_mvec; eauto.

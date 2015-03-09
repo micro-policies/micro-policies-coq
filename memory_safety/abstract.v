@@ -1,7 +1,7 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
 Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
 Require Import MathComp.tuple MathComp.ssrint MathComp.bigop.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.fset.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
 Require Import lib.utils.
 Require Import common.types memory_safety.classes.
 
@@ -79,13 +79,13 @@ Local Open Scope fset_scope.
 Definition blocks s :=
   let is_ptr v := if v is VPtr ptr then Some ptr.1 else None in
   mkfset (pmap is_ptr (unzip2 (regs s))) :|:
-  mkfset (unzip1 (mem s)) :|:
+  domm (mem s) :|:
   (\bigcup_(fr <- unzip2 (mem s)) mkfset (pmap is_ptr fr)) :|:
   mkfset (pmap is_ptr [:: pc s]).
 
 CoInductive blocks_spec b s : Prop :=
 | BlocksReg r ptr of regs s r = Some (VPtr ptr) & ptr.1 = b
-| BlocksFrame of b \in mem s
+| BlocksFrame of b \in domm (mem s)
 | BlocksMem b' ptr fr of mem s b' = Some fr & ptr.1 = b & VPtr ptr \in fr
 | BlocksPc ptr of pc s = VPtr ptr & ptr.1 = b.
 
@@ -94,24 +94,22 @@ Proof.
 apply/(iffP idP).
   rewrite /blocks !in_fsetU -!orbA; case/or4P.
   - rewrite in_mkfset mem_pmap=> /mapP [[?|ptr]] //.
-    move/mapP=> [[r v]] /= /getm_in get_r ? [?]; subst b v.
+    move/mapP=> [[r v]] /= /getmP get_r ? [?]; subst b v.
     by eapply BlocksReg; eauto.
-  - rewrite in_mkfset => /mapP [[b' fr]] //= /getm_in get_b ?; subst b'.
-    by apply BlocksFrame; rewrite inE get_b.
+  - rewrite in_mkfset => /mapP [[b' fr]] //= /getmP get_b ?; subst b'.
+    by apply BlocksFrame; rewrite mem_domm get_b.
   - rewrite big_tnth; move/bigcupP=> [i _].
     rewrite in_mkfset mem_pmap=> /mapP [[?//|ptr] in_fr [?]]; subst b.
     move: (mem_tnth i (in_tuple (unzip2 (mem s)))).
-    rewrite (tnth_nth [::]) /= in in_fr * => /mapP [[b fr] /= /getm_in in_mem ?].
+    rewrite (tnth_nth [::]) /= in in_fr * => /mapP [[b fr] /= /getmP in_mem ?].
     by subst fr; eapply BlocksMem; eauto.
   case pcE: (pc s) => [w|ptr] /=; rewrite ?in_fsetU1 in_fset0 // orbF=> /eqP ?.
   by subst b; eapply BlocksPc; eauto.
 rewrite /blocks !in_fsetU -!orbA; case=> [r ptr| |b' ptr fr|ptr].
-- move=> /getm_in get_r <- {b}; rewrite in_mkfset mem_pmap.
+- move=> /getmP get_r <- {b}; rewrite in_mkfset mem_pmap.
   by rewrite -map_comp (@map_f _ _ _ _ _ get_r).
-- rewrite inE; case get_b: (mem s b) => [fr|] // _; apply/orP; right.
-  move/getm_in in get_b.
-  by rewrite in_mkfset (@map_f _ _ (@fst _ _) _ _ get_b).
-- move=> /getm_in in_mem ? in_fr; subst b; apply/or4P/Or43.
+- by rewrite !mem_domm; case get_b: (mem s b) => [fr|] // _; apply/orP; right.
+- move=> /getmP in_mem ? in_fr; subst b; apply/or4P/Or43.
   rewrite big_tnth; apply/bigcupP => /=.
   have P : find (pred1 (b', fr)) (mem s) < size (unzip2 (mem s)).
     rewrite size_map -has_find; apply/hasP; eexists; first by eassumption.
@@ -177,7 +175,7 @@ Lemma malloc_get : forall mem sz mem' bl b off,
   (off < sz)%ord -> getv mem' (b,off) = Some (VData 0).
 Proof.
 move=> m sz m' bl b off; rewrite /malloc_fun/getv => - [<- <-] {m' b} /=.
-rewrite getm_set eqxx size_nseq Ord.ltNge -!val_ordE /= /Ord.leq/= -ltnNge.
+rewrite setmE eqxx size_nseq Ord.ltNge -!val_ordE /= /Ord.leq/= -ltnNge.
 by move=> in_bounds; rewrite in_bounds nth_nseq in_bounds.
 Qed.
 
@@ -186,7 +184,7 @@ Lemma malloc_get_out_of_bounds : forall mem sz mem' bl b off,
   (sz <= off)%ord -> getv mem' (b,off) = None.
 Proof.
 move=> m sz m' bl b off; rewrite /malloc_fun/getv => - [<- <-] {m' b} /=.
-by rewrite getm_set eqxx size_nseq -!val_ordE /= /Ord.leq/= ltnNge => ->.
+by rewrite setmE eqxx size_nseq -!val_ordE /= /Ord.leq/= ltnNge => ->.
 Qed.
 
 Lemma malloc_get_neq : forall mem bl b sz mem' b',
@@ -195,7 +193,7 @@ Lemma malloc_get_neq : forall mem bl b sz mem' b',
   mem' b = mem b.
 Proof.
 move=> m bl b sz m' b'; rewrite /malloc_fun=> -[<- <-] /(introF eqP).
-by rewrite getm_set => ->.
+by rewrite setmE => ->.
 Qed.
 
 Definition free_fun (m : memory) b :=
@@ -210,7 +208,7 @@ Lemma free_get_fail : forall mem mem' b,
   free_fun mem b = Some mem' -> mem' b = None.
 Proof.
 move=> m m' b; rewrite /free_fun.
-by case: (m b) => [fr|] //= [<-]; rewrite getm_rem eqxx.
+by case: (m b) => [fr|] //= [<-]; rewrite remmE eqxx.
 Qed.
 
 Lemma free_get : forall mem mem' b b',
@@ -218,7 +216,7 @@ Lemma free_get : forall mem mem' b b',
   b != b' -> mem' b' = mem b'.
 Proof.
 move=> m m' b b'; rewrite /free_fun.
-by case: (m b) => [fr|] //= [<-]; rewrite getm_rem eq_sym => /negbTE ->.
+by case: (m b) => [fr|] //= [<-]; rewrite remmE eq_sym => /negbTE ->.
 Qed.
 
 Context `{syscall_regs mt} `{memory_syscall_addrs mt}.

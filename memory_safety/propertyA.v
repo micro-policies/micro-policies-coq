@@ -110,7 +110,7 @@ elim: b / reach_b {hbs hbs'} => [b [b' off] /= hpc' hb'|b r [b' off]/=|b b' _].
 - move=> hr hb'; move: hr; rewrite {}hb' {b'}.
   case: v_rs => [-> hr|v r' upd_rs]; first by eapply ReachBaseReg; eauto.
   move: {upd_rs} (updm_set upd_rs)=> upd_rs v_ok.
-  rewrite {}upd_rs {rs'} getm_set.
+  rewrite {}upd_rs {rs'} setmE.
   have [_{r}[vE]|_ hr] := altP eqP.
     by case: v / v_ok vE => // - [b' off'] /= ? [<- _].
   by eapply ReachBaseReg; eauto.
@@ -175,7 +175,7 @@ Proof.
 rewrite /updv/getv/= => get_p p'; move: get_p.
 case get_m: (m p.1) => [fr|] //.
 have [leq_size_fr [<-]|//] := boolP (p.2 < size fr)%N.
-rewrite getm_set -pair_eqE /=.
+rewrite setmE -pair_eqE /=.
 have [eq_p1|neq_p1 //] := altP (p'.1 =P p.1).
 rewrite size_cat size_take /= size_drop leq_size_fr.
 rewrite addnS -addSn addnC subnK //.

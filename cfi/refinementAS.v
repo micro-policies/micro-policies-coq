@@ -1,5 +1,5 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -691,7 +691,7 @@ Proof.
   intros areg reg reg' RTG REF EQUIV.
   unfold Sym.equiv in EQUIV.
   unfold refine_registers in REF.
-  assert (MAP := getm_map untag_atom reg').
+  assert (MAP := mapmE untag_atom reg').
   intros r v.
   split.
   - intro GET.
@@ -757,25 +757,14 @@ Definition is_data (a : atom (mword mt) cfi_tag) :=
 
 Lemma refine_dmemory_domains dmem mem :
   refine_dmemory dmem mem ->
-  dmem =i (filterm is_data mem : {partmap _ -> _}).
+  domm dmem = domm (filterm (fun _ v => is_data v) mem).
 Proof.
-  intros REF addr.
-  unfold refine_dmemory in REF; rewrite !inE.
+  intros REF; apply/eq_fset=> addr.
+  unfold refine_dmemory in REF; rewrite !mem_domm.
   destruct (getm dmem addr) eqn:GET.
-  + destruct (getm (filterm is_data mem) addr) eqn:GET'.
-    * auto.
-    * assert (FILTER := getm_filter is_data mem addr); simpl in FILTER.
-      apply REF in GET.
-      rewrite /= GET /= in FILTER. congruence.
-  + destruct (getm (filterm is_data mem) addr) eqn:GET'.
-    * assert (FILTER := getm_filter is_data mem addr).
-      simpl in FILTER.
-      destruct (getm mem addr) eqn:GET''.
-      - destruct a0 as [v tg].
-        destruct tg; simpl in FILTER;
-        [idtac | apply REF in GET'']; congruence.
-      - simpl in FILTER. rewrite FILTER in GET'. congruence.
-    * by auto.
+  + by rewrite filtermE; move/REF in GET; rewrite GET /=.
+  + rewrite filtermE; case GET': (mem addr)=> [[? [|]]|] //=.
+    by move/REF in GET'; rewrite GET' in GET.
 Qed.
 
 Lemma dmem_refinement_preserved_by_equiv :
@@ -786,24 +775,10 @@ Lemma dmem_refinement_preserved_by_equiv :
       refine_dmemory dmem' mem'.
 Proof.
   intros dmem mem mem' REF EQUIV.
-  assert (FILTER := getm_filter is_data mem').
-  assert (MAP := getm_map untag_atom (filterm is_data mem')).
-  exists (mapm untag_atom (filterm is_data mem')). subst.
-  intros addr v.
-  split.
-  - intro GET.
-    assert (FILTER' := FILTER addr).
-    rewrite /= GET in FILTER'. simpl in FILTER'.
-    assert (MAP' := MAP addr).
-    rewrite /= FILTER' in MAP'. simpl in MAP'. assumption.
-  - intro GET.
-    assert (FILTER' := FILTER addr); clear FILTER; simpl in FILTER'.
-    assert (MAP' := MAP addr); clear MAP; simpl in MAP'.
-    destruct (getm mem' addr) eqn:GET'; simpl in GET'.
-    + destruct a as [v' tg].
-      destruct tg; simpl in FILTER';
-      rewrite /= FILTER' in MAP'; simpl in *; congruence.
-    + rewrite FILTER' in MAP'. simpl in MAP'. congruence.
+  exists (mapm untag_atom (filterm (fun _ v => is_data v) mem')); subst.
+  intros addr v; rewrite mapmE /= filtermE /=.
+  split; first by move=> ->.
+  by case GET: (mem' addr) => [[v' [|]]|] //= [?]; subst v'.
 Qed.
 
 Lemma dmem_domain_preserved_by_equiv :
@@ -811,63 +786,35 @@ Lemma dmem_domain_preserved_by_equiv :
     refine_dmemory dmem mem ->
     Sym.equiv mem mem' ->
     refine_dmemory dmem' mem' ->
-    dmem =i dmem'.
+    domm dmem = domm dmem'.
 Proof.
-  intros dmem dmem' mem mem' REF EQUIV REF'.
-  assert (DOMAINMM' := Sym.equiv_same_domain EQUIV).
-  assert (DOMAINDM' := refine_dmemory_domains REF').
-  assert (DOMAINDM := refine_dmemory_domains REF).
-  subst.
-  assert (FILTER := getm_filter is_data mem').
-  intro addr.
-  assert (FILTER' := FILTER addr).
-  assert (EQUIV' := EQUIV addr).
-  assert (DOMAINFMFM': (filterm is_data mem : {partmap _ -> _}) =i
-                       (filterm is_data mem' : {partmap _ -> _})).
-  { apply filter_domains; auto. intros.
-    assert (FILTERK := FILTER k).
-    assert (EQUIVK := EQUIV k).
-    destruct (getm mem k) eqn:GET, (getm mem' k) eqn:GET'.
-    - destruct a as [v tg], a0 as [v0 tg0].
-      destruct tg, tg0.
-      + reflexivity.
-      + destruct EQUIVK as [TG TG' | id id' TG TG' EQ].
-        { unfold is_data. rewrite TG TG'. reflexivity. }
-        { inversion EQ; auto. }
-      + destruct EQUIVK as [TG TG' | id id' TG TG' EQ].
-        { unfold is_data. rewrite TG TG'. reflexivity. }
-        { inversion EQ; auto. }
-      + reflexivity.
-    - destruct EQUIVK.
-    - destruct EQUIVK.
-    - constructor.
-    }
-  assert (DOMAIN: dmem =i dmem'); last by apply DOMAIN.
-  simpl in *.
-  eapply same_domain_trans; eauto. apply same_domain_comm.
-  eapply same_domain_trans; eauto. apply same_domain_comm;
-  assumption.
+move=> dmem dmem' mem mem' REF EQUIV REF'; apply/eq_fset.
+have /eq_fset DOMAINMM' := Sym.equiv_same_domain EQUIV.
+rewrite (refine_dmemory_domains REF') (refine_dmemory_domains REF).
+apply/eq_fset/filter_domains=> // addr; move: (EQUIV addr).
+by case E: (mem addr) => [[v [o|]]|];
+case E': (mem' addr) => [[v' [o'|]]|] //=; case.
 Qed.
 
 Lemma refine_reg_domains areg reg :
   refine_registers areg reg ->
   Sym.registers_tagged reg ->
-  areg =i reg.
+  domm areg = domm reg.
 Proof.
-  intros REF RTG n; rewrite !inE.
-  unfold refine_registers in REF.
-  destruct (getm areg n) eqn:GET.
-  + destruct (getm reg n) eqn:GET'.
-    * auto.
-    * apply REF in GET.
-      rewrite GET in GET'. congruence.
-  + destruct (getm reg n) eqn:GET'.
-    * destruct a as [v ut].
-      assert (ut = DATA)
-        by (apply RTG in GET'; assumption); subst.
-      apply REF in GET'.
-      congruence.
-    * constructor.
+move=> REF RTG; apply/eq_fset=> n; rewrite !mem_domm.
+unfold refine_registers in REF.
+destruct (getm areg n) eqn:GET.
++ destruct (getm reg n) eqn:GET'.
+  * auto.
+  * apply REF in GET.
+    rewrite GET in GET'. congruence.
++ destruct (getm reg n) eqn:GET'.
+  * destruct a as [v ut].
+    assert (ut = DATA)
+      by (apply RTG in GET'; assumption); subst.
+    apply REF in GET'.
+    congruence.
+  * constructor.
 Qed.
 
 Lemma reg_domain_preserved_by_equiv :
@@ -876,16 +823,16 @@ Lemma reg_domain_preserved_by_equiv :
     Sym.registers_tagged reg ->
     Sym.equiv reg reg' ->
     refine_registers areg' reg' ->
-    areg =i areg'.
+    domm areg = domm areg'.
 Proof.
   intros areg areg' reg reg' REF RTG EQUIV REF'.
   unfold pointwise.
-  intro n; rewrite !inE.
+  apply/eq_fset=> n; rewrite !mem_domm.
   assert (RTG' : Sym.registers_tagged (cfg := cfg) reg')
     by (eapply Sym.register_tags_preserved_by_step_a'; eauto).
-  assert (DOMAIN : areg =i reg)
+  assert (DOMAIN : domm areg = domm reg)
     by (apply refine_reg_domains; auto).
-  assert (DOMAIN' : areg' =i reg')
+  assert (DOMAIN' : domm areg' = domm reg')
     by (apply refine_reg_domains; auto).
   assert (EQUIV' := EQUIV n). clear EQUIV.
   destruct (getm reg n) eqn:GET, (getm reg' n) eqn:GET'; rewrite GET in EQUIV'.
