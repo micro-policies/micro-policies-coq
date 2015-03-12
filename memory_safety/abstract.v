@@ -361,16 +361,10 @@ Inductive step : state -> state -> Prop :=
 | step_eq : forall mem reg reg' v1 v2 pc'
     (V1   : reg syscall_arg1 = Some v1)
     (V2   : reg syscall_arg2 = Some v2),
-    let v := VData (as_word (value_eq v1 v2)) in forall
+    let v := VData (as_word (v1 == v2)) in forall
     (UPD  : updm reg syscall_ret v = Some reg')
     (RA   : reg ra = Some (VPtr pc')),
     step (State mem reg (VData eq_addr)) (State mem reg' (VPtr pc')).
-
-(* CH: Is the next part only a way of exposing State? *)
-
-(* Not used anywhere
-Variable initial_block : block.
-*)
 
 Variable initial_pc : pointer.
 Variable initial_mem  : memory.

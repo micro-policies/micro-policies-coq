@@ -1491,9 +1491,9 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
       move: H3 H7; rewrite eq_arg1b => -> [-> ->].
       have -> /= : (base0 + off == base0 + off0) = (off == off0).
         by apply/inj_eq/GRing.addrI.
-      rewrite [in as_word _]eqE /= eqxx /=.
+      rewrite [in Abstract.VPtr _ == _]eqE /= xpair_eqE eqxx /=.
       by case: (_ == _).
-    rewrite [in as_word _]eqE /=.
+    rewrite [in Abstract.VPtr _ == _]eqE /= xpair_eqE.
     have/negbTE->//: b != b0.
     apply/eqP=> eq_b; rewrite eq_b in H3 H7.
     by rewrite (miIr miP H3 H7) eqxx in neq_arg1b.
