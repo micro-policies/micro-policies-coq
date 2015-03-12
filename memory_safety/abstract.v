@@ -2,8 +2,8 @@ Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
 Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
 Require Import MathComp.tuple MathComp.ssrint MathComp.bigop.
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
-Require Import lib.utils.
-Require Import common.types memory_safety.classes.
+Require Import CoqUtils.nominal.
+Require Import lib.utils common.types memory_safety.classes.
 
 Import DoNotation.
 
@@ -20,13 +20,29 @@ Section WithClasses.
 Context (mt : machine_types).
 Context {ops : machine_ops mt}.
 
-Variable block : ordType.
-
-Definition pointer := (block * mword mt)%type.
+Definition pointer := (name * mword mt)%type.
 
 Inductive value :=
 | VData : mword mt -> value
 | VPtr : pointer -> value.
+
+Definition sum_of_value v :=
+  match v with
+  | VData w => inl w
+  | VPtr p => inr p
+  end.
+
+Definition value_of_sum v :=
+  match v with
+  | inl w => VData w
+  | inr p => VPtr p
+  end.
+
+Lemma sum_of_valueK : cancel sum_of_value value_of_sum.
+Proof. by case. Qed.
+
+Lemma value_of_sumK : cancel value_of_sum sum_of_value.
+Proof. by case. Qed.
 
 Definition value_eq v1 v2 :=
   match v1, v2 with
@@ -44,10 +60,19 @@ Qed.
 
 Definition value_eqMixin := EqMixin value_eqP.
 Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
+Definition value_partOrdMixin := CanPartOrdMixin sum_of_valueK.
+Canonical value_partOrdType :=
+  Eval hnf in PartOrdType value value_partOrdMixin.
+Definition value_ordMixin := CanOrdMixin sum_of_valueK.
+Canonical value_ordType := Eval hnf in OrdType value value_ordMixin.
+Definition value_nominalMixin :=
+  BijNominalMixin sum_of_valueK value_of_sumK.
+Canonical value_nominalType :=
+  Eval hnf in NominalType value value_nominalMixin.
 
 Definition frame := seq value.
 
-Definition memory := {partmap block -> frame}.
+Definition memory := {partmap name -> frame}.
 Definition registers := {partmap reg mt -> value}.
 
 Open Scope word_scope.
@@ -61,6 +86,19 @@ Record state := State {
   pc : value
 }.
 
+Implicit Type s : state.
+
+Definition tuple_of_state s := (mem s, regs s, pc s).
+
+Definition state_of_tuple t :=
+  let: (m, r, p) := t in State m r p.
+
+Lemma tuple_of_stateK : cancel tuple_of_state state_of_tuple.
+Proof. by case. Qed.
+
+Lemma state_of_tupleK : cancel state_of_tuple tuple_of_state.
+Proof. by case=> [[] ?]. Qed.
+
 Definition state_eq s1 s2 :=
   [&& mem s1 == mem s2, regs s1 == regs s2 & pc s1 == pc s2].
 
@@ -73,15 +111,19 @@ Qed.
 
 Definition state_eqMixin := EqMixin state_eqP.
 Canonical state_eqType := Eval hnf in EqType state state_eqMixin.
+Definition state_partOrdMixin := CanPartOrdMixin tuple_of_stateK.
+Canonical state_partOrdType :=
+  Eval hnf in PartOrdType state state_partOrdMixin.
+Definition state_ordMixin := CanOrdMixin tuple_of_stateK.
+Canonical state_ordType := Eval hnf in OrdType state state_ordMixin.
+Definition state_nominalMixin :=
+  BijNominalMixin tuple_of_stateK state_of_tupleK.
+Canonical state_nominalType :=
+  Eval hnf in NominalType state state_nominalMixin.
 
 Local Open Scope fset_scope.
 
-Definition blocks s :=
-  let is_ptr v := if v is VPtr ptr then Some ptr.1 else None in
-  mkfset (pmap is_ptr (unzip2 (regs s))) :|:
-  domm (mem s) :|:
-  (\bigcup_(fr <- unzip2 (mem s)) mkfset (pmap is_ptr fr)) :|:
-  mkfset (pmap is_ptr [:: pc s]).
+Definition blocks s := free_names s.
 
 CoInductive blocks_spec b s : Prop :=
 | BlocksReg r ptr of regs s r = Some (VPtr ptr) & ptr.1 = b
@@ -91,45 +133,34 @@ CoInductive blocks_spec b s : Prop :=
 
 Lemma in_blocks b s : reflect (blocks_spec b s) (b \in blocks s).
 Proof.
-apply/(iffP idP).
-  rewrite /blocks !in_fsetU -!orbA; case/or4P.
-  - rewrite in_mkfset mem_pmap=> /mapP [[?|ptr]] //.
-    move/mapP=> [[r v]] /= /getmP get_r ? [?]; subst b v.
-    by eapply BlocksReg; eauto.
-  - rewrite in_mkfset => /mapP [[b' fr]] //= /getmP get_b ?; subst b'.
-    by apply BlocksFrame; rewrite mem_domm get_b.
-  - rewrite big_tnth; move/bigcupP=> [i _].
-    rewrite in_mkfset mem_pmap=> /mapP [[?//|ptr] in_fr [?]]; subst b.
-    move: (mem_tnth i (in_tuple (unzip2 (mem s)))).
-    rewrite (tnth_nth [::]) /= in in_fr * => /mapP [[b fr] /= /getmP in_mem ?].
-    by subst fr; eapply BlocksMem; eauto.
-  case pcE: (pc s) => [w|ptr] /=; rewrite ?in_fsetU1 in_fset0 // orbF=> /eqP ?.
-  by subst b; eapply BlocksPc; eauto.
-rewrite /blocks !in_fsetU -!orbA; case=> [r ptr| |b' ptr fr|ptr].
-- move=> /getmP get_r <- {b}; rewrite in_mkfset mem_pmap.
-  by rewrite -map_comp (@map_f _ _ _ _ _ get_r).
-- by rewrite !mem_domm; case get_b: (mem s b) => [fr|] // _; apply/orP; right.
-- move=> /getmP in_mem ? in_fr; subst b; apply/or4P/Or43.
-  rewrite big_tnth; apply/bigcupP => /=.
-  have P : find (pred1 (b', fr)) (mem s) < size (unzip2 (mem s)).
-    rewrite size_map -has_find; apply/hasP; eexists; first by eassumption.
-    by rewrite /=.
-  exists (Ordinal P)=> //; rewrite in_mkfset mem_pmap; apply/mapP.
-  exists (VPtr ptr); eauto; rewrite (tnth_nth [::]) /=.
-  rewrite (nth_map (b', [::])) /=; last by rewrite size_map in P.
-  set a := nth _ _ _; suff /eqP -> : pred1 (b', fr) a by [].
-  rewrite nth_find //; apply/hasP; exists (b', fr) => //=.
-move=> ptrE ?; subst b; apply/or4P/Or44.
-by rewrite in_mkfset mem_pmap ptrE /= inE.
+case: s => [m rs p]; apply/(iffP idP).
+  rewrite /blocks 2!in_fsetU /= -!orbA /=; case/or3P.
+  - case/free_namesmP=>
+      [b' fr m_b' /free_namesnP ?|
+       b' fr m_b' /free_namessP [[w|ptr] in_fr]].
+    + by subst b'; apply: BlocksFrame; rewrite /= mem_domm m_b'.
+    + by rewrite in_fset0.
+    by move=> /free_namesnP ?; subst b; eapply BlocksMem; eauto.
+  - case/free_namesmP=> [//|r [w|ptr] //= rs_r free].
+    eapply BlocksReg; eauto.
+    have {free} := free : b \in (fset1 ptr.1 :|: fset0).
+    by rewrite fsetU0 in_fset1=>/eqP.
+  case: p=> [w|p] //=.
+  move=> free; eapply BlocksPc=> //=; eauto.
+  have {free} := free : b \in (fset1 p.1 :|: fset0).
+  by rewrite fsetU0 in_fset1=>/eqP.
+rewrite /blocks 2!in_fsetU /= -!orbA; case=> [r ptr| |b' ptr fr|ptr] /=.
+- move=> rs_r <- {b}; apply/or3P/Or32/free_namesmP.
+  by eapply PMFreeNamesVal; eauto; rewrite in_fsetU in_fset1 eqxx.
+- move=> /dommP [fr m_b]; apply/or3P/Or31/free_namesmP.
+  eapply PMFreeNamesKey; eauto; exact/free_namesnP.
+- move=> m_b' <- {b} h_ptr; apply/or3P/Or31/free_namesmP.
+  eapply PMFreeNamesVal; eauto; apply/free_namessP.
+  by exists (VPtr ptr); eauto; rewrite in_fsetU in_fset1 eqxx.
+by move=> -> {p} ?; subst b; apply/or3P/Or33; rewrite in_fsetU in_fset1 eqxx.
 Qed.
 
 Implicit Type reg : registers.
-
-Class allocator := {
-
-  fresh_block : {fset block} -> block
-
-}.
 
 Definition getv (mem : memory) (ptr : pointer) :=
   match mem ptr.1 with
@@ -150,16 +181,8 @@ Definition updv (mem : memory) (ptr : pointer) (v : value) :=
     else None
   end.
 
-Class allocator_spec (alloc : allocator) := {
-
-  fresh_blockP : forall bl, fresh_block bl \notin bl
-
-}.
-
-Context {a : allocator} {asp : allocator_spec a}.
-
-Definition malloc_fun (mem : memory) bl (sz : word) : memory * block :=
-  let b  := fresh_block bl in
+Definition malloc_fun (mem : memory) bl (sz : word) : memory * name :=
+  let b  := fresh bl in
   let fr := nseq sz (VData 0) in
   (setm mem b fr, b).
 
@@ -167,7 +190,7 @@ Lemma malloc_fresh : forall mem sz mem' bl b,
   malloc_fun mem bl sz = (mem',b) -> b \notin bl.
 Proof.
 move=> m sz m' bl b; rewrite /malloc_fun => - [_ <-].
-exact: fresh_blockP.
+exact: freshP.
 Qed.
 
 Lemma malloc_get : forall mem sz mem' bl b off,
@@ -361,9 +384,15 @@ End WithClasses.
 
 End Abstract.
 
-Arguments Abstract.state mt block.
-Arguments Abstract.memory mt block.
-Arguments Abstract.registers mt block.
+Arguments Abstract.state mt.
+Arguments Abstract.memory mt.
+Arguments Abstract.registers mt.
 
 Canonical Abstract.value_eqType.
+Canonical Abstract.value_partOrdType.
+Canonical Abstract.value_ordType.
+Canonical Abstract.value_nominalType.
 Canonical Abstract.state_eqType.
+Canonical Abstract.state_partOrdType.
+Canonical Abstract.state_ordType.
+Canonical Abstract.state_nominalType.

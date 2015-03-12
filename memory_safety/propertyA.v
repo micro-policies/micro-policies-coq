@@ -4,7 +4,7 @@ Require Import Ssreflect.ssrnat Ssreflect.seq Ssreflect.eqtype Ssreflect.fintype
 Require Import MathComp.path MathComp.fingraph.
 
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
-Require Import CoqUtils.fperm.
+Require Import CoqUtils.fperm CoqUtils.nominal.
 
 Require Import lib.utils lib.partmap_utils common.types.
 Require Import memory_safety.property memory_safety.abstract.
@@ -23,24 +23,20 @@ Import Abstract.
 Variable mt : machine_types.
 Variable ops : machine_ops mt.
 Variable sr : syscall_regs mt.
-Variable block : ordType.
-Variable alloc : allocator block.
 Variable addrs : memory_syscall_addrs mt.
 
-Hypothesis allocP : allocator_spec alloc.
+Local Notation state := (state mt).
+Local Notation pointer := [eqType of pointer mt].
+Local Notation value := (value mt).
 
-Local Notation state := (state mt block).
-Local Notation pointer := [eqType of pointer mt block].
-Local Notation value := (value mt block).
-
-Implicit Type m : memory mt block.
-Implicit Type rs : registers mt block.
+Implicit Type m : memory mt.
+Implicit Type rs : registers mt.
 Implicit Type s : state.
-Implicit Type b : block.
+Implicit Type b : name.
 Implicit Type p : pointer.
-Implicit Type bs : {fset block}.
+Implicit Type bs : {fset name}.
 Implicit Type v : value.
-Implicit Type pm : {fperm block}.
+Implicit Type pm : {fperm name}.
 
 Definition references m b b' :=
   [exists offs : mword mt * mword mt,
@@ -85,7 +81,7 @@ CoInductive valid_step s bs s' bs' : Prop :=
                & {subset bs' <= bs} & b \in bs.
 
 CoInductive value_ok pc rs m : value -> Prop :=
-| VOkData x : value_ok pc rs m (VData _ x)
+| VOkData x : value_ok pc rs m (VData x)
 | VOkPtr p of reachable pc rs m p.1 : value_ok pc rs m (VPtr p).
 Hint Constructors value_ok.
 
@@ -260,38 +256,6 @@ eapply ValidFree; simpl; first by eauto.
     by rewrite eq_b'' (free_get_fail hm').
   by rewrite (free_get hm') // eq_sym.
 by apply/hbs => {get_pc'}; eapply ReachBaseReg; eauto.
-Qed.
-
-Definition perm_ptr pm p := (pm p.1, p.2).
-
-Definition perm_value pm v :=
-  match v with
-  | VData w => VData block w
-  | VPtr p => VPtr (perm_ptr pm p)
-  end.
-
-Definition perm_regs pm rs := mapm (perm_value pm) rs.
-
-Definition perm_mem pm m :=
-  mkpartmapf (pm @: domm m)
-             (fun b => map (perm_value pm)
-                           (odflt [::] (m (fperm_inv pm b)))).
-
-Lemma perm_memP pm m p :
-  getv (perm_mem pm m) p =
-  omap (perm_value pm) (getv m (perm_ptr (fperm_inv pm) p)).
-Proof.
-case: p => [b o]; rewrite /getv mkpartmapfE /=.
-case: ifPn=> [b_def|b_ndef].
-  move/(mem_imfset (fperm_inv pm)): b_def.
-  rewrite -imfset_comp -(imfset_eq (fpermM _ pm)) fperm_mulKV.
-  rewrite (imfset_eq (@fperm1 _)) imfset_id=> /dommP [fr efr].
-  rewrite efr /= size_map.
-  have [lt|] //= := boolP (o < size fr).
-  by congr Some; apply: (nth_map _ _ _ lt).
-case b_def: (m _) => //.
-have/(mem_imfset pm) : fperm_inv pm b \in domm m by apply/dommP; eauto.
-by rewrite fpermKV; move=> h; rewrite h in b_ndef.
 Qed.
 
 End MemorySafety.

@@ -5,6 +5,7 @@ Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
 Require Import Ssreflect.fintype.
 Require Import MathComp.ssrint MathComp.ssralg.
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.fset.
+Require Import CoqUtils.nominal.
 Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
@@ -27,19 +28,15 @@ Open Scope word_scope.
 
 Import Sym.Notations.
 
-Variable block : ordType.
-
 Context {mt : machine_types}
         {cl : Sym.color_class}
         {ops : machine_ops mt}
 
         {opss : machine_ops_spec ops}.
 
-Context `{syscall_regs mt} `{a_alloc : Abstract.allocator block}
-         {a_allocP : Abstract.allocator_spec a_alloc}
-        `{addrs : @memory_syscall_addrs mt}.
+Context `{syscall_regs mt} `{addrs : @memory_syscall_addrs mt}.
 
-Definition meminj := {partmap Sym.color -> block * mword mt (* base *)}.
+Definition meminj := {partmap Sym.color -> name * mword mt (* base *)}.
 
 Lemma binop_addDl : forall x y z : mword mt,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
@@ -91,7 +88,7 @@ Notation inbounds base size w :=
 
 Section memory_injections.
 
-Record meminj_spec (amem : Abstract.memory mt block) (mi : meminj) := {
+Record meminj_spec (amem : Abstract.memory mt) (mi : meminj) := {
     miIr : forall b col col' base base',
                 mi col = Some (b, base) ->
                 mi col' = Some (b, base') ->
@@ -110,7 +107,7 @@ Qed.
 
 Hint Resolve meminj_update.
 
-Variable amem : Abstract.memory mt block.
+Variable amem : Abstract.memory mt.
 Variable mi : meminj.
 
 Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
@@ -120,8 +117,8 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
     | _,      _      => False
   end.
 
-Inductive refine_val : Abstract.value mt block -> mword mt -> Sym.type -> Prop :=
-  | RefineData : forall w, refine_val (Abstract.VData _ w) w DATA
+Inductive refine_val : Abstract.value mt -> mword mt -> Sym.type -> Prop :=
+  | RefineData : forall w, refine_val (Abstract.VData w) w DATA
   | RefinePtr : forall b base col off, mi col = Some (b,base) ->
                 refine_val (Abstract.VPtr (b,off)) (base + off) (PTR col).
 
@@ -146,7 +143,7 @@ Definition refine_memory amem (smem : Sym.memory mt) :=
 Lemma refine_memory_get_int qamem (w1 w2 : mword mt) col pt :
          refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR col) ->
          qamem w1 = Some w2@M(col,DATA) ->
-         Abstract.getv amem pt = Some (Abstract.VData _ w2).
+         Abstract.getv amem pt = Some (Abstract.VData w2).
 Proof.
 move=> [miP rmem] rpt get_w1.
 move/(_ _ _ _ _ get_w1): rmem.
@@ -159,7 +156,7 @@ Qed.
 
 Lemma getv_mem base off v : Abstract.getv amem (base, off) = Some v ->
   exists fr, amem base = Some fr
-  /\ nth (Abstract.VData block 0) fr (ord_of_word off) = v.
+  /\ nth (Abstract.VData 0) fr (ord_of_word off) = v.
 Proof.
 unfold Abstract.getv; simpl.
 destruct (amem base) as [fr|]; try discriminate.
@@ -167,7 +164,7 @@ by case: (_ < _) => // - [<-]; eauto.
 Qed.
 
 Lemma get_mem_memv base off v fr : amem base = Some fr ->
-  nth (Abstract.VData block 0) fr (ord_of_word off) = v ->
+  nth (Abstract.VData 0) fr (ord_of_word off) = v ->
   ord_of_word off < size fr ->
   Abstract.getv amem (base,off) = Some v.
 Proof.
@@ -422,7 +419,7 @@ case/(_ bi in_bi)/block_info_bounds: biP => [biP ?].
 by rewrite -[X in X < _]addn0 ltn_add2l.
 Qed.
 
-Lemma refine_memory_free (amem' : Abstract.memory mt block) (smem smem' : Sym.memory mt) nc info b bi col :
+Lemma refine_memory_free (amem' : Abstract.memory mt) (smem smem' : Sym.memory mt) nc info b bi col :
   refine_memory amem smem ->
   refine_internal_state smem (nc, info) ->
   bi \in info ->
@@ -542,7 +539,7 @@ Qed.
 Definition refine_reg_val v a :=
  match a with w@V(ty) => refine_val v w ty | _ => False end.
 
-Definition refine_registers (aregs : Abstract.registers mt block)
+Definition refine_registers (aregs : Abstract.registers mt )
                             (qaregs : Sym.registers mt) :=
   pointwise refine_reg_val aregs qaregs.
 
@@ -571,8 +568,8 @@ Qed.
 Lemma refine_registers_get_int aregs qaregs (n : types.reg mt) w :
   refine_registers aregs qaregs ->
   qaregs n = Some w@V(DATA) ->
-    refine_val (Abstract.VData _ w) w DATA /\
-    aregs n = Some (Abstract.VData _ w).
+    refine_val (Abstract.VData w) w DATA /\
+    aregs n = Some (Abstract.VData w).
 Proof.
 intros rregs get_n.
 specialize (rregs n).
@@ -621,10 +618,10 @@ rewrite (getm_upd_neq neq_rr' upd_r_qa).
 by apply rregs.
 Qed.
 
-Definition meminj_ok (bl : {fset block}) :=
+Definition meminj_ok (bl : {fset name}) :=
   forall col b_base, mi col = Some b_base -> b_base.1 \in bl.
 
-Definition refine_state (ast : Abstract.state mt block) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
+Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
   let '(Abstract.State amem aregs apc) := ast in
   match sst with
   | Symbolic.State smem sregs w@V(ty) ist =>
@@ -638,7 +635,7 @@ Definition refine_state (ast : Abstract.state mt block) (sst : @Symbolic.state m
 
 End memory_injections.
 
-Implicit Type amem : Abstract.memory mt block.
+Implicit Type amem : Abstract.memory mt.
 
 Lemma refine_val_malloc mi amem bl sz amem' newb base col v w ty :
   fresh_color mi col ->
@@ -1119,7 +1116,7 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
 Transparent binop_denote.
 Qed.
 
-Definition meminj_weaken (mi : meminj) (bl : {fset block}) :=
+Definition meminj_weaken (mi : meminj) (bl : {fset name}) :=
   filterm (fun _ b_base => b_base.1 \in bl) mi.
 
 Lemma meminj_weaken_ok mi bl : meminj_ok (meminj_weaken mi bl) bl.
@@ -1158,7 +1155,7 @@ move: getv_b; rewrite /Abstract.getv (lock subw) /=.
 case amem_b: (amem b) => [fr|] //=.
 have [in_bounds [hb']|//] := boolP (_ < size fr).
 have in_fr : Abstract.VPtr (b', off) \in fr.
-  by apply/(nthP (Abstract.VData block 0)); eauto.
+  by apply/(nthP (Abstract.VData 0)); eauto.
 by eapply Abstract.BlocksMem => //=.
 Qed.
 
@@ -1274,7 +1271,7 @@ try match goal with
     repeat case: ifP=> [/eqP -> /= [<-] /= | ? //];
     rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
     match_inv
-  | rpc : refine_val _ (Abstract.VData _ ?s) ?pc _ |- _ =>
+  | rpc : refine_val _ (Abstract.VData ?s) ?pc _ |- _ =>
     (have->: s = pc by inversion rpc);
     repeat case: ifP=> [/eqP -> /= [<-] /= | ? //];
     rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
@@ -1375,7 +1372,7 @@ by solve_pc rpci.
   case: biP Heqo E0 color_bi in_bi lt_val; first by move=> *; congruence.
   move=> _ [? ?] FREE Heqo E0 color_bi in_bi lt_val.
 
-  pose ast := Abstract.State a_mem a_regs (Abstract.VData block (@malloc_addr _ addrs)).
+  pose ast := Abstract.State a_mem a_regs (Abstract.VData (@malloc_addr _ addrs)).
   pose bl := Abstract.blocks ast.
   case malloc: (Abstract.malloc_fun a_mem bl vala) => [amem' newb].
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
@@ -1426,7 +1423,7 @@ by solve_pc rpci.
     rewrite mi_col /Abstract.getv /=.
     by case: (a_mem b) => // fr _; exists fr.
   have eq_col: col = s by congruence.
-  have eq_s4b: s2 = b.
+  have eq_s4b: n0 = b.
     inversion H2.
     by rewrite eq_col H7 in mi_col; injection mi_col.
 
@@ -1453,7 +1450,7 @@ by solve_pc rpci.
   case: biP E E0 color_x => [|-> //].
   move=> col b color_x [? ?] mi_col get_x ? E0 ?.
   have eq_col: col = s by congruence.
-  have eq_s4b: s2 = b.
+  have eq_s4b: n0 = b.
     inversion H2.
     by rewrite eq_col H7 in mi_col; injection mi_col.
 
