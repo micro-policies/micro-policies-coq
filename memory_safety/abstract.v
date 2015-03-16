@@ -123,7 +123,7 @@ Canonical state_nominalType :=
 
 Local Open Scope fset_scope.
 
-Definition blocks s := free_names s.
+Definition blocks s := names s.
 
 CoInductive blocks_spec b s : Prop :=
 | BlocksReg r ptr of regs s r = Some (VPtr ptr) & ptr.1 = b
@@ -135,13 +135,13 @@ Lemma in_blocks b s : reflect (blocks_spec b s) (b \in blocks s).
 Proof.
 case: s => [m rs p]; apply/(iffP idP).
   rewrite /blocks 2!in_fsetU /= -!orbA /=; case/or3P.
-  - case/free_namesmP=>
-      [b' fr m_b' /free_namesnP ?|
-       b' fr m_b' /free_namessP [[w|ptr] in_fr]].
+  - case/namesmP=>
+      [b' fr m_b' /namesnP ?|
+       b' fr m_b' /namessP [[w|ptr] in_fr]].
     + by subst b'; apply: BlocksFrame; rewrite /= mem_domm m_b'.
     + by rewrite in_fset0.
-    by move=> /free_namesnP ?; subst b; eapply BlocksMem; eauto.
-  - case/free_namesmP=> [//|r [w|ptr] //= rs_r free].
+    by move=> /namesnP ?; subst b; eapply BlocksMem; eauto.
+  - case/namesmP=> [//|r [w|ptr] //= rs_r free].
     eapply BlocksReg; eauto.
     have {free} := free : b \in (fset1 ptr.1 :|: fset0).
     by rewrite fsetU0 in_fset1=>/eqP.
@@ -150,12 +150,12 @@ case: s => [m rs p]; apply/(iffP idP).
   have {free} := free : b \in (fset1 p.1 :|: fset0).
   by rewrite fsetU0 in_fset1=>/eqP.
 rewrite /blocks 2!in_fsetU /= -!orbA; case=> [r ptr| |b' ptr fr|ptr] /=.
-- move=> rs_r <- {b}; apply/or3P/Or32/free_namesmP.
+- move=> rs_r <- {b}; apply/or3P/Or32/namesmP.
   by eapply PMFreeNamesVal; eauto; rewrite in_fsetU in_fset1 eqxx.
-- move=> /dommP [fr m_b]; apply/or3P/Or31/free_namesmP.
-  eapply PMFreeNamesKey; eauto; exact/free_namesnP.
-- move=> m_b' <- {b} h_ptr; apply/or3P/Or31/free_namesmP.
-  eapply PMFreeNamesVal; eauto; apply/free_namessP.
+- move=> /dommP [fr m_b]; apply/or3P/Or31/namesmP.
+  eapply PMFreeNamesKey; eauto; exact/namesnP.
+- move=> m_b' <- {b} h_ptr; apply/or3P/Or31/namesmP.
+  eapply PMFreeNamesVal; eauto; apply/namessP.
   by exists (VPtr ptr); eauto; rewrite in_fsetU in_fset1 eqxx.
 by move=> -> {p} ?; subst b; apply/or3P/Or33; rewrite in_fsetU in_fset1 eqxx.
 Qed.
