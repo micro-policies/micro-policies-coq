@@ -463,8 +463,39 @@ case: s s' /; try action_step_simple pm.
   (* No idea why unification can't solve this... *)
   by eapply (@step_bnz _ _ _ _ _ _ (pm p.1, p.2)); eauto.
 - (* Malloc *)
-  move=> m m' rs rs' sz b pc' rs_arg; set s := State _ _ _; set bs := blocks s.
-  admit.
+  move=> m m' rs rs' sz b pc' rs_arg.
+  set s := State _ _ _; set s' := action pm s; set bs := blocks s.
+  pose b' := fresh (blocks s').
+  pose bs' := supp pm :|: blocks s :|: blocks s'.
+  pose b'' := fresh bs'.
+  pose pm' := fperm2 b' b'' * pm * fperm2 b b''.
+  rewrite /malloc_fun=> - [? ?]; subst b m'.
+  have pm'_s' : s' = action pm' s.
+    apply/eq_in_action=> x x_in; rewrite /pm' fpermM /= fpermM /=.
+    rewrite (@fperm2D _ _ _ x); first last.
+    + apply: contraTN x_in=> /eqP -> {x}; rewrite /b''.
+      apply: contra (freshP bs'); rewrite /bs'=> h; rewrite 2!in_fsetU -orbA.
+      by apply/or3P/Or32.
+    + apply: contraTN x_in=> /eqP -> {x}; exact/freshP.
+    rewrite fperm2D //.
+      rewrite /b' /s' /blocks names_action.
+      by apply/eqP=> e; move: (freshP (pm @: names s)); rewrite -e mem_imfset.
+    rewrite /b''; apply/eqP=> e; move: (freshP bs'); rewrite -e /bs'.
+    by rewrite in_fsetU !negb_or /s' /blocks names_action mem_imfset // andbF.
+  have pm'_b': pm' (fresh bs) = b'.
+    rewrite /pm' fpermM /= fperm2L fpermM /= (_ : pm b'' = b'') ?fperm2R.
+      done.
+    apply/suppPn/negP=> b''_in; move: (freshP bs').
+    by rewrite /bs' 2!in_fsetU !negb_or b''_in.
+  move=> h1 h2.
+  exists pm'; rewrite pm'_s'; eapply step_malloc; eauto.
+  + by rewrite /s /= actionmE actionwE rs_arg /= actionoE /= action_valueE.
+  + rewrite /s /= /malloc_fun.
+    rewrite /b' pm'_s' /s /= in pm'_b'; rewrite -pm'_b' -actionnE.
+    rewrite actionm_set actionsE (eq_in_map _ id _).1 1?map_id; first by eauto.
+    by move=> x /nseqP [-> _].
+  + exact: (action_updr _ h1).
+  by rewrite /s /= actionmE actionwE h2.
 Qed.
 
 End MemorySafety.
