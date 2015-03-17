@@ -258,230 +258,230 @@ eapply ValidFree; simpl; first by eauto.
 by apply/hbs => {get_pc'}; eapply ReachBaseReg; eauto.
 Qed.
 
-Lemma action_valueE pm v :
-  action pm v = match v with
+Lemma rename_valueE pm v :
+  rename pm v = match v with
                 | VData w => VData w
-                | VPtr ptr => VPtr (action pm ptr.1, ptr.2)
+                | VPtr ptr => VPtr (rename pm ptr.1, ptr.2)
                 end.
 Proof. by case: v. Qed.
 
-Lemma action_dataE pm (w : mword mt) :
-  action pm (VData w) = VData w.
+Lemma rename_dataE pm (w : mword mt) :
+  rename pm (VData w) = VData w.
 Proof. by []. Qed.
 
-Lemma action_ptrE pm (ptr : pointer) :
-  action pm (VPtr ptr) = VPtr (pm ptr.1, ptr.2).
+Lemma rename_ptrE pm (ptr : pointer) :
+  rename pm (VPtr ptr) = VPtr (pm ptr.1, ptr.2).
 Proof. by []. Qed.
 
-Lemma action_stateE pm s :
-  action pm s = State (action pm (mem s))
-                      (action pm (regs s))
-                      (action pm (pc s)).
+Lemma rename_stateE pm s :
+  rename pm s = State (rename pm (mem s))
+                      (rename pm (regs s))
+                      (rename pm (pc s)).
 Proof. by case: s. Qed.
 
-Lemma actionwE k pm (w : word k) : action pm w = w.
+Lemma renamewE k pm (w : word k) : rename pm w = w.
 Proof. by []. Qed.
 
 Local Open Scope fperm_scope.
 
-Lemma action_getv pm m ptr :
-  getv (action pm m) ptr =
-  action pm (getv m (action pm^-1 ptr)).
+Lemma rename_getv pm m ptr :
+  getv (rename pm m) ptr =
+  rename pm (getv m (rename pm^-1 ptr)).
 Proof.
-rewrite /getv !actionmE !actionpE /= !actionoE.
-case e: (m (action _ _)) => [fr|] //=.
-rewrite [in RHS]fun_if /= !actionwE size_map.
+rewrite /getv !renamemE !renamepE /= !renameoE.
+case e: (m (rename _ _)) => [fr|] //=.
+rewrite [in RHS]fun_if /= !renamewE size_map.
 case: ifP=> // in_bounds.
 by rewrite (nth_map (VData 0%w) _ _ in_bounds).
 Qed.
 
-Lemma action_updv pm m m' ptr v :
+Lemma rename_updv pm m m' ptr v :
   updv m ptr v = Some m' ->
-  updv (action pm m) (action pm ptr) (action pm v) =
-  Some (action pm m').
+  updv (rename pm m) (rename pm ptr) (rename pm v) =
+  Some (rename pm m').
 Proof.
-rewrite /updv !actionpE /= actionmE actionK.
+rewrite /updv !renamepE /= renamemE renameK.
 case m_ptr: (m ptr.1)=> [fr|] //=.
-rewrite actionwE size_map.
+rewrite renamewE size_map.
 case: ifP=> //= h_off [<-].
-by rewrite actionm_set [in RHS]actionsE map_cat /= map_take map_drop.
+by rewrite renamem_set [in RHS]renamesE map_cat /= map_take map_drop.
 Qed.
 
-Lemma action_updr pm rs rs' r v :
+Lemma rename_updr pm rs rs' r v :
   updm rs r v = Some rs' ->
-  updm (action pm rs) r (action pm v) = Some (action pm rs').
+  updm (rename pm rs) r (rename pm v) = Some (rename pm rs').
 Proof.
-rewrite /updm actionmE actionwE.
+rewrite /updm renamemE renamewE.
 case rs_r: (rs r) => [v'|] //= [<-{rs'}].
-by rewrite actionm_set actionwE.
+by rewrite renamem_set renamewE.
 Qed.
 
-Lemma action_lift_binop pm f v1 v2 v3 :
+Lemma rename_lift_binop pm f v1 v2 v3 :
   lift_binop f v1 v2 = Some v3 ->
-  lift_binop f (action pm v1) (action pm v2) = Some (action pm v3).
+  lift_binop f (rename pm v1) (rename pm v2) = Some (rename pm v3).
 Proof.
 case: f v1 v2=> [] [w1|[p1 o1]] [w2|[p2 o2]] //=;
-rewrite ?actionwE ?(can_eq (actionK pm));
+rewrite ?renamewE ?(can_eq (renameK pm));
 try match goal with
 | p1 : name, p2 : name |- context [?p1 == ?p2] =>
   case: (altP (p1 =P p2)) => ? //; subst
 end;
-solve [move=> [<-]; rewrite action_valueE //=].
+solve [move=> [<-]; rewrite rename_valueE //=].
 Qed.
 
-Lemma action_free pm m m' b :
+Lemma rename_free pm m m' b :
   free_fun m b = Some m' ->
-  free_fun (action pm m) (pm b) = Some (action pm m').
+  free_fun (rename pm m) (pm b) = Some (rename pm m').
 Proof.
-rewrite /free_fun actionmE actionnE actionoE fpermK.
+rewrite /free_fun renamemE renamenE renameoE fpermK.
 case m_b: (m b) => [fr|] //= [<- {m'}]; congr Some.
-by rewrite actionm_rem.
+by rewrite renamem_rem.
 Qed.
-Hint Resolve action_free : action_step_db.
+Hint Resolve rename_free : rename_step_db.
 
-Ltac action_getv :=
+Ltac rename_getv :=
   match goal with
   | pm : {fperm name},
     get : getv ?m ?ptr = Some ?v |- _ =>
     match m with
-    | action pm ?m' => fail 1
+    | rename pm ?m' => fail 1
     | _ => idtac
     end;
     match goal with
-    | _ : getv (action pm m) (action pm ptr) = _ |- _ => fail 1
+    | _ : getv (rename pm m) (rename pm ptr) = _ |- _ => fail 1
     | |- _ => idtac
     end;
     let aget := fresh "aget" in
     first [
-        have aget: getv (action pm m) (action pm ptr) = Some (action pm v);
-        [ by rewrite action_getv actionK get
-        | rewrite ?action_dataE ?action_ptrE in aget ]
-      | failwith "action_getv" ]
+        have aget: getv (rename pm m) (rename pm ptr) = Some (rename pm v);
+        [ by rewrite rename_getv renameK get
+        | rewrite ?rename_dataE ?rename_ptrE in aget ]
+      | failwith "rename_getv" ]
   end.
 
-Ltac action_updv :=
+Ltac rename_updv :=
   match goal with
   | pm : {fperm name},
     upd : updv ?m ?ptr ?v = Some ?m' |- _ =>
     match m with
-    | action pm ?m'' => fail 1
+    | rename pm ?m'' => fail 1
     | _ => idtac
     end;
     match goal with
-    | _ : updv (action pm m) (action pm ptr) _ = _ |- _ => fail 1
+    | _ : updv (rename pm m) (rename pm ptr) _ = _ |- _ => fail 1
     | |- _ => idtac
     end;
     let aupdm := fresh "aupdm" in
     first [
-        have aupdm := action_updv pm upd;
-        rewrite ?action_dataE ?action_ptrE in aupdm
-      | failwith "action_updv" ]
+        have aupdm := rename_updv pm upd;
+        rewrite ?rename_dataE ?rename_ptrE in aupdm
+      | failwith "rename_updv" ]
   end.
 
-Ltac action_getr :=
+Ltac rename_getr :=
   match goal with
   | pm : {fperm name},
     get : getm ?rs ?r = Some ?v |- _ =>
     match rs with
-    | action pm ?rs' => fail 1
+    | rename pm ?rs' => fail 1
     | _ => idtac
     end;
     match goal with
-    | _ : getm (action pm rs) r = _ |- _ => fail 1
+    | _ : getm (rename pm rs) r = _ |- _ => fail 1
     | |- _ => idtac
     end;
     let agetr := fresh "agetr" in
     first [
-        have agetr: getm (action pm rs) r = Some (action pm v);
-        [ by rewrite actionmE actionK get
-        | rewrite ?action_dataE ?action_ptrE in agetr ]
-      | failwith "action_getr" ]
+        have agetr: getm (rename pm rs) r = Some (rename pm v);
+        [ by rewrite renamemE renameK get
+        | rewrite ?rename_dataE ?rename_ptrE in agetr ]
+      | failwith "rename_getr" ]
   end.
 
-Ltac action_updr :=
+Ltac rename_updr :=
   match goal with
   | pm : {fperm name},
     upd : updm ?rs ?r ?v = Some ?rs' |- _ =>
     match rs with
-    | action pm ?rs'' => fail 1
+    | rename pm ?rs'' => fail 1
     | _ => idtac
     end;
     match goal with
-    | _ : updm (action pm rs) r _ = _ |- _ => fail 1
+    | _ : updm (rename pm rs) r _ = _ |- _ => fail 1
     | |- _ => idtac
     end;
     let aupdr := fresh "aupdr" in
     first [
-        have aupdr := action_updr pm upd;
-        rewrite ?action_dataE ?action_ptrE in aupdr
-      | failwith "action_updr" ]
+        have aupdr := rename_updr pm upd;
+        rewrite ?rename_dataE ?rename_ptrE in aupdr
+      | failwith "rename_updr" ]
   end.
 
-Ltac action_lift_binop :=
+Ltac rename_lift_binop :=
   match goal with
   | pm : {fperm name},
     bo : lift_binop ?f ?v1 ?v2 = Some ?v3 |- _ =>
     match v1 with
-    | action pm _ => fail 1
+    | rename pm _ => fail 1
     | _ => idtac
     end;
     match goal with
-    | _ : lift_binop f (action pm v1) (action pm v2) = _ |- _ => fail 1
+    | _ : lift_binop f (rename pm v1) (rename pm v2) = _ |- _ => fail 1
     | |- _ => idtac
     end;
     let abinop := fresh "abinop" in
     first [
-        have abinop := action_lift_binop pm bo;
-        rewrite ?action_dataE ?action_ptrE in abinop
-      | failwith "action_lift_binop" ]
+        have abinop := rename_lift_binop pm bo;
+        rewrite ?rename_dataE ?rename_ptrE in abinop
+      | failwith "rename_lift_binop" ]
   end.
 
-Ltac apply_action_everywhere :=
-  first [ action_getv | action_updv | action_getr | action_updr
-        | action_lift_binop ].
+Ltac apply_rename_everywhere :=
+  first [ rename_getv | rename_updv | rename_getr | rename_updr
+        | rename_lift_binop ].
 
-Ltac solve_action_step_simpl :=
+Ltac solve_rename_step_simpl :=
   solve [ eauto
-        | eauto; simpl; eauto with action_step_db
-        | eauto; try rewrite !(can_eq (actionK _)); eauto ].
+        | eauto; simpl; eauto with rename_step_db
+        | eauto; try rewrite !(can_eq (renameK _)); eauto ].
 
-Ltac action_step_simple pm :=
-  intros; exists pm; rewrite !action_stateE /=;
-  repeat apply_action_everywhere;
-  rewrite ?action_dataE /=;
-  s_econstructor solve_action_step_simpl.
+Ltac rename_step_simple pm :=
+  intros; exists pm; rewrite !rename_stateE /=;
+  repeat apply_rename_everywhere;
+  rewrite ?rename_dataE /=;
+  s_econstructor solve_rename_step_simpl.
 
-Lemma action_step s s' pm :
+Lemma rename_step s s' pm :
   step s s' ->
-  exists pm', step (action pm s) (action pm' s').
+  exists pm', step (rename pm s) (rename pm' s').
 Proof.
-case: s s' /; try action_step_simple pm.
+case: s s' /; try rename_step_simple pm.
 - (* Bnz *)
-  move=> m rs p *; exists pm; rewrite !action_stateE /=.
-  repeat apply_action_everywhere.
-  rewrite !action_ptrE /=.
+  move=> m rs p *; exists pm; rewrite !rename_stateE /=.
+  repeat apply_rename_everywhere.
+  rewrite !rename_ptrE /=.
   (* No idea why unification can't solve this... *)
   by eapply (@step_bnz _ _ _ _ _ _ (pm p.1, p.2)); eauto.
 - (* Malloc *)
   move=> m m' rs rs' sz b pc' rs_arg.
-  set s := State _ _ _; set s' := action pm s; set bs := blocks s.
+  set s := State _ _ _; set s' := rename pm s; set bs := blocks s.
   pose b' := fresh (blocks s').
   pose bs' := supp pm :|: blocks s :|: blocks s'.
   pose b'' := fresh bs'.
   pose pm' := fperm2 b' b'' * pm * fperm2 b b''.
   rewrite /malloc_fun=> - [? ?]; subst b m'.
-  have pm'_s' : s' = action pm' s.
-    apply/eq_in_action=> x x_in; rewrite /pm' fpermM /= fpermM /=.
+  have pm'_s' : s' = rename pm' s.
+    apply/eq_in_rename=> x x_in; rewrite /pm' fpermM /= fpermM /=.
     rewrite (@fperm2D _ _ _ x); first last.
     + apply: contraTN x_in=> /eqP -> {x}; rewrite /b''.
       apply: contra (freshP bs'); rewrite /bs'=> h; rewrite 2!in_fsetU -orbA.
       by apply/or3P/Or32.
     + apply: contraTN x_in=> /eqP -> {x}; exact/freshP.
     rewrite fperm2D //.
-      rewrite /b' /s' /blocks names_action.
+      rewrite /b' /s' /blocks names_rename.
       by apply/eqP=> e; move: (freshP (pm @: names s)); rewrite -e mem_imfset.
     rewrite /b''; apply/eqP=> e; move: (freshP bs'); rewrite -e /bs'.
-    by rewrite in_fsetU !negb_or /s' /blocks names_action mem_imfset // andbF.
+    by rewrite in_fsetU !negb_or /s' /blocks names_rename mem_imfset // andbF.
   have pm'_b': pm' (fresh bs) = b'.
     rewrite /pm' fpermM /= fperm2L fpermM /= (_ : pm b'' = b'') ?fperm2R.
       done.
@@ -489,13 +489,13 @@ case: s s' /; try action_step_simple pm.
     by rewrite /bs' 2!in_fsetU !negb_or b''_in.
   move=> h1 h2.
   exists pm'; rewrite pm'_s'; eapply step_malloc; eauto.
-  + by rewrite /s /= actionmE actionwE rs_arg /= actionoE /= action_valueE.
+  + by rewrite /s /= renamemE renamewE rs_arg /= renameoE /= rename_valueE.
   + rewrite /s /= /malloc_fun.
-    rewrite /b' pm'_s' /s /= in pm'_b'; rewrite -pm'_b' -actionnE.
-    rewrite actionm_set actionsE (eq_in_map _ id _).1 1?map_id; first by eauto.
+    rewrite /b' pm'_s' /s /= in pm'_b'; rewrite -pm'_b' -renamenE.
+    rewrite renamem_set renamesE (eq_in_map _ id _).1 1?map_id; first by eauto.
     by move=> x /nseqP [-> _].
-  + exact: (action_updr _ h1).
-  by rewrite /s /= actionmE actionwE h2.
+  + exact: (rename_updr _ h1).
+  by rewrite /s /= renamemE renamewE h2.
 Qed.
 
 End MemorySafety.
