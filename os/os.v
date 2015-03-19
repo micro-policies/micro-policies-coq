@@ -203,4 +203,8 @@ Definition symbolic_os : Symbolic.state mt :=
         ; Sym.add_to_jump_targets_tag  := syscall_tag 1
         ; Sym.add_to_store_targets_tag := syscall_tag 2 |}.
 
+Definition step_os :  Symbolic.state concrete_int_32_mt
+                   -> option (Symbolic.state concrete_int_32_mt)
+  := stepf Sym.syscalls.
+
 End os.
