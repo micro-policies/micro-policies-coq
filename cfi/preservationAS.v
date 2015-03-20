@@ -398,4 +398,11 @@ Next Obligation.
     }
 Qed.
 
+Theorem symbolic_cfi : property.cfi smachine.
+Proof.
+  eapply backwards_refinement_preserves_cfi.
+  - apply cfi_refinementAS_specs.
+  - apply Abs.cfi.
+Qed.
+
 End Refinement.
