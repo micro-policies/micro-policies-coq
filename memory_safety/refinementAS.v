@@ -1,9 +1,11 @@
 Ltac type_of x := type of x.
 
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
+Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+Require Import Ssreflect.fintype.
 Require Import MathComp.ssrint MathComp.ssralg.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.fset.
+Require Import CoqUtils.nominal.
 Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
@@ -26,19 +28,15 @@ Open Scope word_scope.
 
 Import Sym.Notations.
 
-Variable block : ordType.
-
 Context {mt : machine_types}
         {cl : Sym.color_class}
         {ops : machine_ops mt}
 
         {opss : machine_ops_spec ops}.
 
-Context `{syscall_regs mt} `{a_alloc : @Abstract.allocator mt block}
-         {a_allocP : Abstract.allocator_spec a_alloc}
-        `{@memory_syscall_addrs mt}.
+Context `{syscall_regs mt} `{addrs : @memory_syscall_addrs mt}.
 
-Definition meminj := {partmap Sym.color -> block * mword mt (* base *)}.
+Definition meminj := {partmap Sym.color -> name * mword mt (* base *)}.
 
 Lemma binop_addDl : forall x y z : mword mt,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
@@ -90,7 +88,7 @@ Notation inbounds base size w :=
 
 Section memory_injections.
 
-Record meminj_spec (amem : Abstract.memory mt block) (mi : meminj) := {
+Record meminj_spec (amem : Abstract.memory mt) (mi : meminj) := {
     miIr : forall b col col' base base',
                 mi col = Some (b, base) ->
                 mi col' = Some (b, base') ->
@@ -109,7 +107,7 @@ Qed.
 
 Hint Resolve meminj_update.
 
-Variable amem : Abstract.memory mt block.
+Variable amem : Abstract.memory mt.
 Variable mi : meminj.
 
 Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
@@ -119,8 +117,8 @@ Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
     | _,      _      => False
   end.
 
-Inductive refine_val : Abstract.value mt block -> mword mt -> Sym.type -> Prop :=
-  | RefineData : forall w, refine_val (Abstract.VData _ w) w DATA
+Inductive refine_val : Abstract.value mt -> mword mt -> Sym.type -> Prop :=
+  | RefineData : forall w, refine_val (Abstract.VData w) w DATA
   | RefinePtr : forall b base col off, mi col = Some (b,base) ->
                 refine_val (Abstract.VPtr (b,off)) (base + off) (PTR col).
 
@@ -145,12 +143,12 @@ Definition refine_memory amem (smem : Sym.memory mt) :=
 Lemma refine_memory_get_int qamem (w1 w2 : mword mt) col pt :
          refine_memory amem qamem -> refine_val (Abstract.VPtr pt) w1 (PTR col) ->
          qamem w1 = Some w2@M(col,DATA) ->
-         Abstract.getv amem pt = Some (Abstract.VData _ w2).
+         Abstract.getv amem pt = Some (Abstract.VData w2).
 Proof.
 move=> [miP rmem] rpt get_w1.
 move/(_ _ _ _ _ get_w1): rmem.
 inversion rpt.
-rewrite H4 (addwC base).
+rewrite H3 (addwC base).
 rewrite (_ : off + base - base = off); try exact: GRing.addrK.
 case: (Abstract.getv amem (b, off)) => // v rvw3.
 by inversion rvw3.
@@ -158,7 +156,7 @@ Qed.
 
 Lemma getv_mem base off v : Abstract.getv amem (base, off) = Some v ->
   exists fr, amem base = Some fr
-  /\ nth (Abstract.VData block 0) fr (ord_of_word off) = v.
+  /\ nth (Abstract.VData 0) fr (ord_of_word off) = v.
 Proof.
 unfold Abstract.getv; simpl.
 destruct (amem base) as [fr|]; try discriminate.
@@ -166,7 +164,7 @@ by case: (_ < _) => // - [<-]; eauto.
 Qed.
 
 Lemma get_mem_memv base off v fr : amem base = Some fr ->
-  nth (Abstract.VData block 0) fr (ord_of_word off) = v ->
+  nth (Abstract.VData 0) fr (ord_of_word off) = v ->
   ord_of_word off < size fr ->
   Abstract.getv amem (base,off) = Some v.
 Proof.
@@ -185,7 +183,7 @@ Proof.
 move=> [miP rmem] rpt get_w1.
 move/(_ _ _ _ _ get_w1): rmem.
 inversion rpt.
-rewrite H4 (addwC base).
+rewrite H3 (addwC base).
 rewrite (_ : off + base - base = off); last exact: GRing.addrK.
 rewrite /Abstract.getv.
 case: (amem b) => //= get_off.
@@ -228,19 +226,24 @@ Definition cover (smem : Sym.memory mt) (info : seq (Sym.block_info mt)) :=
   forall w v, smem w = Some v ->
   exists bi, bi \in info /\ inbounds (Sym.block_base bi) (Sym.block_size bi) w.
 
-Definition refine_internal_state (bl : seq block) smem (ist : Sym.color * seq (Sym.block_info mt)) :=
-  let: (col, info) := ist in
-  fresh_color col /\
-  (forall col b base, mi col = Some (b,base) -> b \in bl) /\
-  (forall i j def w, i < size info -> j < size info ->
-     overlap (nth def info i) (nth def info j) w -> i = j)%N /\
-  cover smem info /\
-  forall bi, bi \in info -> block_info_spec smem bi.
+Record refine_internal_state smem (ist : Sym.color * seq (Sym.block_info mt)) : Prop := RIS {
 
-Lemma refine_memory_upd bl smem smem' ist old
+  ris_fresh : fresh_color ist.1;
+
+  ris_no_overlap :
+    (forall i j def w, i < size ist.2 -> j < size ist.2 ->
+       overlap (nth def ist.2 i) (nth def ist.2 j) w -> i = j)%N;
+
+  ris_cover_info : cover smem ist.2;
+
+  ris_rist : forall bi, bi \in ist.2 -> block_info_spec smem bi
+
+}.
+
+Lemma refine_memory_upd smem smem' ist old
                         w1 w2 pt ty ty' n x :
   refine_memory amem smem ->
-  refine_internal_state bl smem ist ->
+  refine_internal_state smem ist ->
   refine_val (Abstract.VPtr pt) w1 (PTR n) ->
   smem w1 = Some old@M(n, ty') ->
   updm smem w1 w2@M(n, ty) = Some smem' ->
@@ -248,10 +251,10 @@ Lemma refine_memory_upd bl smem smem' ist old
     exists amem',
       [/\ Abstract.updv amem pt x = Some amem',
           refine_memory amem' smem' &
-          refine_internal_state bl smem' ist].
+          refine_internal_state smem' ist].
 Proof.
 case: ist => nextcol info.
-move=> [miP rmem] [freshcol [in_bl [no_overlap [cover_info rist]]]] rpt get_w1 upd_w1.
+move=> [miP rmem] [freshcol no_overlap cover_info rist] rpt get_w1 upd_w1.
 move=> rx.
 have [base hn hw1]: exists2 base,
                     mi n = Some (pt.1, base) &
@@ -305,7 +308,7 @@ case=> bi_base bi_size [bi_col in_bi|in_bi]; last first.
   inversion biP => //.
   apply: BlockInfoFree => //=.
   move=> off lt_off.
-  case/(_ off lt_off): H3 => v /=.
+  case/(_ off lt_off): H2 => v /=.
   have [->|/eqP neq_w1] := altP (bi_base + off =P base + pt.2).
      by rewrite get_w1.
   by rewrite (getm_upd_neq neq_w1 upd_w1); move => ?; exists v.
@@ -313,13 +316,13 @@ have [eq_coln|neq_coln] := altP (bi_col =P n).
   rewrite eq_coln in in_bi *.
   move/(_ _ in_bi): rist => biP.
   inversion biP => //.
-  case: H1 => eq_col.
-  rewrite -eq_col in H3 H4.
-  apply: (BlockInfoLive _ H2 H3) => //=.
+  case: H0 => eq_col.
+  rewrite -eq_col in H2 H3.
+  apply: (BlockInfoLive _ H1 H2) => //=.
   move=> off lt_off.
-  case/(_ off lt_off): H4 => v [ty''].
+  case/(_ off lt_off): H3 => v [ty''].
   destruct pt as [pt_b pt_off].
-  rewrite (refine_ptr_inv miP rpt H3) in get_w1 upd_w1.
+  rewrite (refine_ptr_inv miP rpt H2) in get_w1 upd_w1.
   have [->|/eqP neq_off] := altP (off =P pt_off).
     by move=> _; rewrite (getm_upd_eq upd_w1); eexists; eexists.
   have neq_w1 : bi_base + off <> bi_base + pt_off.
@@ -328,11 +331,11 @@ have [eq_coln|neq_coln] := altP (bi_col =P n).
   by rewrite (getm_upd_neq neq_w1 upd_w1) => ?; eexists; eexists.
 move/(_ _ in_bi): rist => biP.
 inversion biP => //=.
-case: H1 => eq_col.
-rewrite -eq_col in H3 H4.
-apply: (BlockInfoLive _ H2 H3) => //.
+case: H0 => eq_col.
+rewrite -eq_col in H2 H3.
+apply: (BlockInfoLive _ H1 H2) => //.
 move=> off lt_off.
-case/(_ off lt_off): H4 => v [ty''].
+case/(_ off lt_off): H3 => v [ty''].
 have [->|/eqP neq_w1] := altP (bi_base + off =P base + pt.2).
   by rewrite get_w1 => [[_ eq_coln _]]; rewrite eq_coln eqxx in neq_coln.
 by rewrite (getm_upd_neq neq_w1 upd_w1); move => ?; eexists; eexists.
@@ -378,9 +381,9 @@ have [bound write_block|//] := boolP (_ <= _).
 by rewrite (get_write_block_rec _ write_block).
 Qed.
 
-Lemma block_color_uniq (smem : Sym.memory mt) bi info bl nc col b w1 w2 ty :
+Lemma block_color_uniq (smem : Sym.memory mt) bi info nc col b w1 w2 ty :
   refine_memory amem smem ->
-  refine_internal_state bl smem (nc, info) ->
+  refine_internal_state smem (nc, info) ->
   bi \in info ->
   mi col = Some (b, Sym.block_base bi) ->
   Sym.block_color bi = Some col ->
@@ -388,7 +391,7 @@ Lemma block_color_uniq (smem : Sym.memory mt) bi info bl nc col b w1 w2 ty :
   inbounds (Sym.block_base bi) (Sym.block_size bi) w1.
 Proof.
 move=> rmem rist in_bi mi_col color_bi get_w1.
-case: rist => _ [_ [no_overlap [cover_info biP]]].
+case: rist => [_ no_overlap cover_info biP].
 case/cover_info: (get_w1) => bi' [in_bi' bounds_bi'].
 have eq_base: Sym.block_base bi' = Sym.block_base bi.
   pose (off := w1 - Sym.block_base bi').
@@ -416,16 +419,16 @@ case/(_ bi in_bi)/block_info_bounds: biP => [biP ?].
 by rewrite -[X in X < _]addn0 ltn_add2l.
 Qed.
 
-Lemma refine_memory_free (amem' : Abstract.memory mt block) (smem smem' : Sym.memory mt) bl nc info b bi col :
+Lemma refine_memory_free (amem' : Abstract.memory mt) (smem smem' : Sym.memory mt) nc info b bi col :
   refine_memory amem smem ->
-  refine_internal_state bl smem (nc, info) ->
+  refine_internal_state smem (nc, info) ->
   bi \in info ->
   Sym.block_color bi = Some col ->
   mi col = Some (b, Sym.block_base bi) ->
   Abstract.free_fun amem b = Some amem' ->
   Sym.write_block smem (Sym.block_base bi) 0@FREE (Sym.block_size bi) = Some smem' ->
   refine_memory amem' smem' /\
-  refine_internal_state bl smem'
+  refine_internal_state smem'
      (nc,
      set_nth (Sym.def_info mt) info (index bi info)
        {|
@@ -435,7 +438,7 @@ Lemma refine_memory_free (amem' : Abstract.memory mt block) (smem smem' : Sym.me
 Proof.
 move=> rmem rist in_bi color_bi mi_col free_b write_block.
 have ? := @leZ_min (Sym.block_base bi).
-case: (rist) => fresh_color [in_bl [no_overlap [cover_info biP]]].
+case: (rist) => [fresh_color no_overlap cover_info biP].
 move/(_ bi in_bi)/block_info_bounds: (biP) => [? ?].
 case: (rmem) => miP get_smem; split.
   split; first by constructor; apply miP.
@@ -536,7 +539,7 @@ Qed.
 Definition refine_reg_val v a :=
  match a with w@V(ty) => refine_val v w ty | _ => False end.
 
-Definition refine_registers (aregs : Abstract.registers mt block)
+Definition refine_registers (aregs : Abstract.registers mt )
                             (qaregs : Sym.registers mt) :=
   pointwise refine_reg_val aregs qaregs.
 
@@ -565,8 +568,8 @@ Qed.
 Lemma refine_registers_get_int aregs qaregs (n : types.reg mt) w :
   refine_registers aregs qaregs ->
   qaregs n = Some w@V(DATA) ->
-    refine_val (Abstract.VData _ w) w DATA /\
-    aregs n = Some (Abstract.VData _ w).
+    refine_val (Abstract.VData w) w DATA /\
+    aregs n = Some (Abstract.VData w).
 Proof.
 intros rregs get_n.
 specialize (rregs n).
@@ -615,18 +618,24 @@ rewrite (getm_upd_neq neq_rr' upd_r_qa).
 by apply rregs.
 Qed.
 
-Definition refine_state (ast : Abstract.state mt block) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
-  let '(Abstract.State amem aregs bl apc) := ast in
+Definition meminj_ok (bl : {fset name}) :=
+  forall col b_base, mi col = Some b_base -> b_base.1 \in bl.
+
+Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
+  let '(Abstract.State amem aregs apc) := ast in
   match sst with
   | Symbolic.State smem sregs w@V(ty) ist =>
     [/\ refine_memory amem smem,
         refine_registers aregs sregs,
-        refine_val apc w ty &
-        refine_internal_state bl smem ist]
+        refine_val apc w ty,
+        refine_internal_state smem ist &
+        meminj_ok (Abstract.blocks ast)]
   | _ => False
   end.
 
 End memory_injections.
+
+Implicit Type amem : Abstract.memory mt.
 
 Lemma refine_val_malloc mi amem bl sz amem' newb base col v w ty :
   fresh_color mi col ->
@@ -658,12 +667,13 @@ Proof.
 Qed.
 
 Lemma meminj_spec_malloc mi amem smem amem' info bl sz newb base col :
-  refine_internal_state mi bl smem (col, info) ->
+  refine_internal_state mi smem (col, info) ->
+  meminj_ok mi bl ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   meminj_spec amem mi ->
   meminj_spec amem' (mi_malloc mi newb base col).
 Proof.
-move=> [fresh_col [in_bl rist]] malloc miP.
+move=> [fresh_col ? ? ?] in_bl malloc miP.
 constructor => b col' col'' base' base''.
 have [->|/eqP neq_col'] := altP (col' =P col);
 have [-> //|/eqP neq_col''] := altP (col'' =P col).
@@ -678,16 +688,17 @@ Qed.
 
 Lemma refine_memory_malloc mi amem smem amem' info bl sz newb base col smem' :
   refine_memory mi amem smem ->
-  refine_internal_state mi bl smem (col, info) ->
+  meminj_ok mi bl ->
+  refine_internal_state mi smem (col, info) ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
   Sym.write_block smem base 0@M(col, DATA) sz = Some smem' ->
   refine_memory (mi_malloc mi newb base col) amem' smem'.
 Proof.
-case=> miP rmem rist malloc.
-case: (rist) => [fresh_col [in_bl [no_overlap biP]]].
-split; first exact: (meminj_spec_malloc _ rist malloc).
+case=> miP rmem in_bl rist malloc.
+case: (rist) => [fresh_col no_overlap biP ?].
+split; first exact: (meminj_spec_malloc _ rist in_bl malloc).
 move=> w1 w2 col' ty.
-rewrite (get_write_block _ H1) => //.
+rewrite (get_write_block _ H0) => //.
 have [/andP [? ?] [<- <- <-]|_ /rmem get_w1] :=
   boolP (inbounds base sz w1).
   rewrite setmE eqxx (Abstract.malloc_get malloc); last first.
@@ -704,7 +715,7 @@ have neq_col: col' <> col.
 
 move: get_w1.
 set mi' := mi_malloc _ _ _ _.
-have mi'P := (meminj_spec_malloc base rist malloc miP).
+have mi'P := (meminj_spec_malloc base rist in_bl malloc miP).
 have eq_mi: mi' col' = mi col'.
   by rewrite setmE (introF eqP neq_col).
 rewrite eq_mi; move: eq_mi.
@@ -727,19 +738,18 @@ Lemma refine_internal_state_malloc mi amem amem' bl smem info (sz : mword mt) ne
   (color < Sym.max_color)%ord ->
   Sym.block_color bi = None ->
   bi \in info ->
-  refine_internal_state mi bl smem (color, info) ->
+  refine_internal_state mi smem (color, info) ->
   Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz = Some smem' ->
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
-    (newb :: bl) smem' (Sym.inc_color color, Sym.update_block_info info bi color sz).
+    smem' (Sym.inc_color color, Sym.update_block_info info bi color sz).
 Proof.
 move=> /andP [nneg_sz le_sz] malloc lt_color color_bi in_bi.
-case=> [fresh_color [in_bl [no_overlap [cover_info biP]]]] write_bi.
+case=> [fresh_color no_overlap cover_info biP] write_bi.
 have [? ?] := block_info_bounds (biP _ in_bi).
 have ? := @leZ_min (Sym.block_base bi).
 have ? := @leZ_max (Sym.block_size bi).
-(*generalize (@min_word_bound mt) => min_bound.
-generalize (max_word_bound mt) => max_bound.*)
-split. (* freshness of color *)
+split.
+- (* freshness of color *)
   rewrite /refinement.fresh_color.
   move=> col b base.
   have [-> _|neq_col] := col =P color.
@@ -748,12 +758,7 @@ split. (* freshness of color *)
   move/fresh_color => lt_col.
   apply: (@Ord.lt_trans _ color col) => //=.
   exact/Sym.ltb_inc.
-split. (* list of block is complete *)
-  move=> col b base.
-  have [->|neq_col] := col =P color.
-    by rewrite setmE eqxx => [[<- _]]; rewrite inE eqxx.
-  by rewrite setmE (introF eqP neq_col) inE => /in_bl ->; rewrite orbT.
-split. (* no overlap *)
+- (* no overlap *)
   move=> i j def w.
   rewrite /Sym.update_block_info.
   set newbi := Sym.mkBlockInfo _ _ _.
@@ -825,7 +830,7 @@ split. (* no overlap *)
       eapply leq_trans; first exact: gt_w.
       by rewrite leq_add2l.
     * by move/(no_overlap _ _ _ _ lt_i lt_j)->.
-split. (* cover *)
+- (* cover *)
   rewrite /Sym.update_block_info.
   set newbi := Sym.mkBlockInfo _ _ _.
   move=> w v.
@@ -1111,24 +1116,140 @@ try (injection hyp; intros <- <-; eexists; split; [reflexivity|]); try construct
 Transparent binop_denote.
 Qed.
 
+Definition meminj_weaken (mi : meminj) (bl : {fset name}) :=
+  filterm (fun _ b_base => b_base.1 \in bl) mi.
+
+Lemma meminj_weaken_ok mi bl : meminj_ok (meminj_weaken mi bl) bl.
+Proof.
+move=> col [b base]; rewrite filtermE /=.
+case: (mi col) => [[b' base']|] //=.
+by case: ifP => // ? [<-].
+Qed.
+
+Lemma refine_memory_weaken mi amem areg apc smem :
+  refine_memory mi amem smem ->
+  refine_memory (meminj_weaken mi (Abstract.blocks (Abstract.State amem areg apc))) amem smem.
+Proof.
+move=> [[mi_inj] r_mem]; split.
+  constructor=> b col col' base base'; rewrite !filtermE /=.
+  case mi_col: (mi col) => [[b' base'']|] //=.
+  case: ifP => // _ [??]; subst b' base''.
+  case mi_col': (mi col') => [[b' base'']|] //=.
+  case: ifP => // _ [??]; subst b' base''.
+  by eauto.
+move=> w1 w2 col ty /r_mem; rewrite filtermE /=.
+case mi_col: (mi col) => [[b base]|] //=.
+case getv_b: (Abstract.getv _ _) => [v|] //= r_v.
+have /Abstract.in_blocks ->:
+  Abstract.blocks_spec b (Abstract.State amem areg apc).
+  eapply Abstract.BlocksFrame.
+  rewrite mem_domm /=.
+  move: getv_b; rewrite /Abstract.getv /=.
+  by case: (amem b).
+rewrite getv_b.
+case: r_v getv_b => [w|b' base' col' off mi_col'] getv_b {v}; first by constructor.
+constructor; rewrite filtermE /= mi_col' /=.
+suff /Abstract.in_blocks ->:
+  Abstract.blocks_spec b' (Abstract.State amem areg apc) by [].
+move: getv_b; rewrite /Abstract.getv (lock subw) /=.
+case amem_b: (amem b) => [fr|] //=.
+have [in_bounds [hb']|//] := boolP (_ < size fr).
+have in_fr : Abstract.VPtr (b', off) \in fr.
+  by apply/(nthP (Abstract.VData 0)); eauto.
+by eapply Abstract.BlocksMem => //=.
+Qed.
+
+Lemma refine_registers_weaken mi amem aregs apc sregs :
+  refine_registers mi aregs sregs ->
+  refine_registers (meminj_weaken mi (Abstract.blocks (Abstract.State amem aregs apc)))
+                   aregs sregs.
+Proof.
+move=> r_regs r.
+case aregs_r: (aregs r) => [v1|]; case sregs_r: (sregs r) => [v2|] //=.
+- move/(_ r): r_regs; rewrite aregs_r sregs_r /refine_reg_val.
+  case: v2 sregs_r => [w [ty| |]] //= sregs_r r_v1.
+  case: r_v1 aregs_r sregs_r => [w'|b base col off mi_col] aregs_r sregs_r.
+    by constructor.
+  constructor; rewrite filtermE /= mi_col /=.
+  suff ->:
+    b \in Abstract.blocks (Abstract.State amem aregs apc) by [].
+  apply/Abstract.in_blocks.
+  by eapply Abstract.BlocksReg => //=.
+- by move/(_ r): r_regs; rewrite aregs_r sregs_r.
+by move/(_ r): r_regs; rewrite aregs_r sregs_r.
+Qed.
+
+Lemma refine_pc_weaken mi amem aregs apc w ty :
+  refine_val mi apc w ty ->
+  refine_val (meminj_weaken mi (Abstract.blocks (Abstract.State amem aregs apc))) apc w ty.
+Proof.
+case: apc w ty / => [w|b base col off mi_col]; first by constructor.
+constructor; rewrite filtermE /= mi_col /=.
+suff ->:
+  b \in Abstract.blocks (Abstract.State amem aregs (Abstract.VPtr (b, off))) by [].
+apply/Abstract.in_blocks.
+by eapply Abstract.BlocksPc.
+Qed.
+
+Lemma refine_internal_state_weaken mi amem aregs apc smem ist :
+  refine_internal_state mi smem ist ->
+  refine_memory mi amem smem ->
+  refine_internal_state (meminj_weaken mi (Abstract.blocks (Abstract.State amem aregs apc))) smem ist.
+Proof.
+move=> [fresh no_overlap cover_info rist] [_ r_mem].
+constructor=> //.
+  move=> col b base; rewrite filtermE /=.
+  case mi_col: (mi col) => [[b' base']|] //=.
+  case: ifP => // in_blocks [??]; subst b' base'.
+  by apply (fresh col b base).
+move=> bi /rist.
+case=> [col b bi_col h_add mi_col h_def|h_bi h_add h_free];
+  last by constructor.
+apply (@BlockInfoLive _ _ _ col b) => //.
+rewrite filtermE /= mi_col /=.
+suff ->: b \in Abstract.blocks (Abstract.State amem aregs apc) by [].
+apply/Abstract.in_blocks; eapply Abstract.BlocksFrame => /=.
+case: h_add => [gt0 _].
+move: (h_def zerow); rewrite valw_zero => /(_ gt0) [v [ty h_v_ty]].
+move: (r_mem _ _ _ _ h_v_ty); rewrite mi_col mem_domm /Abstract.getv /=.
+by case: (amem b).
+Qed.
+
+Lemma refine_state_weaken mi amem aregs apc smem sregs w ty ist :
+  refine_memory mi amem smem ->
+  refine_registers mi aregs sregs ->
+  refine_val mi apc w ty ->
+  refine_internal_state mi smem ist ->
+  refine_state (meminj_weaken mi (Abstract.blocks (Abstract.State amem aregs apc)))
+               (Abstract.State amem aregs apc)
+               (Symbolic.State smem sregs w@V(ty) ist).
+Proof.
+move=> ???? /=; split;
+  eauto using refine_memory_weaken, refine_registers_weaken,
+              refine_pc_weaken, refine_internal_state_weaken, meminj_weaken_ok.
+Qed.
+
 Ltac solve_pc rpci :=
-  by eexists; eexists; split;
-  [repeat (s_econstructor solve [eauto]) |
-  split; try eassumption;
-  simpl; rewrite <-rpci, <-addwA; econstructor].
+  by eexists; (split; [s_econstructor solve [eauto]|]);
+  match goal with
+  | H : refine_memory ?mi _ _ |- exists mi', refine_state mi' ?ast' _ =>
+    exists (meminj_weaken mi (Abstract.blocks ast'));
+    apply refine_state_weaken; eauto
+  end;
+  rewrite <-rpci, <-addwA; econstructor.
 
 Lemma backward_simulation ast mi sym_st sym_st' :
   refine_state mi ast sym_st ->
   Sym.step sym_st sym_st' ->
-  exists ast' mi', Abstract.step ast ast' /\ refine_state mi' ast' sym_st'.
+  exists ast', Abstract.step ast ast' /\ exists mi', refine_state mi' ast' sym_st'.
 Proof.
-case: ast => a_mem a_regs bl a_pc.
+case: ast => a_mem a_regs a_pc.
 case: sym_st => sym_mem sym_regs sym_pc // sym_ist rst.
 case: sym_st' => sym_mem' sym_regs' [spcv' spcl'] sym_ist' sym_step.
 inv sym_step;
 case: ST => *; subst;
 destruct tpc as [[|]| |] => //;
-case: rst => rmem rregs rpc rist;
+case: rst => rmem rregs rpc rist mi_ok;
 destruct a_pc as [|[pc_b pc_off]]; try (by inversion rpc);
 try subst mvec;
 try rewrite /Symbolic.next_state_pc /Symbolic.next_state_reg /Symbolic.next_state_reg_and_pc /Symbolic.next_state /= /= in NEXT;
@@ -1150,7 +1271,7 @@ try match goal with
     repeat case: ifP=> [/eqP -> /= [<-] /= | ? //];
     rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
     match_inv
-  | rpc : refine_val _ (Abstract.VData _ ?s) ?pc _ |- _ =>
+  | rpc : refine_val _ (Abstract.VData ?s) ?pc _ |- _ =>
     (have->: s = pc by inversion rpc);
     repeat case: ifP=> [/eqP -> /= [<-] /= | ? //];
     rewrite /Sym.malloc_fun /Sym.sizeof_fun /Sym.free_fun /Sym.basep_fun /Sym.eqp_fun /Sym.ptr_fun /= => CALL;
@@ -1238,8 +1359,7 @@ by solve_pc rpci.
 
 (* Malloc *)
   move: b Heqo E0 E1 E2 => bi Heqo E0 E1 E2.
-  case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
-  move/(_ bi _).
+  case: (rist)=> [fresh_color no_overlap cover /(_ bi _)].
   have: bi \in [seq x <- info
               | (vala <= Sym.block_size x)%ord
               & Sym.block_color x == None].
@@ -1252,7 +1372,8 @@ by solve_pc rpci.
   case: biP Heqo E0 color_bi in_bi lt_val; first by move=> *; congruence.
   move=> _ [? ?] FREE Heqo E0 color_bi in_bi lt_val.
 
-
+  pose ast := Abstract.State a_mem a_regs (Abstract.VData (@malloc_addr _ addrs)).
+  pose bl := Abstract.blocks ast.
   case malloc: (Abstract.malloc_fun a_mem bl vala) => [amem' newb].
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
   have rnewb: refine_val mi' (Abstract.VPtr (newb, 0)) (Sym.block_base bi) (PTR color).
@@ -1263,24 +1384,24 @@ by solve_pc rpci.
   eapply (refine_registers_upd rregs rnewb) in E2.
   destruct E2 as (? & ? & ?).
 
-  eexists; exists (mi_malloc mi newb (Sym.block_base bi) color); split.
-  eapply Abstract.step_malloc.
-  by eauto.
-  by eauto.
-  by eauto.
-  by eauto.
+  eexists; split.
+    by eapply Abstract.step_malloc; eauto.
 
-  split; try eassumption.
-  exact: (refine_memory_malloc rmem rist malloc).
-  exact: (refine_val_malloc _ fresh_color malloc).
+  match goal with
+  | |- exists mi', refine_state mi' ?ast' _ =>
+    exists (meminj_weaken (mi_malloc mi newb (Sym.block_base bi) color)
+                          (Abstract.blocks ast'));
+    apply refine_state_weaken; try eassumption
+  end.
+  + exact: (refine_memory_malloc rmem mi_ok rist malloc).
+  + exact: (refine_val_malloc _ fresh_color malloc).
   have int_val : 0 < vala <= Sym.block_size bi by apply/andP; split; eauto.
   by apply: (refine_internal_state_malloc int_val malloc); eauto.
 
 (* Free *)
 
   have ? := @leZ_max (Sym.block_size x).
-  case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
-  move/(_ x _).
+  case: (rist)=> [fresh_color no_overlap cover /(_ x _)].
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s].
     case: [seq x0 <- info | Sym.block_color x0 == Some s] E => //= ? ? [->].
     by rewrite inE eqxx.
@@ -1302,24 +1423,26 @@ by solve_pc rpci.
     rewrite mi_col /Abstract.getv /=.
     by case: (a_mem b) => // fr _; exists fr.
   have eq_col: col = s by congruence.
-  have eq_s4b: s2 = b.
-    inversion H3.
-    by rewrite eq_col H8 in mi_col; injection mi_col.
+  have eq_s4b: n0 = b.
+    inversion H2.
+    by rewrite eq_col H7 in mi_col; injection mi_col.
 
   case: (Abstract.free_Some get_b)=> ? free_b.
 
-  eexists; eexists; split.
-  eapply Abstract.step_free.
-  by eauto.
-  by rewrite eq_s4b.
-  by eauto.
+  eexists; split.
+    eapply Abstract.step_free; eauto.
+    by rewrite eq_s4b.
 
   case: (refine_memory_free rmem rist in_x color_bi mi_col free_b E0) => rmem' rist'.
-  by split; eassumption.
+
+  match goal with
+  | |- exists mi', refine_state mi' ?ast' _ =>
+    by exists (meminj_weaken mi (Abstract.blocks ast'));
+    apply refine_state_weaken; eauto
+  end.
 
 (* Base *)
-  case: (rist)=> fresh_color [in_bl [no_overlap [cover]]].
-  move/(_ x _).
+  case: (rist)=> [fresh_color no_overlap cover /(_ x _)].
   have: x \in [seq x0 <- info | Sym.block_color x0 == Some s].
     case: [seq x0 <- info | Sym.block_color x0 == Some s] E=> //= ? ? [->].
     by rewrite inE eqxx.
@@ -1327,21 +1450,23 @@ by solve_pc rpci.
   case: biP E E0 color_x => [|-> //].
   move=> col b color_x [? ?] mi_col get_x ? E0 ?.
   have eq_col: col = s by congruence.
-  have eq_s4b: s2 = b.
-    inversion H3.
-    by rewrite eq_col H8 in mi_col; injection mi_col.
+  have eq_s4b: n0 = b.
+    inversion H2.
+    by rewrite eq_col H7 in mi_col; injection mi_col.
 
 rewrite -eq_col -[Sym.block_base x]addw0 in E0.
   eapply (refine_registers_upd rregs) in E0; last exact: (RefinePtr _ mi_col).
   case: E0=> ? [upd_ret ?].
 
-  eexists; eexists; split.
-  eapply Abstract.step_base.
-  by eauto.
-  by rewrite eq_s4b.
-  by eauto.
+  eexists; split.
+    eapply Abstract.step_base; eauto.
+    by rewrite eq_s4b.
 
-  by split; eassumption.
+  match goal with
+  | |- exists mi', refine_state mi' ?ast' _ =>
+    by exists (meminj_weaken mi (Abstract.blocks ast'));
+    apply refine_state_weaken; eauto
+  end.
 
 (* Eq *)
 
@@ -1355,28 +1480,30 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
   eapply (refine_registers_upd rregs) in E0; last by eauto.
   case: E0=> ? [upd_ret ?].
 
-  eexists; eexists; split.
-  eapply Abstract.step_eq.
-  by eauto.
-  by eauto.
-  rewrite /Abstract.value_eq.
-  move: upd_ret.
-  inversion rarg1.
-  inversion rarg2.
+  eexists; split.
+    eapply Abstract.step_eq; eauto.
+    rewrite /Abstract.value_eq.
+    move: upd_ret.
+    inversion rarg1.
+    inversion rarg2.
 
-  have [eq_arg1b|neq_arg1b] := altP (arg1b =P s).
-    move: H4 H8; rewrite eq_arg1b => -> [-> ->].
-    have -> /= : (base0 + off == base0 + off0) = (off == off0).
-      by apply/inj_eq/GRing.addrI.
-    rewrite [in as_word _]eqE /= eqxx /=.
-    by case: (_ == _).
-  rewrite [in as_word _]eqE /=.
-  have/negbTE->//: b != b0.
-    apply/eqP=> eq_b; rewrite eq_b in H4 H8.
-    by rewrite (miIr miP H4 H8) eqxx in neq_arg1b.
-  by eauto.
+    have [eq_arg1b|neq_arg1b] := altP (arg1b =P s).
+      move: H3 H7; rewrite eq_arg1b => -> [-> ->].
+      have -> /= : (base0 + off == base0 + off0) = (off == off0).
+        by apply/inj_eq/GRing.addrI.
+      rewrite [in Abstract.VPtr _ == _]eqE /= xpair_eqE eqxx /=.
+      by case: (_ == _).
+    rewrite [in Abstract.VPtr _ == _]eqE /= xpair_eqE.
+    have/negbTE->//: b != b0.
+    apply/eqP=> eq_b; rewrite eq_b in H3 H7.
+    by rewrite (miIr miP H3 H7) eqxx in neq_arg1b.
 
-  by split; eassumption.
+  match goal with
+  | |- exists mi', refine_state mi' ?ast' _ =>
+    by exists (meminj_weaken mi (Abstract.blocks ast'));
+    apply refine_state_weaken; eauto
+  end.
+
 Qed.
 
 End refinement.

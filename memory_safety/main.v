@@ -1,5 +1,6 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.seq MathComp.ssrint.
 Require Import CoqUtils.hseq CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+Require Import CoqUtils.nominal.
 
 Require Import lib.utils lib.word_utils.
 Require Import common.types.
@@ -178,11 +179,9 @@ Qed.
 Instance sp : Symbolic.params := Sym.sym_memory_safety mt.
 
 Context {monitor_invariant : @monitor_invariant _ _ enc}
-        {syscall_addrs : @memory_syscall_addrs mt}
-        {alloc : @Abstract.allocator mt color}
-        {allocspec : Abstract.allocator_spec alloc}.
+        {syscall_addrs : @memory_syscall_addrs mt}.
 
-Inductive refine_state (ast : Abstract.state mt color) (cst : Concrete.state mt) : Prop :=
+Inductive refine_state (ast : Abstract.state mt) (cst : Concrete.state mt) : Prop :=
 | rs_intro : forall (sst : Symbolic.state mt) m,
                refinement_common.refine_state monitor_invariant (@Sym.memsafe_syscalls _ _ _ _ _) sst cst ->
                refinementAS.refine_state m ast sst ->
@@ -201,14 +200,14 @@ Lemma backwards_refinement_as ast m sst sst' :
 Proof.
   move => REF EXEC.
   elim: EXEC m ast REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] m ast REF; first by eauto 7.
-  have := @backward_simulation _ _ _ _ _ _ allocspec _ _ _ _ _ REF STEPS.
-  intros (ast' & m' & STEPA & REF').
+  have := @backward_simulation _ _ _ _ _ _ _ _ _ REF STEPS.
+  intros (ast' & STEPA & m' & REF').
   have := IH m' ast' REF'; eauto.
   intros (ast'' & m'' & EXECA & REF'').
   eauto 7.
 Qed.
 
-Lemma backwards_refinement (ast : Abstract.state mt color) (cst cst' : Concrete.state mt) :
+Lemma backwards_refinement (ast : Abstract.state mt) (cst cst' : Concrete.state mt) :
   refine_state ast cst ->
   exec (Concrete.step _ masks) cst cst' ->
   in_user cst' ->
