@@ -15,9 +15,12 @@ import Language.Haskell.Exts.Lexer
 import           Data.Set (Set)
 import qualified Data.Set as S
 
-import           Data.Text    (Text)
-import qualified Data.Text    as T
-import qualified Data.Text.IO as T
+import           Data.Text     (Text)
+import qualified Data.Text     as T
+import qualified Data.Text.IO  as T
+
+import           Data.Text.ICU (Regex)
+import qualified Data.Text.ICU as ICU
 
 import System.FilePath
 import System.Directory
@@ -35,6 +38,14 @@ withBetween start end f = findStart where
 
   findEnd (break end -> (body, e:rest)) = Just (body, e, rest)
   findEnd _                             = Nothing
+
+replaceAll :: Regex -> Text -> Text -> Text
+replaceAll needle replacement = go where
+  go haystack = case ICU.find needle haystack of
+    Just match -> fromJust (ICU.prefix 0 match)
+               <> replacement
+               <> go (fromJust (ICU.suffix 0 match))
+    Nothing    -> haystack
 
 type Document  = [Text]
 type Processor = Document -> Document
@@ -69,6 +80,14 @@ deCPP :: Processor
 deCPP =
   withBetween (== "#ifdef __GLASGOW_HASKELL__") (== "#endif") $ \_ text _ ->
     takeWhile (/= "#else") text
+
+changeReservedWords :: Processor
+changeReservedWords = map (unreserve $ ["rec", "mdo", "proc", "pattern"]) where
+  unreserve = foldr (.) id . map word
+  word w = replaceAll (ICU.regex [ ICU.Multiline
+                                 , ICU.UnicodeWord]
+                                 $ "\\b" <> w <> "\\b")
+                      ("reserved_word_" <> w)
 
 fixOptions :: Processor
 fixOptions = concatMap $ fixGHC >=> fixHugs where
@@ -107,7 +126,7 @@ getReferencedModules _ =
 
 fixExtractedCode :: Processor
 fixExtractedCode doc =
-  let (pre, imps, body)  = splitPreambleImportsBody $ deCPP doc
+  let (pre, imps, body)  = splitPreambleImportsBody . changeReservedWords $ deCPP doc
       pre'               = fixOptions pre
       (extraImps, body') = partition ("import" `T.isPrefixOf`) body
       currentImps        = imps ++ "" : extraImps
@@ -124,9 +143,6 @@ fixExtractedCodeDirectory from to =
     putStrLn $ "Cleaning file `" ++ fromFile ++ "' to `" ++ toFile ++ "'"
     runReplacingFile (from </> file) (to </> file) fixExtractedCode
 
-test :: IO ()
-test = T.putStr . run (take 30 . fixExtractedCode) =<< T.readFile "../ssrbool.hs"
-
 printHelp :: IO ()
 printHelp = do
   name <- getProgName
@@ -137,9 +153,9 @@ printHelp = do
   putStrLn $ "       " ++ name ++ " -h"
   putStrLn ""
   putStrLn "Cleans up extracted Coq code for use with GHC by:"
-  putStrLn "  (1) removing CPP;"
-  putStrLn "  (2) fixing errors; and"
-  putStrLn "  (3) inserting all necessary qualified module imports"
+  putStrLn "  (1) Removing CPP and Hugs references."
+  putStrLn "  (2) Fixing errors (misplaced imports and variables with illegal names)."
+  putStrLn "  (3) Inserting all necessary qualified module imports."
   putStrLn ""
   putStrLn "Without arguments, fixes Haskell code given on stdin and prints the result to"
   putStrLn "stdout."
