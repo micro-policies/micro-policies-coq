@@ -421,18 +421,12 @@ Proof.
  omega.
 Qed.
 
-Global Instance sk : Abs.sealing_key := {
- key := keytype;
- mkkey_f := fun l => 1 + max_element l;
- mkkey_fresh := max_element_plus_one_is_distinct
-}.
-
 (* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
   a different order from Int32PMap.get and Int32PMap.set?? *)
 
 Definition build_abstract_sealing_machine
     (user_program : @relocatable_segment mt (@classes.sealing_syscall_addrs mt) (instr mt))
-  : @Abs.state concrete_int_32_mt sk :=
+  : @Abs.state concrete_int_32_mt :=
  (* This list should be defined at the same place as the decoding
     function that splits out the addresses for use when generating
     user code *)
@@ -440,7 +434,7 @@ Definition build_abstract_sealing_machine
  let: (_,base_addr,syscall_addrs) := concrete_sealing_monitor in
  let user_mem :=
        map_relocatable_segment
-         ((@Abs.VData _ _) ∘ encode_instr)
+         ((@Abs.VData _) ∘ encode_instr)
          user_program in
   Abs.abstract_initial_state
     user_mem
@@ -537,12 +531,12 @@ Context {implementation_correct : monitor_code_bwd_correctness monitor_invariant
 Inductive refine_state (ast : Abs.state mt) (cst : Concrete.state mt) : Prop :=
 | rs_intro : forall sst m,
                refinement_common.refine_state monitor_invariant Sym.sealing_syscalls sst cst ->
-               @refinementSA.refine_state mt sk_defs sk m ast sst ->
+               @refinementSA.refine_state mt sk_defs m ast sst ->
                refine_state ast cst.
 Hint Constructors refine_state.
 
 Lemma backwards_refinement_as ast sst sst' m :
-  @refinementSA.refine_state mt sk_defs sk m ast sst ->
+  @refinementSA.refine_state mt sk_defs m ast sst ->
   exec (Symbolic.step Sym.sealing_syscalls) sst sst' ->
   exists ast' m',
     exec (fun ast ast' => Abs.step ast ast') ast ast' /\
@@ -551,7 +545,7 @@ Proof.
   move => REF EXEC.
   elim: EXEC ast m REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] ast m REF; first by eauto 7.
   generalize (refinementSA.backward_simulation REF STEPS).
-  intros (ast' & m' & STEPA & REF').
+  move=> [ast' STEPA [km' REF']].
   have := IH _ _ REF'.
   intros (ast'' & m'' & EXECA & REF''). by eauto 7.
 Qed.
