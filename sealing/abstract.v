@@ -1,6 +1,6 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
 Require Import Ssreflect.eqtype Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
 Require Import CoqUtils.nominal.
 Require Import lib.utils common.types common.segment sealing.classes.
 
@@ -116,6 +116,10 @@ Definition state_nominalMixin :=
   BijNominalMixin tuple_of_stateK state_of_tupleK.
 Canonical state_nominalType :=
   Eval hnf in NominalType state state_nominalMixin.
+
+Lemma mem_names_state k (s : state) :
+  (k \in names s) = (k \in names (mem s)) || (k \in names (regs s)).
+Proof. by case: s=> [m rs p] /=; rewrite 2!in_fsetU /= in_fset0 orbF. Qed.
 
 Definition syscall_addrs := [:: mkkey_addr; seal_addr; unseal_addr].
 

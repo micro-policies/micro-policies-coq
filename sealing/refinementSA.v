@@ -1,5 +1,7 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
+Require Import Ssreflect.eqtype Ssreflect.seq.
+Require Import CoqUtils.ord CoqUtils.fset CoqUtils.partmap.
+Require Import CoqUtils.nominal CoqUtils.word.
 Require Import lib.utils.
 Require Import lib.partmap_utils.
 Require Import common.types symbolic.symbolic.
@@ -23,18 +25,17 @@ Context {mt : machine_types}
         {scr : syscall_regs mt}
         {ssa : sealing_syscall_addrs mt}
 
-        {ssk : Sym.sealing_key}
-        {ask : Abs.sealing_key}.
+        {ssk : Sym.sealing_key}.
 
 (* this is used in the unsealing case; if we were to show fwd
    refinement we would need bijectivity (a permutation on keys) *)
-Definition key_map_inj (km : {partmap Abs.key -> Sym.key}) := forall ak ak' sk sk',
+Definition key_map_inj (km : {partmap name -> Sym.key}) := forall ak ak' sk sk',
   km ak = Some sk ->
   km ak' = Some sk' ->
   sk = sk' ->
   ak = ak'.
 
-Lemma fresh_set_inj : forall (km : {partmap Abs.key -> Sym.key}) akey skey,
+Lemma fresh_set_inj : forall (km : {partmap name -> Sym.key}) akey skey,
   key_map_inj km ->
   (forall ak, ~ km ak = Some skey) ->
   key_map_inj (setm km akey skey).
@@ -54,14 +55,14 @@ Section WithFixedKeyMap.
 
 (* km k returns Some sk when k is allocated and sk is the
    corresponding symbolic key *)
-Variable km : {partmap Abs.key -> Sym.key}.
+Variable km : {partmap name -> Sym.key}.
 
 Local Notation smemory := {partmap mword mt -> Sym.sym_sealing}.
 Local Notation sregisters := {partmap reg mt -> Sym.sym_sealing}.
-Local Notation astate := (@Abs.state mt ask).
+Local Notation astate := (@Abs.state mt).
 Local Notation sstate := (@Symbolic.state mt Sym.sym_sealing).
 
-Definition refine_key (ak : Abs.key) (sk : Sym.key) : Prop :=
+Definition refine_key (ak : name) (sk : Sym.key) : Prop :=
   getm km ak = Some sk.
 
 Definition refine_val_atom (v : Abs.value mt)
@@ -84,18 +85,18 @@ Definition refine_pc (w : mword mt) (a : atom (mword mt) unit) : Prop :=
   w = vala a.
 
 (* This is surprisingly weak? The rest would be needed for the fwd direction? *)
-Definition refine_ins (akeys : seq Abs.key) (next_skey : Sym.key) : Prop :=
+Definition refine_ins (akeys : {fset name}) (next_skey : Sym.key) : Prop :=
   (forall ak, ak \notin akeys -> km ak = None) /\
   (forall ak sk, km ak = Some sk -> (sk < next_skey)%ord) /\
   (key_map_inj km).
 
 Definition refine_state (ast : astate) (sst : sstate) : Prop :=
-  let '(Abs.State amem areg apc akeys) := ast in
+  let '(Abs.State amem areg apc) := ast in
   let '(Symbolic.State smem sreg spc skey) := sst in
-  refine_mem amem smem /\
-  refine_reg areg sreg /\
-  refine_pc apc spc /\
-  refine_ins akeys skey.
+  [/\ refine_mem amem smem,
+      refine_reg areg sreg,
+      refine_pc apc spc &
+      refine_ins (names ast) skey].
 
 Lemma refine_pc_inv : forall apc spc tpc,
   refine_pc apc spc@tpc ->
@@ -167,16 +168,79 @@ Proof.
   intros. by apply refine_val_atom_set_km.
 Qed.
 
+Definition keymap_weaken (km : {partmap name -> Sym.key}) (ks : {fset name}) :=
+  filterm (fun k _ => k \in ks) km.
+
+Lemma key_map_inj_weaken km ks :
+  key_map_inj km -> key_map_inj (keymap_weaken km ks).
+Proof.
+move=> hinj ak1 ak2 sk1 sk2; rewrite 2!filtermE.
+case e1: (km ak1)=> [sk1'|] //; case e2: (km ak2)=> [sk2'|] //=.
+by case: ifP=> // _ [<-]; case: ifP=> // _ [<-]; eauto.
+Qed.
+
+Lemma keymap_weaken_ok km ks ks' sk :
+  refine_ins km ks sk ->
+  refine_ins (keymap_weaken km ks') ks' sk.
+Proof.
+move=> [h1 [h2 h3]]; split3; last by apply/key_map_inj_weaken.
+  by move=> ak; rewrite filtermE; case e: (km _)=> [sk'|] //=; case: ifP.
+move=> ak sk'; rewrite filtermE; case e: (km _)=> [sk''|] //=.
+by case: ifP=> // _ [<-]; eauto.
+Qed.
+
+Lemma refine_mem_weaken km am ars apc sm :
+  refine_mem km am sm ->
+  refine_mem (keymap_weaken km (names (Abs.State am ars apc))) am sm.
+Proof.
+move=> ref x; move: {ref} (ref x).
+case ea: (am x)=> [av|] //=; case es: (sm x)=> [sv|] //=.
+case: av sv ea es=> [w1|k1|w1 k1] [w2 [|k2|k2]] //= ea es.
+  move=> ref; rewrite /refine_key filtermE ref Abs.mem_names_state /=.
+  suff ->: k1 \in names am by [].
+  by apply/namesmP; eright; eauto; rewrite in_fset1.
+case=> [e ref]; move: es; rewrite -{}e {w2}=> es; split=> //.
+rewrite /refine_key filtermE ref /= Abs.mem_names_state /=.
+suff ->: k1 \in names am by [].
+by apply/namesmP; eright; eauto; rewrite in_fset1.
+Qed.
+
+Lemma refine_reg_weaken km am ars apc srs :
+  refine_reg km ars srs ->
+  refine_reg (keymap_weaken km (names (Abs.State am ars apc))) ars srs.
+Proof.
+move=> ref r; move: {ref} (ref r).
+case ea: (ars r)=> [av|] //=; case es: (srs r)=> [sv|] //=.
+case: av sv ea es=> [w1|k1|w1 k1] [w2 [|k2|k2]] //= ea es.
+  move=> ref; rewrite /refine_key filtermE ref Abs.mem_names_state /=.
+  suff ->: k1 \in names ars by rewrite orbT.
+  by apply/namesmP; eright; eauto; rewrite in_fset1.
+move=> [e ref]; move: es; rewrite -{}e {w2}=> es; split=> //.
+rewrite /refine_key filtermE ref /= Abs.mem_names_state /=.
+suff ->: k1 \in names ars by rewrite orbT.
+by apply/namesmP; eright; eauto; rewrite in_fset1.
+Qed.
+
+Hint Resolve keymap_weaken_ok.
+Hint Resolve refine_mem_weaken.
+Hint Resolve refine_reg_weaken.
+
+Ltac solve_refine_state :=
+  match goal with
+  | km : {partmap name -> _} |-
+    exists km', refine_state km' ?ast' _ =>
+    exists (keymap_weaken km (names ast')); split; eauto; try reflexivity
+  end.
 
 Lemma backward_simulation : forall km ast sst sst',
   refine_state km ast sst ->
   Sym.step sst sst' ->
-  exists ast' km',
-    Abs.step ast ast' /\
-    refine_state km' ast' sst'.
+  exists2 ast',
+    Abs.step ast ast' &
+    exists km', refine_state km' ast' sst'.
 Proof.
   Ltac REFINE_INSTR PC ti rmem rpc NEXT :=
-    (apply refine_pc_inv in rpc; (* symmetry in rpc; *) subst;
+    (apply refine_pc_inv in rpc; subst;
     apply (refine_get_pointwise_inv rmem) in PC;
       destruct PC as [iv [PC riv]];
     destruct ti; unfold_next_state_in NEXT; simpl in NEXT; try discriminate NEXT;
@@ -185,29 +249,29 @@ Proof.
     match goal with
     | [pc: Equality.sort (Symbolic.tag_type Symbolic.ttypes Symbolic.P) |- _] => destruct pc
     end.
-  intros km [amem aregs apc akeys] sst sst' ref sstep. move: ref.
+  intros km [amem aregs apc] sst sst' ref sstep. move: ref.
   destruct sstep; destruct sst as [smem sregs spc skey];
     injection ST; do 4 (intro H; symmetry in H; subst); clear ST;
-    intros [rmem [rreg [rpc rins]]]; destruct_pc.
+    intros [rmem rreg rpc rins]; destruct_pc.
   - (* NOP *)
     REFINE_INSTR PC ti rmem rpc NEXT.
 
     injection NEXT; intro H; subst; clear NEXT.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_nop; [reflexivity | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* CONST *)
     REFINE_INSTR PC ti rmem rpc NEXT.
     apply obind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (swcast n)). reflexivity.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_const; [reflexivity | | | reflexivity]. (* extra goal *)
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* MOV *)
     REFINE_INSTR PC ti rmem rpc NEXT.
     apply obind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
@@ -215,12 +279,12 @@ Proof.
     destruct (refine_get_pointwise_inv rreg R1W) as [v [g rva]].
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     eauto.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_mov; [reflexivity | | | | reflexivity]. (* two extra goals *)
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
       eassumption.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* BINOP *)
     REFINE_INSTR PC ti rmem rpc NEXT.
     apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
@@ -234,13 +298,13 @@ Proof.
     apply refine_val_data in rva2; subst.
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption|].
     instantiate (1:= Abs.VData (binop_denote op w1 w2)); reflexivity.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_binop; [reflexivity | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
       eassumption.
       eassumption.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* LOAD *)
     REFINE_INSTR PC ti rmem rpc NEXT.
     apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
@@ -253,13 +317,13 @@ Proof.
     destruct (refine_get_pointwise_inv rmem MEM1) as [vm [gm rvam]].
     edestruct refine_upd_reg as [args' [H1 H2]]; [eassumption | | eassumption|].
     eassumption.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_load; [reflexivity | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
       eassumption.
       eassumption.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* STORE *)
     REFINE_INSTR PC ti rmem rpc NEXT.
     apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
@@ -272,13 +336,13 @@ Proof.
     destruct (refine_get_pointwise_inv rreg R2W) as [v2 [g2 rva2]].
     edestruct refine_upd_mem as [amem' [? ?]]; [eassumption | | eassumption|].
     eassumption.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_store; [reflexivity | | | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
       eassumption.
       eassumption.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* JUMP *)
     REFINE_INSTR PC ti rmem rpc NEXT.
     apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
@@ -287,11 +351,11 @@ Proof.
        injection stag; intro H; subst; clear stag; simpl in *.
     destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
     apply refine_val_data in rva; subst; simpl.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_jump; [reflexivity | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* BNZ *)
     REFINE_INSTR PC ti rmem rpc NEXT.
     apply obind_inv in NEXT. destruct NEXT as [st [stag NEXT]].
@@ -300,11 +364,11 @@ Proof.
        injection stag; intro H; subst; clear stag; simpl in *.
     destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
     apply refine_val_data in rva; subst; simpl.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_bnz; [reflexivity | | | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* JAL - not system call *)
     (* copy paste (all cases) *)
     REFINE_INSTR PC ti rmem rpc NEXT.
@@ -319,11 +383,11 @@ Proof.
     (* the rest similar to CONST *)
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData (pc + 1)%w). reflexivity.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_jal; [reflexivity | | | eassumption | reflexivity].
       unfold Abs.decode. rewrite PC. now apply INST.
       eassumption.
-    + split4; now trivial.
+    + by solve_refine_state.
   - (* system call *)
     (* copy paste (all cases) -- using ALLOWED instead of NEXT *)
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
@@ -345,49 +409,49 @@ Proof.
     apply (refine_get_pointwise_inv rreg) in GET.
     move: GET => [v1 [GET REF]].
     apply refine_val_data in REF. subst v1.
-
-    assert(refine_val_atom (setm km (Abs.mkkey_f akeys) skey)
-              (Abs.VKey mt (Abs.mkkey_f akeys))
-              (0%w@(Sym.KEY skey))) as rva.
-      unfold refine_val_atom, refine_key. by rewrite setmE eqxx.
+    set ast := Abs.State amem aregs mkkey_addr.
+    pose k' := fresh (names ast).
+    pose km' := setm km k' skey.
+    have rva : refine_val_atom km' (Abs.VKey mt k') (0%w@(Sym.KEY skey)).
+      by unfold refine_val_atom, refine_key; rewrite setmE eqxx.
 
     (* need to show freshness for new abstract key to be able to use
        refine...set lemmas to port refinements to the extended km *)
-    assert (getm km (Abs.mkkey_f akeys) = None).
-    - pose proof Abs.mkkey_fresh.
-      destruct rins as [rins1 _]. by apply rins1.
+    have H : getm km k' = None by move: rins.1 (freshP (names ast)); apply.
 
     (* dealing with the result -- similar to CONST *)
     edestruct refine_upd_reg as [aregs' [G1 G2]]; [| exact rva | eassumption |].
     apply refine_reg_set_km; eassumption.
 
-    eexists. exists (setm km (Abs.mkkey_f akeys) skey). split.
+    eexists.
     + eapply Abs.step_mkkey; [reflexivity | | |eassumption | reflexivity].
       unfold Abs.decode. now rewrite PC.
       eassumption.
-    + split4; trivial; try reflexivity.
-        by eauto using refine_mem_set_km.
-      split3. (* the interesting part: reestablish refinement on keys *)
+    + eexists (keymap_weaken km' (names (Abs.State amem aregs' ret))).
+      split; trivial; try reflexivity; eauto.
+        by apply/refine_mem_weaken/refine_mem_set_km.
+      split3.
       - (* abstract keys *)
-        intros ak ninak.
-        have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)).
-        + subst. apply False_ind. by rewrite inE eqxx in ninak.
-        + simpl in ninak.
-          rewrite setmE (introF eqP neq_ak).
-          destruct rins as [rins1 _]. apply rins1. by case/norP: ninak.
+        intros ak ninak; rewrite filtermE /km' setmE.
+        have [eq_ak | neq_ak] := altP (ak =P k').
+        + subst. apply False_ind; move/negP: ninak; apply.
+          rewrite Abs.mem_names_state /=; apply/orP; right; apply/namesmP.
+          eapply (@PMFreeNamesVal _ _ _ _ syscall_ret _).
+            by rewrite (updm_set G1) setmE eqxx; eauto.
+          by apply/namesnP.
+        + by case e: (km ak)=> [sk'|] //=; rewrite (negbTE ninak).
       - (* symbolic keys *)
-        move => ak sk /=.
-        have [eq_ak | /eqP neq_ak] := altP (ak =P (Abs.mkkey_f akeys)) => hsk.
-        + subst. rewrite setmE eqxx in hsk => //.
-          injection hsk => hsk'. clear hsk.
-          rewrite hsk'.
+        move => ak sk /=; rewrite filtermE /km' setmE.
+        have [/= | neq_ak] := altP (ak =P _) => [hsk|].
+        + subst; case: ifP=> [_ [<-]|] //=.
           by rewrite Sym.ltb_inc -?hsk' ?lt_skey //.
-        + rewrite setmE (introF eqP neq_ak) in hsk => //.
+        + case e: (km ak)=> [sk'|] //=; case: ifP=> [_ [<-]|] //=.
           destruct rins as [_ [rins2 _]]. eapply Ord.lt_trans. eapply rins2.
           eassumption.
           by rewrite /= Sym.ltb_inc ?lt_skey.
       - (* injectivity *)
-        apply fresh_set_inj. by destruct rins as [_ [_ rins3]].
+        apply/key_map_inj_weaken/fresh_set_inj.
+          by case: rins; intuition eauto.
         destruct rins as [_ [rins2 _]].
         intros ? Hc. apply rins2 in Hc. by rewrite Ord.ltxx in Hc.
     }
@@ -414,11 +478,11 @@ Proof.
     destruct vk; try contradiction H. simpl in H.
     (* register update *)
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
-    instantiate (1:= Abs.VSealed p s0). split; now trivial. (* extra split *)
-    eexists. exists km. split.
+    instantiate (1:= Abs.VSealed p n). split; now trivial. (* extra split *)
+    eexists.
     + eapply Abs.step_seal; try eassumption; [reflexivity | | reflexivity].
       * unfold Abs.decode. rewrite PC. reflexivity.
-    + split4; now trivial.
+    + by solve_refine_state.
     }
     + {(* unseal -- very similar to seal *)
     (* break up the effects of the system call *)
@@ -447,7 +511,7 @@ Proof.
     (* register update *)
     edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
     instantiate (1:= Abs.VData p). reflexivity.
-    eexists. exists km. split.
+    eexists.
     + eapply Abs.step_unseal; try eassumption; [reflexivity | | | reflexivity].
       * unfold Abs.decode. rewrite PC. reflexivity.
       (* here we use injectivity *)
@@ -456,9 +520,9 @@ Proof.
                | [H : refine_key _ _ _ |- _] =>
                  unfold refine_key in H; try rewrite e in H
              end.
-      assert(s = s1) by eauto. (* NAMING! *) subst. assumption.
+      assert(n = n0) by eauto. (* NAMING! *) subst. assumption.
 
-    + split4; now trivial.
+    + by solve_refine_state.
     }
 Qed.
 
