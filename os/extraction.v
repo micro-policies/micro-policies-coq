@@ -31,6 +31,9 @@ Extract Constant fst          => "Prelude.fst".
 Extract Constant snd          => "Prelude.snd".
 Extract Constant projT1       => "Prelude.fst".
 Extract Constant projT2       => "Prelude.snd".
+(* choice *)
+Extract Constant choice.tag_of_pair => "Prelude.id".
+Extract Constant choice.pair_of_tag => "Prelude.id".
 
 Extract Inductive bool         => "Prelude.Bool" ["Prelude.True" "Prelude.False"].
 Extract Inductive sumbool      => "Prelude.Bool" ["Prelude.True" "Prelude.False"].
@@ -111,12 +114,14 @@ Extract Constant foldl   => "Data.List.foldl'".
 Extract Constant scanl   => "Prelude.scanl".
 Extract Constant zip     => "Prelude.zip".
 Extract Constant flatten => "Prelude.concat".
+(* choice *)
+Extract Constant choice.seq_of_opt => "Prelude.maybe [] Prelude.return".
 
 Extract Inductive comparison  => "Prelude.Ordering" ["Prelude.EQ" "Prelude.LT" "Prelude.GT"].
 Extract Inductive CompareSpec => "Prelude.Ordering" ["Prelude.EQ" "Prelude.LT" "Prelude.GT"].
   (* Like `comparison`, but with proofs -- except those have been erased *)
 
-Extract Inductive nat => "Prelude.Integer" ["0" "(Prelude.+1)"]
+Extract Inductive nat => "Prelude.Integer" ["(0 :: Prelude.Integer)" "(Prelude.+ 1)"]
                          "(\fO fS n -> if n Prelude.== 0 then fO () else fS (n Prelude.- 1))".
 Extract Constant Peano.pred      => "\x -> Prelude.max (x Prelude.- 1) 0".
 Extract Constant Peano.plus      => "(Prelude.+)".
@@ -139,7 +144,7 @@ Extract Constant expn_rec        => "(Prelude.^)".
 Extract Constant expn            => "(Prelude.^)".
 Extract Constant fact_rec        => "Prelude.product Prelude.. Prelude.enumFromTo 1".
 Extract Constant factorial       => "Prelude.product Prelude.. Prelude.enumFromTo 1".
-Extract Constant nat_of_bool     => "\b -> if b then 1 else 0".
+Extract Constant nat_of_bool     => "\b -> (if b then 1 else 0 :: Prelude.Integer)".
 Extract Constant odd             => "Prelude.odd".
 Extract Constant double_rec      => "(2 Prelude.*)".
 Extract Constant double          => "(2 Prelude.*)".
@@ -155,22 +160,25 @@ Extract Constant NatTrec.double  => "(2 Prelude.*)".
 Extract Constant nat_of_pos      => "Prelude.id".
 Extract Constant nat_of_bin      => "Prelude.id".
 Extract Constant bin_of_nat      => "Prelude.id".
-
-Extract Constant div.divn    => "Prelude.quot".
-Extract Constant div.modn    => "Prelude.rem".
-Extract Constant expn        => "(Prelude.^)".
+(* ssr div *)
+Extract Constant div.edivn    => "\x y -> if y Prelude.== 0 then (0,x) else x `Prelude.quotRem` y".
+Extract Constant div.divn     => "\x y -> if y Prelude.== 0 then 0     else x `Prelude.quot`    y".
+Extract Constant div.modn     => "\x y -> if y Prelude.== 0 then x     else x `Prelude.rem`     y".
+Extract Constant div.gcdn_rec => "Prelude.gcd".
+Extract Constant div.gcdn     => "Prelude.gcd".
+Extract Constant div.lcmn     => "Prelude.lcm".
 
 Extract Inductive BinNums.positive =>
   "Prelude.Integer"
   ["((Prelude.+ 1) Prelude.. (2 Prelude.*))"
    "(2 Prelude.*)"
-   "1"]
+   "(1 :: Prelude.Integer)"]
   "(\fxI fxO fxH p -> if p Prelude.== 1 then fxH p else (if Data.Bits.testBit p 0 then fxI else fxO) (p `Data.Bits.shiftR` 1))".
 Extract Inductive BinNums.N =>
-  "Prelude.Integer" ["0" "Prelude.id"]
+  "Prelude.Integer" ["(0 :: Prelude.Integer)" "Prelude.id"]
   "(\fN0 fNpos n -> if n Prelude.== 0 then fN0 () else fNpos n)".
 Extract Inductive BinNums.Z =>
-  "Prelude.Integer" ["0" "Prelude.id" "Prelude.negate"]
+  "Prelude.Integer" ["(0 :: Prelude.Integer)" "Prelude.id" "Prelude.negate"]
   "(\fZ0 fZpos fZneg z -> case z `Prelude.compare` 0 of { Prelude.GT -> fZpos z ; Prelude.EQ -> fZ0 () ; Prelude.LT -> fZneg (- z) })".
 
 Extract Constant BinPos.Pos.succ         => "(Prelude.+ 1)".
@@ -209,9 +217,9 @@ Extract Constant BinPos.Pos.of_nat       => "Prelude.max 1".
 Extract Constant BinPos.Pos.of_succ_nat  => "(Prelude.+ 1)".
 Extract Constant BinPos.Pos.eq_dec       => "(Prelude.==)".
 
-Extract Constant BinNat.N.zero         => "0".
-Extract Constant BinNat.N.one          => "1".
-Extract Constant BinNat.N.two          => "2".
+Extract Constant BinNat.N.zero         => "0 :: Prelude.Integer".
+Extract Constant BinNat.N.one          => "1 :: Prelude.Integer".
+Extract Constant BinNat.N.two          => "2 :: Prelude.Integer".
 Extract Constant BinNat.N.succ_double  => "\x -> 2 Prelude.* x Prelude.+ 1".
 Extract Constant BinNat.N.double       => "(2 Prelude.*)".
 Extract Constant BinNat.N.succ         => "(Prelude.+ 1)".
@@ -253,17 +261,21 @@ Extract Constant BinNat.N.lcm          => "Prelude.lcm".
 Extract Constant BinNat.N.setbit       => "\x b -> Data.Bits.setBit x (Prelude.fromInteger b)".
 Extract Constant BinNat.N.clearbit     => "\x b -> Data.Bits.clearBit x (Prelude.fromInteger b)".
 
+Extract Inductive set_type => "Data.Set.Set" [""]
+                              "error ['S','e','t','s',' ','a','r','e',' ','a','b','s','t','r','a','c','t','!']".
+
+(*
 Extract Inductive int => "Prelude.Integer"
                          ["Prelude.id" "(Prelude.negate Prelude.. (Prelude.+1))"]
                          "(\fP fN n -> if n Prelude.>= 0 then fP n else fN (Prelude.abs n Prelude.- 1))".
 Extract Constant GRing.add   => "Prelude.const (Prelude.+)".
 Extract Constant GRing.opp   => "Prelude.const Prelude.negate".
-Extract Constant GRing.mul   => "Prelude.const (Prelude.*)".
+Extract Constant GRing.mul   => "Prelude.const (Prelude.* )".
 Extract Constant intdiv.divz => "Prelude.div". (* XXX: Different behavior on negative numbers *)
 Extract Constant intdiv.modz => "Prelude.mod". (* XXX: Different behavior on negative numbers *)
 Extract Constant absz        => "Prelude.abs".
 
 Extract Inductive word.word => "Prelude.Integer" [""] "(Prelude.$)".
-Extract Constant as_word => "\k n -> n Data.Bits..&. ((1 `Data.Bits.shiftL` Prelude.fromInteger k) Prelude.- 1)".
+Extract Constant as_word => "\k n -> n Data.Bits..&. ((1 `Data.Bits.shiftL` Prelude.fromInteger k) Prelude.- 1)".*)
 
 Recursive Extraction Library os.
