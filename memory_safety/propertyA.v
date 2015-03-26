@@ -498,4 +498,119 @@ case: s s' /; try rename_step_simple pm.
   by rewrite /s /= renamemE renamewE h2.
 Qed.
 
+Lemma names_state s :
+  names s = names (mem s) :|: names (regs s) :|: names (pc s).
+Proof. by []. Qed.
+
+Lemma getv_union m m' p v :
+  fdisjoint (names m) (domm m') ->
+  getv m p = Some v ->
+  getv (unionm m' m) p = Some v.
+Proof.
+move=> /(fdisjointP _ _)/(_ p.1) hdis; rewrite /getv unionmE.
+case e: (m p.1)=> [fr|] //=; case: ifP=> inb // [<-].
+have hin: p.1 \in names m.
+  by apply/namesmP/(@PMFreeNamesKey _ _ _ _ p.1 fr)=> //; apply/namesnP.
+by rewrite -mem_domm (negbTE (hdis hin)) inb.
+Qed.
+Hint Resolve getv_union : separation.
+
+Lemma updv_union m m' m'' p v :
+  fdisjoint (names m) (domm m') ->
+  updv m p v = Some m'' ->
+  updv (unionm m' m) p v = Some (unionm m' m'').
+Proof.
+move=> /(fdisjointP _ _)/(_ p.1) hdis; rewrite /updv unionmE.
+case e: (m p.1)=> [fr|] //=; case: ifP=> inb // [<-].
+have hin: p.1 \in names m.
+  by apply/namesmP/(@PMFreeNamesKey _ _ _ _ p.1 fr)=> //; apply/namesnP.
+rewrite -mem_domm (negbTE (hdis hin)) inb; congr some; apply/eq_partmap=> b.
+rewrite !(setmE, unionmE); have [-> {b}|//] := altP (b =P _).
+by rewrite -mem_domm (negbTE (hdis hin)).
+Qed.
+Hint Resolve updv_union : separation.
+
+Lemma free_union m m' m'' b :
+  fdisjoint (names m) (domm m') ->
+  free_fun m b = Some m'' ->
+  free_fun (unionm m' m) b = Some (unionm m' m'').
+Proof.
+move=> /(fdisjointP _ _)/(_ b) hdis; rewrite /free_fun unionmE.
+case e: (m b)=> [fr|] //= [<-].
+have hin: b \in names m.
+  by apply/namesmP/(@PMFreeNamesKey _ _ _ _ b fr)=> //; apply/namesnP.
+rewrite -mem_domm (negbTE (hdis hin)); congr some; apply/eq_partmap=> b'.
+rewrite !(remmE, unionmE); have [-> {b'}|//] := altP (b' =P _).
+by rewrite -mem_domm (negbTE (hdis hin)).
+Qed.
+Hint Resolve free_union : separation.
+
+Definition add_mem m s :=
+  State (unionm m (mem s)) (regs s) (pc s).
+
+Ltac solve_separation_simpl :=
+  intros;
+  match goal with
+  | H : is_true [&& fdisjoint _ _, fdisjoint _ _ & fdisjoint _ _] |- _ =>
+    let dism := fresh "dism" in
+    let disrs := fresh "disrs" in
+    let disp := fresh "disp" in
+    case/and3P: H => [dism disrs disp];
+    exists fperm_one;
+    rewrite rename1 /add_mem /=;
+    s_econstructor solve [eauto with separation]
+  end.
+
+Lemma separation m s s' :
+  fdisjoint (names s) (domm m) ->
+  step s s' ->
+  exists pm,
+    step (add_mem m s) (add_mem m (rename pm s')).
+Proof.
+rewrite names_state 2!fdisjointUl -andbA.
+move=> dis hstep; case: s s' / hstep dis=> /=; try solve_separation_simpl.
+(* Malloc *)
+move=> m' m'' rs rs' sz b [bpc opc].
+rewrite /blocks /add_mem /=; set s := State _ _ _; set s' := State _ _ _.
+set old := names s; set new := names s'.
+rewrite /malloc_fun=> get_sz [eb em''] upd get_ra; subst b m''.
+case/and3P=> [dism disr disp]; exists (fperm2 (fresh old) (fresh new)).
+rewrite rename_valueE /= renamenE fperm2D; first last.
+- apply/eqP=> e; move: (freshP new); rewrite -e; move/negP; apply.
+  by rewrite /new; apply/in_blocks; econstructor; eauto.
+- apply/eqP=> e; move: (freshP old); rewrite -e; move/negP; apply.
+  by rewrite /new; apply/in_blocks; econstructor; eauto.
+rewrite renamem_set renamenE fperm2L renamesE.
+rewrite (@eq_in_map _ _ _ id _).1; last by move=> x /nseqP [-> ?] //.
+rewrite map_id namesNNE; first last.
+- apply: contra (freshP new); move: (fresh _)=> b.
+  rewrite /new /s' names_state /= => hin.
+  rewrite 2!in_fsetU -orbA; apply/orP; left; apply/namesmP.
+  move: (fdisjointP _ _ dism _ hin)=> nin.
+  case/namesmP: hin=> [b' fr hb' /namesnP e|b' fr hb' hb].
+    subst b'; apply/(@PMFreeNamesKey _ _ _ _ b fr); try by apply/namesnP.
+    by rewrite unionmE -mem_domm (negbTE nin).
+  have b'_in: b' \in names m'.
+    by apply/namesmP/(@PMFreeNamesKey _ _ _ _ b' fr)=> //; apply/namesnP.
+  apply/(@PMFreeNamesVal _ _ _ _ b' fr)=> //.
+  move: (fdisjointP _ _ dism b' b'_in)=> nin'.
+  by rewrite unionmE -mem_domm (negbTE nin').
+- apply: contra (freshP old); move: (fresh _)=> bs.
+  by rewrite /old /s names_state /= => hin; rewrite 2!in_fsetU hin.
+have := (rename_updr (fperm2 (fresh old) (fresh new)) upd).
+rewrite rename_valueE /= renamenE fperm2L namesNNE; first last.
+- apply: contra (freshP new); move: (fresh _)=> bs.
+  by rewrite /new /s' names_state /= => hin; rewrite 2!in_fsetU hin orbT.
+- apply: contra (freshP old); move: (fresh _)=> bs.
+  by rewrite /old /s names_state /= => hin; rewrite 2!in_fsetU hin orbT.
+move=> upd'; eapply step_malloc; eauto; rewrite /malloc_fun; congr pair.
+apply/eq_partmap=> x; rewrite !(setmE, unionmE) -[blocks _]/new.
+have [->{x}|hneq //] := altP (x =P _).
+rewrite -mem_domm; suff -> : fresh new \in domm m = false by [].
+apply: contraNF (freshP new); move: (fresh _)=> b /dommP [fr Hfr].
+rewrite /new /s' names_state /= 2!in_fsetU -orbA; apply/orP; left.
+apply/namesmP/(@PMFreeNamesKey _ _ _ _ b fr); first by rewrite unionmE Hfr.
+by apply/namesnP.
+Qed.
+
 End MemorySafety.
