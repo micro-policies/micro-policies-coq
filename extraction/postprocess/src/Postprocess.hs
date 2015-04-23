@@ -38,6 +38,7 @@ fixExtractedCode thisModule extraBody doc =
 fixExtractedCodeDirectory :: FilePath -> FilePath -> Maybe FilePath -> IO ()
 fixExtractedCodeDirectory from to mExtra = do
   hsFiles <- filter (".hs" `isSuffixOf`) <$> getDirectoryContents from
+  createDirectoryIfMissing True to
   forM_ hsFiles $ \file -> do
     let fromFile   = from </> file
         toFile     = to   </> case file of c : cs -> toUpper c : cs ; "" -> ""

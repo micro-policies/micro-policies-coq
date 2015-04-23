@@ -9,6 +9,7 @@ Makefile.coq: Makefile.source
 clean:
 	rm -f */*.vo */*.v.d */*.glob */*~ */.#* Makefile.coq
 	rm -f */*/*.vo */*/*.v.d */*/*.glob
+	rm -f os/extracted
 
 test: coq
 	$(MAKE) -C sealing runtest
@@ -99,3 +100,41 @@ dist-anon: clean
 
 coqide:
 	coqide -R . MicroPolicies
+
+# The target `extract-DIR' extracts the Coq code in `DIR' to Haskell code in
+# `DIR/extracted/', using the file `DIR/extraction.v' and any extra code in
+# `DIR/extra'.  The `DIR/extracted.v' file should probably just imports
+# `extraction/extraction.v' and another library `LIB', and then `Recursive
+# Extraction Library LIB'.  Don't pass `extract-DIR' `DIR's that are nested
+# (i.e., that aren't exactly one level deep) or that contain "weird" characters
+# (things that would break a regular expression, or an `@').
+#
+# This can also be made available from those subdirectories where one wants to
+# extract, which is probably a good idea.
+#
+# Here's what `extract-DIR' does:
+#   1. Makes sure the postprocessor exists.
+#   2. Wipes out any past results of compiling the extraction file, letting us
+#      use `make' in step 3.
+#   3. Uses the Coq makefile to print out the Coq compilation command, then
+#      fix it up so that:
+#        (a) The references to `.' for the root directory become `..'.
+#        (b) The references to `DIR/' (as in `DIR/extraction.vo') become `./'.
+#      The result is stored in $(TEMP).
+#   4. Runs the command from step 3 inside the directory DIR, deleting $(TEMP)
+#      if it failed.
+#   5. Delete $(TEMP) and the results of compiling the extraction file.
+#   6. Postprocesses the extracted files into an `extracted' subdirectory of
+#      `DIR', using extra code from an `extra' subdirectory.
+extract-%: TEMP:=$(shell mktemp -t extraction)
+extract-%: coq
+	$(MAKE) -C extraction/postprocess
+	rm -f $*/extraction.vo $*/extraction.glob
+	$(MAKE) -nf Makefile.coq $*/extraction.vo \
+	  | sed -r 's/ \. / .. /; s@'$*'/@./@'    \
+	  > $(TEMP)
+	  @ # This sed script fixes the `coqc' command to work from inside the given
+	  @ # directory: `.' (the root) becomes `..', and `dir/' becomes './'.
+	cd $* && $(SHELL) $(TEMP) || rm -f $(TEMP)
+	rm -f $(TEMP) $*/extraction.vo $*/extraction.glob
+	extraction/postprocess/postprocess $* $*/extracted $*/extra
