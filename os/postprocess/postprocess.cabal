@@ -1,0 +1,35 @@
+name:                postprocess
+version:             0.0.1.0
+synopsis:            Postprocess extracted Coq code for usability.
+license:             MIT
+license-file:        LICENSE
+author:              Antal Spector-Zabusky
+maintainer:          antal.b.sz@gmail.com
+copyright:           Copyright (c) 2015 Antal Spector-Zabusky et al.
+category:            Language
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable postprocess
+  main-is:             Main.hs
+  other-modules:       Postprocess.Util.Tuple
+                     , Postprocess.Util.Monoid
+                     , Postprocess.Util.List
+                     , Postprocess.Util.Text
+                     , Postprocess.Util.Haskell
+                     , Postprocess.Processor
+                     , Postprocess.FileStructure
+                     , Postprocess.Imports
+                     , Postprocess.Constraints
+                     , Postprocess.Clean
+                     , Postprocess
+  build-depends:       base             ==4.7.*
+                     , text             ==1.1.*
+                     , text-icu         ==0.7.*
+                     , containers       ==0.5.*
+                     , haskell-src-exts ==1.16.*
+                     , filepath         ==1.3.*
+                     , directory        ==1.2.*
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  GHC-options:         -Wall -Werror -O2

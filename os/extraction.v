@@ -261,21 +261,344 @@ Extract Constant BinNat.N.lcm          => "Prelude.lcm".
 Extract Constant BinNat.N.setbit       => "\x b -> Data.Bits.setBit x (Prelude.fromInteger b)".
 Extract Constant BinNat.N.clearbit     => "\x b -> Data.Bits.clearBit x (Prelude.fromInteger b)".
 
-Extract Inductive set_type => "Data.Set.Set" [""]
-                              "error ['S','e','t','s',' ','a','r','e',' ','a','b','s','t','r','a','c','t','!']".
-
-(*
 Extract Inductive int => "Prelude.Integer"
                          ["Prelude.id" "(Prelude.negate Prelude.. (Prelude.+1))"]
                          "(\fP fN n -> if n Prelude.>= 0 then fP n else fN (Prelude.abs n Prelude.- 1))".
-Extract Constant GRing.add   => "Prelude.const (Prelude.+)".
-Extract Constant GRing.opp   => "Prelude.const Prelude.negate".
-Extract Constant GRing.mul   => "Prelude.const (Prelude.* )".
-Extract Constant intdiv.divz => "Prelude.div". (* XXX: Different behavior on negative numbers *)
-Extract Constant intdiv.modz => "Prelude.mod". (* XXX: Different behavior on negative numbers *)
-Extract Constant absz        => "Prelude.abs".
+Extract Constant intZmod.addz   => "(Prelude.+)".
+Extract Constant intZmod.oppz   => "Prelude.negate".
+Extract Constant intRing.mulz   => "(Prelude.*)".
+Extract Constant absz           => "Prelude.abs".
+Extract Constant intOrdered.lez => "(Prelude.<=)".
+Extract Constant intOrdered.ltz => "(Prelude.<)".
+(* intmul? (no)  exprz? (maybe)  sgz? (probably not) *)
+(* Extract Constant int_eqMixin    => "Eqtype.coq_CanEqMixin (Prelude.==) (unsafeCoerce natsum_of_int) (unsafeCoerce int_of_natsum)". *)
+(* ^ The above doesn't work because `(==)' needs to be an eqtype.  Thus,
+   equality will be a bit slower than it should be. *)
 
-Extract Inductive word.word => "Prelude.Integer" [""] "(Prelude.$)".
-Extract Constant as_word => "\k n -> n Data.Bits..&. ((1 `Data.Bits.shiftL` Prelude.fromInteger k) Prelude.- 1)".*)
+Extract Constant intdiv.divz => "\x y -> unsafeCoerce (if y Prelude.== 0 then 0 else x `Prelude.div` y)". (* I cannot BELIEVE I need unsafeCoerce here. *)
+Extract Constant intdiv.modz => "\x y -> if y Prelude.== 0 then x else x `Prelude.mod` Prelude.abs y".
+
+Extract Inductive rat.rat => "Prelude.Rational" ["(Prelude.uncurry (Data.Ratio.%))"]
+                             "(\f q -> f (Data.Ratio.numerator q, Data.Ratio.denominator q))".
+Extract Constant rat.valq   => "\q -> (Data.Ratio.numerator q, Data.Ratio.denominator q)".
+Extract Constant rat.ratz   => "Prelude.fromInteger".
+Extract Constant rat.numq   => "Data.Ratio.numerator".
+Extract Constant rat.denq   => "Data.Ratio.denominator".
+Extract Constant rat.fracq  => "Prelude.uncurry (Data.Ratio.%)".
+Extract Constant rat.zeroq  => "0".
+Extract Constant rat.oneq   => "1".
+Extract Constant rat.addq   => "(Prelude.+)".
+Extract Constant rat.oppq   => "Prelude.negate".
+Extract Constant rat.mulq   => "(Prelude.*)".
+Extract Constant rat.invq   => "Prelude.recip".
+Extract Constant rat.subq   => "(Prelude.-)".
+Extract Constant rat.divq   => "\x y -> if y Prelude.== 0 then 0 else x Prelude./ y".
+Extract Constant rat.le_rat => "(Prelude.<=)".
+Extract Constant rat.lt_rat => "(Prelude.<)".
+
+(* The `zmodp' stuff for Ordinals should mostly extract efficiently!  I'm not
+   sure about `Zp_inv', though, in particular its use of `div.egcdn'. *)
+
+(* Word arithmetic is left alone -- the bitwise hacks don't seem worth it, and
+   we can't just extract `word 32' to `Int32', so... yeah.  We do deal with the
+   bitwise stuff to avoid finfuns, though.  *)
+
+Extract Constant negw => "\k (Word w) -> as_word k (Data.Bits.complement w)".
+Extract Constant andw => "\_ (Word w1) (Word w2) -> Word (w1  Data.Bits..&.  w2)".
+Extract Constant orw  => "\_ (Word w1) (Word w2) -> Word (w1  Data.Bits..|.  w2)".
+Extract Constant xorw => "\_ (Word w1) (Word w2) -> Word (w1 `Data.Bits.xor` w2)".
+
+Extract Inductive set_type => "Finset.Coq_set_type"
+                              ["(finsetAbstract ""FinSet constructor"")"]
+                              "(finsetAbstract ""FinSet case"")".
+Extract Constant set_type_rect      => "finsetAbstract ""set_type_rect""".
+Extract Constant set_type_rec       => "finsetAbstract ""set_type_rec""".
+Extract Constant finfun_of_set      => "finsetAbstract ""finfun_of_set""".
+Extract Constant SetDef.finset      => "finsetAbstract ""SetDef.finset""".
+Extract Constant SetDef.pred_of_set => "finsetAbstract ""SetDef.pred_of_set""".
+Extract Constant Imset.imset        => "finsetAbstract ""Imset.imset""".
+Extract Constant Imset.imset2       => "finsetAbstract ""Imset.imset2""".
+Extract Constant preimset           => "finsetAbstract ""preimset""".
+(*
+Extract Constant set_subType        => "finsetAbstract ""set_subType""".
+Extract Constant set_choiceMixin    => "finsetAbstract ""set_choiceMixin""".
+Extract Constant set_choiceType     => "finsetAbstract ""set_choiceType""".
+Extract Constant set_countMixin     => "finsetAbstract ""set_countMixin""".
+Extract Constant set_countType      => "finsetAbstract ""set_countType""".
+Extract Constant set_subCountType   => "finsetAbstract ""set_subCountType""".
+Extract Constant set_finMixin       => "finsetAbstract ""set_finMixin""".
+Extract Constant set_finType        => "finsetAbstract ""set_finType""".
+Extract Constant set_subFinType     => "finsetAbstract ""set_subFinType""".
+Extract Constant set_predType       => "finsetAbstract ""set_predType""".
+...
+*)
+
+Extract Constant set_eqMixin => "withFintypeOrd' (Eqtype.equality__mixin (Prelude.==) (finsetAbstract ""set_eqMixin/eqP""))".
+
+Extract Constant set0     => "\_ -> Data.Set.empty".
+Extract Constant setTfor  => "finsetFinite ""setTfor""".
+Extract Constant set1     => "\_ x -> Data.Set.singleton (unitAny x)".
+Extract Constant setU     => "withFintypeOrd' Data.Set.union".
+Extract Constant setI     => "withFintypeOrd' Data.Set.intersection".
+Extract Constant setC     => "finsetFinite ""setC""".
+Extract Constant setD     => "withFintypeOrd' Data.Set.difference".
+Extract Constant ssetI    => "withFintypeOrd' (\xss ys -> flattenedSet (Data.Set.filter (`Data.Set.isSubsetOf` ys) (nestedSet xss)))".
+Extract Constant powerset => "withFintypeOrd' (\s -> flattenedSet (setPowerset s))".
+Extract Constant setX     => "\_ _ xs ys ->
+  unsafeCoerce (Data.Set.fromDistinctAscList [ (x,y) | x <- Data.Set.toAscList xs
+                                                     , y <- Data.Set.toAscList ys ])".
+  (* Due to Dan Weston's mailing list post at
+     https://mail.haskell.org/pipermail/haskell-cafe/2007-August/029859.html;
+     the proof obligation for `fromDistinctAscList' is fulfilled by
+     construction *)
+
+(* Not confident about the `unsafeCoerce' in this one *)
+Extract Constant set_0Vmem => "\_ s -> if Data.Set.null s then Prelude.Left () else Prelude.Right (unsafeCoerce (Data.Set.findMin s))".
+
+(* Not sure about cover, pblock, trivIset, partition, is_transversal, transversal *)
+(* Also not sure about minset and maxset *)
+
+(* Cardinality *will* break, too *)
+
+(* eqtypes get included comparator functions -- the definition of the type is
+   stored in extra/eqtype.hs *)
+Extract Inductive Equality.mixin_of => "Eqtype.Equality__Coq_mixin_of" ["Eqtype.equality__mixin"]
+                                       "(\f em -> case em of Eqtype.Equality__Mixin eqb eqP _ -> f eqb eqP)".
+Extract Constant sub_eqMixin => "\t p sT ->
+  Equality__Mixin
+    (\x y -> eq_op t (val p sT x) (val p sT y))
+    (val_eqP t p sT)
+    (\x y -> compare_op t (val p sT x) (val p sT y))".
+Extract Constant SubEqMixin => "\t p sT ->
+  let {vP = val_eqP t p sT} in
+  case sT of {
+   SubType v sub p0 ->
+     Equality__Mixin
+       (\x y -> eq_op t (v x) (v y))
+       vP
+       (\x y -> compare_op t (v x) (v y))
+  }".
+Extract Constant sig_eqMixin => "\t p ->
+  Equality__Mixin
+    (\x y -> eq_op t (Specif.proj1_sig x) (Specif.proj1_sig y))
+    (unsafeCoerce (val_eqP t (\x -> p x) (sig_subType p)))
+    (\x y -> compare_op t (Specif.proj1_sig x) (Specif.proj1_sig y))".
+Extract Constant prod_eqMixin => "\t1 t2 ->
+  Equality__Mixin
+    (Ssrbool.rel_of_simpl_rel (pair_eq t1 t2))
+    (pair_eqP t1 t2)
+    (\(x1,x2) (y1,y2) -> compare_op t1 x1 y1 Data.Monoid.<> compare_op t2 x2 y2)".
+Extract Constant option_eqMixin => "\t ->
+  Equality__Mixin (opt_eq t) (opt_eqP t)
+    (\mx my -> case (mx,my) of {
+                 (Prelude.Nothing, Prelude.Nothing) -> Prelude.EQ;
+                 (Prelude.Nothing, Prelude.Just _)  -> Prelude.LT;
+                 (Prelude.Just _,  Prelude.Nothing) -> Prelude.GT;
+                 (Prelude.Just x,  Prelude.Just y)  -> compare_op t x y})".
+Extract Constant tag_eqMixin => "\i t_ ->
+  Equality__Mixin (tag_eq i t_) (tag_eqP i t_)
+                  (\x1 x2 -> compare_op i             (tag x1)    (tag x2) Data.Monoid.<>
+                             compare_op (t_ (tag x1)) (tagged x1) (tagged_as i x1 x2))".
+Extract Constant sum_eqMixin => "\t1 t2 ->
+  Equality__Mixin (sum_eq t1 t2) (sum_eqP t1 t2)
+    (\x12 y12 -> case (x12, y12) of {
+                   (Prelude.Left  x1, Prelude.Left  y1) -> compare_op t1 x1 y1;
+                   (Prelude.Right x2, Prelude.Right y2) -> compare_op t2 x2 y2;
+                   (Prelude.Left  _,  Prelude.Right _)  -> Prelude.LT;
+                   (Prelude.Right _,  Prelude.Left  _)  -> Prelude.GT })".
+
+(* The type `finfun_type` is horribly inefficient, but I don't believe we ever
+   use it, as long as we extract sets properly. *)
+Extract Constant finfun.finfun_eqMixin => "\aT rT ->
+  Eqtype.Equality__Mixin (\x y ->
+    Eqtype.eq_op
+      (Tuple.tuple_eqType
+        (Fintype._CardDef__card aT
+          (Ssrbool.mem Ssrbool.predPredType
+            (Ssrbool.sort_of_simpl_pred Ssrbool.pred_of_argType))) rT)
+      (unsafeCoerce (fgraph aT x)) (unsafeCoerce (fgraph aT y)))
+    (unsafeCoerce
+      (Eqtype.val_eqP
+        (Tuple.tuple_eqType
+          (Fintype._CardDef__card aT
+            (Ssrbool.mem Ssrbool.predPredType
+              (Ssrbool.sort_of_simpl_pred Ssrbool.pred_of_argType))) rT)
+        (\x -> Prelude.True) (unsafeCoerce (finfun_subType aT))))
+    (\x y ->
+      Eqtype.compare_op
+        (Tuple.tuple_eqType
+          (Fintype._CardDef__card aT
+            (Ssrbool.mem Ssrbool.predPredType
+              (Ssrbool.sort_of_simpl_pred Ssrbool.pred_of_argType))) rT)
+        (unsafeCoerce (fgraph aT x)) (unsafeCoerce (fgraph aT y)))".
+
+Extract Constant fingroup.group_eqMixin => "\gT ->
+  Eqtype.Equality__Mixin (\x y ->
+    Eqtype.eq_op (group_set_eqType (_FinGroup__base gT))
+      (unsafeCoerce (gval gT x)) (unsafeCoerce (gval gT y)))
+    (unsafeCoerce
+      (Eqtype.val_eqP (group_set_eqType (_FinGroup__base gT))
+        (unsafeCoerce (group_set gT)) (unsafeCoerce (group_subType gT))))
+    (\x y ->
+      Eqtype.compare_op (group_set_eqType (_FinGroup__base gT))
+        (unsafeCoerce (gval gT x)) (unsafeCoerce (gval gT y)))".
+
+Extract Constant fingroup.subg_eqMixin => "\gT g ->
+  Eqtype.Equality__Mixin (\x y ->
+    Eqtype.eq_op (_FinGroup__arg_eqType (_FinGroup__base gT)) (sgval gT g x)
+      (sgval gT g y))
+    (unsafeCoerce
+      (Eqtype.val_eqP (_FinGroup__arg_eqType (_FinGroup__base gT)) (\x ->
+        Ssrbool.in_mem x
+          (Ssrbool.mem Ssrbool.predPredType
+            (Finset._SetDef__pred_of_set
+              (_FinGroup__arg_finType (_FinGroup__base gT)) (gval gT g))))
+        (subg_subType gT g)))
+    (\x y ->
+      Eqtype.compare_op (_FinGroup__arg_eqType (_FinGroup__base gT)) (sgval gT g x)
+        (sgval gT g y))".
+
+Extract Constant choice.tree_eqMixin => "\t ->
+  let { (<=>) :: GenTree__Coq_tree Eqtype.Equality__Coq_sort
+              -> GenTree__Coq_tree Eqtype.Equality__Coq_sort
+              -> Prelude.Ordering
+      ; GenTree__Leaf x    <=> GenTree__Leaf y    = Eqtype.compare_op t x y
+      ; GenTree__Leaf _    <=> GenTree__Node _ _  = Prelude.LT
+      ; GenTree__Node _ _  <=> GenTree__Leaf _    = Prelude.GT
+      ; GenTree__Node m xs <=> GenTree__Node n ys =
+          (m `Prelude.compare` n) Data.Monoid.<>
+          (Eqtype.compare_op
+            (unsafeCoerce (Seq.seq_eqMixin (unsafeCoerce (tree_eqMixin t))))
+            (unsafeCoerce xs)
+            (unsafeCoerce ys)) }
+  in Data.Reflection.Constraint.providing (Data.Reflection.Constraint.Ord (<=>))
+       (Eqtype.coq_PcanEqMixin
+          (Seq.seq_eqType (Eqtype.sum_eqType Ssrnat.nat_eqType t))
+          (unsafeCoerce _GenTree__encode) (unsafeCoerce _GenTree__decode))".
+
+Extract Constant fintype.seq_sub_eqMixin => "\t s ->
+  Eqtype.Equality__Mixin (\x y ->
+    Eqtype.eq_op (Choice._Choice__eqType t) (ssval t s x) (ssval t s y))
+    (unsafeCoerce
+      (Eqtype.val_eqP (Choice._Choice__eqType t) (\x ->
+        Ssrbool.in_mem x
+          (Ssrbool.mem (Seq.seq_predType (Choice._Choice__eqType t))
+            (unsafeCoerce s))) (seq_sub_subType t s)))
+    (\x y -> Eqtype.compare_op (Choice._Choice__eqType t) (ssval t s x) (ssval t s y))".
+
+Extract Constant hseq.hseq_eqMixin => "\t_ idx ->
+  Eqtype.Equality__Mixin (hseq_eq t_ idx) (hseq_eqP t_ idx) (hseq_compare t_ idx)".
+Extract Constant hseq.HSeqChoiceType.hseq_choiceMixin =>
+  "Prelude.error ""_HSeqChoiceType__hseq_choiceMixin: failed to compile with infinite type errors""".
+
+Extract Constant poly.polynomial_eqMixin => "\r ->
+  Eqtype.Equality__Mixin (\x y ->
+    Eqtype.eq_op (Seq.seq_eqType (Ssralg._GRing__Ring__eqType r))
+      (unsafeCoerce (polyseq r x)) (unsafeCoerce (polyseq r y)))
+    (unsafeCoerce
+      (Eqtype.val_eqP (Seq.seq_eqType (Ssralg._GRing__Ring__eqType r)) (\x ->
+        Datatypes.negb
+          (Eqtype.eq_op (Ssralg._GRing__Ring__eqType r)
+            (Seq.last (Ssralg._GRing__one r) (unsafeCoerce x))
+            (Ssralg._GRing__zero (Ssralg._GRing__Ring__zmodType r))))
+        (unsafeCoerce (polynomial_subType r))))
+    (\x y ->
+      Eqtype.compare_op (Seq.seq_eqType (Ssralg._GRing__Ring__eqType r))
+        (unsafeCoerce (polyseq r x)) (unsafeCoerce (polyseq r y)))".
+
+Extract Constant quotient.coset_eqMixin => "\gT a ->
+  Eqtype.Equality__Mixin (\x y ->
+    Eqtype.eq_op (Fingroup.group_set_eqType (Fingroup._FinGroup__base gT))
+      (unsafeCoerce (set_of_coset gT a x))
+      (unsafeCoerce (set_of_coset gT a y)))
+    (unsafeCoerce
+      (Eqtype.val_eqP
+        (Fingroup.group_set_eqType (Fingroup._FinGroup__base gT))
+        (Ssrbool.pred_of_simpl (coset_range gT a))
+        (unsafeCoerce (coset_subType gT a))))
+    (\x y ->
+      Eqtype.compare_op (Fingroup.group_set_eqType (Fingroup._FinGroup__base gT))
+        (unsafeCoerce (set_of_coset gT a x))
+        (unsafeCoerce (set_of_coset gT a y)))".
+
+Extract Constant seq_eqMixin => "\t ->
+  let {[]     <=> []     = Prelude.EQ;
+       []     <=> (_:_)  = Prelude.LT;
+       (_:_)  <=> []     = Prelude.GT;
+       (x:xs) <=> (y:ys) = Eqtype.compare_op t x y Data.Monoid.<> xs <=> ys}
+  in Eqtype.Equality__Mixin (eqseq t) (eqseqP t) (<=>)".
+
+Extract Constant tuple.tuple_eqMixin => "\n t ->
+  Eqtype.Equality__Mixin (\x y ->
+    Eqtype.eq_op (Seq.seq_eqType t) (unsafeCoerce (tval n x))
+      (unsafeCoerce (tval n y)))
+    (unsafeCoerce
+      (Eqtype.val_eqP (Seq.seq_eqType t) (\x ->
+        Eqtype.eq_op Ssrnat.nat_eqType
+          (unsafeCoerce (Seq.size (unsafeCoerce x))) (unsafeCoerce n))
+        (unsafeCoerce (tuple_subType n))))
+    (\x y ->
+      Eqtype.compare_op
+        (Seq.seq_eqType t)
+        (unsafeCoerce (tval n x))
+        (unsafeCoerce (tval n y)))".
+
+Extract Constant atom_eqMixin => "\vEM tEM ->
+  Eqtype.Equality__Mixin
+    (atom_eqb  vEM tEM)
+    (atom_eqbP vEM tEM)
+    (\(Atom v1 t1) (Atom v2 t2) ->
+        Eqtype.compare_op vEM v1 v2 Data.Monoid.<> Eqtype.compare_op tEM t1 t2)".
+
+Extract Constant symbolic.Exports.state_eqMixin => "\mt p ->
+  Eqtype.Equality__Mixin
+    (_Exports__state_eqb  mt p)
+    (_Exports__state_eqbP mt p)
+    (_Exports__state_cmp  mt p)".
+
+Extract Constant data_tag_eqMixin => "\mt ->
+  Eqtype.Equality__Mixin
+    (_Sym__Exports__data_tag_eq  mt)
+    (_Sym__Exports__data_tag_eqP mt)
+    (_Sym__Exports__data_tag_cmp mt)".
+
+Extract Constant Sym.compartmentalization_internal_eqMixin => "\mt ->
+  Eqtype.Equality__Mixin
+    (_Sym__compartmentalization_internal_eqb  mt)
+    (_Sym__compartmentalization_internal_eqbP mt)
+    (_Sym__compartmentalization_internal_cmp  mt)".
+
+Extract Constant concrete.Exports.state_eqMixin => "\mt ->
+  Eqtype.Equality__Mixin
+    (_Exports__state_eqb  mt)
+    (_Exports__state_eqbP mt)
+    (_Exports__state_cmp  mt)".
+
+Extract Constant rules.mtag_eqMixin => "\tty ->
+  let { (<=>) :: Coq_mtag -> Coq_mtag -> Prelude.Ordering
+      ; User  u1 <=> User  u2 = Eqtype.compare_op (Symbolic._Symbolic__mem_tag_type   tty) u1 u2
+      ; Entry e1 <=> Entry e2 = Eqtype.compare_op (Symbolic._Symbolic__entry_tag_type tty) e1 e2
+      ; User  _  <=> Entry _  = Prelude.LT
+      ; Entry _  <=> User  _  = Prelude.GT }
+  in Data.Reflection.Constraint.providing (Data.Reflection.Constraint.Ord (<=>))
+       (Eqtype.coq_CanEqMixin
+         (Eqtype.sum_eqType
+           (Symbolic._Symbolic__mem_tag_type tty)
+           (Symbolic._Symbolic__entry_tag_type tty))
+         (unsafeCoerce (sum_of_mtag tty))
+         (unsafeCoerce (mtag_of_sum tty)))".
+
+(* I've ignored most of the pure math stuff in MathComp (beyond what was
+   necessary for the `eqType' change) -- we don't use it, and it's quite
+   complicated.  This includes polynomials and matrices/linear algebra -- we
+   certainly *could* use those things (they aren't super pure), but we don't,
+   and there's plenty of extraction work already. *)
+
+(* `concrete/exec.v'                  -> `exec.hs'
+   `symbolic/exec.v'                  -> `exec0.hs'
+   `concrete/int_32.v'                -> `int_32.hs'
+   `symbolic/int_32.v'                -> `int_0.hs'
+   `symbolic/symbolic.v'              -> `symbolic.hs'
+   `compartmentalization/symbolic.hs' -> `symbolic0.hs' *)
 
 Recursive Extraction Library os.
