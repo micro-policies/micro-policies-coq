@@ -9,11 +9,10 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
-Require Import lib.utils lib.partmap_utils.
+Require Import lib.utils lib.partmap_utils lib.ssr_set_utils.
 Require Import common.types common.segment.
 Require Import concrete.concrete concrete.int_32.
 Require Import symbolic.symbolic symbolic.int_32 symbolic.exec.
-Require Import compartmentalization.common compartmentalization.symbolic.
 Require Import compartmentalization.common compartmentalization.symbolic.
 Require Import os.os.
 
@@ -360,6 +359,12 @@ Extract Constant set_0Vmem => "\_ s -> if Data.Set.null s then Prelude.Left () e
 (* Also not sure about minset and maxset *)
 
 (* Cardinality *will* break, too *)
+
+(* `enum_set` is a specialized `enum` -- see `lib/ssr_set_utils.v` for why we
+   need it.  Since `lib.ssr_set_utils` is so small, it apparently doesn't have
+   `unsafeCoerce`, so we borrow one.*)
+Extract Constant enum_set => "\_ ->
+  (Finset.unsafeCoerce :: [GHC.Base.Any] -> [()]) Prelude.. Data.Set.toList".
 
 (* eqtypes get included comparator functions -- the definition of the type is
    stored in extra/eqtype.hs *)

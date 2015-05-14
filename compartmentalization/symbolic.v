@@ -2,7 +2,7 @@ Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.
 
 Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
 
-Require Import lib.utils lib.word_utils common.types.
+Require Import lib.utils lib.word_utils lib.ssr_set_utils common.types.
 Require Import symbolic.symbolic.
 Require Import compartmentalization.common.
 Require Import compartmentalization.isolate_sets compartmentalization.ranges.
@@ -390,8 +390,8 @@ Definition isolate (s : Symbolic.state mt) : option (Symbolic.state mt) :=
 
     do! s' <- retag_set (do_ok c A' J' S')
                         (do_retag c c' A' J' S')
-                        (enum (A' :|: J' :|: S')) s;
-
+                        (enum_set (A' :|: J' :|: S')) s;
+    
     do! pc' @ _              <- RR ra;
     do! DATA c_next I_next _ <- sget s' pc';
     do! guard c == c_next;

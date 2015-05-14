@@ -7,6 +7,12 @@ Unset Printing Implicit Defensive.
 
 Set Bullet Behavior "Strict Subproofs".
 
+(* For extraction -- `enum' is super slow when working with large `finType`s,
+   but because it's implemented on top of `enum_mem', we can't just rewrite it
+   for all sets. *)
+Definition enum_set {T : finType} (s : {set T}) : seq T := enum s.
+  (* Can't be eta-reduced -- `enum` is a weird abbreviation *)
+
 Theorem common_not_disjoint (T : finType) (x : T) (A B : {set T}) :
   x \in A -> x \in B -> ~~ [disjoint A & B].
 Proof.
