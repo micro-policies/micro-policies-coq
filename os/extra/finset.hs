@@ -32,6 +32,9 @@ nestedSet = unsafeCoerce
 flattenedSet :: Data.Set.Set (Data.Set.Set GHC.Base.Any) -> Data.Set.Set GHC.Base.Any
 flattenedSet = unsafeCoerce
 
+forgetToCoqSet :: Data.Set.Set a -> Data.Set.Set GHC.Base.Any
+forgetToCoqSet = unsafeCoerce
+
 -- This implementation is due to Dan Burton's answer to MarcoS's StackOverflow
 -- question "why Data.Set has no powerset function?" [sic], available at
 -- http://stackoverflow.com/a/6429301/237428

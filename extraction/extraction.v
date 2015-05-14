@@ -14,6 +14,7 @@ Require Import common.types common.segment.
 Require Import concrete.concrete concrete.int_32.
 Require Import symbolic.symbolic symbolic.int_32 symbolic.exec.
 Require Import compartmentalization.common compartmentalization.symbolic.
+Require Import compartmentalization.isolate_sets.
 Require Import os.os.
 
 Extraction Language Haskell.
@@ -365,6 +366,24 @@ Extract Constant set_0Vmem => "\_ s -> if Data.Set.null s then Prelude.Left () e
    `unsafeCoerce`, so we borrow one.*)
 Extract Constant enum_set => "\_ ->
   (Finset.unsafeCoerce :: [GHC.Base.Any] -> [()]) Prelude.. Data.Set.toList".
+
+(* `isolate_get_range' needs to be fixed up --
+   `[set i : mword mt in some_predicate]` uses the `finfun' machinery!  So we
+   just reimplement a mix of the extracted version (in the `let`), the Coq
+   version (using Haskell's `do` notation), and replace the `[set i ...]` stuff
+   with a Haskell `[l..h]` range!  We can safely do this by moving in and out of
+   `Coq_word` without checks, since everything between `l` and `h` is guaranteed
+   to be a valid word.  Since `compartmentalization.isolate_sets` is so small,
+   it apparently doesn't have `__`, so we borrow one. *)
+Extract Constant isolate_get_range => "\mt to_word m p -> do {
+  let { wsz      = Types.word_size mt ;
+        get_m    = Partmap.getm (Word.word_ordType wsz) m Prelude.. unsafeCoerce ;
+        add1     = Prelude.flip (Word.addw wsz) (Word.onew wsz) ;
+        to_hsInt = Word.ord_of_word Types.__ Prelude.. to_word ;
+        fromList = Finset.forgetToCoqSet Prelude.. Data.Set.fromList } ;
+  low  <- get_m p ;
+  high <- get_m (add1 p) ;
+  Prelude.Just (fromList (Prelude.map Word.Word [to_hsInt low .. to_hsInt high])) }".
 
 (* eqtypes get included comparator functions -- the definition of the type is
    stored in extra/eqtype.hs *)
