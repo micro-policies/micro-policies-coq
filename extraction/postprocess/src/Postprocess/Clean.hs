@@ -32,7 +32,7 @@ fixOptions = concatMap $ fixGHC >=> fixHugs where
   fixGHC str | "{-# OPTIONS_GHC" `T.isPrefixOf` str =
                  do let ghc' = T.replace " -cpp " " " str
                     guard $ ghc' /= "{-# OPTIONS_GHC #-}"
-                    return ghc'
+                    return $ T.replace "#-}" "-w #-}" ghc'
              | otherwise =
                  [str]
 

@@ -45,20 +45,22 @@ Existing Instance sp.
 (* ra = 0 is special; register 1 is caller-save; registers 2+ are callee-save *)
 Definition caller_save_min : nat := 1.
 Definition callee_save_min : nat := 2.
+Definition user_reg_max    : nat := 15.
 
 Definition caller_save_regs_nat : seq nat      := enum_from_upto caller_save_min callee_save_min.
 Definition caller_save_regs_int : seq int      := map Posz caller_save_regs_nat.
 Definition caller_save_regs     : seq (reg mt) := map as_word caller_save_regs_int.
 Definition caller_save_regs_imm : seq (imm mt) := map as_word caller_save_regs_int.
 
-Definition callee_save_regs_nat : seq nat      := enum_from_upto callee_save_min (2 ^ reg_field_size mt).
+Definition callee_save_regs_nat : seq nat      := enum_from_upto callee_save_min user_reg_max.
 Definition callee_save_regs_int : seq int      := map Posz callee_save_regs_nat.
 Definition callee_save_regs     : seq (reg mt) := map as_word callee_save_regs_int.
 Definition callee_save_regs_imm : seq (imm mt) := map as_word callee_save_regs_int.
 
 Definition yieldR      : reg mt := as_word callee_save_min.
 Definition shared_ptrR : reg mt := (yieldR + 1)%w.
-Definition tempR       : reg mt := (shared_ptrR + 1)%w.
+Definition loopbackR   : reg mt := (shared_ptrR + 1)%w.
+Definition tempR       : reg mt := (loopbackR + 1)%w.
 Definition free_reg (i : nat) : reg mt := tempR +! S i.
 
 Record process_parameters := { yield_address  : imm mt
@@ -70,34 +72,39 @@ Definition process_setup (extra : program mt)
   ,   Const shared_addr       shared_ptrR
   &   extra ].
 
-Definition process_loop (body : reg mt -> program mt) : program mt :=
+Definition process_loop (addr : imm mt) (body : reg mt -> program mt) : program mt :=
   let loop_body :=
         Load shared_ptrR tempR ::
         body tempR ++
         [:: Store shared_ptrR tempR
         ;   Jal yieldR ]
-  in loop_body ++
-     (* Unconditionally loop, since yieldR <> 0 *)
-     [:: Bnz yieldR (- as_word (length loop_body))%w].
+  in [:: Const (addr + 1)%w loopbackR] ++
+     loop_body ++
+     [:: Jump loopbackR].
+     (* Nope: Bnz can only jump forward!
+       (* Unconditionally loop, since yieldR <> 0 *)
+       [:: Bnz yieldR (- as_word (length loop_body))%w]. *)
 
-Definition process (init : program mt) (body : reg mt -> program mt)
+Definition process (addr : imm mt)
+                   (init : program mt) (body : reg mt -> program mt)
                    (yield_addr shared_addr : imm mt) : program mt :=
-  process_setup init yield_addr shared_addr ++ process_loop body.
+  let preamble := process_setup init yield_addr shared_addr
+  in preamble ++ process_loop (addr +! length preamble) body.
 
-Definition process_add1 : imm mt -> imm mt -> program mt :=
+Definition process_add1 (addr : imm mt) : imm mt -> imm mt -> program mt :=
   let oneR := free_reg 0
-  in process [:: Const 1%w oneR] (fun localR => [:: Binop ADD localR oneR localR]).
+  in process addr [:: Const 1%w oneR] (fun localR => [:: Binop ADD localR oneR localR]).
 
-Definition process_mul2 : imm mt -> imm mt -> program mt :=
+Definition process_mul2 (addr : imm mt) : imm mt -> imm mt -> program mt :=
   let twoR := free_reg 0
-  in process [:: Const (as_word 2) twoR] (fun localR => [:: Binop MUL localR twoR localR]).
+  in process addr [:: Const (as_word 2) twoR] (fun localR => [:: Binop MUL localR twoR localR]).
 
 Section scheduler.
 
 Variable scheduler_base_addr : imm mt.
 
 (* 1 word for where to jump back to, plus one word for each register to save *)
-Definition pinfo_size : nat := S (2 ^ reg_field_size mt - callee_save_min).
+Definition pinfo_size : nat := S (user_reg_max - callee_save_min).
 (* A process info block stores pc/ra, then all the caller-save registers *)
 
 Definition pid_addr   : imm mt := scheduler_base_addr.
@@ -110,7 +117,7 @@ Definition scheduler_mem_size : imm mt := (1 + as_word (2 * pinfo_size)%nat)%w.
 Definition stempR : reg mt := as_word caller_save_min.
 
 Definition scheduler_set_prog_addr : program mt :=
-  [:: Bnz stempR (as_word 4)
+  [:: Bnz stempR (as_word 3)
   ;     Const prog1_addr stempR
   ;   Bnz stempR (as_word 2) (* Unconditionally skip the else block *)
   ;     Const prog2_addr stempR ].
@@ -133,7 +140,7 @@ Definition scheduler_change_pid : program mt :=
   let stemp'R := (stempR + 1)%w
   in [:: Const pid_addr stemp'R
      ;   Load stemp'R stempR
-     ;   Binop SUB ra stemp'R stemp'R (* Swap the pc between 0 and 1 *)
+     ;   Binop SUB ra stempR stempR (* Swap the pc between 0 and 1 *)
      ;   Store stemp'R stempR ].
 
 Definition scheduler_call_program : program mt :=
@@ -155,7 +162,7 @@ Definition scheduler_init (prog1 : imm mt) (prog2 : imm mt) : program mt :=
   let store_imm addr val :=
         [:: Const addr stempR
         ;   Const val  stemp'R
-        ;   Store stemp'R stemp'R ] in
+        ;   Store stempR stemp'R ] in
   let preamble :=
         store_imm pid_addr   0%w   ++
         store_imm prog1_addr prog1 ++
@@ -168,13 +175,13 @@ Definition code (base : imm mt) : program mt :=
   let preamble mem_base p1 p2 := scheduler_init mem_base p1 p2 ++ [:: Const p1 ra; Jump ra] in
   let yield_addr          := (base + as_word (length (preamble 0 0 0)))%w in
   let add1_addr           := yield_addr           +! length (scheduler_yield 0) in
-  let mul2_addr           := add1_addr            +! length (process_add1 0 0) in
-  let scheduler_base_addr := mul2_addr            +! length (process_mul2 0 0) in
+  let mul2_addr           := add1_addr            +! length (process_add1 0 0 0) in
+  let scheduler_base_addr := mul2_addr            +! length (process_mul2 0 0 0) in
   let shared_addr         := (scheduler_base_addr + scheduler_mem_size)%w
   in flatten [:: preamble        scheduler_base_addr add1_addr mul2_addr
              ;   scheduler_yield scheduler_base_addr
-             ;   process_add1    yield_addr shared_addr
-             ;   process_mul2    yield_addr shared_addr ].
+             ;   process_add1    add1_addr yield_addr shared_addr
+             ;   process_mul2    mul2_addr yield_addr shared_addr ].
 
 Definition data_size : imm mt := scheduler_mem_size +! 1%nat.
 
@@ -194,7 +201,8 @@ Definition symbolic_os : Symbolic.state mt :=
           map (fun v => v @ (Sym.DATA user_cid set0 set0))
               (  map encode_instr (code (as_word (int_of_word base)))
               ++ nseq data_size 0%w))
-       (as_word 1000)@(Sym.PC INTERNAL 0)%w
+       0%w@(Sym.PC INTERNAL user_cid)%w
+         (* This was 1000@..., but now it's not ... there was something about 1000s... *)
        syscall_addrs
        (map (as_word ∘ Posz) (enum_from_upto 0 16))
        0%w@tt
