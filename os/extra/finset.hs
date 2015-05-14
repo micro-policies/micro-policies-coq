@@ -2,10 +2,10 @@ type Coq_set_type = Data.Set.Set GHC.Base.Any
   -- Or should I use my finite-infinite set library from ages ago?
 
 finsetAbstract :: Prelude.String -> a
-finsetAbstract fn = Prelude.error (fn Prelude.++ ": finsets are abstract, not finfuns!")
+finsetAbstract fn = GHC.Stack.errorWithStackTrace (fn Prelude.++ ": finsets are abstract, not finfuns!")
 
 finsetFinite :: Prelude.String -> a
-finsetFinite fn = Prelude.error (fn Prelude.++ ": finsets are finite!")
+finsetFinite fn = GHC.Stack.errorWithStackTrace (fn Prelude.++ ": finsets are finite!")
 
 -- Interestingly 'withFintypeOrd' does not typecheck if (a) eta-expanded, or (b)
 -- implemented as 'withFintypeOrd''.  WTF‽

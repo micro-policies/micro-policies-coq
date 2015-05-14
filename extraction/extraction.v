@@ -311,29 +311,30 @@ Extract Constant xorw => "\_ (Word w1) (Word w2) -> Word (w1 `Data.Bits.xor` w2)
 Extract Inductive set_type => "Finset.Coq_set_type"
                               ["(finsetAbstract ""FinSet constructor"")"]
                               "(finsetAbstract ""FinSet case"")".
-Extract Constant set_type_rect      => "finsetAbstract ""set_type_rect""".
-Extract Constant set_type_rec       => "finsetAbstract ""set_type_rec""".
-Extract Constant finfun_of_set      => "finsetAbstract ""finfun_of_set""".
-Extract Constant SetDef.finset      => "finsetAbstract ""SetDef.finset""".
-Extract Constant SetDef.pred_of_set => "finsetAbstract ""SetDef.pred_of_set""".
-Extract Constant Imset.imset        => "finsetAbstract ""Imset.imset""".
-Extract Constant Imset.imset2       => "finsetAbstract ""Imset.imset2""".
-Extract Constant preimset           => "finsetAbstract ""preimset""".
+Extract Constant set_type_rect    => "finsetAbstract ""set_type_rect""".
+Extract Constant set_type_rec     => "finsetAbstract ""set_type_rec""".
+Extract Constant finfun_of_set    => "finsetAbstract ""finfun_of_set""".
+Extract Constant SetDef.finset    => "finsetAbstract ""SetDef.finset""".
+Extract Constant Imset.imset      => "finsetAbstract ""Imset.imset""".
+Extract Constant Imset.imset2     => "finsetAbstract ""Imset.imset2""".
+Extract Constant preimset         => "finsetAbstract ""preimset""".
 (*
-Extract Constant set_subType        => "finsetAbstract ""set_subType""".
-Extract Constant set_choiceMixin    => "finsetAbstract ""set_choiceMixin""".
-Extract Constant set_choiceType     => "finsetAbstract ""set_choiceType""".
-Extract Constant set_countMixin     => "finsetAbstract ""set_countMixin""".
-Extract Constant set_countType      => "finsetAbstract ""set_countType""".
-Extract Constant set_subCountType   => "finsetAbstract ""set_subCountType""".
-Extract Constant set_finMixin       => "finsetAbstract ""set_finMixin""".
-Extract Constant set_finType        => "finsetAbstract ""set_finType""".
-Extract Constant set_subFinType     => "finsetAbstract ""set_subFinType""".
-Extract Constant set_predType       => "finsetAbstract ""set_predType""".
+Extract Constant set_subType      => "finsetAbstract ""set_subType""".
+Extract Constant set_choiceMixin  => "finsetAbstract ""set_choiceMixin""".
+Extract Constant set_choiceType   => "finsetAbstract ""set_choiceType""".
+Extract Constant set_countMixin   => "finsetAbstract ""set_countMixin""".
+Extract Constant set_countType    => "finsetAbstract ""set_countType""".
+Extract Constant set_subCountType => "finsetAbstract ""set_subCountType""".
+Extract Constant set_finMixin     => "finsetAbstract ""set_finMixin""".
+Extract Constant set_finType      => "finsetAbstract ""set_finType""".
+Extract Constant set_subFinType   => "finsetAbstract ""set_subFinType""".
+Extract Constant set_predType     => "finsetAbstract ""set_predType""".
 ...
 *)
 
 Extract Constant set_eqMixin => "withFintypeOrd' (Eqtype.equality__mixin (Prelude.==) (finsetAbstract ""set_eqMixin/eqP""))".
+
+Extract Constant SetDef.pred_of_set => "withFintypeOrd' (unsafeCoerce Prelude.. Prelude.flip Data.Set.member)".
 
 Extract Constant set0     => "\_ -> Data.Set.empty".
 Extract Constant setTfor  => "finsetFinite ""setTfor""".
@@ -489,7 +490,7 @@ Extract Constant fintype.seq_sub_eqMixin => "\t s ->
 Extract Constant hseq.hseq_eqMixin => "\t_ idx ->
   Eqtype.Equality__Mixin (hseq_eq t_ idx) (hseq_eqP t_ idx) (hseq_compare t_ idx)".
 Extract Constant hseq.HSeqChoiceType.hseq_choiceMixin =>
-  "Prelude.error ""_HSeqChoiceType__hseq_choiceMixin: failed to compile with infinite type errors""".
+  "GHC.Stack.errorWithStackTrace ""_HSeqChoiceType__hseq_choiceMixin: failed to compile with infinite type errors""".
 
 Extract Constant poly.polynomial_eqMixin => "\r ->
   Eqtype.Equality__Mixin (\x y ->
