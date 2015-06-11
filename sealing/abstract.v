@@ -1,5 +1,5 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.seq.
+Require Import Ssreflect.eqtype Ssreflect.choice Ssreflect.seq.
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
 Require Import CoqUtils.nominal.
 Require Import lib.utils common.types common.segment sealing.classes.
@@ -63,6 +63,8 @@ Proof. by case. Qed.
 Lemma value_of_sumK : cancel value_of_sum sum_of_value.
 Proof. do 3![case=>//]. Qed.
 
+Definition value_choiceMixin := CanChoiceMixin sum_of_valueK.
+Canonical value_choiceType := Eval hnf in ChoiceType value value_choiceMixin.
 Definition value_partOrdMixin := CanPartOrdMixin sum_of_valueK.
 Canonical value_partOrdType :=
   Eval hnf in PartOrdType value value_partOrdMixin.
@@ -107,6 +109,8 @@ Proof. by case. Qed.
 Lemma state_of_tupleK : cancel state_of_tuple tuple_of_state.
 Proof. by do 2!case. Qed.
 
+Definition state_choiceMixin := CanChoiceMixin tuple_of_stateK.
+Canonical state_choiceType := Eval hnf in ChoiceType state state_choiceMixin.
 Definition state_partOrdMixin := CanPartOrdMixin tuple_of_stateK.
 Canonical state_partOrdType :=
   Eval hnf in PartOrdType state state_partOrdMixin.

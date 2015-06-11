@@ -1,5 +1,6 @@
 Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype.
+Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.choice.
+Require Import Ssreflect.seq Ssreflect.fintype.
 Require Import MathComp.tuple MathComp.ssrint MathComp.bigop.
 Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
 Require Import CoqUtils.nominal.
@@ -60,6 +61,8 @@ Qed.
 
 Definition value_eqMixin := EqMixin value_eqP.
 Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
+Definition value_choiceMixin := CanChoiceMixin sum_of_valueK.
+Canonical value_choiceType := Eval hnf in ChoiceType value value_choiceMixin.
 Definition value_partOrdMixin := CanPartOrdMixin sum_of_valueK.
 Canonical value_partOrdType :=
   Eval hnf in PartOrdType value value_partOrdMixin.
@@ -111,6 +114,8 @@ Qed.
 
 Definition state_eqMixin := EqMixin state_eqP.
 Canonical state_eqType := Eval hnf in EqType state state_eqMixin.
+Definition state_choiceMixin := CanChoiceMixin tuple_of_stateK.
+Canonical state_choiceType := Eval hnf in ChoiceType state state_choiceMixin.
 Definition state_partOrdMixin := CanPartOrdMixin tuple_of_stateK.
 Canonical state_partOrdType :=
   Eval hnf in PartOrdType state state_partOrdMixin.
