@@ -1,6 +1,7 @@
 {-# LANGUAGE TupleSections  #-}
 module Haskell.Assembler (
   module Haskell.Monad.Assembler,
+  SymAssembler,
   instr, instrs,
   nop, const_, mov, binop, load, store, jump, bnz, jal,
   jumpEpc, addRule, getTag, putTag,
@@ -20,8 +21,8 @@ Portability : GHC only
 
 This module provides the 'Assembler' monad from "Haskell.Monad.Assembler" with
 utilities for working with the symbolic machine from "Haskell.Machine": ways of
-writing instructions, working with immediates vs. machine words, etc.
-
+writing instructions, working with immediates vs. machine words, etc.  The
+'SymAssembler' type provides the appropriate type parameters to 'Assembler'.
 -}
 
 import Control.Arrow
@@ -33,25 +34,27 @@ import Haskell.Machine
 
 import Haskell.Monad.Assembler
 
-instr :: Instr -> Assembler ()
+type SymAssembler = Assembler String MWord MWord
+
+instr :: Instr -> SymAssembler ()
 instr = asmWord . encodeInstr
 
-instrs :: [Instr] -> Assembler ()
+instrs :: [Instr] -> SymAssembler ()
 instrs = asmWords . map encodeInstr
 
-nop     :: Assembler ()
-const_  :: Imm -> Reg -> Assembler ()
-mov     :: Reg -> Reg -> Assembler ()
-binop   :: Binop -> Reg -> Reg -> Reg -> Assembler ()
-load    :: Reg -> Reg -> Assembler ()
-store   :: Reg -> Reg -> Assembler ()
-jump    :: Reg -> Assembler ()
-bnz     :: Reg -> Imm -> Assembler ()
-jal     :: Reg -> Assembler ()
-jumpEpc :: Assembler ()
-addRule :: Assembler ()
-getTag  :: Reg -> Reg -> Assembler ()
-putTag  :: Reg -> Reg -> Reg -> Assembler ()
+nop     :: SymAssembler ()
+const_  :: Imm -> Reg -> SymAssembler ()
+mov     :: Reg -> Reg -> SymAssembler ()
+binop   :: Binop -> Reg -> Reg -> Reg -> SymAssembler ()
+load    :: Reg -> Reg -> SymAssembler ()
+store   :: Reg -> Reg -> SymAssembler ()
+jump    :: Reg -> SymAssembler ()
+bnz     :: Reg -> Imm -> SymAssembler ()
+jal     :: Reg -> SymAssembler ()
+jumpEpc :: SymAssembler ()
+addRule :: SymAssembler ()
+getTag  :: Reg -> Reg -> SymAssembler ()
+putTag  :: Reg -> Reg -> Reg -> SymAssembler ()
 
 nop     = instr                Nop
 const_  = (instr .)          . Const
@@ -78,17 +81,17 @@ tryMWordImm fImm fWord w =
 immediateTooBigMsg :: MWord -> String
 immediateTooBigMsg a = "Address " ++ show a ++ " is too big to be immediate."
 
-addrToImm :: MWord -> Assembler Imm
+addrToImm :: MWord -> SymAssembler Imm
 addrToImm = tryMWordImm pure (asmError . immediateTooBigMsg)
 
-addrToImm' :: MWord -> Assembler Imm
+addrToImm' :: MWord -> SymAssembler Imm
 addrToImm' = uncurry (<$) . second asmDelayedError
            . tryMWordImm (,Nothing)
                          (   imm . unsignedWord . mwordWord
                          &&& Just . immediateTooBigMsg)
 
-hereImm :: Assembler Imm
+hereImm :: SymAssembler Imm
 hereImm = addrToImm =<< here
 
-reserveImm :: MWord -> Assembler Imm
+reserveImm :: MWord -> SymAssembler Imm
 reserveImm = addrToImm' <=< reserve
