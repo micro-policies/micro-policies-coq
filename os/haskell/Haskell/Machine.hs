@@ -1,5 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, TemplateHaskell, PatternSynonyms #-}
-module Haskell.Machine where
+module Haskell.Machine (module Haskell.Machine, Coq_binop(..)) where
 
 import qualified Finset
 import qualified Symbolic
@@ -62,8 +62,8 @@ retypeData ''Coq_instr "Instr"
 coqInstr :: Instr -> Coq_instr
 coqInstr = unsafeCoerce
 
-fromCoqInstr :: Coq_instr -> Instr
-fromCoqInstr = unsafeCoerce
+unsafeFromCoqInstr :: Coq_instr -> Instr
+unsafeFromCoqInstr = unsafeCoerce
 
 type Internal = Symbolic0.Sym__Coq_compartmentalization_internal
 
@@ -112,8 +112,11 @@ pc = unsafeCoerce $ Symbolic._Symbolic__pc mt sp
 internal :: State -> Internal
 internal = unsafeCoerce $ Symbolic._Symbolic__internal mt sp
 
+encodeInstr :: Instr -> MWord
+encodeInstr = MWord . unsafeFromCoqWord . encode_instr mt ops . coqInstr
+
 decodeInstr :: MWord -> Maybe Instr
-decodeInstr = fmap fromCoqInstr . decode_instr mt ops . coqWord . mwordWord
+decodeInstr = fmap unsafeFromCoqInstr . decode_instr mt ops . coqWord . mwordWord
 
 instrAt :: Integral i => State -> i -> Maybe Instr
 instrAt s n = decodeInstr . val . snd =<< (mem s ?? n)

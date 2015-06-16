@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds, KindSignatures, ScopedTypeVariables, LambdaCase #-}
 module Haskell.Word (
-  Word(), coqWord,
+  Word(), coqWord, unsafeFromCoqWord,
   Signed(..),
   wordBits, signedBits,
   word, signed,
@@ -29,6 +29,9 @@ instance Show (Word n) where
 
 instance KnownNat n => Show (Signed n) where
   showsPrec p = showsPrec p . signedValue
+
+unsafeFromCoqWord :: Coq_word -> Word n
+unsafeFromCoqWord = Word
 
 wordBits :: KnownNat n => Word n -> Integer
 wordBits = natVal

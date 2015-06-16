@@ -1,0 +1,280 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving, ViewPatterns, LambdaCase,
+             TemplateHaskell #-}
+
+{-|
+Module      : Haskell.Monad.Assembler
+Description : Monad for assembling a Von Neumann-architecture machine
+Copyright   : © 2015 Antal Spector-Zabusky
+License     : BSD3
+Maintainer  : Antal Spector-Zabusky <antal.b.sz@gmail.com>
+Stability   : experimental
+Portability : GHC only
+
+This module provides an 'Assembler' monad which supports generating the memory
+of a Von Neumann-architecture machine.  The general model is as follows.  We
+maintain two simultaneous streams of words which can be added to: a stream of
+instructions, and a stream of data.  Once the machine memory is assembled, the
+instructions will be immediately followed by the data, and the data will be all
+0s.  Words can be added to the current instruction stream (using 'asmWord' or
+'asmWords'), and the address of the current instruction ('here') will be
+maintained; data can be "reserved" in size-@n@ chunks, which allocates @n@ @0@s
+on the end of the data segment and returns the address of the first (using
+'reserve').
+
+In order to actually allocate the reserved words and place the current
+instruction pointer after them, the 'program' operation is used; this allocates
+all the reserved @0@s, resets the reservation count and location, and moves the
+current instruction pointer after the old data segment.  This allows for writing
+a number of disconnected programs/functions/processes, each with their own
+directly-adjacent address space.  (When running an 'Assembler' computation, it
+is wrapped in one final 'program'.)
+
+The monad supports the following operations:
+
+    * Writing a word or words to the next free location in the memory;
+      notionally, these are the instructions.  ('asmWord', 'asmWords')
+    * Reserving some number of words to follow the instructions (returning the
+      address of the first reserved word); notionally, this is data memory.
+      ('reserve')
+    * Getting the current address. ('here')
+    * Getting the address of the start of the current reserved segment.
+      ('reservedSegment')
+    * Throwing an error (either immediate or delayed; see below).  ('asmError',
+      'asmDelayedError')
+    * Completing the reservation process and advancing the current instruction
+      past the reserved words.  ('program')
+
+In order to write forward and backward jumps, the 'here' operation is used.
+Since 'Assembler' is a 'MonadFix', we can use the @RecursiveDo@ @LANGUAGE@
+pragma's @mdo@ syntax to write forward jumps quite neatly:
+
+@
+    mdo
+      'asmWords' . map encodeInstruction $
+        [ Const addr r0
+        , Jump r0
+        , Halt {- Skipped -} ] 
+      addr <- 'here'
+      'asmWord' $ encodeInstruction Nop
+@
+
+This code (given implementations of the missing types and functions) produces a
+machine whose instruction memory contains
+
+@
+    0: Const #3 -> %r0
+    1: Jump %r0
+    2: Halt
+    3: Nop
+@
+
+We can thus safely forward-reference addresses to write our jumps!
+
+Relatedly, the reservation facility also requires "time-traveling" information:
+the address of the start of the data segment is not determined until all
+instructions (in the current 'program') have been written!  This means that
+'reserve' works fine (as does 'reservedSegment'), you must be careful with its
+result: any case-analysis on the returned address cannot be used to determine
+which monadic action to run, or the knot-tying will become an infinite loop!
+
+This is the rational for the delayed-error facility provided by
+'asmDelayedError'.  If given a 'Nothing', then no error is reported.  If given
+@'Just' err@, then an error is reported – but only once the /entire/ computation
+has run!  Thus, 'asmError' is more efficient, since it's short-circuiting; the
+two functions also has different semantics:
+@'runAssembler' $ 'asmError' "err" >> undefined@ evaluates to @Left "err"@,
+whereas @'runAssembler' $ 'asmDelayedError' (Just "err") >> undefined@ crashes.
+
+However, as a result, code such as
+
+@
+    do addr <- 'reserve' 8
+       if fitsInImmediate addr
+         then 'asmWord' . encodeInstruction $ Const (immediate addr) r0
+         else 'asmError' "Address too large"
+@
+
+is a time paradox/infinite loop: since the value of @addr@ comes from the
+future, we can't safely branch on it to determine what the future should look
+like.  To avoid this, we can use 'asmDelayedError':
+
+@
+    do addr <- 'reserve' 8
+       'asmDelayedError' $ if fitsInImmediate addr
+                           then Nothing
+                           else Just "Address too large"
+       'asmWord' . encodeInstruction $ Const (immediate addr) r0
+@
+
+Now, the branching on 'addr' is /outside/ the monad, and so is safe; this
+ability to branch in the argument is exactly why 'asmDelayedError' takes a
+'Maybe'.  We also unconditionally emit a @Const@ instruction (assuming that the
+notional @immediate@ function wraps around when given an out-of-range value);
+this will never be /seen/ in the error case, but it /will/ be run.
+
+I got the 'MonadFix' assembler with forward-references to labels from the
+following (in order of my personal discovery thereof):
+
+    * Lewis, aka quietfanatic.  "An ASM Monad".  October 15, 2013.  Available at
+      <http://wall.org/~lewis/2013/10/15/asm-monad.html>.
+    * Russell O'Connor.  "Assembly: Circular Programming with Recursive do".
+      /The Monad.Reader/, issue 6, pp. 35–53.  January 31, 2007.  Available at
+      <https://wiki.haskell.org/wikiupload/1/14/TMR-Issue6.pdf>.
+
+The other time-travel fragment – use of reverse-traveling state to manage
+reserved data segments after the instructions -- is my own idea.  (Using
+'MonadFix' to read the forward-traveling state that keeps track of the current
+instruction before they've been written is from the above citations.)
+
+-}
+
+module Haskell.Monad.Assembler (
+  -- * The 'Assembler' monad
+  Assembler(), runAssembler, execAssembler,
+  -- * Writing instructions and data
+  asmWord, asmWords, reserve,
+  -- * The current location(s)
+  here, reservedSegment,
+  -- * Error reporting
+  asmError, asmDelayedError,
+  -- * Separating different assembly programs
+  program
+  ) where
+
+import Control.Applicative
+import Control.Monad
+import Control.Monad.Tardis
+import Control.Monad.Writer.Strict
+import Control.Monad.State.Lazy
+import Control.Monad.Error
+
+import Control.Lens
+import Data.List
+
+import Haskell.Machine                                                                         
+
+-- |A monad which acts as a simple assembler.  See the package description for
+-- its use.
+newtype Assembler a = Assembler (TardisT MWord Counters
+                                         (WriterT [MWord]
+                                                  (StateT (Maybe String)
+                                                          (Either String)))
+                                         a)
+                    deriving (Functor, Applicative, Monad, MonadFix)
+-- Implementation note:
+--
+--   * The backwards-traveling 'TardisT' state is the address of the start of
+--     the reserved data segment.
+--   * The forward-traveling 'TardisT' state is a pair of (a) the current
+--     instruction address, and (b) how much data has been reserved.  (The
+--     address of the to-be-reserved block depends on both the backwards and the
+--     forwards-traveling state.)
+--   * The 'WriterT' log is the instruction stream, sans reserved words (any
+--     previously-completed 'program's have been placed in the instruction
+--     stream).
+--   * The 'StateT' and 'Either' combine to give the delayed and
+--     short-circuiting error behaviors, respectively.  The short-circuiting
+--     error behavior is clear.  A delayed error is encoded by setting the state
+--     to @'Just' err@ (in practice, only the first such update is allowed to
+--     stick); during 'runAssembler', if the state evaluated to @'Just' err@,
+--     then @'Left' err@ is returned, just as if the 'Either' had failed.
+
+-- |Unexported data type for the forward-traveling state in an 'Assembler';
+-- contains the current instruction address ('_currentInstruction') and the
+-- number of instructions that have been reserved inside the current 'program'
+-- ('_reservedInstructions').
+data Counters = Counters { _currentInstruction   :: !MWord
+                         , _reservedInstructions :: !MWord }
+              deriving (Eq, Ord, Show)
+makeLenses ''Counters
+
+-- |Run an 'Assembler' computation, producing either (a) a (delayed or
+-- short-circuiting) error message, or (b) a pair of the result and the
+-- constructed machine memory.  The instruction stream starts at address @0@.
+runAssembler :: Assembler a -> Either String (a,[MWord])
+runAssembler (program -> Assembler asm) =
+  runDelayedError . runWriterT $ evalTardisT asm initialState
+  where
+    runDelayedError = flip runStateT Nothing >=> \case
+                        (_, Just err) -> Left  err
+                        (r, Nothing)  -> Right r
+    
+    initialDataAddr = error $  "runAssembler: Somehow accessed undefined "
+                            ++ "initial time-traveling data segment address."
+    
+    initialCounters = Counters { _currentInstruction   = 0
+                               , _reservedInstructions = 0 }
+    
+    initialState = (initialDataAddr, initialCounters)
+
+-- |Run an 'Assembler' computation, just producing the memory (or an error) and
+-- ignoring the result.
+execAssembler :: Assembler a -> Either String [MWord]
+execAssembler = fmap snd . runAssembler
+
+-- |Throw a short-circuiting error immediately.  The first 'asmError' in an
+-- 'Assembler' computation is the only one that will be seen, and any 'asmError'
+-- will be seen instead of an 'asmDelayedError'.  Do not use with time-traveling
+-- information (such as the result of 'reserve').
+asmError :: String -> Assembler a
+asmError = Assembler . throwError
+
+-- |Possibly register a delayed error.  If passed 'Nothing', no error is
+-- reported.  If passed @'Just' err@, then the error @err@ is reported, but
+-- execution does /not/ stop (hence the @'Assembler' ()@ return type, instead of
+-- @'Assembler' a@).  Only the first 'asmDelayedError' is stored; however, any
+-- 'asmError' (before or after) will supersede all 'asmDelayedError's.  This
+-- function is safe to use with time-traveling information (such as the result
+-- of 'reserve').
+asmDelayedError :: Maybe String -> Assembler ()
+asmDelayedError merr = Assembler . lift $ modify (<|> merr)
+
+-- |The current address in the instruction stream (i.e., the end of it).  Useful
+-- for jumps.
+here :: Assembler MWord
+here = Assembler $ getsPast (^.currentInstruction)
+
+-- |The current address of the start of the reserved data segment.
+-- Time-traveling information from the future; be careful.
+reservedSegment :: Assembler MWord
+reservedSegment = Assembler getFuture
+
+-- |Write a word to the instruction stream, incrementing the current
+-- instruction.  There's nothing about this function that mandates that the
+-- written word must be an instruction, it's just the most common use.
+asmWord :: MWord -> Assembler ()
+asmWord w =
+  Assembler $ tell [w] *> modifyForwards (currentInstruction +~ 1)
+
+-- |Write a list of words to the instruction stream, incrementing the current
+-- instruction by the length of the list.  There's nothing about this function
+-- that mandates that the written words must be instructions, it's just the most
+-- common use.
+asmWords :: [MWord] -> Assembler ()
+asmWords ws =
+  Assembler $ tell ws *> modifyForwards (currentInstruction +~ genericLength ws)
+
+-- |Reserve some number of words at the end of the reserved data stream, returning the
+-- address of the first word reserved.  (If @0@ words are reserved, then the
+-- address of the end of the reserved data stream is returned.)  The reserved
+-- data will be all @0@s.  The return value is time-traveling information from
+-- the future; be careful.
+reserve :: MWord -> Assembler MWord
+reserve n = Assembler $ do
+  dataAddr <- getFuture
+  dataSize <- getsPast (^.reservedInstructions)
+  modifyForwards $ reservedInstructions +~ n -- Words are unsigned
+  pure $ dataAddr + dataSize
+
+-- |@program asm@ runs @asm@, and then completes the pending reservation:
+-- it places the appropriate number of reserved @0@s at the end of the
+-- instruction stream, advances the current instrunction past them, and sets the
+-- number of currently-reserved instructions to @0@.  This allows separate
+-- programs/functions/processes to be glued together, each with its own
+-- directly-adjacent data segment.
+program :: Assembler a -> Assembler a
+program asm = (asm <*) . Assembler $ do
+  cs <- getPast
+  sendPast $ cs^.currentInstruction
+  tell $ genericReplicate (cs^.reservedInstructions) 0
+  sendFuture $ Counters (cs^.currentInstruction + cs^.reservedInstructions) 0
