@@ -227,13 +227,13 @@ makeLenses ''Counters
 -- short-circuiting) error message, or (b) a pair of the result and the
 -- constructed machine memory.  The instruction stream starts at address @0@.
 runAssemblerT :: (MonadFix m, Integral p, Num w)
-              => AssemblerT e p w m a -> m (Either String (a,[w]))
+              => AssemblerT e p w m a -> m (Either e (a,[w]))
 runAssemblerT (program -> AssemblerT asm) =
-  runDelayedError . runWriterT $ evalTardisT asm initialState
+  runEitherT . runDelayedError . runWriterT $ evalTardisT asm initialState
   where
-    runDelayedError = {-flip runStateT Nothing >=> \case
-                        (_, Just err) -> Left err
-                        (r, Nothing)  -> pure r-}undefined
+    runDelayedError = flip runStateT Nothing >=> \case
+                        (_, Just err) -> throwError err
+                        (r, Nothing)  -> pure r
     
     initialDataAddr = error $  "runAssemblerT: Somehow accessed undefined "
                             ++ "initial time-traveling data segment address."
@@ -246,14 +246,14 @@ runAssemblerT (program -> AssemblerT asm) =
 -- |Run an 'AssemblerT' computation, just producing the memory (or an error) and
 -- ignoring the result.
 execAssemblerT :: (MonadFix m, Integral p, Num w)
-               => AssemblerT e p w m a -> m (Either String [w])
+               => AssemblerT e p w m a -> m (Either e [w])
 execAssemblerT = liftM (fmap snd) . runAssemblerT
 
 runAssembler :: (Integral p, Num w)
-             => Assembler e p w a -> Either String (a,[w])
+             => Assembler e p w a -> Either e (a,[w])
 runAssembler = runIdentity . runAssemblerT
 
-execAssembler :: (Integral p, Num w) => Assembler e p w a -> Either String [w]
+execAssembler :: (Integral p, Num w) => Assembler e p w a -> Either e [w]
 execAssembler = runIdentity . execAssemblerT
 
 -- |Throw a short-circuiting error immediately.  The first 'asmError' in an
