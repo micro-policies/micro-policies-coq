@@ -1,4 +1,4 @@
-{-# LANGUAGE DefaultSignatures, TypeSynonymInstances, OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE TypeSynonymInstances, OverloadedStrings, PatternSynonyms #-}
 module Haskell.Pretty (module Haskell.Pretty, module PrettyExports) where
 
 import Types hiding (Coq_instr(..))
@@ -55,7 +55,8 @@ instance Pretty a => Pretty (Set a) where
 
 instance (Pretty v, Pretty t) => Pretty (Atom v t) where
   pPrintPrec l p (v :@ t) =
-    let ppp x = pPrintPrec l (appPrec + 2) x -- η-expanded due to the DMR
+    let ppp :: Pretty a => a -> Doc
+        ppp = pPrintPrec l $ appPrec + 2
     in maybeParens (p > appPrec + 1) $ ppp v <> taggedOp <> ppp t
 
 instance               Pretty (Word n)   where pPrint = plain
@@ -83,7 +84,8 @@ instance Pretty WhereFrom where
 
 instance Pretty PCTag where
   pPrintPrec l p (PC wf cid) =
-    let ppp x = pPrintPrec l (appPrec + 1) x -- η-expanded due to the DMR
+    let ppp :: Pretty a => a -> Doc
+        ppp = pPrintPrec l $ appPrec + 1
     in maybeParens (p > appPrec) $ "PC" <+> ppp wf <+> ppp cid
 
 instance Pretty RegTag where
@@ -91,7 +93,8 @@ instance Pretty RegTag where
 
 instance Pretty DataTag where
   pPrintPrec l p (DATA cid ws is) =
-    let ppp x = pPrintPrec l (appPrec + 1) x -- η-expanded due to the DMR
+    let ppp :: Pretty a => a -> Doc
+        ppp = pPrintPrec l $ appPrec + 1
     in maybeParens (p > appPrec) $ "DATA" <+> ppp cid <+> ppp ws <+> ppp is
 
 storesOp :: Doc
