@@ -167,10 +167,11 @@ import Control.Monad.Error
 import Control.Lens
 import Data.List
 
--- |A monad transformer which acts as a simple assembler.  See the package description for
--- its use and description.  It is parametrized by a type of error messages
--- (@e@), a type of pointers/addresses/sizes (@p@, probably an 'Integral'), and
--- a type of words (@w@, which is probably a 'Num' to allow the use of @0@).
+-- |A monad transformer which acts as a simple assembler.  See the package
+-- description for its use and description.  It is parametrized by a type of
+-- error messages (@e@), a type of pointers/addresses/sizes (@p@, probably an
+-- 'Integral'), and a type of words (@w@, which is probably a 'Num' to allow the
+-- use of @0@).
 newtype AssemblerT e -- ^The type of error messages
                    p -- ^The type of pointers/addresses (and sizes)
                    w -- ^The type of words
