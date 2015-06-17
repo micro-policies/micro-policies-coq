@@ -1,4 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, ViewPatterns, LambdaCase,
+             MultiParamTypeClasses, FlexibleInstances, UndecidableInstances,
              TemplateHaskell #-}
 
 {-|
@@ -158,7 +159,7 @@ module Haskell.Monad.Assembler(
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Tardis
+import Control.Monad.Tardis as Tardis
 import Control.Monad.Writer.Strict
 import Control.Monad.State.Lazy
 import Control.Monad.Trans.Either
@@ -166,6 +167,13 @@ import Control.Monad.Error
 
 import Control.Lens
 import Data.List
+
+import qualified Control.Monad.Trans.Writer.Strict as Writer
+import qualified Control.Monad.Trans.State.Lazy    as State
+import Control.Monad.Reader
+import Control.Monad.Cont
+
+import Haskell.Util.Lifts
 
 -- |A monad transformer which acts as a simple assembler.  See the package
 -- description for its use and description.  It is parametrized by a type of
@@ -179,29 +187,73 @@ newtype AssemblerT e -- ^The type of error messages
                    a -- ^The value type
   = AssemblerT
       (TardisT p (Counters p) (WriterT [w] (StateT (Maybe e) (EitherT e m))) a)
-  deriving (Functor, Applicative, Monad, MonadFix)
+  deriving ( Functor, Applicative, Monad, MonadFix
+           , MonadReader r, MonadCont, MonadIO)
+               -- We lift the mtl classes that we can automatically; for nested
+               -- Tardis/Writer/State/Either, we do it ourselves
+-- See Note [AssemblerT implementation]
 
 -- I don't know why I can't just derive this
 instance MonadTrans (AssemblerT e p w) where
   lift = AssemblerT . lift . lift . lift . lift
 
--- Implementation note:
---
---   * The backwards-traveling 'TardisT' state is the address of the start of
---     the reserved data segment.
---   * The forward-traveling 'TardisT' state is a pair of (a) the current
---     instruction address, and (b) how much data has been reserved.  (The
---     address of the to-be-reserved block depends on both the backwards and the
---     forwards-traveling state.)
---   * The 'WriterT' log is the instruction stream, sans reserved words (any
---     previously-completed 'program's have been placed in the instruction
---     stream).
---   * The 'StateT' and 'EitherT' combine to give the delayed and
---     short-circuiting error behaviors, respectively.  The short-circuiting
---     error behavior is clear.  A delayed error is encoded by setting the state
---     to @'Just' err@ (in practice, only the first such update is allowed to
---     stick); during 'runAssemblerT', if the state evaluated to @'Just' err@,
---     then @'Left' err@ is returned, just as if the 'Either' had failed.
+instance (MonadFix m, MonadError f m) => MonadError f (AssemblerT e p w m) where
+  throwError =
+    AssemblerT . lift . lift . lift . lift . throwError
+  catchError (AssemblerT asm) handler =
+    AssemblerT $
+      (Tardis.liftCatch . Writer.liftCatch . State.liftCatch . liftCatchEither)
+      catchError
+      asm
+      (\e -> case handler e of AssemblerT asm' -> asm')
+
+instance (MonadFix m, MonadWriter v m) =>
+         MonadWriter v (AssemblerT e p w m) where
+  writer =
+    AssemblerT . lift . lift . writer
+  tell =
+    AssemblerT . lift . lift . tell
+  listen (AssemblerT asm) =
+    AssemblerT $ Tardis.liftListen (liftListenStrictWriter listen) asm
+  pass (AssemblerT asm) =
+    AssemblerT $ Tardis.liftPass (liftPassStrictWriter pass) asm
+
+instance (MonadFix m, MonadState s m) => MonadState s (AssemblerT e p w m) where
+  get   = AssemblerT . lift . lift . lift $ get
+  put   = AssemblerT . lift . lift . lift . put
+  state = AssemblerT . lift . lift . lift . state
+
+instance (MonadFix m, MonadTardis bw fw m) =>
+         MonadTardis bw fw (AssemblerT e p w m) where
+  -- Sigh... 'EitherT' doesn't have a MonadTardis instance
+  getPast    = AssemblerT . lift . lift . lift . lift $ getPast
+  getFuture  = AssemblerT . lift . lift . lift . lift $ getFuture
+  sendPast   = AssemblerT . lift . lift . lift . lift . sendPast
+  sendFuture = AssemblerT . lift . lift . lift . lift . sendFuture
+  tardis     = AssemblerT . lift . lift . lift . lift . tardis
+               
+{-
+Note [AssemblerT implementation]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The components of the implementation of 'AssemblerT' are as follows:
+
+  * The backwards-traveling 'TardisT' state is the address of the start of
+    the reserved data segment.
+  * The forward-traveling 'TardisT' state is a pair of (a) the current
+    instruction address, and (b) how much data has been reserved.  (The
+    address of the to-be-reserved block depends on both the backwards and the
+    forwards-traveling state.)
+  * The 'WriterT' log is the instruction stream, sans reserved words (any
+    previously-completed 'program's have been placed in the instruction
+    stream).
+  * The 'StateT' and 'EitherT' combine to give the delayed and
+    short-circuiting error behaviors, respectively.  The short-circuiting
+    error behavior is clear.  A delayed error is encoded by setting the state
+    to @'Just' err@ (in practice, only the first such update is allowed to
+    stick); during 'runAssemblerT', if the state evaluated to @'Just' err@,
+    then @'Left' err@ is returned, just as if the 'Either' had failed.
+-}
 
 -- |A monad s=which acts as a simple assembler.  A specialization of
 -- 'AssemblerT', which see.  Also see the package description for further
