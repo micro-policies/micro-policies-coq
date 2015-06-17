@@ -234,7 +234,7 @@ runAssemblerT (program -> AssemblerT asm) =
                         (_, Just err) -> Left err
                         (r, Nothing)  -> pure r-}undefined
     
-    initialDataAddr = error $  "runAssembler: Somehow accessed undefined "
+    initialDataAddr = error $  "runAssemblerT: Somehow accessed undefined "
                             ++ "initial time-traveling data segment address."
     
     initialCounters = Counters { _currentInstruction   = 0
