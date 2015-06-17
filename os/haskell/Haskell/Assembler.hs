@@ -21,6 +21,7 @@ module Haskell.Assembler (
   instr, instrs,
   nop, const_, mov, binop, load, store, jump, bnz, jal,
   jumpEpc, addRule, getTag, putTag,
+  halt,
   tryMWordImm,
   immediateTooBigMsg, addrToImm, addrToImm',
   hereImm, reserveImm
@@ -60,6 +61,7 @@ jumpEpc :: SymAssembler ()                               -- ^Write a 'JumpEpc' i
 addRule :: SymAssembler ()                               -- ^Write an 'AddRule' instruction to the instruction stream
 getTag  :: Reg -> Reg -> SymAssembler ()                 -- ^Write a 'GetTag' instruction to the instruction stream
 putTag  :: Reg -> Reg -> Reg -> SymAssembler ()          -- ^Write a 'PutTag' instruction to the instruction stream
+halt    :: SymAssembler ()                               -- ^Write a 'Halt' instruction to the instruction stream
 
 nop     = instr                Nop
 const_  = (instr .)          . Const
