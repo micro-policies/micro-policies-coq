@@ -73,7 +73,7 @@ import Haskell.Inspect
 import Haskell.Types
 import Haskell.Word
 import Haskell.Machine
-import Haskell.OS
+import Haskell.CoqOS
 
 import Control.Monad
 

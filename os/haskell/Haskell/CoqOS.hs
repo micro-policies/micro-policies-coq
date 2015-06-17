@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
-module Haskell.OS where
+module Haskell.CoqOS where
 
 import Haskell.Machine
 import Os
