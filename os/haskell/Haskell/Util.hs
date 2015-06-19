@@ -53,3 +53,36 @@ padToMatch a p xss = map (pad a p . maximum $ 0 : map length xss) xss
 alignColumns :: [(Alignment,a)] -> [[[a]]] -> [[[a]]]
 alignColumns alignments table =
   transpose . zipWith (uncurry padToMatch) alignments $ transpose table
+
+bind1 :: Monad m => (a1 -> m r) -> m a1 -> m r
+bind1 = (=<<)
+
+bind2 :: Monad m => (a1 -> a2 -> m r) -> m a1 -> m a2 -> m r
+bind2 f m1 m2 = do
+  a1 <- m1
+  a2 <- m2
+  f a1 a2
+
+bind3 :: Monad m => (a1 -> a2 -> a3 -> m r) -> m a1 -> m a2 -> m a3 -> m r
+bind3 f m1 m2 m3 = do
+  a1 <- m1
+  a2 <- m2
+  a3 <- m3
+  f a1 a2 a3
+
+bind4 :: Monad m => (a1 -> a2 -> a3 -> a4 -> m r) -> m a1 -> m a2 -> m a3 -> m a4 -> m r
+bind4 f m1 m2 m3 m4 = do
+  a1 <- m1
+  a2 <- m2
+  a3 <- m3
+  a4 <- m4
+  f a1 a2 a3 a4
+
+bind5 :: Monad m => (a1 -> a2 -> a3 -> a4 -> a5 -> m r) -> m a1 -> m a2 -> m a3 -> m a4 -> m a5 -> m r
+bind5 f m1 m2 m3 m4 m5 = do
+  a1 <- m1
+  a2 <- m2
+  a3 <- m3
+  a4 <- m4
+  a5 <- m5
+  f a1 a2 a3 a4 a5
