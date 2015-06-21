@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections  #-}
+{-# LANGUAGE ConstraintKinds, FlexibleContexts, TupleSections #-}
 
 {-|
 Module      : Haskell.Assembler
@@ -17,7 +17,7 @@ The 'SymAssembler' type provides the appropriate type parameters to 'Assembler'.
 
 module Haskell.Assembler (
   module Haskell.Monad.Assembler,
-  SymAssemblerT, SymAssembler,
+  MonadSymAssembler, SymAssemblerT, SymAssembler,
   instr, instrs,
   nop, const_, mov, binop, load, store, jump, bnz, jal,
   jumpEpc, addRule, getTag, putTag,
@@ -37,6 +37,10 @@ import Haskell.Machine
 
 import Haskell.Monad.Assembler
 
+-- |A 'MonadAssembler' monad class/constraint for the symbolic machine.  Errors
+-- are 'String's; pointers and words are both 'MWord's.
+type MonadSymAssembler = MonadAssembler String MWord MWord
+
 -- |An 'AssemblerT' monad transformer for the symbolic machine.  Errors are
 -- 'String's; pointers and words are both 'MWord's.
 type SymAssemblerT = AssemblerT String MWord MWord
@@ -46,27 +50,27 @@ type SymAssemblerT = AssemblerT String MWord MWord
 type SymAssembler = Assembler String MWord MWord
 
 -- |Encodes and writes a single instruction to the instruction stream.
-instr :: MonadFix m => Instr -> SymAssemblerT m ()
+instr :: MonadSymAssembler m => Instr -> m ()
 instr = asmWord . encodeInstr
 
 -- |Encodes and writes a list of instructions to the instruction stream.
 instrs :: MonadFix m => [Instr] -> SymAssemblerT m ()
 instrs = asmWords . map encodeInstr
 
-nop     :: MonadFix m => SymAssemblerT m ()                               -- ^Write a 'Nop' instruction to the instruction stream
-const_  :: MonadFix m => Imm -> Reg -> SymAssemblerT m ()                 -- ^Write a 'Const' instruction to the instruction stream
-mov     :: MonadFix m => Reg -> Reg -> SymAssemblerT m ()                 -- ^Write a 'Mov' instruction to the instruction stream
-binop   :: MonadFix m => Binop -> Reg -> Reg -> Reg -> SymAssemblerT m () -- ^Write a 'Binop' instruction to the instruction stream
-load    :: MonadFix m => Reg -> Reg -> SymAssemblerT m ()                 -- ^Write a 'Load' instruction to the instruction stream
-store   :: MonadFix m => Reg -> Reg -> SymAssemblerT m ()                 -- ^Write a 'Store' instruction to the instruction stream
-jump    :: MonadFix m => Reg -> SymAssemblerT m ()                        -- ^Write a 'Jump' instruction to the instruction stream
-bnz     :: MonadFix m => Reg -> Imm -> SymAssemblerT m ()                 -- ^Write a 'Bnz' instruction to the instruction stream
-jal     :: MonadFix m => Reg -> SymAssemblerT m ()                        -- ^Write a 'Jal' instruction to the instruction stream
-jumpEpc :: MonadFix m => SymAssemblerT m ()                               -- ^Write a 'JumpEpc' instruction to the instruction stream
-addRule :: MonadFix m => SymAssemblerT m ()                               -- ^Write an 'AddRule' instruction to the instruction stream
-getTag  :: MonadFix m => Reg -> Reg -> SymAssemblerT m ()                 -- ^Write a 'GetTag' instruction to the instruction stream
-putTag  :: MonadFix m => Reg -> Reg -> Reg -> SymAssemblerT m ()          -- ^Write a 'PutTag' instruction to the instruction stream
-halt    :: MonadFix m => SymAssemblerT m ()                               -- ^Write a 'Halt' instruction to the instruction stream
+nop     :: MonadSymAssembler m => m ()                               -- ^Write a 'Nop' instruction to the instruction stream
+const_  :: MonadSymAssembler m => Imm -> Reg -> m ()                 -- ^Write a 'Const' instruction to the instruction stream
+mov     :: MonadSymAssembler m => Reg -> Reg -> m ()                 -- ^Write a 'Mov' instruction to the instruction stream
+binop   :: MonadSymAssembler m => Binop -> Reg -> Reg -> Reg -> m () -- ^Write a 'Binop' instruction to the instruction stream
+load    :: MonadSymAssembler m => Reg -> Reg -> m ()                 -- ^Write a 'Load' instruction to the instruction stream
+store   :: MonadSymAssembler m => Reg -> Reg -> m ()                 -- ^Write a 'Store' instruction to the instruction stream
+jump    :: MonadSymAssembler m => Reg -> m ()                        -- ^Write a 'Jump' instruction to the instruction stream
+bnz     :: MonadSymAssembler m => Reg -> Imm -> m ()                 -- ^Write a 'Bnz' instruction to the instruction stream
+jal     :: MonadSymAssembler m => Reg -> m ()                        -- ^Write a 'Jal' instruction to the instruction stream
+jumpEpc :: MonadSymAssembler m => m ()                               -- ^Write a 'JumpEpc' instruction to the instruction stream
+addRule :: MonadSymAssembler m => m ()                               -- ^Write an 'AddRule' instruction to the instruction stream
+getTag  :: MonadSymAssembler m => Reg -> Reg -> m ()                 -- ^Write a 'GetTag' instruction to the instruction stream
+putTag  :: MonadSymAssembler m => Reg -> Reg -> Reg -> m ()          -- ^Write a 'PutTag' instruction to the instruction stream
+halt    :: MonadSymAssembler m => m ()                               -- ^Write a 'Halt' instruction to the instruction stream
 
 nop     = instr                Nop
 const_  = (instr .)          . Const
@@ -101,13 +105,13 @@ immediateTooBigMsg a = "Address " ++ show a ++ " is too big to be immediate."
 -- |Convert a word into an immediate, failing /immediately/ if the word was out
 -- of range.  Do not use with time-traveling information (such as the result of
 -- 'reserve').
-addrToImm :: MonadFix m => MWord -> SymAssemblerT m Imm
+addrToImm :: MonadSymAssembler m => MWord -> m Imm
 addrToImm = tryMWordImm pure (asmError . immediateTooBigMsg)
 
 -- |Convert a word into an immediate, with a /delayed/ failure if the word was
 -- out of range.  This function is safe to use with time-traveling information
 -- (such as the result of 'reserve').
-addrToImm' :: MonadFix m => MWord -> SymAssemblerT m Imm
+addrToImm' :: MonadSymAssembler m => MWord -> m Imm
 addrToImm' = uncurry (<$) . second asmDelayedError
            . tryMWordImm (,Nothing)
                          (   imm . unsignedWord . mwordWord
@@ -116,11 +120,11 @@ addrToImm' = uncurry (<$) . second asmDelayedError
 -- |Return the current instruction address as an immediate (see also 'here');
 -- fails immediately if the current instruction address does not fit into an
 -- immediate.
-hereImm :: MonadFix m => SymAssemblerT m Imm
+hereImm :: MonadSymAssembler m => m Imm
 hereImm = addrToImm =<< here
 
 -- |Reserve some data and return its address as an immediate (see also
 -- 'reserve'); causes a delayed failure if the current instruction address does
 -- not fit into an immediate.
-reserveImm :: MonadFix m => MWord -> SymAssemblerT m Imm
+reserveImm :: MonadSymAssembler m => MWord -> m Imm
 reserveImm = addrToImm' <=< reserve
