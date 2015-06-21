@@ -19,6 +19,7 @@ that module.
 
 module Haskell.Monad.Assembler.Class (MonadAssembler(..)) where
 
+import Control.Applicative
 import Control.Monad.Fix
 
 import qualified Haskell.Monad.Trans.Assembler as A
@@ -38,8 +39,12 @@ import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.Error
 import           Data.Monoid
 
-class (MonadFix m, Integral p, Ord p, Num w) => MonadAssembler e p w m | m -> e p w where
-  -- Should I leave the non-'MonadFix' constraints on the class?  Unsure...
+class (Functor m, Applicative m, MonadFix m, Integral p, Ord p, Num w) =>
+      MonadAssembler e p w m
+      | m -> e p w where
+  -- The 'Functor' and 'Applicative' constraints are there in anticipation of
+  -- the AMP.  Should I leave the other non-'MonadFix' constraints on the class?
+  -- I'm unsure...
   asmWords :: [w] -> m ()
   asmWord  :: w -> m ()
   asmWord w = asmWords [w]
