@@ -16,7 +16,7 @@ The 'SymAssembler' type provides the appropriate type parameters to 'Assembler'.
 -}
 
 module Haskell.Assembler (
-  module Haskell.Monad.Trans.Assembler,
+  module Haskell.Monad.Assembler,
   SymAssemblerT, SymAssembler,
   instr, instrs,
   nop, const_, mov, binop, load, store, jump, bnz, jal,
@@ -35,7 +35,7 @@ import Control.Monad.Fix
 import Haskell.Word
 import Haskell.Machine
 
-import Haskell.Monad.Trans.Assembler
+import Haskell.Monad.Assembler
 
 -- |An 'AssemblerT' monad transformer for the symbolic machine.  Errors are
 -- 'String's; pointers and words are both 'MWord's.
