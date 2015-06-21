@@ -92,7 +92,7 @@ instructions (in the current 'program') have been written!  This means that
 result: any case-analysis on the returned address cannot be used to determine
 which monadic action to run, or the knot-tying will become an infinite loop!
 
-This is the rational for the delayed-error facility provided by
+This is the rationale for the delayed-error facility provided by
 'asmDelayedError'.  If given a 'Nothing', then no error is reported.  If given
 @'Just' err@, then an error is reported – but only once the /entire/ computation
 has run!  Thus, 'asmError' is more efficient, since it's short-circuiting; the
