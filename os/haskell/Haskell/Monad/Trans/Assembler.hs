@@ -3,8 +3,8 @@
              TemplateHaskell #-}
 
 {-|
-Module      : Haskell.Monad.Assembler
-Description : Monad for assembling a Von Neumann-architecture machine
+Module      : Haskell.Monad.Trans.Assembler
+Description : Monad transformer for assembling a Von Neumann-architecture machine
 Copyright   : © 2015 Antal Spector-Zabusky
 License     : BSD3
 Maintainer  : Antal Spector-Zabusky <antal.b.sz@gmail.com>
@@ -142,7 +142,7 @@ reserved data segments after the instructions -- is my own idea.  (Using
 instruction before they've been written is from the above citations.)
 -}
 
-module Haskell.Monad.Assembler(
+module Haskell.Monad.Trans.Assembler (
   -- * The 'AssemblerT' monad transformer
   AssemblerT(), runAssemblerT, execAssemblerT,
   -- * The 'Assembler' monad

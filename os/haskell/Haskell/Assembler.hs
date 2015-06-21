@@ -9,14 +9,14 @@ Maintainer  : Antal Spector-Zabusky <antal.b.sz@gmail.com>
 Stability   : experimental
 Portability : GHC only
 
-This module provides the 'Assembler' monad from "Haskell.Monad.Assembler" with
-utilities for working with the symbolic machine from "Haskell.Machine": ways of
-writing instructions, working with immediates vs. machine words, etc.  The
-'SymAssembler' type provides the appropriate type parameters to 'Assembler'.
+This module provides the 'Assembler' monad from "Haskell.Monad.Trans.Assembler"
+with utilities for working with the symbolic machine from "Haskell.Machine":
+ways of writing instructions, working with immediates vs. machine words, etc.
+The 'SymAssembler' type provides the appropriate type parameters to 'Assembler'.
 -}
 
 module Haskell.Assembler (
-  module Haskell.Monad.Assembler,
+  module Haskell.Monad.Trans.Assembler,
   SymAssemblerT, SymAssembler,
   instr, instrs,
   nop, const_, mov, binop, load, store, jump, bnz, jal,
@@ -35,7 +35,7 @@ import Control.Monad.Fix
 import Haskell.Word
 import Haskell.Machine
 
-import Haskell.Monad.Assembler
+import Haskell.Monad.Trans.Assembler
 
 -- |An 'AssemblerT' monad transformer for the symbolic machine.  Errors are
 -- 'String's; pointers and words are both 'MWord's.
