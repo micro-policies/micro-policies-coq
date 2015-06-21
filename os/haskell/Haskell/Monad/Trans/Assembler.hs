@@ -296,15 +296,20 @@ runAssemblerT (program -> AssemblerT asm) =
     initialState = (initialDataAddr, initialCounters)
 
 -- |Run an 'AssemblerT' computation, just producing the memory (or an error) and
--- ignoring the result.
+-- ignoring the result.  The instruction stream starts at address @0@.
 execAssemblerT :: (MonadFix m, Integral p, Num w)
                => AssemblerT e p w m a -> m (Either e [w])
 execAssemblerT = liftM (fmap snd) . runAssemblerT
 
+-- |Run an 'Assembler' computation, producing either (a) a (delayed or
+-- short-circuiting) error message, or (b) a pair of the result and the
+-- constructed machine memory.  The instruction stream starts at address @0@.
 runAssembler :: (Integral p, Num w)
              => Assembler e p w a -> Either e (a,[w])
 runAssembler = runIdentity . runAssemblerT
 
+-- |Run an 'Assembler' computation, just producing the memory (or an error) and
+-- ignoring the result.  The instruction stream starts at address @0@.
 execAssembler :: (Integral p, Num w) => Assembler e p w a -> Either e [w]
 execAssembler = runIdentity . execAssemblerT
 
