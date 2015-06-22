@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, RecordWildCards, TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts, RecursiveDo, RecordWildCards, QuasiQuotes, TemplateHaskell #-}
 module Haskell.OS where
 
 import Control.Applicative
@@ -12,6 +12,9 @@ import Haskell.Assembler hiding
   ( nop, const_, mov, binop, load, store, jump, bnz, jal
   , jumpEpc, addRule, getTag, putTag, halt )
 import qualified Haskell.Assembler as A
+
+import Haskell.ImplicitEffects
+import Haskell.ImplicitEffects.QQ
 
 import Language.Haskell.TH (mkName)
 import Haskell.OS.TH.Accessors
@@ -40,7 +43,6 @@ makeLenses ''Parameters
 instance HasOSParameters      Parameters where osParameters      = subOSParameters
 instance HasProcessParameters Parameters where processParameters = subProcessParameters
 
-
 makeMonadicAccessors ''OSParameters
 makeMonadicAccessors ''ProcessParameters
 
@@ -59,36 +61,35 @@ r20 = pure 20 ; r21 = pure 21 ; r22 = pure 22 ; r23 = pure 23
 r24 = pure 24 ; r25 = pure 25 ; r26 = pure 26 ; r27 = pure 27
 r28 = pure 28 ; r29 = pure 29 ; r30 = pure 30 ; r31 = pure 31
 
-nop     :: MonadFix m => SymAssemblerT m ()
-const_  :: MonadFix m => SymAssemblerT m Imm -> SymAssemblerT m Reg -> SymAssemblerT m ()
-mov     :: MonadFix m => SymAssemblerT m Reg -> SymAssemblerT m Reg -> SymAssemblerT m ()
-binop   :: MonadFix m => Binop -> SymAssemblerT m Reg -> SymAssemblerT m Reg -> SymAssemblerT m Reg -> SymAssemblerT m ()
-load    :: MonadFix m => SymAssemblerT m Reg -> SymAssemblerT m Reg -> SymAssemblerT m ()
-store   :: MonadFix m => SymAssemblerT m Reg -> SymAssemblerT m Reg -> SymAssemblerT m ()
-jump    :: MonadFix m => SymAssemblerT m Reg -> SymAssemblerT m ()
-bnz     :: MonadFix m => SymAssemblerT m Reg -> SymAssemblerT m Imm -> SymAssemblerT m ()
-jal     :: MonadFix m => SymAssemblerT m Reg -> SymAssemblerT m ()
-jumpEpc :: MonadFix m => SymAssemblerT m ()
-addRule :: MonadFix m => SymAssemblerT m ()
-getTag  :: MonadFix m => SymAssemblerT m Reg -> SymAssemblerT m Reg -> SymAssemblerT m ()
-putTag  :: MonadFix m => SymAssemblerT m Reg -> SymAssemblerT m Reg -> SymAssemblerT m Reg -> SymAssemblerT m ()
-halt    :: MonadFix m => SymAssemblerT m ()
+nop     :: [eff|MonadSymAssembler m => m ()|]
+const_  :: [eff|MonadSymAssembler m => !Imm -> !Reg -> m ()|]
+mov     :: [eff|MonadSymAssembler m => !Reg -> !Reg -> m ()|]
+binop   :: [eff|MonadSymAssembler m => Binop -> !Reg -> !Reg -> !Reg -> m ()|]
+load    :: [eff|MonadSymAssembler m => !Reg -> !Reg -> m ()|]
+store   :: [eff|MonadSymAssembler m => !Reg -> !Reg -> m ()|]
+jump    :: [eff|MonadSymAssembler m => !Reg -> m ()|]
+bnz     :: [eff|MonadSymAssembler m => !Reg -> !Imm -> m ()|]
+jal     :: [eff|MonadSymAssembler m => !Reg -> m ()|]
+jumpEpc :: [eff|MonadSymAssembler m => m ()|]
+addRule :: [eff|MonadSymAssembler m => m ()|]
+getTag  :: [eff|MonadSymAssembler m => !Reg -> !Reg -> m ()|]
+putTag  :: [eff|MonadSymAssembler m => !Reg -> !Reg -> !Reg -> m ()|]
+halt    :: [eff|MonadSymAssembler m => m ()|]
 
-nop     =         A.nop
-const_  = bind2   A.const_
-mov     = bind2   A.mov
-binop   = bind3 . A.binop
-load    = bind2   A.load
-store   = bind2   A.store
-jump    = bind1   A.jump
-bnz     = bind2   A.bnz
-jal     = bind1   A.jal
-jumpEpc =         A.jumpEpc
-addRule =         A.addRule
-getTag  = bind2   A.getTag
-putTag  = bind3   A.putTag
-halt    =         A.halt
-
+nop     =                          A.nop
+const_  = withEffectful2 $ bind2   A.const_
+mov     = withEffectful2 $ bind2   A.mov
+binop   = withEffectful3 . bind3 . A.binop
+load    = withEffectful2 $ bind2   A.load
+store   = withEffectful2 $ bind2   A.store
+jump    = withEffectful1 $ bind1   A.jump
+bnz     = withEffectful2 $ bind2   A.bnz
+jal     = withEffectful1 $ bind1   A.jal
+jumpEpc =                          A.jumpEpc
+addRule =                          A.addRule
+getTag  = withEffectful2 $ bind2   A.getTag
+putTag  = withEffectful3 $ bind3   A.putTag
+halt    =                          A.halt
 
 callerSaveMin, calleeSaveMin, userRegMax :: Applicative f => f Reg
 callerSaveMin = r1
@@ -100,9 +101,9 @@ callerSaveRegs, calleeSaveRegs :: Applicative f => f [Reg]
 callerSaveRegs = liftA2 enumFromTo callerSaveMin $ (subtract 1 <$>) calleeSaveMin
 calleeSaveRegs = liftA2 enumFromTo calleeSaveMin $ (subtract 1 <$>) userRegMax
 
-infiniteLoop :: MonadFix m => Reg -> SymAssemblerT m () -> SymAssemblerT m ()
+infiniteLoop :: [eff|MonadSymAssembler m => !Reg -> m () -> m ()|]
 infiniteLoop loopR body = mdo
-  A.const_ loopAddr loopR
+  const_ loopAddr loopR
   loopAddr <- hereImm
   body
-  A.jump loopR
+  jump loopR
