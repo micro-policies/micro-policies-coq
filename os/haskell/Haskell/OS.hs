@@ -14,7 +14,7 @@ import Haskell.Assembler hiding
 import qualified Haskell.Assembler as A
 
 import Language.Haskell.TH (mkName)
-import Haskell.OS.TH
+import Haskell.OS.TH.Accessors
 
 newtype OSParameters = OSParameters { _yieldAddressVal :: Imm }
                   deriving (Eq, Ord, Show)

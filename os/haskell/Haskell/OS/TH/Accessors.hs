@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase, TemplateHaskell #-}
-module Haskell.OS.TH where
+module Haskell.OS.TH.Accessors where
 
 import Control.Applicative
 import Control.Monad
