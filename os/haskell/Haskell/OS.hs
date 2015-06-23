@@ -88,6 +88,14 @@ ifz r ifZero ifNonzero = mdo {
   doneAddr <- hereImm;
   return () }
 
+-- As with '_sharedAddrVal', these fields must be lazy (see below)
+data SyscallAddresses = SyscallAddresses { _isolateAddrVal           :: Imm
+                                         , _addToJumpTargetsAddrVal  :: Imm
+                                         , _addToStoreTargetsAddrVal :: Imm }
+                      deriving (Eq, Ord, Show)
+makeClassy           ''SyscallAddresses
+makeMonadicAccessors ''SyscallAddresses
+
 newtype OSParameters = OSParameters { _yieldAddrVal :: Imm }
                   deriving (Eq, Ord, Show)
 makeLensesWith (classyRules & lensClass %~ \orig name ->
@@ -109,7 +117,7 @@ data ProcessParameters = ProcessParameters { _sharedAddrVal :: Imm
                                            , _loopbackRVal  :: !Reg
                                            , _tempRVal      :: !Reg }
                        deriving (Eq, Ord, Show)
-makeClassy ''ProcessParameters
+makeClassy           ''ProcessParameters
 makeMonadicAccessors ''ProcessParameters
 
 type UserProgram env prog = ( MonadSymAssembler prog
@@ -186,7 +194,7 @@ pinfoSize = mword $ 1 + (int calleeSaveMax - int calleeSaveMin + 1)
 data SchedulerParameters = SchedulerParameters { _pidAddrVal   :: !Imm
                                                , _proc1AddrVal :: !Imm
                                                , _proc2AddrVal :: !Imm }
-makeClassy ''SchedulerParameters
+makeClassy           ''SchedulerParameters
 makeMonadicAccessors ''SchedulerParameters
 
 type SchedulerProgram env prog = ( MonadSymAssembler prog
@@ -288,15 +296,20 @@ scheduler proc1 proc2 = program $ do
     -- code block.
     hereImm <* schedulerYield
 
--- The information about the OS one might want for, say, debugging
-data OSInfo = OSInfo { _osSharedAddr :: !MWord
-                     , _osYieldAddr  :: !MWord
-                     , _osAdd1Addr   :: !MWord
-                     , _osMul2Addr   :: !MWord }
+-- The information about the OS one might want for either debugging or running
+-- purposes
+data OSInfo = OSInfo { _osSharedAddr            :: !MWord
+                     , _osYieldAddr             :: !MWord
+                     , _osAdd1Addr              :: !MWord
+                     , _osMul2Addr              :: !MWord
+                     , _osIsolateAddr           :: !MWord
+                     , _osAddToJumpTargetsAddr  :: !MWord
+                     , _osAddToStoreTargetsAddr :: !MWord }
             deriving (Eq, Ord, Show)
+makeLenses ''OSInfo
 
 os :: MonadSymAssembler m => m OSInfo
-os = mdo
+os = program $ mdo
   -- OS code
   _yieldAddrVal <- scheduler add1Addr mul2Addr
 
@@ -313,9 +326,20 @@ os = mdo
     mul2   <- hereImm <* mul2Process
     return (add1, shared, mul2)
 
-  -- The final result -- debugging info
+  -- Syscalls
+  end <- hereImm
+  let _isolateAddrVal           = 100 * ((end `quot` 100) + 1)
+      _addToJumpTargetsAddrVal  = _isolateAddrVal + 100
+      _addToStoreTargetsAddrVal = _addToJumpTargetsAddrVal + 100
+      -- We put the syscalls at multiples of 100 so they're easy to spot; as
+      -- long as they're out of range, it doesn't matter.
+  
+  -- The final result
   let asWord = mword . unsignedWord . immWord
-  return OSInfo{ _osSharedAddr = asWord _sharedAddrVal
-               , _osYieldAddr  = asWord _yieldAddrVal
-               , _osAdd1Addr   = asWord add1Addr
-               , _osMul2Addr   = asWord mul2Addr }
+  return OSInfo{ _osSharedAddr            = asWord _sharedAddrVal
+               , _osYieldAddr             = asWord _yieldAddrVal
+               , _osAdd1Addr              = asWord add1Addr
+               , _osMul2Addr              = asWord mul2Addr
+               , _osIsolateAddr           = asWord _isolateAddrVal
+               , _osAddToJumpTargetsAddr  = asWord _addToJumpTargetsAddrVal
+               , _osAddToStoreTargetsAddr = asWord _addToStoreTargetsAddrVal }
