@@ -7,7 +7,8 @@ import qualified Symbolic0
 
 import Int_32 hiding (unsafeCoerce)
 import Common hiding (unsafeCoerce)
-import Types
+import Types  hiding (ra)
+import qualified Types
 
 import Haskell.TH
 import Haskell.Util
@@ -117,6 +118,9 @@ encodeInstr = MWord . unsafeFromCoqWord . encode_instr mt ops . coqInstr
 
 decodeInstr :: MWord -> Maybe Instr
 decodeInstr = fmap unsafeFromCoqInstr . decode_instr mt ops . coqWord . mwordWord
+
+ra :: Reg
+ra = Reg . unsafeFromCoqWord $ Types.ra mt ops
 
 instrAt :: Integral i => State -> i -> Maybe Instr
 instrAt s n = decodeInstr . val . snd =<< (mem s ?? n)
