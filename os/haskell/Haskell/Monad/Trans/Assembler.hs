@@ -415,3 +415,46 @@ program (AssemblerT asm) = AssemblerT $ mdo
   
   -- Oh yeah, and return the result of running @asm@
   return result
+
+-- TODO I wonder if there's a simpler implementation that looks something like this:
+--
+-- @
+--     RWST p [w] (Counters p) (StateT (Maybe e) (EitherT e m)) a
+-- @
+--
+-- where the reader holds the backwards-traveling address, and the writer holds
+-- the reserved count (as well as the instruction stream; the @RWST@ state is
+-- also still the current instruction).
+--
+-- Then, @program@ looks like this:
+--
+-- @
+--     program = mdo
+--       originallyReserved <- reservedInstructions <<.= 0
+--       result <- local reservedAddr asm
+--       reservedAddr <- here
+--       cs <- get
+--       tell $ genericReplicate (cs^.reservedInstructions) 0
+--       set $ Counters (cs^.currentInstruction + cs^.reservedInstructions)
+--                      originallyReserved
+-- @
+--
+-- and @reservedSegment@ becomes
+--
+-- @
+--     reservedSegment = AssemblerT ask
+-- @
+--
+-- I do wish there were some nicer way to handle the localized partial
+-- state... I wanted to use the writer-monad component, but I couldn't get that
+-- to work.
+--
+-- WAIT.  If I use an *outer* @WriterT p@, then I have
+--
+-- @
+--     program = mdo
+--       (result, count) <- lift . runWriterT $ local reservedAddr asm
+--       reservedAddr <- here
+--       tell $ genericReplicate count 0
+--       currentInstruction += count
+-- @
