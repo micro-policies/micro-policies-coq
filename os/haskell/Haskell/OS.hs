@@ -171,8 +171,8 @@ pinfoSize = mword $ 1 + (int calleeSaveMax - int calleeSaveMin + 1)
   -- to save.
 
 data SchedulerParameters = SchedulerParameters { _pidAddrVal   :: !Imm
-                                               , _prog1AddrVal :: !Imm
-                                               , _prog2AddrVal :: !Imm }
+                                               , _proc1AddrVal :: !Imm
+                                               , _proc2AddrVal :: !Imm }
 makeClassy ''SchedulerParameters
 makeMonadicAccessors ''SchedulerParameters
 
@@ -184,8 +184,8 @@ type SchedulerProgram env prog = ( MonadSymAssembler prog
 stempR :: Reg
 stempR = callerSaveMin
 
-schedulerSetProgAddr :: SchedulerProgram env prog => prog ()
-schedulerSetProgAddr = ifz stempR (const_ prog1Addr stempR) (const_ prog2Addr stempR)
+schedulerSetProcAddr :: SchedulerProgram env prog => prog ()
+schedulerSetProcAddr = ifz stempR (const_ proc1Addr stempR) (const_ proc2Addr stempR)
 
 schedulerForeachCalleeSaveReg :: MonadSymAssembler m => [eff'|!Reg -> m ()|] -> m ()
 schedulerForeachCalleeSaveReg f =
@@ -197,7 +197,7 @@ schedulerSaveRegisters :: SchedulerProgram env prog => prog ()
 schedulerSaveRegisters = do
   const_ pidAddr stempR
   load   stempR  stempR
-  schedulerSetProgAddr
+  schedulerSetProcAddr
   store  stempR ra
   const_ i1 ra
   schedulerForeachCalleeSaveReg $ store stempR
@@ -211,14 +211,14 @@ schedulerChangePid = do
   binop SUB ra stempR stempR -- Swap the pc between 0 and 1
   store     stemp'R stempR
 
-schedulerCallProgram :: SchedulerProgram env prog => prog ()
-schedulerCallProgram = do
+schedulerCallProcess :: SchedulerProgram env prog => prog ()
+schedulerCallProcess = do
   -- 'ra' still holds 1
-  schedulerSetProgAddr
+  schedulerSetProcAddr
   schedulerForeachCalleeSaveReg $ load stempR
   const_ pidAddr stempR
   load   stempR stempR
-  schedulerSetProgAddr
+  schedulerSetProcAddr
   load   stempR ra
   const_ i0 stempR
   jump   ra
@@ -227,25 +227,25 @@ schedulerYield :: SchedulerProgram env prog => prog ()
 schedulerYield = do
   schedulerSaveRegisters
   schedulerChangePid
-  schedulerCallProgram
+  schedulerCallProcess
 
 schedulerInit :: [eff|SchedulerProgram env prog => !Imm -> !Imm -> prog ()|]
-schedulerInit prog1 prog2 = do
+schedulerInit proc1 proc2 = do
   let stemp'R = stempR + 1
       storeImm addr val = do
         const_ addr stempR
         const_ val  stemp'R
         store  stempR stemp'R
   storeImm pidAddr   i0
-  storeImm prog1Addr prog1
-  storeImm prog2Addr prog2
+  storeImm proc1Addr proc1
+  storeImm proc2Addr proc2
 
 scheduler' :: [eff|SchedulerProgram env prog => !Imm -> !Imm -> prog ()|]
-scheduler' prog1 prog2 = do
+scheduler' proc1 proc2 = do
     -- At boot-time, we start the scheduler...
-    schedulerInit prog1 prog2
-    -- ...then we jump to the first program.
-    const_ prog1 ra
+    schedulerInit proc1 proc2
+    -- ...then we jump to the first process.
+    const_ proc1 ra
     jump   ra
     -- Later, we may come back to @yield@; it lives here, at the end of the OS
     -- code block.
@@ -254,22 +254,22 @@ scheduler' prog1 prog2 = do
 -- The complete scheduler: boot code and the @yield@ system call.  It returns
 -- the address of @yield@.
 scheduler :: [eff|MonadSymAssembler m => !Imm -> !Imm -> m Imm|]
-scheduler prog1 prog2 = program $ do
-  -- We want to use @prog1@ and @prog2@ in a different monad
-  -- (@ReaderT SchedulerParameters m@), so we get a pure value out of @prog1@
-  -- and @prog2@.  I don't quite get why we need to give them type
+scheduler proc1 proc2 = program $ do
+  -- We want to use @proc1@ and @proc2@ in a different monad
+  -- (@ReaderT SchedulerParameters m@), so we get a pure value out of @proc1@
+  -- and @proc2@.  I don't quite get why we need to give them type
   -- signatures... something to do with polymorphism, I guess.
-  (prog1' :: Imm) <- effectful prog1
-  (prog2' :: Imm) <- effectful prog2
+  (proc1' :: Imm) <- effectful proc1
+  (proc2' :: Imm) <- effectful proc2
   
   _pidAddrVal   <- reserveImm 1
-  _prog1AddrVal <- reserveImm pinfoSize
-  _prog2AddrVal <- reserveImm pinfoSize
+  _proc1AddrVal <- reserveImm pinfoSize
+  _proc2AddrVal <- reserveImm pinfoSize
   flip runReaderT SchedulerParameters{..} $ do
     -- At boot-time, we start the scheduler...
-    schedulerInit prog1' prog2'
-    -- ...then we jump to the first program.
-    const_ prog1' ra
+    schedulerInit proc1' proc2'
+    -- ...then we jump to the first process.
+    const_ proc1' ra
     jump   ra
     -- Later, we may come back to @yield@; it lives here, at the end of the OS
     -- code block.
