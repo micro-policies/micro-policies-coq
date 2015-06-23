@@ -255,15 +255,15 @@ The components of the implementation of 'AssemblerT' are as follows:
     then @'Left' err@ is returned, just as if the 'Either' had failed.
 -}
 
--- |A monad s=which acts as a simple assembler.  A specialization of
--- 'AssemblerT', which see.  Also see the package description for further
--- information on 'Assembler''s use and description.  It is parametrized by a
--- type of error messages (@e@), a type of pointers/addresses/sizes (@p@,
--- probably an 'Integral'), and a type of words (@w@, which is probably a 'Num'
--- to allow the use of @0@).
+-- |A monad which acts as a simple assembler.  A specialization of 'AssemblerT',
+-- which see.  Also see the package description for further information on
+-- 'Assembler''s use and description.  It is parametrized by a type of error
+-- messages (@e@), a type of pointers/addresses/sizes (@p@, probably an
+-- 'Integral'), and a type of words (@w@, which is probably a 'Num' to allow the
+-- use of @0@).
 type Assembler e -- ^The type of error messages
                p -- ^The type of pointers/addresses (and sizes)
-               w
+               w -- ^The type of words
   = AssemblerT e p w Identity
 
 -- |Unexported data type for the forward-traveling state in an 'AssemblerT';
