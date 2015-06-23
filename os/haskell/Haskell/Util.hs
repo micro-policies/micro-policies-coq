@@ -54,6 +54,13 @@ alignColumns :: [(Alignment,a)] -> [[[a]]] -> [[[a]]]
 alignColumns alignments table =
   transpose . zipWith (uncurry padToMatch) alignments $ transpose table
 
+-- Why are liftA4 and liftA5 missing?
+liftA4 :: Applicative f => (a1 -> a2 -> a3 -> a4 -> r) -> f a1 -> f a2 -> f a3 -> f a4 -> f r
+liftA4 f a1 a2 a3 a4 = f <$> a1 <*> a2 <*> a3 <*> a4
+
+liftA5 :: Applicative f => (a1 -> a2 -> a3 -> a4 -> a5 -> r) -> f a1 -> f a2 -> f a3 -> f a4 -> f a5 -> f r
+liftA5 f a1 a2 a3 a4 a5 = f <$> a1 <*> a2 <*> a3 <*> a4 <*> a5
+
 bind1 :: Monad m => (a1 -> m r) -> m a1 -> m r
 bind1 = (=<<)
 
