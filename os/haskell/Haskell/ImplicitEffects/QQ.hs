@@ -35,11 +35,41 @@ The generated variables are named based on the type they're replacing, plus a
 globally-incrememnting unique counter.  There are some heuristics packed into
 'abbreviateType', which should mostly give not-terrible results.  Not
 necessarily great, but not terrible.
+
+There is an additional 'eff'' quasiquoter that does not attempt to bind the free
+variables it comes across; this is designed for use in higher-rank types, so
+that an 'eff'ectful function can be passed as an argument.  Thus,
+
+@
+    [eff'|(Monad m, Show a) => Bool -> !Int -> !a -> !(f Char) -> m ()|]
+@
+
+becomes
+
+@
+    forall i1 a'2 fc3 .
+      (Monad m, Show a, i1 ~! m Int, a'2 ~! m a, fc3 ~! m (f Char)) =>
+      Bool -> i1 -> a'2 -> fc3 -> m ()
+@
+
+This won't type check, since @m@, @a@, and @f@ are not in scope.  However,
+imagine instead a context such as
+
+@
+    Applicative f => [eff'|!Char -> f ()|] -> f ()
+@
+
+This will correctly become
+
+@
+    Applicative f => (forall c1 . c1 ~! f Char => c1 -> f ()) -> f ()
+@
+
 -}
 
 {-# LANGUAGE ViewPatterns, LambdaCase, TemplateHaskell, UnboxedTuples #-}
 module Haskell.ImplicitEffects.QQ
-       (eff, effHSEType, effString, abbreviateType)
+       (eff, eff', effHSEType, effString, abbreviateType)
        where
 
 import Control.Applicative
@@ -65,15 +95,24 @@ import Data.Constraint (Constraint())
 
 import Haskell.ImplicitEffects
 
--- |A type quasiquoter for generating implicitly effectful parameters.
-eff :: QuasiQuoter
-eff = QuasiQuoter { quoteExp  = unsupported "expression"
-                  , quotePat  = unsupported "pattern"
-                  , quoteType = effString
-                  , quoteDec  = unsupported "declaration" }
+mk_eff :: String -> Bool -> QuasiQuoter
+mk_eff name capturing = QuasiQuoter { quoteExp  = unsupported "an expression"
+                                    , quotePat  = unsupported "a pattern"
+                                    , quoteType = effString capturing
+                                    , quoteDec  = unsupported "a declaration" }
   where
     unsupported loc _ =
-      fail $ "eff: Can't use this quasiquoter in " ++ loc ++ " context, only in types"
+      fail $  name ++ ": Can't use this quasiquoter in "
+           ++ loc ++ ", only in types"
+
+-- |A type quasiquoter for generating implicitly effectful parameters.
+eff :: QuasiQuoter
+eff = mk_eff "eff" True
+
+-- |A type quasiquoter for generating implicitly effectful parameters, that doesn't bind
+-- free variables.
+eff' :: QuasiQuoter
+eff' = mk_eff "eff'" False
 
 --------------------------------------------------------------------------------
 
@@ -101,19 +140,19 @@ fresh_id = get <* modify (+ 1)
 --------------------------------------------------------------------------------
 
 -- |The core of 'eff'; exposed in case it can be reused.
-effHSEType :: HS.Type -> Q TH.Type
-effHSEType ty = do
+effHSEType :: Bool -> HS.Type -> Q TH.Type
+effHSEType capturing ty = do
   (ty', (nub -> free, effected)) <- evalRWST (go_type ty) S.empty 1
   effect <- maybe (fail "eff: Could not guess effect type") pure $ guess_effect ty'
-  let tvs = map PlainTV $ free ++ map fst effected
+  let tvs = map PlainTV $ (if capturing then free else []) ++ map fst effected
       aps = map (\(n,t) -> ClassP ''(~!) [VarT n, effect `AppT` t]) effected
   pure $ case ty' of
     ForallT binders cxt inner -> ForallT (binders ++ tvs) (cxt ++ aps) inner
     _                         -> ForallT tvs              aps          ty'
 
 -- |The core of 'eff' with some parsing; exposed in case it can be reused.
-effString :: String -> Q TH.Type
-effString str =
+effString :: Bool -> String -> Q TH.Type
+effString capturing str =
   case parseWithMode
          defaultParseMode{ extensions = map EnableExtension
                                             [ TypeOperators
@@ -133,7 +172,7 @@ effString str =
                                       ++ extensions defaultParseMode }
          str
   of
-    ParseOk     ty    -> effHSEType ty
+    ParseOk     ty    -> effHSEType capturing ty
     ParseFailed _ err -> fail $ "eff: " ++ err
 
 --------------------------------------------------------------------------------
