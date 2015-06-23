@@ -1,6 +1,5 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, ViewPatterns, LambdaCase, RecursiveDo,
-             MultiParamTypeClasses, FlexibleInstances, UndecidableInstances,
-             TemplateHaskell #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, LambdaCase, RecursiveDo,
+             MultiParamTypeClasses, FlexibleInstances, UndecidableInstances #-}
 
 {-|
 Module      : Haskell.Monad.Trans.Assembler
@@ -88,9 +87,10 @@ We can thus safely forward-reference addresses to write our jumps!
 Relatedly, the reservation facility also requires "time-traveling" information:
 the address of the start of the data segment is not determined until all
 instructions (in the current 'program') have been written!  This means that
-'reserve' works fine (as does 'reservedSegment'), you must be careful with its
-result: any case-analysis on the returned address cannot be used to determine
-which monadic action to run, or the knot-tying will become an infinite loop!
+'reserve' works fine (as does 'reservedSegment'), but you must be careful with
+its result: any case-analysis on the returned address cannot be used to
+determine which monadic action to run, or the knot-tying will become an
+infinite loop!
 
 This is the rationale for the delayed-error facility provided by
 'asmDelayedError'.  If given a 'Nothing', then no error is reported.  If given
@@ -137,9 +137,9 @@ following (in order of my personal discovery thereof):
       <https://wiki.haskell.org/wikiupload/1/14/TMR-Issue6.pdf>.
 
 The other time-travel fragment – use of reverse-traveling state to manage
-reserved data segments after the instructions -- is my own idea.  (Using
-'MonadFix' to read the forward-traveling state that keeps track of the current
-instruction before they've been written is from the above citations.)
+reserved data segments after the instructions – is my own idea.  (Using
+'MonadFix' to read the current instruction state form the future is from the
+above citations.)
 -}
 
 module Haskell.Monad.Trans.Assembler (
@@ -159,20 +159,18 @@ module Haskell.Monad.Trans.Assembler (
 
 import Control.Applicative
 import Control.Monad
-import Control.Monad.Tardis as Tardis
-import Control.Monad.Writer.Strict
-import Control.Monad.State.Lazy
+import Control.Monad.Identity
 import Control.Monad.Trans.Either
+import Control.Monad.State.Strict
+import Control.Monad.RWS.Strict
 import Control.Monad.Error
 
-import Control.Lens
 import Data.List
 
-import qualified Control.Monad.Trans.Writer.Strict as Writer
-import qualified Control.Monad.Trans.State.Lazy    as State
-import Control.Monad.Reader
+-- For instances
+import qualified Control.Monad.Trans.State.Strict as State
+import qualified Control.Monad.Trans.RWS.Strict as RWS
 import Control.Monad.Cont
-
 import Haskell.Util.Lifts
 
 -- |A monad transformer which acts as a simple assembler.  See the package
@@ -186,68 +184,59 @@ newtype AssemblerT e -- ^The type of error messages
                    m -- ^The transformed monad
                    a -- ^The value type
   = AssemblerT
-      (TardisT p (Counters p) (WriterT [w] (StateT (Maybe e) (EitherT e m))) a)
+      { getAssemblerT :: -- Module-private!
+          StateT p (RWST p [w] p (StateT (Maybe e) (EitherT e m))) a }
   deriving ( Functor, Applicative, Monad, MonadFix
-           , MonadReader r, MonadCont, MonadIO)
+           , MonadCont, MonadIO)
                -- We lift the mtl classes that we can automatically; for nested
-               -- Tardis/Writer/State/Either, we do it ourselves
+               -- Reader/Writer/State/Error, we do it ourselves
 -- See Note [AssemblerT implementation]
 
 -- I don't know why I can't just derive this
-instance MonadTrans (AssemblerT e p w) where
+instance Num p => MonadTrans (AssemblerT e p w) where
   lift = AssemblerT . lift . lift . lift . lift
 
-instance (MonadFix m, MonadError f m) => MonadError f (AssemblerT e p w m) where
+instance (MonadError f m, Num p) => MonadError f (AssemblerT e p w m) where
   throwError =
     AssemblerT . lift . lift . lift . lift . throwError
   catchError (AssemblerT asm) handler =
     AssemblerT $
-      (Tardis.liftCatch . Writer.liftCatch . State.liftCatch . liftCatchEither)
+      (State.liftCatch . RWS.liftCatch . State.liftCatch . liftCatchEither)
       catchError
       asm
-      (\e -> case handler e of AssemblerT asm' -> asm')
+      (getAssemblerT . handler)
 
-instance (MonadFix m, MonadWriter v m) =>
-         MonadWriter v (AssemblerT e p w m) where
+instance (MonadWriter v m, Num p) => MonadWriter v (AssemblerT e p w m) where
   writer =
     AssemblerT . lift . lift . writer
   tell =
     AssemblerT . lift . lift . tell
-  listen (AssemblerT asm) =
-    AssemblerT $ Tardis.liftListen (liftListenStrictWriter listen) asm
-  pass (AssemblerT asm) =
-    AssemblerT $ Tardis.liftPass (liftPassStrictWriter pass) asm
+  listen =
+    AssemblerT . State.liftListen (liftListenStrictRWS listen) . getAssemblerT
+  pass =
+    AssemblerT . State.liftPass   (liftPassStrictRWS   pass)   . getAssemblerT
 
-instance (MonadFix m, MonadState s m) => MonadState s (AssemblerT e p w m) where
+instance (MonadState s m, Num p) => MonadState s (AssemblerT e p w m) where
   get   = AssemblerT . lift . lift . lift $ get
   put   = AssemblerT . lift . lift . lift . put
   state = AssemblerT . lift . lift . lift . state
 
-instance (MonadFix m, MonadTardis bw fw m) =>
-         MonadTardis bw fw (AssemblerT e p w m) where
-  -- Sigh... 'EitherT' doesn't have a MonadTardis instance
-  getPast    = AssemblerT . lift . lift . lift . lift $ getPast
-  getFuture  = AssemblerT . lift . lift . lift . lift $ getFuture
-  sendPast   = AssemblerT . lift . lift . lift . lift . sendPast
-  sendFuture = AssemblerT . lift . lift . lift . lift . sendFuture
-  tardis     = AssemblerT . lift . lift . lift . lift . tardis
-               
 {-
 Note [AssemblerT implementation]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The components of the implementation of 'AssemblerT' are as follows:
 
-  * The backwards-traveling 'TardisT' state is the address of the start of
-    the reserved data segment.
-  * The forward-traveling 'TardisT' state is a pair of (a) the current
-    instruction address, and (b) how much data has been reserved.  (The
-    address of the to-be-reserved block depends on both the backwards and the
-    forwards-traveling state.)
-  * The 'WriterT' log is the instruction stream, sans reserved words (any
-    previously-completed 'program's have been placed in the instruction
-    stream).
-  * The 'StateT' and 'EitherT' combine to give the delayed and
+  * The outermost 'StateT' stores the count of how much data has been reserved
+    in the current @program@; this is a separate 'StateT' so that @program@ can
+    run it independently.
+  * The reader component of the 'RWST' is the address of the start of the
+    current reserved data segment.
+  * The writer component of the 'RWST' is the instruction stream, sans
+    outstanding reserved words (any previously-completed 'program's have been
+    fully placed in the instruction stream, including reserved words).
+  * The state component of the 'RWST' is the current instruction address.
+  * The innermost 'StateT' and the 'EitherT' combine to give the delayed and
     short-circuiting error behaviors, respectively.  The short-circuiting
     error behavior is clear.  A delayed error is encoded by setting the state
     to @'Just' err@ (in practice, only the first such update is allowed to
@@ -266,34 +255,29 @@ type Assembler e -- ^The type of error messages
                w -- ^The type of words
   = AssemblerT e p w Identity
 
--- |Unexported data type for the forward-traveling state in an 'AssemblerT';
--- contains the current instruction address ('_currentInstruction') and the
--- number of instructions that have been reserved inside the current 'program'
--- ('_reservedInstructions').
-data Counters p = Counters { _currentInstruction   :: !p
-                           , _reservedInstructions :: !p }
-                deriving (Eq, Ord, Show)
-makeLenses ''Counters
-
 -- |Run an 'AssemblerT' computation, producing either (a) a (delayed or
 -- short-circuiting) error message, or (b) a pair of the result and the
 -- constructed machine memory.  The instruction stream starts at address @0@.
 runAssemblerT :: (MonadFix m, Integral p, Num w)
               => AssemblerT e p w m a -> m (Either e (a,[w]))
-runAssemblerT (program -> AssemblerT asm) =
-  runEitherT . runDelayedError . runWriterT $ evalTardisT asm initialState
+runAssemblerT = runEitherT
+              . runDelayedError
+              . (\m -> evalRWST m initialReservedSegment 0)
+              . flip evalStateT initialReservedCount
+              . getAssemblerT
+              . program
   where
     runDelayedError = flip runStateT Nothing >=> \case
                         (_, Just err) -> throwError err
                         (r, Nothing)  -> pure r
     
-    initialDataAddr = error $  "runAssemblerT: Somehow accessed undefined "
-                            ++ "initial time-traveling data segment address."
+    initialReservedSegment =
+      error $  "runAssemblerT: Somehow accessed undefined initial reserved "
+            ++ "segment address."
     
-    initialCounters = Counters { _currentInstruction   = 0
-                               , _reservedInstructions = 0 }
-    
-    initialState = (initialDataAddr, initialCounters)
+    initialReservedCount =
+      error $  "runAssemblerT: Somehow accessed undefined initial reserved "
+            ++ "data count."
 
 -- |Run an 'AssemblerT' computation, just producing the memory (or an error) and
 -- ignoring the result.  The instruction stream starts at address @0@.
@@ -317,7 +301,7 @@ execAssembler = runIdentity . execAssemblerT
 -- 'Assembler' computation is the only one that will be seen, and any 'asmError'
 -- will be seen instead of an 'asmDelayedError'.  Do not use with time-traveling
 -- information (such as the result of 'reserve').
-asmError :: MonadFix m => e -> AssemblerT e p w m a
+asmError :: (Monad m, Num p) => e -> AssemblerT e p w m a
 asmError = AssemblerT . throwError
 
 -- |Possibly register a delayed error.  If passed 'Nothing', no error is
@@ -326,34 +310,36 @@ asmError = AssemblerT . throwError
 -- @'Assembler' a@).  Only the first 'asmDelayedError' is stored; however, any
 -- 'asmError' (before or after) will supersede all 'asmDelayedError's.  This
 -- function is safe to use with time-traveling information (such as the result
--- of 'reserve'); note that it does not require @m@ to be a 'MonadFix'.
-asmDelayedError :: Monad m => Maybe e -> AssemblerT e p w m ()
-asmDelayedError merr = AssemblerT . lift $ modify (<|> merr)
+-- of 'reserve'); note that it does not require @m@ to be a 'Monad'.
+asmDelayedError :: (Monad m, Num p) => Maybe e -> AssemblerT e p w m ()
+asmDelayedError merr = AssemblerT . lift . lift $ modify (<|> merr)
+  -- TODO Can I relax the necessity for this?  At the very least, scope it to
+  -- @program@s?
 
 -- |The current address in the instruction stream (i.e., the end of it).  Useful
 -- for jumps.
-here :: MonadFix m => AssemblerT e p w m p
-here = AssemblerT $ getsPast (^.currentInstruction)
+here :: (Monad m, Num p) => AssemblerT e p w m p
+here = AssemblerT $ lift get
 
 -- |The current address of the start of the reserved data segment.
 -- Time-traveling information from the future; be careful.
-reservedSegment :: MonadFix m => AssemblerT e p w m p
-reservedSegment = AssemblerT getFuture
+reservedSegment :: (Monad m, Num p) => AssemblerT e p w m p
+reservedSegment = AssemblerT ask
 
 -- |Write a word to the instruction stream, incrementing the current
 -- instruction.  There's nothing about this function that mandates that the
 -- written word must be an instruction, it's just the most common use.
-asmWord :: (MonadFix m, Num p) => w -> AssemblerT e p w m ()
+asmWord :: (Monad m, Num p) => w -> AssemblerT e p w m ()
 asmWord w = AssemblerT $
-  tell [w] *> modifyForwards (currentInstruction +~ 1)
+  lift $ tell [w] *> modify (+ 1)
 
 -- |Write a list of words to the instruction stream, incrementing the current
 -- instruction by the length of the list.  There's nothing about this function
 -- that mandates that the written words must be instructions, it's just the most
 -- common use.
-asmWords :: (MonadFix m, Num p) => [w] -> AssemblerT e p w m ()
+asmWords :: (Monad m, Num p) => [w] -> AssemblerT e p w m ()
 asmWords ws = AssemblerT $
-  tell ws *> modifyForwards (currentInstruction +~ genericLength ws)
+  lift $ tell ws *> modify (+ genericLength ws)
 
 -- |Reserve some number of words at the end of the reserved data stream,
 -- returning the address of the first word reserved.  (If @0@ words are
@@ -362,12 +348,12 @@ asmWords ws = AssemblerT $
 -- time-traveling information from the future; be careful.  (The 'Ord'
 -- constraint is required so that we can ensure we always reserve a nonnegative
 -- number of words.)
-reserve :: (MonadFix m, Num p, Ord p) => p -> AssemblerT e p w m p
+reserve :: (Monad m, Num p, Ord p) => p -> AssemblerT e p w m p
 reserve n = AssemblerT $ do
-  dataAddr <- getFuture
-  dataSize <- getsPast (^.reservedInstructions)
-  modifyForwards $ reservedInstructions +~ max 0 n
-  pure $ dataAddr + dataSize
+  reservedAddr  <- getAssemblerT reservedSegment
+  reservedCount <- get
+  modify (+ max 0 n)
+  pure $ reservedAddr + reservedCount
 
 -- |@program asm@ runs @asm@, and then completes the pending reservation:
 -- it places the appropriate number of reserved @0@s at the end of the
@@ -378,83 +364,7 @@ reserve n = AssemblerT $ do
 program :: (MonadFix m, Integral p, Num w)
         => AssemblerT e p w m a -> AssemblerT e p w m a
 program (AssemblerT asm) = AssemblerT $ mdo
-  -- This code has to run the provided program @asm@ inside a "fresh" context,
-  -- so that it can flush only its local reserved data segment.  Making the
-  -- context fresh requires manipulating the state: saving the old value,
-  -- updating the state, running @asm@, and restoring the old value.  The catch
-  -- is that we must manipulate /two/ pieces of state:
-  -- 
-  --   1. The forward-traveling reserved instruction count
-  --   2. The backward-traveling reserved address
-  --
-  -- (We don't modify the instruction address; that's not local.)  The first
-  -- piece is saved, set, used, and then restored; the /second/ piece is
-  -- restored, used, set, and then saved!
-
-  -- First, stash and clear the reserved-data count and restore the outer
-  -- reserved-data address.
-  originallyReserved <- getsPast (^.reservedInstructions)
-  modifyForwards $ reservedInstructions .~ 0
-  sendPast currentReservedLocation
-  
-  -- Then, run the provided program in a context with its local reserved-data
-  -- count (above) and address (below).  This ensures that it will only register
-  -- its own requests for reserved data.
-  result <- asm
-
-  -- Now, actually reserve the data that @asm@ requested, and in doing so
-  -- restore the outer reserved-data count
-  cs <- getPast
-  tell $ genericReplicate (cs^.reservedInstructions) 0
-  sendFuture $ Counters (cs^.currentInstruction + cs^.reservedInstructions)
-                        originallyReserved
-
-  -- Finally, stash and set the reserved-data location
-  sendPast $ cs^.currentInstruction
-  currentReservedLocation <- getFuture
-  
-  -- Oh yeah, and return the result of running @asm@
+  (result, count) <- lift $ runStateT (local (const reservedAddr) asm) 0
+  reservedAddr <- getAssemblerT here
+  lift $ tell (genericReplicate count 0) *> modify (+ count)
   return result
-
--- TODO I wonder if there's a simpler implementation that looks something like this:
---
--- @
---     RWST p [w] (Counters p) (StateT (Maybe e) (EitherT e m)) a
--- @
---
--- where the reader holds the backwards-traveling address, and the writer holds
--- the reserved count (as well as the instruction stream; the @RWST@ state is
--- also still the current instruction).
---
--- Then, @program@ looks like this:
---
--- @
---     program = mdo
---       originallyReserved <- reservedInstructions <<.= 0
---       result <- local reservedAddr asm
---       reservedAddr <- here
---       cs <- get
---       tell $ genericReplicate (cs^.reservedInstructions) 0
---       set $ Counters (cs^.currentInstruction + cs^.reservedInstructions)
---                      originallyReserved
--- @
---
--- and @reservedSegment@ becomes
---
--- @
---     reservedSegment = AssemblerT ask
--- @
---
--- I do wish there were some nicer way to handle the localized partial
--- state... I wanted to use the writer-monad component, but I couldn't get that
--- to work.
---
--- WAIT.  If I use an *outer* @WriterT p@, then I have
---
--- @
---     program = mdo
---       (result, count) <- lift . runWriterT $ local reservedAddr asm
---       reservedAddr <- here
---       tell $ genericReplicate count 0
---       currentInstruction += count
--- @
