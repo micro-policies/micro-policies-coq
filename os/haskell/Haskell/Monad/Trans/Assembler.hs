@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, ViewPatterns, LambdaCase,
+{-# LANGUAGE GeneralizedNewtypeDeriving, ViewPatterns, LambdaCase, RecursiveDo,
              MultiParamTypeClasses, FlexibleInstances, UndecidableInstances,
              TemplateHaskell #-}
 
@@ -375,17 +375,43 @@ reserve n = AssemblerT $ do
 -- number of currently-reserved instructions to @0@.  This allows separate
 -- programs/functions/processes to be glued together, each with its own
 -- directly-adjacent data segment.
---
--- FIXME @program@ doesn't nest properly!  Right now,
---
--- >>> execAssembler $ reserve 1 >> program (asmWord 42 >> reserve 1) >> asmWord 43
--- Right [42,0,0,43]
---
--- instead of resulting in @Right [42,0,43,0]@ as it ought to!
 program :: (MonadFix m, Integral p, Num w)
         => AssemblerT e p w m a -> AssemblerT e p w m a
-program asm = (asm <*) . AssemblerT $ do
+program (AssemblerT asm) = AssemblerT $ mdo
+  -- This code has to run the provided program @asm@ inside a "fresh" context,
+  -- so that it can flush only its local reserved data segment.  Making the
+  -- context fresh requires manipulating the state: saving the old value,
+  -- updating the state, running @asm@, and restoring the old value.  The catch
+  -- is that we must manipulate /two/ pieces of state:
+  -- 
+  --   1. The forward-traveling reserved instruction count
+  --   2. The backward-traveling reserved address
+  --
+  -- (We don't modify the instruction address; that's not local.)  The first
+  -- piece is saved, set, used, and then restored; the /second/ piece is
+  -- restored, used, set, and then saved!
+
+  -- First, stash and clear the reserved-data count and restore the outer
+  -- reserved-data address.
+  originallyReserved <- getsPast (^.reservedInstructions)
+  modifyForwards $ reservedInstructions .~ 0
+  sendPast currentReservedLocation
+  
+  -- Then, run the provided program in a context with its local reserved-data
+  -- count (above) and address (below).  This ensures that it will only register
+  -- its own requests for reserved data.
+  result <- asm
+
+  -- Now, actually reserve the data that @asm@ requested, and in doing so
+  -- restore the outer reserved-data count
   cs <- getPast
-  sendPast $ cs^.currentInstruction
   tell $ genericReplicate (cs^.reservedInstructions) 0
-  sendFuture $ Counters (cs^.currentInstruction + cs^.reservedInstructions) 0
+  sendFuture $ Counters (cs^.currentInstruction + cs^.reservedInstructions)
+                        originallyReserved
+
+  -- Finally, stash and set the reserved-data location
+  sendPast $ cs^.currentInstruction
+  currentReservedLocation <- getFuture
+  
+  -- Oh yeah, and return the result of running @asm@
+  return result
