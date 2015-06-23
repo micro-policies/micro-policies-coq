@@ -98,8 +98,12 @@ makeLensesWith (classyRules & lensClass %~ \orig name ->
                ''OSParameters
 makeMonadicAccessors ''OSParameters
 
--- Do the registers *really* need to live here?  Could they be global values?
-data ProcessParameters = ProcessParameters { _sharedAddrVal :: !Imm
+-- NOTE: '_sharedAddrVal' /cannot/ be strict!  Otherwise, the knot-tying we do
+-- later triggers an infinite loop immediately.
+--
+-- Also, do the registers *really* need to live here?  Could they be global
+-- values?
+data ProcessParameters = ProcessParameters { _sharedAddrVal :: Imm
                                            , _yieldRVal     :: !Reg
                                            , _sharedPtrRVal :: !Reg
                                            , _loopbackRVal  :: !Reg
@@ -291,7 +295,6 @@ data OSInfo = OSInfo { _osSharedAddr :: !MWord
                      , _osMul2Addr   :: !MWord }
             deriving (Eq, Ord, Show)
 
--- FIXME The desired final OS
 os :: MonadSymAssembler m => m OSInfo
 os = mdo
   -- OS code
@@ -305,33 +308,6 @@ os = mdo
   
   -- User code
   (add1Addr, _sharedAddrVal, mul2Addr) <- flip runReaderT userParams $ do
-    add1   <- hereImm
-    shared <- program $ add1Process *> reserveImm 1
-    mul2   <- hereImm <* mul2Process
-    return (add1, shared, mul2)
-
-  -- The final result -- debugging info
-  let asWord = mword . unsignedWord . immWord
-  return OSInfo{ _osSharedAddr = asWord _sharedAddrVal
-               , _osYieldAddr  = asWord _yieldAddrVal
-               , _osAdd1Addr   = asWord add1Addr
-               , _osMul2Addr   = asWord mul2Addr }
-
--- FIXME A working final-OS--like thing that has the wrong @_sharedAddrVal@
-os' :: MonadSymAssembler m => m OSInfo
-os' = mdo
-  -- OS code
-  _yieldAddrVal <- scheduler add1Addr mul2Addr
-
-  -- Parameters
-  let _sharedAddrVal = i0
-  let _yieldRVal : _sharedPtrRVal : _loopbackRVal : _tempRVal : _ = calleeSaveRegs
-      userParams = UserCodeParameters
-                     { _userOSParameters      = OSParameters{..}
-                     , _userProcessParameters = ProcessParameters{..} }
-  
-  -- User code
-  (add1Addr, _, mul2Addr) <- flip runReaderT userParams $ do
     add1   <- hereImm
     shared <- program $ add1Process *> reserveImm 1
     mul2   <- hereImm <* mul2Process
