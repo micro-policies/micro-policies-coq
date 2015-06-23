@@ -125,7 +125,7 @@ callerSaveMin, callerSaveMax, calleeSaveMin, userRegMin, userRegMax :: Reg
 callerSaveMin = r1
 callerSaveMax = r1
 calleeSaveMin = callerSaveMax + 1
-calleeSaveMax = r23
+calleeSaveMax = r15
 userRegMin    = callerSaveMin
 userRegMax    = calleeSaveMax
 
@@ -251,7 +251,9 @@ scheduler' prog1 prog2 = do
     -- code block.
     schedulerYield
 
-scheduler :: [eff|MonadSymAssembler m => !Imm -> !Imm -> m ()|]
+-- The complete scheduler: boot code and the @yield@ system call.  It returns
+-- the address of @yield@.
+scheduler :: [eff|MonadSymAssembler m => !Imm -> !Imm -> m Imm|]
 scheduler prog1 prog2 = program $ do
   -- We want to use @prog1@ and @prog2@ in a different monad
   -- (@ReaderT SchedulerParameters m@), so we get a pure value out of @prog1@
@@ -271,4 +273,4 @@ scheduler prog1 prog2 = program $ do
     jump   ra
     -- Later, we may come back to @yield@; it lives here, at the end of the OS
     -- code block.
-    schedulerYield   
+    hereImm <* schedulerYield
