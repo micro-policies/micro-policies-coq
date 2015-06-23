@@ -375,6 +375,13 @@ reserve n = AssemblerT $ do
 -- number of currently-reserved instructions to @0@.  This allows separate
 -- programs/functions/processes to be glued together, each with its own
 -- directly-adjacent data segment.
+--
+-- FIXME @program@ doesn't nest properly!  Right now,
+--
+-- >>> execAssembler $ reserve 1 >> program (asmWord 42 >> reserve 1) >> asmWord 43
+-- Right [42,0,0,43]
+--
+-- instead of resulting in @Right [42,0,43,0]@ as it ought to!
 program :: (MonadFix m, Integral p, Num w)
         => AssemblerT e p w m a -> AssemblerT e p w m a
 program asm = (asm <*) . AssemblerT $ do
