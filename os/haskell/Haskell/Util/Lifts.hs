@@ -25,12 +25,12 @@ liftPassStrictWriter pass' m = StrictWriter.WriterT . pass' $ do
 
 liftListenLazyWriter :: Monad m => Listen w1 m (a,w2) -> Listen w1 (LazyWriter.WriterT w2 m) a
 liftListenLazyWriter listen' m = LazyWriter.WriterT $ do
-  ((a,w2),w1) <- listen' $ LazyWriter.runWriterT m
+  ~((a,w2),w1) <- listen' $ LazyWriter.runWriterT m
   return ((a,w1),w2)
 
 liftPassLazyWriter :: Monad m => Pass w1 m (a,w2) -> Pass w1 (LazyWriter.WriterT w2 m) a
 liftPassLazyWriter pass' m = LazyWriter.WriterT . pass' $ do
-  ((a,f),w2) <- LazyWriter.runWriterT m
+  ~((a,f),w2) <- LazyWriter.runWriterT m
   return ((a,w2),f)
 
 liftCatchError :: Monad m => Catch e1 m (Either e2 a) -> Catch e1 (ErrorT e2 m) a
