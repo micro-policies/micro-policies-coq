@@ -98,6 +98,7 @@ makeLensesWith (classyRules & lensClass %~ \orig name ->
                ''OSParameters
 makeMonadicAccessors ''OSParameters
 
+-- Do the registers *really* need to live here?  Could they be global values?
 data ProcessParameters = ProcessParameters { _sharedAddrVal :: !Imm
                                            , _yieldRVal     :: !Reg
                                            , _sharedPtrRVal :: !Reg
@@ -111,6 +112,14 @@ type UserProgram env prog = ( MonadSymAssembler prog
                             , MonadReader env prog
                             , HasOSParameters env
                             , HasProcessParameters env )
+
+data UserCodeParameters =
+  UserCodeParameters { _userOSParameters      :: OSParameters
+                     , _userProcessParameters :: ProcessParameters }
+  deriving (Eq, Ord, Show)
+makeClassy ''UserCodeParameters
+instance HasOSParameters      UserCodeParameters where osParameters      = userOSParameters
+instance HasProcessParameters UserCodeParameters where processParameters = userProcessParameters
 
 freeReg :: UserProgram env prog => Integer -> prog Reg
 freeReg i = do
@@ -149,17 +158,17 @@ processLoop body = do
     jal   yieldR
 
 process :: UserProgram env prog => prog () -> [eff'|!Reg -> prog ()|] -> prog ()
-process init body = do
+process init body = program $ do
   processSetup init
   processLoop  body
 
 add1Process :: UserProgram env prog => prog ()
-add1Process = program $ do
+add1Process = do
   oneR <- freeReg 0
   process (const_ i1 oneR) $ \localR -> binop ADD localR oneR localR
 
 mul2Process :: UserProgram env prog => prog ()
-mul2Process = program $ do
+mul2Process = do
   twoR <- freeReg 0
   process (const_ i2 twoR) $ \localR -> binop MUL localR twoR localR
 
@@ -274,3 +283,63 @@ scheduler proc1 proc2 = program $ do
     -- Later, we may come back to @yield@; it lives here, at the end of the OS
     -- code block.
     hereImm <* schedulerYield
+
+-- The information about the OS one might want for, say, debugging
+data OSInfo = OSInfo { _osSharedAddr :: !MWord
+                     , _osYieldAddr  :: !MWord
+                     , _osAdd1Addr   :: !MWord
+                     , _osMul2Addr   :: !MWord }
+            deriving (Eq, Ord, Show)
+
+-- FIXME The desired final OS
+os :: MonadSymAssembler m => m OSInfo
+os = mdo
+  -- OS code
+  _yieldAddrVal <- scheduler add1Addr mul2Addr
+
+  -- Parameters
+  let _yieldRVal : _sharedPtrRVal : _loopbackRVal : _tempRVal : _ = calleeSaveRegs
+      userParams = UserCodeParameters
+                     { _userOSParameters      = OSParameters{..}
+                     , _userProcessParameters = ProcessParameters{..} }
+  
+  -- User code
+  (add1Addr, _sharedAddrVal, mul2Addr) <- flip runReaderT userParams $ do
+    add1   <- hereImm
+    shared <- program $ add1Process *> reserveImm 1
+    mul2   <- hereImm <* mul2Process
+    return (add1, shared, mul2)
+
+  -- The final result -- debugging info
+  let asWord = mword . unsignedWord . immWord
+  return OSInfo{ _osSharedAddr = asWord _sharedAddrVal
+               , _osYieldAddr  = asWord _yieldAddrVal
+               , _osAdd1Addr   = asWord add1Addr
+               , _osMul2Addr   = asWord mul2Addr }
+
+-- FIXME A working final-OS--like thing that has the wrong @_sharedAddrVal@
+os' :: MonadSymAssembler m => m OSInfo
+os' = mdo
+  -- OS code
+  _yieldAddrVal <- scheduler add1Addr mul2Addr
+
+  -- Parameters
+  let _sharedAddrVal = i0
+  let _yieldRVal : _sharedPtrRVal : _loopbackRVal : _tempRVal : _ = calleeSaveRegs
+      userParams = UserCodeParameters
+                     { _userOSParameters      = OSParameters{..}
+                     , _userProcessParameters = ProcessParameters{..} }
+  
+  -- User code
+  (add1Addr, _, mul2Addr) <- flip runReaderT userParams $ do
+    add1   <- hereImm
+    shared <- program $ add1Process *> reserveImm 1
+    mul2   <- hereImm <* mul2Process
+    return (add1, shared, mul2)
+
+  -- The final result -- debugging info
+  let asWord = mword . unsignedWord . immWord
+  return OSInfo{ _osSharedAddr = asWord _sharedAddrVal
+               , _osYieldAddr  = asWord _yieldAddrVal
+               , _osAdd1Addr   = asWord add1Addr
+               , _osMul2Addr   = asWord mul2Addr }
