@@ -9,7 +9,7 @@ Makefile.coq: Makefile.source
 clean:
 	rm -f */*.vo */*.v.d */*.glob */*~ */.#* Makefile.coq
 	rm -f */*/*.vo */*/*.v.d */*/*.glob
-	rm -rf os/extracted
+	$(MAKE) -C os clean
 
 test: coq
 	$(MAKE) -C sealing runtest

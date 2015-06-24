@@ -8,5 +8,14 @@ all:
 # probably for the best, given the crazy `unsafePerformIO` shenanigans the
 # extracted code does with `()` (and not `Any`, grr).
 
+extract:
+	$(MAKE) -C .. extract
+
 clean:
 	-rm -rf compiled
+
+clean-all:
+	-$(MAKE) -C .. clean
+	-$(MAKE) clean
+
+.PHONY: all extract clean clean-all
