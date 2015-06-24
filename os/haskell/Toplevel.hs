@@ -78,10 +78,10 @@ import Haskell.Assembler hiding
   ( nop, const_, mov, binop, load, store, jump, bnz, jal
   , jumpEpc, addRule, getTag, putTag, halt )
 import Haskell.OS
-import Haskell.CoqOS
 
 import Control.Applicative
 import Control.Monad
+import Control.Lens
 
 listing :: State -> [MWord] -> IO ()
 listing = (print .) . inspectAddrs
@@ -103,11 +103,18 @@ summarize s as r = do putStrLn "Instructions:"
                         putStrLn "Data:"
                         listing s as
 
-runOS :: [MWord] -> Integer -> Integer -> IO ()
-runOS as r n = do let (i,s) = stepCoqOS' n
-                  putStrLn $ concat [ "Ran for ", show i, "/", show n
-                                    , " step", if i == 1 then "" else "s" ]
-                  putStrLn ""
-                  summarize s as r
+runState :: State -> [MWord] -> Integer -> Integer -> IO ()
+runState s0 as r n = do let (i,s) = stepMany' n s0
+                        putStrLn $ concat [ "Ran for ", show i, "/", show n
+                                          , " step", if i == 1 then "" else "s" ]
+                        putStrLn ""
+                        summarize s as r
 
--- 135 is the shared address
+runOS'' :: [MWord] -> Integer -> Integer -> IO ()
+runOS'' = runState os0
+
+runOS' :: Integer -> Integer -> IO ()
+runOS' = runOS'' [osInfo^.osSharedAddr]
+
+runOS :: Integer -> IO ()
+runOS = runOS' 3

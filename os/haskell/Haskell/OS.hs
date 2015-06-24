@@ -307,8 +307,8 @@ data OSInfo = OSInfo { _osSharedAddr            :: !MWord
             deriving (Eq, Ord, Show)
 makeLenses ''OSInfo
 
-os :: MonadSymAssembler m => m OSInfo
-os = program $ mdo
+wholeOS :: MonadSymAssembler m => m OSInfo
+wholeOS = program $ mdo
   -- OS code
   _yieldAddrVal <- scheduler add1Addr mul2Addr
 
@@ -342,3 +342,20 @@ os = program $ mdo
                , _osIsolateAddr           = asWord _isolateAddrVal
                , _osAddToJumpTargetsAddr  = asWord _addToJumpTargetsAddrVal
                , _osAddToStoreTargetsAddr = asWord _addToStoreTargetsAddrVal }
+
+osInfo :: OSInfo
+os     :: State
+(osInfo, os) = case runAssembler wholeOS of
+  Right (osInfo, osMem) ->
+    (osInfo, initialState osMem [r0..userRegMax])
+  Left err ->
+    error $ "Could not build OS: " ++ err
+
+os0 :: State
+os0 = os
+
+stepOS' :: Integral i => i -> (i, State)
+stepOS' = flip stepMany' os0
+
+stepOS :: Integral i => i -> Maybe State
+stepOS = flip stepMany os0
