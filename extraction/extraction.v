@@ -618,6 +618,13 @@ Extract Constant rules.mtag_eqMixin => "\tty ->
          (unsafeCoerce (sum_of_mtag tty))
          (unsafeCoerce (mtag_of_sum tty)))".
 
+(* The following functions, when extracted, fail to typecheck and I don't
+   understand why -- or much care. *)
+Extract Constant generic_quotient.encModRel_rect =>
+  "GHC.Stack.errorWithStackTrace ""encModRel_rect: failed to compile with a type error""".
+Extract Constant generic_quotient.enc_mod_rel =>
+  "GHC.Stack.errorWithStackTrace ""enc_mod_rel: failed to compile with a type error""".
+
 (* I've ignored most of the pure math stuff in MathComp (beyond what was
    necessary for the `eqType' change) -- we don't use it, and it's quite
    complicated.  This includes polynomials and matrices/linear algebra -- we
