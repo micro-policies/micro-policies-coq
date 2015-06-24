@@ -8,7 +8,6 @@ import Control.Monad.Reader
 
 import Control.Lens
 
-import Haskell.Util
 import Haskell.Word
 import Haskell.Machine
 import Haskell.Assembler hiding
@@ -142,7 +141,7 @@ freeReg i = do
     else asmError $ "freeReg: Register %r" ++ show r' ++ " out of range"
 
 -- ra = 0 is special; register 1 is caller-save; registers 2+ are callee-save
-callerSaveMin, callerSaveMax, calleeSaveMin, userRegMin, userRegMax :: Reg
+callerSaveMin, callerSaveMax, calleeSaveMin, calleeSaveMax, userRegMin, userRegMax :: Reg
 callerSaveMin = r1
 callerSaveMax = r1
 calleeSaveMin = callerSaveMax + 1

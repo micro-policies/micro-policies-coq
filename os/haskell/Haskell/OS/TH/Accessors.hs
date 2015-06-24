@@ -85,6 +85,6 @@ makeMonadicAccessors tyName = do
                          [ ClassP hasClass      [p]
                          , ClassP ''MonadReader [p,m] ]
                          (m `AppT` fieldTy)
-        (SigD accessor accessorType :) <$>
-          [d|$(varP accessor) = view $(varE lens)|]
+        pure [ SigD accessor accessorType
+             , ValD (VarP accessor) (NormalB $ VarE 'view `AppE` VarE lens) [] ]
   concat <$> mapM makeMonadicAccessor fields

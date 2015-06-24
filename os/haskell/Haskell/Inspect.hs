@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings, PatternSynonyms #-}
 module Haskell.Inspect where
 
-import Control.Arrow hiding ((<+>))
 import Data.List
 
 import Haskell.Util

@@ -419,7 +419,7 @@ abbreviateType = unclones . abbrevType where
     | otherwise =
         case nameBase n of
           n'@(n0 : _) | isAlpha n0 -> f n' $ toLower n0
-   --       _                        -> abbrevDefault
+          _                        -> abbrevDefault
   
   isArrow ArrowT   = True
   isArrow (ConT c) = c == ''(->)

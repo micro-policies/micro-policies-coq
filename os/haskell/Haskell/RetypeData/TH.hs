@@ -4,14 +4,11 @@ module Haskell.RetypeData.TH (retypeData) where
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 
-import Data.Data
+import Haskell.Util
+import Control.Applicative
 import Data.Maybe
 
-import Control.Applicative
-
 import Unsafe.Coerce
-
-import Haskell.Util
 
 -- Given
 --

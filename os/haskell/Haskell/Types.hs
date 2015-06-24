@@ -3,7 +3,6 @@ module Haskell.Types where
 
 import Types
 
-import Control.Applicative
 import Data.Bifunctor
 
 type PartMap  k v = [(k,v)]

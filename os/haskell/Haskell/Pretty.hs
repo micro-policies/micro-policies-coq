@@ -1,20 +1,18 @@
 {-# LANGUAGE TypeSynonymInstances, OverloadedStrings, PatternSynonyms #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Haskell.Pretty (module Haskell.Pretty, module PrettyExports) where
 
 import Types hiding (Coq_instr(..))
 
-import Haskell.Util
 import Haskell.Types
 import Haskell.Word
 import Haskell.Machine
 
-import Data.Bifunctor
 import Data.Monoid
-import Text.PrettyPrint.HughesPJClass hiding ((<>), first)
+import Text.PrettyPrint.HughesPJClass hiding ((<>))
 import Data.Set (Set)
 import qualified Data.Set as S
 
-import qualified Prelude
 import Prelude hiding (EQ)
 
 import qualified Text.PrettyPrint.HughesPJClass as PrettyExports hiding ((<>))
@@ -46,6 +44,9 @@ infixl 6 <!>, <.!>, <!.>, <&>, <.&>, <&.>
 
 plain :: Show a => a -> Doc
 plain = text . show
+
+-- There are a lot of orphan instances in this file; basically, imagine that
+-- this is where 'Pretty' is defined!
 
 instance Pretty Doc where pPrint = id -- Orphan, I know, but obviously missing!
 
