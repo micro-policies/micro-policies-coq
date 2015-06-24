@@ -67,13 +67,17 @@ import qualified Vector
 import qualified Word
 import qualified Zmodp
 
-import Types hiding (Coq_instr(..))
 import Haskell.Util
+import Haskell.ImplicitEffects
 import Haskell.Pretty
 import Haskell.Inspect
 import Haskell.Types
 import Haskell.Word
 import Haskell.Machine
+import Haskell.Assembler hiding
+  ( nop, const_, mov, binop, load, store, jump, bnz, jal
+  , jumpEpc, addRule, getTag, putTag, halt )
+import Haskell.OS
 import Haskell.CoqOS
 
 import Control.Monad
