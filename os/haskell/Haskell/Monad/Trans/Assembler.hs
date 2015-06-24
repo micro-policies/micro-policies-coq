@@ -193,10 +193,10 @@ newtype AssemblerT e -- ^The type of error messages
 -- See Note [AssemblerT implementation]
 
 -- I don't know why I can't just derive this
-instance Num p => MonadTrans (AssemblerT e p w) where
+instance MonadTrans (AssemblerT e p w) where
   lift = AssemblerT . lift . lift . lift . lift
 
-instance (MonadError f m, Num p) => MonadError f (AssemblerT e p w m) where
+instance MonadError f m => MonadError f (AssemblerT e p w m) where
   throwError =
     AssemblerT . lift . lift . lift . lift . throwError
   catchError (AssemblerT asm) handler =
@@ -206,7 +206,7 @@ instance (MonadError f m, Num p) => MonadError f (AssemblerT e p w m) where
       asm
       (getAssemblerT . handler)
 
-instance (MonadWriter v m, Num p) => MonadWriter v (AssemblerT e p w m) where
+instance MonadWriter v m => MonadWriter v (AssemblerT e p w m) where
   writer =
     AssemblerT . lift . lift . writer
   tell =
@@ -216,7 +216,7 @@ instance (MonadWriter v m, Num p) => MonadWriter v (AssemblerT e p w m) where
   pass =
     AssemblerT . State.liftPass   (liftPassStrictRWS   pass)   . getAssemblerT
 
-instance (MonadState s m, Num p) => MonadState s (AssemblerT e p w m) where
+instance MonadState s m => MonadState s (AssemblerT e p w m) where
   get   = AssemblerT . lift . lift . lift $ get
   put   = AssemblerT . lift . lift . lift . put
   state = AssemblerT . lift . lift . lift . state
@@ -301,7 +301,7 @@ execAssembler = runIdentity . execAssemblerT
 -- 'Assembler' computation is the only one that will be seen, and any 'asmError'
 -- will be seen instead of an 'asmDelayedError'.  Do not use with time-traveling
 -- information (such as the result of 'reserve').
-asmError :: (Monad m, Num p) => e -> AssemblerT e p w m a
+asmError :: Monad m => e -> AssemblerT e p w m a
 asmError = AssemblerT . throwError
 
 -- |Possibly register a delayed error.  If passed 'Nothing', no error is
@@ -310,20 +310,18 @@ asmError = AssemblerT . throwError
 -- @'Assembler' a@).  Only the first 'asmDelayedError' is stored; however, any
 -- 'asmError' (before or after) will supersede all 'asmDelayedError's.  This
 -- function is safe to use with time-traveling information (such as the result
--- of 'reserve'); note that it does not require @m@ to be a 'Monad'.
-asmDelayedError :: (Monad m, Num p) => Maybe e -> AssemblerT e p w m ()
+-- of 'reserve').
+asmDelayedError :: Monad m => Maybe e -> AssemblerT e p w m ()
 asmDelayedError merr = AssemblerT . lift . lift $ modify (<|> merr)
-  -- TODO Can I relax the necessity for this?  At the very least, scope it to
-  -- @program@s?
 
 -- |The current address in the instruction stream (i.e., the end of it).  Useful
 -- for jumps.
-here :: (Monad m, Num p) => AssemblerT e p w m p
+here :: Monad m => AssemblerT e p w m p
 here = AssemblerT $ lift get
 
 -- |The current address of the start of the reserved data segment.
 -- Time-traveling information from the future; be careful.
-reservedSegment :: (Monad m, Num p) => AssemblerT e p w m p
+reservedSegment :: Monad m => AssemblerT e p w m p
 reservedSegment = AssemblerT ask
 
 -- |Write a word to the instruction stream, incrementing the current
