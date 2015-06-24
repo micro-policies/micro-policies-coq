@@ -80,18 +80,19 @@ import Haskell.Assembler hiding
 import Haskell.OS
 import Haskell.CoqOS
 
+import Control.Applicative
 import Control.Monad
 
 listing :: State -> [MWord] -> IO ()
 listing = (print .) . inspectAddrs
 
-aroundPC :: State -> MWord -> IO ()
+aroundPC :: State -> Integer -> IO ()
 aroundPC = (print .) . inspectAroundPC
 
 regfile :: State -> IO ()
 regfile = print . inspectRegFile
 
-summarize :: State -> [MWord] -> MWord -> IO ()
+summarize :: State -> [MWord] -> Integer -> IO ()
 summarize s as r = do putStrLn "Instructions:"
                       aroundPC s r
                       putStrLn ""
@@ -102,7 +103,7 @@ summarize s as r = do putStrLn "Instructions:"
                         putStrLn "Data:"
                         listing s as
 
-runOS :: [MWord] -> MWord -> MWord -> IO ()
+runOS :: [MWord] -> Integer -> Integer -> IO ()
 runOS as r n = do let (i,s) = stepOS' n
                   putStrLn $ concat [ "Ran for ", show i, "/", show n
                                     , " step", if i == 1 then "" else "s" ]

@@ -64,20 +64,20 @@ inspectAddrs' ashow s addrs = map (hcat . map text)
 inspectAddrs :: State -> [MWord] -> Doc
 inspectAddrs = (vcat .) . inspectAddrs' show
 
-inspectAroundPC' :: (MWord -> String) -> State -> MWord -> [Doc]
+inspectAroundPC' :: (MWord -> String) -> State -> Integer -> [Doc]
 inspectAroundPC' ashow s r =
   let pcA     = fromIntegral . val $ pc s
-      maxAddr = if M.null (mem s) then 0 else fst . M.findMin $ mem s
-      addrs   = [max (pcA - r) 0 .. min (pcA + r) maxAddr]
+      maxAddr = fromIntegral $ if M.null (mem s) then 0 else fst . M.findMax $ mem s
+      addrs   = [mword $ max (pcA - r) 0 .. mword $ min (pcA + r) maxAddr]
   in inspectAddrs'
-       (\i -> (if i == pcA
+       (\i -> (if i == mword pcA
                  then "[pc] "
                  else "     ")
            ++ ashow i)
        s
-       (if null addrs then [pcA] else addrs)
+       (if null addrs then [mword pcA] else addrs)
 
-inspectAroundPC :: State -> MWord -> Doc
+inspectAroundPC :: State -> Integer -> Doc
 inspectAroundPC = (vcat .) . inspectAroundPC' show
 
 inspectRegs :: State -> [Reg] -> Doc
