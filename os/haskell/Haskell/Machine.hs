@@ -10,7 +10,7 @@ import Common hiding (unsafeCoerce)
 import Types  hiding (ra)
 import qualified Types
 
-import Haskell.TH
+import Haskell.RetypeData.TH
 import Haskell.Util
 import Haskell.Types
 import Haskell.Word
