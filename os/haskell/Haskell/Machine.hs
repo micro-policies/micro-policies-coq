@@ -1,5 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, TemplateHaskell, PatternSynonyms,
-             RecordWildCards, TupleSections #-}
+             RecordWildCards, TupleSections, BangPatterns #-}
 module Haskell.Machine (
   module Haskell.Machine,
   Coq_binop(..), Coq_where_from(..)
@@ -13,6 +13,8 @@ import Int_32 hiding (unsafeCoerce)
 import Common hiding (unsafeCoerce)
 import Types  hiding (ra)
 import qualified Types
+
+import Os (step_os)
 
 import Haskell.RetypeData.TH
 import Haskell.Types
@@ -171,3 +173,26 @@ initialState memData userRegs =
                                  , isolateTag           = syscallTag 0
                                  , addToJumpTargetsTag  = syscallTag 1
                                  , addToStoreTargetsTag = syscallTag 2 } }
+
+-- TODO I really ought to think about memoization for the step functions
+
+coqStep :: CoqState -> Maybe CoqState
+coqStep = step_os
+
+coqStepMany' :: Integral i => i -> CoqState -> (i, CoqState)
+coqStepMany' = go 0 where
+  go !k n s | n <= 0    = (k,s)
+            | otherwise = maybe (k,s) (go (k+1) (n-1)) $ coqStep s
+
+coqStepMany :: Integral i => i -> CoqState -> Maybe CoqState
+coqStepMany n s | n <= 0    = return s
+                | otherwise = coqStepMany (n-1) =<< coqStep s
+
+step :: State -> Maybe State
+step = fmap fromCoqState . coqStep . coqState
+
+stepMany' :: Integral i => i -> State -> (i, State)
+stepMany' i = fmap fromCoqState . coqStepMany' i . coqState
+
+stepMany :: Integral i => i -> State -> Maybe State
+stepMany i = fmap fromCoqState . coqStepMany i . coqState

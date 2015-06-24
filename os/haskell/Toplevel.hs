@@ -104,10 +104,10 @@ summarize s as r = do putStrLn "Instructions:"
                         listing s as
 
 runOS :: [MWord] -> Integer -> Integer -> IO ()
-runOS as r n = do let (i,s) = stepOS' n
+runOS as r n = do let (i,s) = stepCoqOS' n
                   putStrLn $ concat [ "Ran for ", show i, "/", show n
                                     , " step", if i == 1 then "" else "s" ]
                   putStrLn ""
-                  summarize (fromCoqState s) as r
+                  summarize s as r
 
 -- 135 is the shared address
