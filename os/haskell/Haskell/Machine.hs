@@ -161,13 +161,13 @@ instrAt :: State -> MWord -> Maybe Instr
 instrAt s n = decodeInstr . val =<< M.lookup n (mem s)
 
 initialState :: [MWord] -> [Reg] -> State
-initialState memData userRegs =
+initialState memData allRegs =
   let syscallCids    = S.fromList [0..2]
       userCid        = 3
       userTag        = DATA userCid syscallCids syscallCids
       syscallTag cid = DATA cid (S.singleton userCid) (S.singleton userCid)
   in State { mem      = M.fromAscList . zip [0..] $ map (:@ userTag) memData
-           , regs     = M.fromAscList $ map (,0:@REG) userRegs
+           , regs     = M.fromAscList $ map (,0:@REG) allRegs
            , pc       = 0 :@ PC INTERNAL userCid
            , internal = Internal { nextId               = userCid + 1
                                  , isolateTag           = syscallTag 0
