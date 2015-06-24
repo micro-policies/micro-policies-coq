@@ -59,12 +59,7 @@ retypeData ''Coq_instr "Instr"
            [(''Coq_binop, ''Binop), (''Coq_reg, ''Reg), (''Coq_imm, ''Imm)]
            id
            [''Eq, ''Ord, ''Show]
-
-coqInstr :: Instr -> Coq_instr
-coqInstr = unsafeCoerce
-
-unsafeFromCoqInstr :: Coq_instr -> Instr
-unsafeFromCoqInstr = unsafeCoerce
+           "coqInstr" "unsafeFromCoqInstr"
 
 type Internal = Symbolic0.Sym__Coq_compartmentalization_internal
 
@@ -78,14 +73,23 @@ retypeData ''Symbolic0.Sym__Coq_pc_tag "PCTag"
            [(''Coq_mword, ''CID)]
            (fromMaybe <*> stripPrefix "Sym__")
            [''Eq, ''Ord, ''Show]
+           "coqPCTag" "unsafeFromCoqPCTag"
 
 -- This should be `unsafeCoerce`ible with ()
 data RegTag = REG deriving (Eq, Ord, Bounded, Enum, Show, Read)
+
+coqRegTag :: RegTag -> ()
+coqRegTag = unsafeCoerce
+
+-- Not really unsafe...
+unsafeFromCoqRegTag :: () -> RegTag
+unsafeFromCoqRegTag = unsafeCoerce
 
 retypeData ''Symbolic0.Sym__Coq_data_tag "DataTag"
            [(''Coq_mword, ''CID), (''Finset.Coq_set_of, ''CIDSet)]
            (fromMaybe <*> stripPrefix "Sym__")
            [''Eq, ''Ord, ''Show]
+           "coqDataTag" "unsafeFromCoqDataTag"
 
 instance Monoid RegTag where
   mempty        = REG
@@ -99,7 +103,10 @@ ops :: Coq_machine_ops
 ops = concrete_int_32_ops
 
 sp :: Symbolic.Symbolic__Coq_params
-sp = Symbolic0._Sym__sym_compartmentalization Int_32.concrete_int_32_mt
+sp = Symbolic0._Sym__sym_compartmentalization mt
+
+ra :: Reg
+ra = Reg . unsafeFromCoqWord $ Types.ra mt ops
 
 mem :: State -> PartMap MWord (Atom MWord DataTag)
 mem = unsafeCoerce $ Symbolic._Symbolic__mem mt sp
@@ -118,9 +125,6 @@ encodeInstr = MWord . unsafeFromCoqWord . encode_instr mt ops . coqInstr
 
 decodeInstr :: MWord -> Maybe Instr
 decodeInstr = fmap unsafeFromCoqInstr . decode_instr mt ops . coqWord . mwordWord
-
-ra :: Reg
-ra = Reg . unsafeFromCoqWord $ Types.ra mt ops
 
 instrAt :: Integral i => State -> i -> Maybe Instr
 instrAt s n = decodeInstr . val . snd =<< (mem s ?? n)
