@@ -1,2 +1,3 @@
 :set -i../extracted
 :set -Wall -fno-warn-name-shadowing
+:seti -fno-warn-type-defaults
