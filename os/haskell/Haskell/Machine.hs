@@ -108,6 +108,7 @@ data State = State { mem      :: Map MWord (Atom MWord DataTag)
                    , regs     :: Map Reg   (Atom MWord RegTag)
                    , pc       :: Atom MWord PCTag
                    , internal :: Internal }
+           deriving (Eq, Ord, Show)
   -- We can safely use 'M.toAscList' and 'M.fromAscList' because Haskell's
   -- 'MWords' are ordered the same way as the underlying Coq words are in Coq.
 
