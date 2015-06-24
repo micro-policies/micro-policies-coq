@@ -2,8 +2,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Haskell.Pretty (module Haskell.Pretty, module PrettyExports) where
 
-import Types hiding (Coq_instr(..))
-
 import Haskell.Types
 import Haskell.Word
 import Haskell.Machine

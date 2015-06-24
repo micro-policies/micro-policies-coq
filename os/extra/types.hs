@@ -9,8 +9,9 @@ infix 9 :@
 instance Data.Bifunctor.Bifunctor Atom where
   bimap vf tf (v :@ t) = vf v :@ tf t
 
-deriving instance Prelude.Eq  Coq_binop
-deriving instance Prelude.Ord Coq_binop
+deriving instance Prelude.Eq   Coq_binop
+deriving instance Prelude.Ord  Coq_binop
+deriving instance Prelude.Enum Coq_binop
 
 deriving instance Prelude.Eq  Coq_opcode
 deriving instance Prelude.Ord Coq_opcode
