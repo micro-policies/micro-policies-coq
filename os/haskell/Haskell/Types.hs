@@ -1,22 +1,14 @@
-{-# LANGUAGE TypeSynonymInstances, PatternSynonyms #-}
-module Haskell.Types where
+module Haskell.Types (module Haskell.Types, Atom(..)) where
 
 import Types
-
-import Data.Bifunctor
 
 type PartMap  k v = [(k,v)]
 type PartMap'   v = PartMap () v
 
-type Atom = Coq_atom
-pattern v :@ t = Atom v t
-infix 9 :@
+-- These could also be lenses...
 
 val :: Atom v t -> v
 val = vala
 
 tag :: Atom v t -> t
 tag = taga
-
-instance Bifunctor Atom where
-  bimap vf tf (v :@ t) = vf v :@ tf t

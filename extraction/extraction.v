@@ -367,6 +367,11 @@ Extract Constant set_0Vmem => "\_ s -> if Data.Set.null s then Prelude.Left () e
 Extract Constant enum_set => "\_ ->
   (Finset.unsafeCoerce :: [GHC.Base.Any] -> [()]) Prelude.. Data.Set.toList".
 
+(* We extract `atom` specially just for a better name.  We could do this for
+   other types (e.g. `Coq_binop` -> `Binop`, but atoms get more use and really
+   benefit from the fancy constructor. *)
+Extract Inductive atom  => "Types.Atom" ["(Types.:@)"].
+
 (* `isolate_get_range' needs to be fixed up --
    `[set i : mword mt in some_predicate]` uses the `finfun' machinery!  So we
    just reimplement a mix of the extracted version (in the `let`), the Coq
@@ -572,7 +577,7 @@ Extract Constant atom_eqMixin => "\vEM tEM ->
   Eqtype.Equality__Mixin
     (atom_eqb  vEM tEM)
     (atom_eqbP vEM tEM)
-    (\(Atom v1 t1) (Atom v2 t2) ->
+    (\(v1 :@ t1) (v2 :@ t2) ->
         Eqtype.compare_op vEM v1 v2 Data.Monoid.<> Eqtype.compare_op tEM t1 t2)".
 
 Extract Constant symbolic.Exports.state_eqMixin => "\mt p ->
