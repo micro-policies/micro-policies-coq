@@ -87,13 +87,22 @@ ifz r ifZero ifNonzero = mdo {
   doneAddr <- hereImm;
   return () }
 
--- As with '_sharedAddrVal', these fields must be lazy (see below)
-data SyscallAddresses = SyscallAddresses { _isolateAddrVal           :: Imm
-                                         , _addToJumpTargetsAddrVal  :: Imm
-                                         , _addToStoreTargetsAddrVal :: Imm }
-                      deriving (Eq, Ord, Show)
-makeClassy           ''SyscallAddresses
-makeMonadicAccessors ''SyscallAddresses
+-- As with '_sharedAddrVal', these fields must be lazy (see below).  This is the
+-- 'Imm' counterpart to 'Haskell.Machine.SyscallAddresses' -- the words are
+-- smaller, so we couldn't fit the whole word "Address" :-)
+data SyscallAddrs = SyscallAddrs { _isolateAddrVal           :: Imm
+                                 , _addToJumpTargetsAddrVal  :: Imm
+                                 , _addToStoreTargetsAddrVal :: Imm }
+                  deriving (Eq, Ord, Show)
+makeClassy           ''SyscallAddrs
+makeMonadicAccessors ''SyscallAddrs
+
+toSyscallAddresses :: SyscallAddrs -> SyscallAddresses
+toSyscallAddresses addrs =
+  SyscallAddresses { isolateAddress           = asWord $ addrs^.isolateAddrVal
+                   , addToJumpTargetsAddress  = asWord $ addrs^.addToJumpTargetsAddrVal
+                   , addToStoreTargetsAddress = asWord $ addrs^.addToStoreTargetsAddrVal }
+  where asWord = mword . unsignedWord . immWord
 
 newtype OSParameters = OSParameters { _yieldAddrVal :: Imm }
                   deriving (Eq, Ord, Show)
@@ -297,13 +306,11 @@ scheduler proc1 proc2 = program $ do
 
 -- The information about the OS one might want for either debugging or running
 -- purposes
-data OSInfo = OSInfo { _osSharedAddr            :: !MWord
-                     , _osYieldAddr             :: !MWord
-                     , _osAdd1Addr              :: !MWord
-                     , _osMul2Addr              :: !MWord
-                     , _osIsolateAddr           :: !MWord
-                     , _osAddToJumpTargetsAddr  :: !MWord
-                     , _osAddToStoreTargetsAddr :: !MWord }
+data OSInfo = OSInfo { _osSharedAddress    :: !MWord
+                     , _osYieldAddress     :: !MWord
+                     , _osAdd1Address      :: !MWord
+                     , _osMul2Address      :: !MWord
+                     , _osSyscallAddresses :: !SyscallAddresses }
             deriving (Eq, Ord, Show)
 makeLenses ''OSInfo
 
@@ -335,19 +342,19 @@ wholeOS = program $ mdo
   
   -- The final result
   let asWord = mword . unsignedWord . immWord
-  return OSInfo{ _osSharedAddr            = asWord _sharedAddrVal
-               , _osYieldAddr             = asWord _yieldAddrVal
-               , _osAdd1Addr              = asWord add1Addr
-               , _osMul2Addr              = asWord mul2Addr
-               , _osIsolateAddr           = asWord _isolateAddrVal
-               , _osAddToJumpTargetsAddr  = asWord _addToJumpTargetsAddrVal
-               , _osAddToStoreTargetsAddr = asWord _addToStoreTargetsAddrVal }
+  return OSInfo{ _osSharedAddress            = asWord _sharedAddrVal
+               , _osYieldAddress             = asWord _yieldAddrVal
+               , _osAdd1Address              = asWord add1Addr
+               , _osMul2Address              = asWord mul2Addr
+               , _osSyscallAddresses         = toSyscallAddresses
+                                                 SyscallAddrs{..} }
 
-osInfo :: OSInfo
-os     :: State
-(osInfo, os) = case runAssembler wholeOS of
+osInfo     :: OSInfo
+osSyscalls :: SyscallAddresses
+os         :: State
+(osInfo, osSyscalls, os) = case runAssembler wholeOS of
   Right (osInfo, osMem) ->
-    (osInfo, initialState osMem [r0..userRegMax])
+    (osInfo, osInfo^.osSyscallAddresses, initialState osMem [r0..userRegMax])
   Left err ->
     error $ "Could not build OS: " ++ err
 
@@ -355,7 +362,7 @@ os0 :: State
 os0 = os
 
 stepOS' :: Integral i => i -> (i, State)
-stepOS' = flip stepMany' os0
+stepOS' = flip (stepMany' osSyscalls) os0
 
 stepOS :: Integral i => i -> Maybe State
-stepOS = flip stepMany os0
+stepOS = flip (stepMany osSyscalls) os0

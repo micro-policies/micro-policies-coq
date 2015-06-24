@@ -14,7 +14,7 @@ import Common hiding (unsafeCoerce)
 import Types  hiding (ra)
 import qualified Types
 
-import Os (step_os)
+import Os (step_compartmentalized)
 
 import Haskell.RetypeData.TH
 import Haskell.Types
@@ -105,6 +105,13 @@ retypeData ''Symbolic0.Sym__Coq_compartmentalization_internal "Internal"
            [''Eq, ''Ord, ''Show]
            "coqInternal" "unsafeFromCoqInternal"
 
+retypeData ''Coq_compartmentalization_syscall_addrs "SyscallAddresses"
+           (Just ["isolateAddress", "addToJumpTargetsAddress", "addToStoreTargetsAddress"])
+           [(''Coq_mword, ''MWord)]
+           (const "SyscallAddresses")
+           [''Eq, ''Ord, ''Show]
+           "coqSyscallAddresses" "unsafeFromCoqSyscallAddresses"
+
 mt :: Coq_machine_types
 mt = concrete_int_32_mt
 
@@ -176,24 +183,23 @@ initialState memData allRegs =
 
 -- TODO I really ought to think about memoization for the step functions
 
-coqStep :: CoqState -> Maybe CoqState
-coqStep = step_os
-  -- FIXME this is WRONG, it needs to deal with the syscall addresses
+coqStep :: SyscallAddresses -> CoqState -> Maybe CoqState
+coqStep = step_compartmentalized . coqSyscallAddresses
 
-coqStepMany' :: Integral i => i -> CoqState -> (i, CoqState)
-coqStepMany' = go 0 where
+coqStepMany' :: Integral i => SyscallAddresses -> i -> CoqState -> (i, CoqState)
+coqStepMany' addrs = go 0 where
   go !k n s | n <= 0    = (k,s)
-            | otherwise = maybe (k,s) (go (k+1) (n-1)) $ coqStep s
+            | otherwise = maybe (k,s) (go (k+1) (n-1)) $ coqStep addrs s
 
-coqStepMany :: Integral i => i -> CoqState -> Maybe CoqState
-coqStepMany n s | n <= 0    = return s
-                | otherwise = coqStepMany (n-1) =<< coqStep s
+coqStepMany :: Integral i => SyscallAddresses -> i -> CoqState -> Maybe CoqState
+coqStepMany addrs n s | n <= 0    = return s
+                      | otherwise = coqStepMany addrs (n-1) =<< coqStep addrs s
 
-step :: State -> Maybe State
-step = fmap fromCoqState . coqStep . coqState
+step :: SyscallAddresses -> State -> Maybe State
+step addrs = fmap fromCoqState . coqStep addrs . coqState
 
-stepMany' :: Integral i => i -> State -> (i, State)
-stepMany' i = fmap fromCoqState . coqStepMany' i . coqState
+stepMany' :: Integral i => SyscallAddresses -> i -> State -> (i, State)
+stepMany' addrs i = fmap fromCoqState . coqStepMany' addrs i . coqState
 
-stepMany :: Integral i => i -> State -> Maybe State
-stepMany i = fmap fromCoqState . coqStepMany i . coqState
+stepMany :: Integral i => SyscallAddresses -> i -> State -> Maybe State
+stepMany addrs i = fmap fromCoqState . coqStepMany addrs i . coqState

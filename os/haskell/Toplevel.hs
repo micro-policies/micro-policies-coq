@@ -103,18 +103,19 @@ summarize s as r = do putStrLn "Instructions:"
                         putStrLn "Data:"
                         listing s as
 
-runState :: State -> [MWord] -> Integer -> Integer -> IO ()
-runState s0 as r n = do let (i,s) = stepMany' n s0
-                        putStrLn $ concat [ "Ran for ", show i, "/", show n
-                                          , " step", if i == 1 then "" else "s" ]
-                        putStrLn ""
-                        summarize s as r
+runState :: SyscallAddresses -> State -> [MWord] -> Integer -> Integer -> IO ()
+runState addrs s0 as r n = do
+  let (i,s) = stepMany' addrs n s0
+  putStrLn $ concat [ "Ran for ", show i, "/", show n
+                    , " step", if i == 1 then "" else "s" ]
+  putStrLn ""
+  summarize s as r
 
 runOS'' :: [MWord] -> Integer -> Integer -> IO ()
-runOS'' = runState os0
+runOS'' = runState osSyscalls os0
 
 runOS' :: Integer -> Integer -> IO ()
-runOS' = runOS'' [osInfo^.osSharedAddr]
+runOS' = runOS'' [osInfo^.osSharedAddress]
 
 runOS :: Integer -> IO ()
 runOS = runOS' 3
