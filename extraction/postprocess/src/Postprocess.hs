@@ -29,7 +29,7 @@ import Postprocess.Clean
 fixExtractedCode :: Maybe Text -> [Text] -> Processor
 fixExtractedCode thisModule extraBody doc =
   let (pre, imps, body)  = collectPreambleImportsBody extraBody . changeReservedWords $ deCPP doc
-      (pre',constraints) = partitionConstraints $ fixOptions pre
+      (pre',constraints) = partitionConstraints $ "{-# OPTIONS_GHC -w #-}" : fixOptions pre
       body'              = addConstraints constraints body
       neededImps         = maybe id S.delete thisModule $ getReferencedModules body' S.\\ getImportedModules imps
       imps'              = imps ++?? map ("import qualified " <>) (S.toList neededImps)
