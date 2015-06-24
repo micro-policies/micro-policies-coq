@@ -178,6 +178,7 @@ initialState memData userRegs =
 
 coqStep :: CoqState -> Maybe CoqState
 coqStep = step_os
+  -- FIXME this is WRONG, it needs to deal with the syscall addresses
 
 coqStepMany' :: Integral i => i -> CoqState -> (i, CoqState)
 coqStepMany' = go 0 where
