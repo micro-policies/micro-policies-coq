@@ -6,10 +6,8 @@ import Language.Haskell.TH.Syntax
 
 import Data.Data
 import Data.Maybe
-import Data.Char
 
 import Control.Applicative
-import Control.Lens
 
 import Unsafe.Coerce
 

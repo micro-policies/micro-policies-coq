@@ -1,5 +1,9 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TemplateHaskell, PatternSynonyms #-}
-module Haskell.Machine (module Haskell.Machine, Coq_binop(..)) where
+{-# LANGUAGE GeneralizedNewtypeDeriving, TemplateHaskell, PatternSynonyms,
+             RecordWildCards, TupleSections #-}
+module Haskell.Machine (
+  module Haskell.Machine,
+  Coq_binop(..), Coq_where_from(..)
+  ) where
 
 import qualified Finset
 import qualified Symbolic
@@ -11,7 +15,6 @@ import Types  hiding (ra)
 import qualified Types
 
 import Haskell.RetypeData.TH
-import Haskell.Util
 import Haskell.Types
 import Haskell.Word
 
@@ -20,9 +23,10 @@ import Control.Applicative
 import Data.Monoid
 import Data.Maybe
 import Data.List
-import Data.Coerce
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Map (Map)
+import qualified Data.Map as M
 
 type MWord' = Word $(litT . numTyLit $ word_size      concrete_int_32_mt)
 type Reg'   = Word $(litT . numTyLit $ reg_field_size concrete_int_32_mt)
@@ -55,28 +59,30 @@ imm = fromInteger
 
 type Binop = Coq_binop
 
-retypeData ''Coq_instr "Instr"
+retypeData ''Coq_instr "Instr" Nothing
            [(''Coq_binop, ''Binop), (''Coq_reg, ''Reg), (''Coq_imm, ''Imm)]
            id
            [''Eq, ''Ord, ''Show]
            "coqInstr" "unsafeFromCoqInstr"
 
-type Internal = Symbolic0.Sym__Coq_compartmentalization_internal
-
-type State = Symbolic.Symbolic__Coq_state
-
 type WhereFrom = Coq_where_from
 type CID       = MWord
 type CIDSet    = Set CID
 
-retypeData ''Symbolic0.Sym__Coq_pc_tag "PCTag"
-           [(''Coq_mword, ''CID)]
+retypeData ''Symbolic0.Sym__Coq_pc_tag "PCTag" Nothing
+           [(''Coq_mword, ''CID), (''Coq_where_from, ''WhereFrom)]
            (fromMaybe <*> stripPrefix "Sym__")
            [''Eq, ''Ord, ''Show]
            "coqPCTag" "unsafeFromCoqPCTag"
 
 -- This should be `unsafeCoerce`ible with ()
 data RegTag = REG deriving (Eq, Ord, Bounded, Enum, Show, Read)
+
+retypeData ''Symbolic0.Sym__Coq_data_tag "DataTag" Nothing
+           [(''Coq_mword, ''CID), (''Finset.Coq_set_of, ''CIDSet)]
+           (fromMaybe <*> stripPrefix "Sym__")
+           [''Eq, ''Ord, ''Show]
+           "coqDataTag" "unsafeFromCoqDataTag"
 
 coqRegTag :: RegTag -> ()
 coqRegTag = unsafeCoerce
@@ -85,16 +91,50 @@ coqRegTag = unsafeCoerce
 unsafeFromCoqRegTag :: () -> RegTag
 unsafeFromCoqRegTag = unsafeCoerce
 
-retypeData ''Symbolic0.Sym__Coq_data_tag "DataTag"
-           [(''Coq_mword, ''CID), (''Finset.Coq_set_of, ''CIDSet)]
-           (fromMaybe <*> stripPrefix "Sym__")
-           [''Eq, ''Ord, ''Show]
-           "coqDataTag" "unsafeFromCoqDataTag"
-
 instance Monoid RegTag where
   mempty        = REG
   _ `mappend` _ = REG
   mconcat _     = REG
+
+retypeData ''Symbolic0.Sym__Coq_compartmentalization_internal "Internal"
+           (Just ["nextId", "isolateTag", "addToJumpTargetsTag", "addToStoreTargetsTag"])
+           [(''Coq_mword, ''MWord), (''Symbolic0.Sym__Coq_data_tag, ''DataTag)]
+           (fromMaybe <*> stripPrefix "Sym__")
+           [''Eq, ''Ord, ''Show]
+           "coqInternal" "unsafeFromCoqInternal"
+
+type CoqState = Symbolic.Symbolic__Coq_state
+data State = State { mem      :: Map MWord (Atom MWord DataTag)
+                   , regs     :: Map Reg   (Atom MWord RegTag)
+                   , pc       :: Atom MWord PCTag
+                   , internal :: Internal }
+  -- We can safely use 'M.toAscList' and 'M.fromAscList' because Haskell's
+  -- 'MWords' are ordered the same way as the underlying Coq words are in Coq.
+
+coqState :: State -> CoqState
+coqState State{..} = Symbolic.Symbolic__State (unsafeCoerce $ M.toAscList mem)
+                                              (unsafeCoerce $ M.toAscList regs)
+                                              (unsafeCoerce pc)
+                                              (unsafeCoerce internal)
+
+fromCoqState :: CoqState -> State
+fromCoqState (Symbolic.Symbolic__State mem regs pc internal) =
+  State { mem      = M.fromAscList $ unsafeCoerce mem
+        , regs     = M.fromAscList $ unsafeCoerce regs
+        , pc       = unsafeCoerce pc
+        , internal = unsafeCoerce internal }
+
+coqStateMem :: CoqState -> PartMap MWord (Atom MWord DataTag)
+coqStateMem = unsafeCoerce $ Symbolic._Symbolic__mem mt sp
+
+coqStateRegs :: CoqState -> PartMap Reg (Atom MWord RegTag)
+coqStateRegs = unsafeCoerce $ Symbolic._Symbolic__regs mt sp
+
+coqStatePC :: CoqState -> Atom MWord PCTag
+coqStatePC = unsafeCoerce $ Symbolic._Symbolic__pc mt sp
+
+coqStateInternal :: CoqState -> Internal
+coqStateInternal = unsafeCoerce $ Symbolic._Symbolic__internal mt sp
 
 mt :: Coq_machine_types
 mt = concrete_int_32_mt
@@ -108,23 +148,25 @@ sp = Symbolic0._Sym__sym_compartmentalization mt
 ra :: Reg
 ra = Reg . unsafeFromCoqWord $ Types.ra mt ops
 
-mem :: State -> PartMap MWord (Atom MWord DataTag)
-mem = unsafeCoerce $ Symbolic._Symbolic__mem mt sp
-
-regs :: State -> PartMap Reg (Atom MWord RegTag)
-regs = unsafeCoerce $ Symbolic._Symbolic__regs mt sp
-
-pc :: State -> Atom MWord PCTag
-pc = unsafeCoerce $ Symbolic._Symbolic__pc mt sp
-
-internal :: State -> Internal
-internal = unsafeCoerce $ Symbolic._Symbolic__internal mt sp
-
 encodeInstr :: Instr -> MWord
 encodeInstr = MWord . unsafeFromCoqWord . encode_instr mt ops . coqInstr
 
 decodeInstr :: MWord -> Maybe Instr
 decodeInstr = fmap unsafeFromCoqInstr . decode_instr mt ops . coqWord . mwordWord
 
-instrAt :: Integral i => State -> i -> Maybe Instr
-instrAt s n = decodeInstr . val . snd =<< (mem s ?? n)
+instrAt :: State -> MWord -> Maybe Instr
+instrAt s n = decodeInstr . val =<< M.lookup n (mem s)
+
+initialState :: [MWord] -> [Reg] -> State
+initialState memData userRegs =
+  let syscallCids    = S.fromList [0..2]
+      userCid        = 3
+      userTag        = DATA userCid syscallCids syscallCids
+      syscallTag cid = DATA cid (S.singleton userCid) (S.singleton userCid)
+  in State { mem      = M.fromAscList . zip [0..] $ map (:@ userTag) memData
+           , regs     = M.fromAscList $ map (,0:@REG) userRegs
+           , pc       = 0 :@ PC INTERNAL userCid
+           , internal = Internal { nextId               = userCid + 1
+                                 , isolateTag           = syscallTag 0
+                                 , addToJumpTargetsTag  = syscallTag 1
+                                 , addToStoreTargetsTag = syscallTag 2 } }

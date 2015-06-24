@@ -10,6 +10,9 @@ import Haskell.Word
 import Haskell.Machine
 import Haskell.Pretty
 
+import Data.Map (Map)
+import qualified Data.Map as M
+
 import qualified Os
 
 inspectWord :: MWord -> Doc
@@ -29,11 +32,11 @@ inspectAtom (w :@ t) = inspectWord w <&> taggedOp <&> t
 inspectMaybe :: Pretty t => Maybe (Atom MWord t) -> Doc
 inspectMaybe = maybe "<missing>" inspectAtom
 
-inspectPieceAtIndex :: (Pretty t, Integral i)
-                    => (s -> PartMap k (Atom MWord t)) -> s -> i -> Doc
-inspectPieceAtIndex f s i = inspectMaybe . fmap snd $ f s ?? i
+inspectPieceAtIndex :: (Pretty t, Ord k)
+                    => (s -> Map k (Atom MWord t)) -> s -> k -> Doc
+inspectPieceAtIndex f s i = inspectMaybe $ M.lookup i (f s)
 
-inspectAddr :: Integral i => State -> i -> Doc
+inspectAddr :: State -> MWord -> Doc
 inspectAddr = inspectPieceAtIndex mem
 
 -- No, these next two should use `pPrint' for atoms instead of
@@ -41,31 +44,32 @@ inspectAddr = inspectPieceAtIndex mem
 -- cleverer about when to space out the tag... and then there's columning to
 -- handle....
 
-inspectPC :: Integral i => State -> Doc
+inspectPC :: State -> Doc
 inspectPC = inspectAtom . pc
 
-inspectReg :: Integral i => State -> i -> Doc
+inspectReg :: State -> Reg -> Doc
 inspectReg = inspectPieceAtIndex regs
 
-inspectAddrs' :: Integral i => (i -> String) -> State -> [i] -> [Doc]
+inspectAddrs' :: (MWord -> String) -> State -> [MWord] -> [Doc]
 inspectAddrs' ashow s addrs = map (hcat . map text)
                             $ transpose [ padToMatch AlignRight ' ' addrColumn
                                         , padToMatch AlignLeft  ' ' valueColumn
                                         , tagColumn ]
   where
     atomColumn missing ppp get =
-      map (\i -> show . maybe missing ppp . fmap (get . snd) $ mem s ?? i) addrs
+      map (\i -> show . maybe missing ppp . fmap get $ M.lookup i (mem s)) addrs
     addrColumn  = map ((++ ": ") . ashow) addrs
     valueColumn = atomColumn "<missing>" inspectInstr          val
     tagColumn   = atomColumn empty       ((" @" <+>) . pPrint) tag
 
-inspectAddrs :: (Integral i, Show i) => State -> [i] -> Doc
+inspectAddrs :: State -> [MWord] -> Doc
 inspectAddrs = (vcat .) . inspectAddrs' show
 
-inspectAroundPC' :: (Integral i, Show i) => (i -> String) -> State -> i -> [Doc]
+inspectAroundPC' :: (MWord -> String) -> State -> MWord -> [Doc]
 inspectAroundPC' ashow s r =
-  let pcA   = fromIntegral . val $ pc s
-      addrs = [max (pcA - r) 0 .. min (pcA + r) (genericLength $ mem s)]
+  let pcA     = fromIntegral . val $ pc s
+      maxAddr = if M.null (mem s) then 0 else fst . M.findMin $ mem s
+      addrs   = [max (pcA - r) 0 .. min (pcA + r) maxAddr]
   in inspectAddrs'
        (\i -> (if i == pcA
                  then "[pc] "
@@ -74,7 +78,7 @@ inspectAroundPC' ashow s r =
        s
        (if null addrs then [pcA] else addrs)
 
-inspectAroundPC :: (Integral i, Show i) => State -> i -> Doc
+inspectAroundPC :: State -> MWord -> Doc
 inspectAroundPC = (vcat .) . inspectAroundPC' show
 
 inspectRegs :: State -> [Reg] -> Doc
@@ -84,8 +88,8 @@ inspectRegs s rs = vcat . map (hcat . map text)
   where
     valueColumn =
       map (\i -> show . maybe " <missing>" ((" ->" <+>) . pPrint)
-                      . fmap (val . snd)
-                      $ regs s ?? i)
+                      . fmap val
+                      $ M.lookup i (regs s))
           rs
 
 inspectRegFile :: State -> Doc

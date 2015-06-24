@@ -77,16 +77,16 @@ import Haskell.CoqOS
 
 import Control.Monad
 
-listing :: State -> [Integer] -> IO ()
+listing :: State -> [MWord] -> IO ()
 listing = (print .) . inspectAddrs
 
-aroundPC :: State -> Integer -> IO ()
+aroundPC :: State -> MWord -> IO ()
 aroundPC = (print .) . inspectAroundPC
 
 regfile :: State -> IO ()
 regfile = print . inspectRegFile
 
-summarize :: State -> [Integer] -> Integer -> IO ()
+summarize :: State -> [MWord] -> MWord -> IO ()
 summarize s as r = do putStrLn "Instructions:"
                       aroundPC s r
                       putStrLn ""
@@ -97,11 +97,11 @@ summarize s as r = do putStrLn "Instructions:"
                         putStrLn "Data:"
                         listing s as
 
-runOS :: [Integer] -> Integer -> Integer -> IO ()
+runOS :: [MWord] -> MWord -> MWord -> IO ()
 runOS as r n = do let (i,s) = stepOS' n
                   putStrLn $ concat [ "Ran for ", show i, "/", show n
                                     , " step", if i == 1 then "" else "s" ]
                   putStrLn ""
-                  summarize s as r
+                  summarize (fromCoqState s) as r
 
 -- 135 is the shared address
