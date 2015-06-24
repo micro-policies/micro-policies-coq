@@ -105,6 +105,18 @@ retypeData ''Symbolic0.Sym__Coq_compartmentalization_internal "Internal"
            [''Eq, ''Ord, ''Show]
            "coqInternal" "unsafeFromCoqInternal"
 
+mt :: Coq_machine_types
+mt = concrete_int_32_mt
+
+ops :: Coq_machine_ops
+ops = concrete_int_32_ops
+
+sp :: Symbolic.Symbolic__Coq_params
+sp = Symbolic0._Sym__sym_compartmentalization mt
+
+ra :: Reg
+ra = Reg . unsafeFromCoqWord $ Types.ra mt ops
+
 type CoqState = Symbolic.Symbolic__Coq_state
 data State = State { mem      :: Map MWord (Atom MWord DataTag)
                    , regs     :: Map Reg   (Atom MWord RegTag)
@@ -138,18 +150,6 @@ coqStatePC = unsafeCoerce $ Symbolic._Symbolic__pc mt sp
 
 coqStateInternal :: CoqState -> Internal
 coqStateInternal = unsafeCoerce $ Symbolic._Symbolic__internal mt sp
-
-mt :: Coq_machine_types
-mt = concrete_int_32_mt
-
-ops :: Coq_machine_ops
-ops = concrete_int_32_ops
-
-sp :: Symbolic.Symbolic__Coq_params
-sp = Symbolic0._Sym__sym_compartmentalization mt
-
-ra :: Reg
-ra = Reg . unsafeFromCoqWord $ Types.ra mt ops
 
 encodeInstr :: Instr -> MWord
 encodeInstr = MWord . unsafeFromCoqWord . encode_instr mt ops . coqInstr
