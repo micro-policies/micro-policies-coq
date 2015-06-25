@@ -5,11 +5,9 @@ module Haskell.OS where
 
 import Control.Applicative
 import Control.Monad.Reader
-import Control.Monad.Writer
 import Control.Lens
 
 import Data.List
-import qualified Data.Foldable as F
 
 import Haskell.Word
 import Haskell.Machine
@@ -400,11 +398,11 @@ collapse (x:xs) = go x x xs where
                 | otherwise   = (l,h) : go x x xs
     -- It's safe to use 'succ' here, because @x > h@.
 
-storeRanges :: [eff|(MonadWriter (Sum Imm) prog, KernelProgram env prog)
-            => !Reg -> [(Imm,Imm)] -> prog ()|]
+-- Store the list of ranges to the location stored in @reg@; returns the amount
+-- of space used/needed
+storeRanges :: [eff|KernelProgram env prog => !Reg -> [(Imm,Imm)] -> prog Imm|]
 storeRanges reg ranges = do
   let count = genericLength ranges
-  tell $ Sum (1 + 2*count) -- We need this much space
   
   const_ count ktempR
   store  reg ktempR
@@ -422,49 +420,37 @@ storeRanges reg ranges = do
     binop ADD reg oneR reg
     const_    high ktempR
     store     reg ktempR
-
-syscall :: [eff|KernelProgram env prog
-        => !Imm
-        -> !Reg -> !Imm
-        -> Maybe [(Imm,Imm)] -> Maybe [(Imm,Imm)] -> Maybe [(Imm,Imm)]
-        -> prog Imm|]
-syscall addr regE argsAddrE arg1 arg2 arg3 = do
-  -- We use these arguments inside and outside the 'WriterT'
-  (reg      :: Reg) <- effectful regE
-  (argsAddr :: Imm) <- effectful argsAddrE
   
-  let setArg argR arg = do
-        mov reg argR
-        storeRanges reg arg
-  
-  Sum needed <- execWriterT $ do
-    F.mapM_ ((const_ argsAddr reg    *>) . setArg syscallArg1) arg1
-    F.mapM_ ((binop ADD reg oneR reg *>) . setArg syscallArg2) arg2
-    F.mapM_ ((binop ADD reg oneR reg *>) . setArg syscallArg3) arg3
-  const_ addr serviceR
-  jal serviceR
-  pure needed
+  pure $ 1 + 2*count
 
 isolate :: [eff|KernelProgram env prog
         => [(Imm,Imm)] -> [(Imm,Imm)] -> [(Imm,Imm)]
         -> !Reg -> !Imm
         -> prog Imm|]
-isolate addrs jumpTargets storeTargets reg argsAddr =
-  syscall isolateAddr reg argsAddr (Just addrs) (Just jumpTargets) (Just storeTargets)
+isolate addrs jumpTargets storeTargets reg argsAddr = do
+  let setArg argR arg = do
+        mov reg argR
+        storeRanges reg arg
+  
+  needed <- sum <$> sequence
+    [ const_ argsAddr reg    *> setArg syscallArg1 addrs
+    , binop ADD reg oneR reg *> setArg syscallArg2 jumpTargets
+    , binop ADD reg oneR reg *> setArg syscallArg3 storeTargets ]
+  const_ isolateAddr serviceR
+  jal serviceR
+  pure needed
 
-addToJumpTargets :: [eff|KernelProgram env prog
-                 => [(Imm,Imm)]
-                 -> !Reg -> !Imm
-                 -> prog Imm|]
-addToJumpTargets jumpTargets reg argsAddr =
-  syscall addToJumpTargetsAddr reg argsAddr (Just jumpTargets) Nothing Nothing
+addToJumpTargets :: [eff|KernelProgram env prog => !Imm -> prog ()|]
+addToJumpTargets jumpTarget = do
+  const_ jumpTarget           syscallArg1
+  const_ addToJumpTargetsAddr serviceR
+  jal    serviceR
 
-addToStoreTargets :: [eff|KernelProgram env prog
-                  => [(Imm,Imm)]
-                  -> !Reg -> !Imm
-                  -> prog Imm|]
-addToStoreTargets storeTargets reg argsAddr =
-  syscall addToStoreTargetsAddr reg argsAddr (Just storeTargets) Nothing Nothing
+addToStoreTargets :: [eff|KernelProgram env prog => !Imm -> prog ()|]
+addToStoreTargets storeTarget = do
+  const_ storeTarget           syscallArg1
+  const_ addToStoreTargetsAddr serviceR
+  jal    serviceR
 
 kernel :: MonadSymAssembler m
        => SyscallAddrs
@@ -480,6 +466,10 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
       _kernelKernelRegisters = KernelRegisters{..}
   
   flip runReaderT KernelParameters{..} $ mdo
+    -- Set up registers
+    const_ i1 oneR
+    
+    -- Set up the compartments!
     let applyAllTo x = ($ x) . sequence
         runSyscalls  = sequence . applyAllTo argSpace . applyAllTo (freeRegK 0)
         start        = join (,) . fst
@@ -487,14 +477,10 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
           -- This wants to be @collapse . sort@, but alas, it can't -- that
           -- performs the dreaded computation on values from the future.
           -- Luckily, these doesn't cost us very much.
-
-    -- Set up registers
-    const_ i1 oneR
     
-    -- Set up the compartments!
+    addToJumpTargets (fst schedulerInitCompartment)
     argSpace <- reserveImm . widenImm . maximum =<< runSyscalls
-      [ addToJumpTargets [start schedulerInitCompartment]
-      , isolate          [schedulerInitCompartment]
+      [ isolate          [schedulerInitCompartment]
                          [start userAdd1Compartment]
                          (singleAddrs [schedulerPIDAddr, schedulerProc1Addr, schedulerProc2Addr])
       , isolate          [schedulerYieldCompartment]
