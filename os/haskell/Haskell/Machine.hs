@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, TemplateHaskell, PatternSynonyms,
+{-# LANGUAGE GeneralizedNewtypeDeriving, TemplateHaskell, ViewPatterns,
              RecordWildCards, TupleSections, BangPatterns #-}
 module Haskell.Machine (
   module Haskell.Machine,
@@ -10,6 +10,7 @@ import qualified Symbolic
 import qualified Symbolic0
 
 import Int_32 hiding (unsafeCoerce)
+import Int_0  hiding (unsafeCoerce)
 import Common hiding (unsafeCoerce)
 import Types  hiding (ra)
 import qualified Types
@@ -127,8 +128,18 @@ mt = concrete_int_32_mt
 ops :: Coq_machine_ops
 ops = concrete_int_32_ops
 
+scr :: Coq_syscall_regs
+scr = concrete_int_32_scr
+
 sp :: Symbolic.Symbolic__Coq_params
 sp = Symbolic0._Sym__sym_compartmentalization mt
+
+syscallRet, syscallArg1, syscallArg2, syscallArg3 :: Reg
+Build_syscall_regs (Reg . unsafeFromCoqWord -> syscallRet)
+                   (Reg . unsafeFromCoqWord -> syscallArg1)
+                   (Reg . unsafeFromCoqWord -> syscallArg2)
+                   (Reg . unsafeFromCoqWord -> syscallArg3)
+  = scr
 
 ra :: Reg
 ra = Reg . unsafeFromCoqWord $ Types.ra mt ops
