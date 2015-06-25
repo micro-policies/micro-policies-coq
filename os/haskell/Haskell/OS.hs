@@ -1,6 +1,7 @@
 {-# LANGUAGE RecursiveDo, FlexibleContexts, ConstraintKinds, RankNTypes,
              ViewPatterns, RecordWildCards, ScopedTypeVariables,
              QuasiQuotes, TemplateHaskell #-}
+{-# OPTIONS_GHC -funbox-strict-fields #-}
 module Haskell.OS where
 
 import Control.Applicative
@@ -122,6 +123,74 @@ regAfter who base i = do
     else asmError $ who ++ ": Register %r" ++ show r' ++ " out of range"
 
 --------------------------------------------------------------------------------
+-- SOME NOTES ON LAZINESS
+--------------------------------------------------------------------------------
+
+-- [Note Knot-tying and strict fields]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--
+-- We pass a lot of information around backwards via laziness.  This is great:
+-- it allows us to generate assembly, reserve some data space based on the
+-- (Haskell-level) result, and then refer to the address of that reserved data
+-- inside the assembly that generated it.  Or it allows us to work with code
+-- that knows where it is itself located, or where other code is located, even
+-- when those pieces of code haven't been glued together yet.
+--
+-- However, there is a price.  We must be very, very careful about strictness,
+-- on pain of infinite loops.  Sometimes GHC can tell us that we have a
+-- @<<loop>>@, but sometimes it can't.  The cardinal rule is simple:
+--
+-- /A field that might come from the future /must/ be lazy./
+--
+-- That's it!  Note that this rule doesn't necessarily apply recursively: if a
+-- type @T@ contains a time-traveling field, but @T@ is not time-traveling, any
+-- type @S@ that contains a @T@ may make that @T@ strict.  How could a piece be
+-- lazy but not the whole?  Simple: if the record is constructed /before/ being
+-- used, then it's fine to make it strict.  If it's constructed /after/ being
+-- used, and passed back whole-hog, then it must be lazy.  This is exactly the
+-- same thing talked about in [Note Laziness vs. eta].  As a rule of thumb, if
+-- your type contains /only/ time-traveling fields, then it will likely be
+-- time-traveling itself, and so must be lazy; if it contains a mix, then it
+-- can't possibly be time-traveling, and so may be strict.
+--
+-- Now, there are some cases where adding more strictness even to time-traveling
+-- fields may seem to work.  This is because strictness is relative to the
+-- containing value – /if/ that value is forced, then so is the field.  However,
+-- if we don't explicitly pattern-match on the record, and instead use
+-- projection functions, then this forcing won't happen.  How nice!… but this is
+-- very fragile, and should be avoided.  (See also [Note Laziness vs. eta] for
+-- more on this.)
+--
+-- As a rule of thumb: @FooParameters@ must contain lazy @Imm@s, but can contain
+-- strict @Reg@s; @FooInfo@ should contain only strict fields.
+
+-- [Note Laziness vs. eta]
+-- ~~~~~~~~~~~~~~~~~~~~~~~
+--
+-- We often work with collections of values from the future, either records or
+-- tuples.  As a running example, to represent compartments, we pass around
+-- pairs of @Imm@s from the future.  Sometimes, we'd like to know something
+-- about the components of that pair.  /Be careful!/ You cannot compute on
+-- values from the future, and /pattern matching is computation/.  When working
+-- with plain old values, we can pass them around fine; when working with pairs,
+-- even though matching on @(x,y)@ seems harmless, it will force the value from
+-- the future prematurely.
+--
+-- The simplest solution is to use /lazy/ or /irrefutable/ pattern matches on
+-- tuples from the future: match on @~(x,y)@.  @Using @fst@ and @snd@ should
+-- also work, as they won't be demanded; and using the whole tuple @p@ is
+-- of course OK.
+--
+-- It's importnat to note, also, that passing @(fst p, snd p)@ back in time
+-- instead of @p@ and pattern-matching on it /will work fine/.  This is because
+-- the /shape/ of the tuple is not traveling from the future, only its contents.
+-- Yes, Haskell lacks category-theoretic products, and η-equivalence for
+-- (lifted) products would be unsound.
+--
+-- Again, this also applies for records from the future; they too must be
+-- matched lazily.
+
+--------------------------------------------------------------------------------
 -- USER-LEVEL PROCESSES
 --------------------------------------------------------------------------------
 
@@ -135,16 +204,13 @@ makeLensesWith (classyRules & lensClass %~ \orig name ->
                ''OSParameters
 makeMonadicAccessors ''OSParameters
 
--- NOTE: '_sharedAddrVal' /cannot/ be strict!  Otherwise, the knot-tying we do
--- later triggers an infinite loop immediately.
---
--- Also, do the registers *really* need to live here?  Could they be global
--- values?
+
+-- @_sharedAddrVal@ must be lazy; see [Note Knot-tying and strict fields].
 data ProcessParameters = ProcessParameters { _sharedAddrVal :: Imm
-                                           , _yieldRVal     :: {-!-}Reg
-                                           , _sharedPtrRVal :: {-!-}Reg
-                                           , _loopbackRVal  :: {-!-}Reg
-                                           , _tempRVal      :: {-!-}Reg }
+                                           , _yieldRVal     :: !Reg
+                                           , _sharedPtrRVal :: !Reg
+                                           , _loopbackRVal  :: !Reg
+                                           , _tempRVal      :: !Reg }
                        deriving (Eq, Ord, Show)
 makeClassy           ''ProcessParameters
 makeMonadicAccessors ''ProcessParameters
@@ -155,8 +221,8 @@ type UserProgram env prog = ( MonadSymAssembler prog
                             , HasProcessParameters env )
 
 data UserCodeParameters =
-  UserCodeParameters { _userOSParameters      :: OSParameters
-                     , _userProcessParameters :: ProcessParameters }
+  UserCodeParameters { _userOSParameters      :: !OSParameters
+                     , _userProcessParameters :: !ProcessParameters }
   deriving (Eq, Ord, Show)
 makeClassy ''UserCodeParameters
 instance HasOSParameters      UserCodeParameters where osParameters      = userOSParameters
@@ -195,11 +261,10 @@ mul2Process = do
   process (const_ i2 twoR) $ \localR -> binop MUL localR twoR localR
 
 -- The information about the user code needed for compartmentalization.  Not
--- lensy because it's really just for temporary internal use.  The shared
--- address is filled in lazily, and so cannot be strict.
-data UserCodeInfo = UserCodeInfo { userAdd1Compartment :: (Imm,Imm)
-                                 , userMul2Compartment :: (Imm,Imm)
-                                 , userSharedAddr      :: Imm }
+-- lensy because it's really just for temporary internal use.
+data UserCodeInfo = UserCodeInfo { userAdd1Compartment :: !(Imm,Imm)
+                                 , userMul2Compartment :: !(Imm,Imm)
+                                 , userSharedAddr      :: !Imm }
                   deriving (Eq, Ord, Show)
 
 -- All of the user code: both processes and their shared address (which is part
@@ -228,6 +293,7 @@ userCode yieldAddrE = program $ mdo
 -- THE SCHEDULER (INCLUDING YIELD)
 --------------------------------------------------------------------------------
 
+-- These fields must be lazy; see [Note Knot-tying and strict fields].
 data SchedulerParameters = SchedulerParameters { _pidAddrVal   :: Imm
                                                , _proc1AddrVal :: Imm
                                                , _proc2AddrVal :: Imm }
@@ -310,11 +376,11 @@ schedulerInit proc1 proc2 = do
 -- The information about the scheduler needed for various purposes (mostly
 -- compartmentalization).  Not lensy because it's really just for temporary
 -- internal use.
-data SchedulerInfo = SchedulerInfo { schedulerInitCompartment  :: (Imm,Imm)
-                                   , schedulerYieldCompartment :: (Imm,Imm)
-                                   , schedulerPIDAddr          :: {-!-}Imm
-                                   , schedulerProc1Addr        :: {-!-}Imm
-                                   , schedulerProc2Addr        :: {-!-}Imm }
+data SchedulerInfo = SchedulerInfo { schedulerInitCompartment  :: !(Imm,Imm)
+                                   , schedulerYieldCompartment :: !(Imm,Imm)
+                                   , schedulerPIDAddr          :: !Imm
+                                   , schedulerProc1Addr        :: !Imm
+                                   , schedulerProc2Addr        :: !Imm }
             deriving (Eq, Ord, Show)
 
 -- The complete scheduler: initialization code and the @yield@ system call.
@@ -361,9 +427,9 @@ scheduler proc1E proc2E = mdo
 -- THE BOOT-TIME TAGGING KERNEL
 --------------------------------------------------------------------------------
 
--- As with '_sharedAddrVal', these fields must be lazy (see above).  This is the
--- 'Imm' counterpart to 'Haskell.Machine.SyscallAddresses' -- the words are
--- smaller, so we couldn't fit the whole word "Address" :-)
+-- This is the 'Imm' counterpart to 'Haskell.Machine.SyscallAddresses' -- the
+-- words are smaller, so we couldn't fit the whole word "Address" :-)  These
+-- fields must be lazy; see [Note Knot-tying and strict fields].
 data SyscallAddrs = SyscallAddrs { _isolateAddrVal           :: Imm
                                  , _addToJumpTargetsAddrVal  :: Imm
                                  , _addToStoreTargetsAddrVal :: Imm }
@@ -379,16 +445,17 @@ widenSyscalls addrs =
 
 -- Note: the kernel is prior to the whole user/nonuser caller/callee register
 -- stuff, so these can be any register we want -- /except/ for `ra`!
-data KernelRegisters = KernelRegisters { _oneRVal     :: {-!-}Reg
-                                       , _serviceRVal :: {-!-}Reg
-                                       , _ktempRVal   :: {-!-}Reg }
+data KernelRegisters = KernelRegisters { _oneRVal     :: !Reg
+                                       , _serviceRVal :: !Reg
+                                       , _ktempRVal   :: !Reg }
                      deriving (Eq, Ord, Show)
 makeClassy           ''KernelRegisters
 makeMonadicAccessors ''KernelRegisters
 
+-- @_kernelSyscallAddrs@ must be lazy; see [Note Knot-tying and strict fields].
 data KernelParameters =
   KernelParameters { _kernelSyscallAddrs    :: SyscallAddrs
-                   , _kernelKernelRegisters :: KernelRegisters }
+                   , _kernelKernelRegisters :: !KernelRegisters }
   deriving (Eq, Ord, Show)
 makeClassy ''KernelParameters
 instance HasSyscallAddrs    KernelParameters where syscallAddrs    = kernelSyscallAddrs
@@ -420,11 +487,7 @@ storeRanges reg ranges = do
   const_ count ktempR
   store  reg ktempR
 
-  -- This pattern match /must/ be lazy, as the compartments may come from the
-  -- future; we must be careful not to actually force such values in any way, on
-  -- pain of infinite loops.  (We could also solve this problem by returning
-  -- individual tuple components or reconstructing any tuple @range@ as @(fst
-  -- range, snd range)@.  This seems nicer, however.)
+  -- This pattern match /must/ be lazy; see [Note Laziness vs. eta].
   forM_ ranges $ \ ~(low,high) -> do
     binop ADD reg oneR reg
     const_    low ktempR
@@ -470,11 +533,8 @@ kernel :: MonadSymAssembler m
        -> SchedulerInfo -> UserCodeInfo
        -> m ()
 kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
-  -- The info record pattern matches /must/ be lazy, as they come from the
-  -- future; we must be careful not to actually force such values in any way, on
-  -- pain of infinite loops.  We haven't encountered this problem before because
-  -- we've just passed around whole values from the future, not ones we needed
-  -- to break apart.
+  -- The info record pattern matches must be lazy; see [Note Laziness vs. eta].
+
   let _oneRVal : _serviceRVal : _ktempRVal : _ = [ra+1..]
       _kernelKernelRegisters = KernelRegisters{..}
   
@@ -539,11 +599,11 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
 
 -- The information about the OS one might want for either debugging or running
 -- purposes
-data OSInfo = OSInfo { _osSharedAddress    :: {-!-}MWord
-                     , _osYieldAddress     :: {-!-}MWord
-                     , _osAdd1Address      :: {-!-}MWord
-                     , _osMul2Address      :: {-!-}MWord
-                     , _osSyscallAddresses :: {-!-}SyscallAddresses }
+data OSInfo = OSInfo { _osSharedAddress    :: !MWord
+                     , _osYieldAddress     :: !MWord
+                     , _osAdd1Address      :: !MWord
+                     , _osMul2Address      :: !MWord
+                     , _osSyscallAddresses :: !SyscallAddresses }
             deriving (Eq, Ord, Show)
 makeLenses ''OSInfo
 
