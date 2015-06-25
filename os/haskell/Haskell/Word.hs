@@ -1,13 +1,16 @@
-{-# LANGUAGE DataKinds, KindSignatures, ScopedTypeVariables, LambdaCase #-}
+{-# LANGUAGE DataKinds, KindSignatures, ScopedTypeVariables,
+             TypeOperators, TypeFamilies #-}
 module Haskell.Word (
   Word(), coqWord, unsafeFromCoqWord,
   Signed(..),
   wordBits, signedBits,
   word, signed,
   unsignedWord, signedWord, signedValue,
+  widen,
   KnownNat
   ) where
 
+import Fintype (widen_ord)
 import Word hiding (Word)
 import qualified Word as Word
 
@@ -53,6 +56,9 @@ signedWord = int_of_word <$> wordBits <*> coqWord
 
 signedValue :: KnownNat n => Signed n -> Integer
 signedValue = signedWord . getSigned
+
+widen :: (m <= n) => Word m -> Word n
+widen = Word . Word.Word . widen_ord __ __ . ord_of_word __ . coqWord
 
 liftWord1 :: KnownNat n
           => (Integer -> Coq_word -> Coq_word)
