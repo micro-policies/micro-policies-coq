@@ -482,17 +482,20 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
   flip runReaderT KernelParameters{..} $ mdo
     let applyAllTo x = ($ x) . sequence
         runSyscalls  = sequence . applyAllTo argSpace . applyAllTo (freeRegK 0)
-        start        = pure . join (,) . fst
+        start        = join (,) . fst
         singleAddrs  = map (join (,))
           -- This wants to be @collapse . sort@, but alas, it can't -- that
           -- performs the dreaded computation on values from the future.
           -- Luckily, these doesn't cost us very much.
-    
+
+    -- Set up registers
     const_ i1 oneR
+    
+    -- Set up the compartments!
     argSpace <- reserveImm . widenImm . maximum =<< runSyscalls
-      [ addToJumpTargets (start schedulerInitCompartment)
+      [ addToJumpTargets [start schedulerInitCompartment]
       , isolate          [schedulerInitCompartment]
-                         (start userAdd1Compartment)
+                         [start userAdd1Compartment]
                          (singleAddrs [schedulerPIDAddr, schedulerProc1Addr, schedulerProc2Addr])
       , isolate          [schedulerYieldCompartment]
                          [userAdd1Compartment, userMul2Compartment]
@@ -503,10 +506,13 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
       , isolate          [userMul2Compartment]
                          []
                          (singleAddrs [userSharedAddr]) ]
-    -- Clear registers
-    mapM_ (const_ i0) [ oneR, serviceR, ktempR, freeRegK 0
-                      , syscallRet, syscallArg1, syscallArg2, syscallArg3 ]
-    const_ i0 ra
+      
+    -- Clear registers; first the monadic ones, and then the pure ones :-)
+    mapM_ (const_ i0) [oneR, serviceR, ktempR, freeRegK 0]
+    mapM_ (const_ i0) [syscallRet, syscallArg1, syscallArg2, syscallArg3 ]
+    
+    -- Jump to the scheduler initialization code
+    const_ (fst schedulerInitCompartment) ra
     jump ra
 
 --------------------------------------------------------------------------------
