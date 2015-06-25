@@ -32,7 +32,6 @@ import Control.Applicative hiding (Const(..))
 import Control.Monad
 import Control.Monad.Fix
 
-import Haskell.Word
 import Haskell.Machine
 
 import Haskell.Monad.Assembler
@@ -92,8 +91,8 @@ halt    = instr                Halt
 -- 'fWord' is called on the original word.
 tryMWordImm :: (Imm -> a) -> (MWord -> a) -> MWord -> a
 tryMWordImm fImm fWord w =
-  let n = unsignedWord $ mwordWord w
-  in if n <= unsignedWord (immWord maxBound)
+  let n = toInteger w
+  in if n <= toInteger (maxBound :: Imm)
      then fImm $ imm n
      else fWord w
                                                                          
@@ -114,8 +113,7 @@ addrToImm = tryMWordImm pure (asmError . immediateTooBigMsg)
 addrToImm' :: MonadSymAssembler m => MWord -> m Imm
 addrToImm' = uncurry (<$) . second asmDelayedError
            . tryMWordImm (,Nothing)
-                         (   imm . unsignedWord . mwordWord
-                         &&& Just . immediateTooBigMsg)
+                         (fromIntegral &&& Just . immediateTooBigMsg)
 
 -- |Return the current instruction address as an immediate (see also 'here');
 -- fails immediately if the current instruction address does not fit into an

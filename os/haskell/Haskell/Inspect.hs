@@ -66,8 +66,8 @@ inspectAddrs = (vcat .) . inspectAddrs' show
 
 inspectAroundPC' :: (MWord -> String) -> State -> Integer -> [Doc]
 inspectAroundPC' ashow s r =
-  let pcA     = fromIntegral . val $ pc s
-      maxAddr = fromIntegral $ if M.null (mem s) then 0 else fst . M.findMax $ mem s
+  let pcA     = toInteger . val $ pc s
+      maxAddr = toInteger $ if M.null (mem s) then 0 else fst . M.findMax $ mem s
       addrs   = [mword $ max (pcA - r) 0 .. mword $ min (pcA + r) maxAddr]
   in inspectAddrs'
        (\i -> (if i == mword pcA

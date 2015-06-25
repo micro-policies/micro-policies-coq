@@ -59,6 +59,15 @@ reg = fromInteger
 imm :: Integer -> Imm
 imm = fromInteger
 
+widenImm :: Imm -> MWord
+widenImm = MWord . widen . immWord
+
+widenReg :: Reg -> MWord
+widenReg = MWord . widen . regWord
+
+widenReg' :: Reg -> Imm
+widenReg' = Imm . widen . regWord
+
 type Binop = Coq_binop
 
 retypeData ''Coq_instr "Instr" Nothing
