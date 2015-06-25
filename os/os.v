@@ -45,7 +45,7 @@ Existing Instance sp.
 (* ra = 0 is special; register 1 is caller-save; registers 2+ are callee-save *)
 Definition caller_save_min : nat := 1.
 Definition callee_save_min : nat := 2.
-Definition user_reg_max    : nat := 15.
+Definition user_reg_max    : nat := 23.
 
 Definition caller_save_regs_nat : seq nat      := enum_from_upto caller_save_min callee_save_min.
 Definition caller_save_regs_int : seq int      := map Posz caller_save_regs_nat.
@@ -198,13 +198,13 @@ Definition symbolic_os : Symbolic.state mt :=
   in symbolic_initial_state
        (length (code 0%w) + absz (int_of_word data_size),
         fun base (_ : compartmentalization_syscall_addrs mt) =>
-          map (fun v => v @ (Sym.DATA user_cid set0 set0))
+          map (fun v => v @ user_tag)
               (  map encode_instr (code (as_word (int_of_word base)))
               ++ nseq data_size 0%w))
        0%w@(Sym.PC INTERNAL user_cid)%w
-         (* This was 1000@..., but now it's not ... there was something about 1000s... *)
+         (* This was 1000@pc_tag, but now it's not... was there something about 1000? *)
        syscall_addrs
-       (map (as_word ∘ Posz) (enum_from_upto 0 16))
+       (map (as_word ∘ Posz) (enum_from_upto 0 (S user_reg_max)))
        0%w@tt
        {| Sym.next_id                  := user_cid +! 1%nat
         ; Sym.isolate_tag              := syscall_tag 0
