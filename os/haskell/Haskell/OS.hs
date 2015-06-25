@@ -93,11 +93,11 @@ ifz r ifZero ifNonzero = mdo {
   return () }
 
 addrsAround :: MonadSymAssembler m => m () -> m (Imm, Imm)
-addrsAround asm = (,) <$> hereImm <* asm <*> hereImm
+addrsAround asm = (,) <$> hereImm <* asm <*> (subtract 1 <$> hereImm)
 
 withAddrsAround :: MonadSymAssembler m => m a -> m (a,(Imm, Imm))
 withAddrsAround asm =
-  (\pre x post -> (x,(pre,post))) <$> hereImm <*> asm <*> hereImm
+  (\pre x post -> (x,(pre,post))) <$> hereImm <*> asm <*> (subtract 1 <$> hereImm)
 
 -- ra = 0 is special; register 1 is caller-save; registers 2+ are callee-save
 callerSaveMin, callerSaveMax, calleeSaveMin, calleeSaveMax, userRegMin, userRegMax :: Reg
@@ -477,7 +477,7 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
           -- This wants to be @collapse . sort@, but alas, it can't -- that
           -- performs the dreaded computation on values from the future.
           -- Luckily, these doesn't cost us very much.
-    
+
     addToJumpTargets (fst schedulerInitCompartment)
     argSpace <- reserveImm . widenImm . maximum =<< runSyscalls
       [ isolate          [schedulerInitCompartment]
