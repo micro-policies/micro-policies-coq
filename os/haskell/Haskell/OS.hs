@@ -367,7 +367,7 @@ widenSyscalls addrs =
                    , addToStoreTargetsAddress = widenImm $ addrs^.addToStoreTargetsAddrVal }
 
 -- Note: the kernel is prior to the whole user/nonuser caller/callee register
--- stuff, so these can be any register we want!
+-- stuff, so these can be any register we want -- /except/ for `ra`!
 data KernelRegisters = KernelRegisters { _oneRVal     :: {-!-}Reg
                                        , _serviceRVal :: {-!-}Reg
                                        , _ktempRVal   :: {-!-}Reg }
@@ -428,19 +428,19 @@ syscall :: [eff|KernelProgram env prog
         -> !Reg -> !Imm
         -> Maybe [(Imm,Imm)] -> Maybe [(Imm,Imm)] -> Maybe [(Imm,Imm)]
         -> prog Imm|]
-syscall addr regE argsAddr arg1 arg2 arg3 = do
-  -- We use the register inside and outside the 'WriterT'
-  (reg :: Reg) <- effectful regE
+syscall addr regE argsAddrE arg1 arg2 arg3 = do
+  -- We use these arguments inside and outside the 'WriterT'
+  (reg      :: Reg) <- effectful regE
+  (argsAddr :: Imm) <- effectful argsAddrE
   
   let setArg argR arg = do
         mov reg argR
         storeRanges reg arg
   
-  const_ argsAddr reg
   Sum needed <- execWriterT $ do
-    F.mapM_ (setArg syscallArg1) arg1
-    F.mapM_ (setArg syscallArg2) arg2
-    F.mapM_ (setArg syscallArg3) arg3
+    F.mapM_ ((const_ argsAddr reg    *>) . setArg syscallArg1) arg1
+    F.mapM_ ((binop ADD reg oneR reg *>) . setArg syscallArg2) arg2
+    F.mapM_ ((binop ADD reg oneR reg *>) . setArg syscallArg3) arg3
   const_ addr serviceR
   jal serviceR
   pure needed
@@ -476,7 +476,7 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
   -- pain of infinite loops.  We haven't encountered this problem before because
   -- we've just passed around whole values from the future, not ones we needed
   -- to break apart.
-  let _oneRVal : _serviceRVal : _ktempRVal : _ = [minBound..]
+  let _oneRVal : _serviceRVal : _ktempRVal : _ = [ra+1..]
       _kernelKernelRegisters = KernelRegisters{..}
   
   flip runReaderT KernelParameters{..} $ mdo
