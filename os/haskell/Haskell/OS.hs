@@ -469,7 +469,18 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
     -- Set up registers
     const_ i1 oneR
     
-    -- Set up the compartments!
+    -- Set up the compartments!  Important: they must be set up in /dependency
+    -- order/.  This means that if compartment $c$ can jump or write to anywhere
+    -- in compartment $d$, then compartment $c$ must be split off /first/.
+    -- Otherwise, when the kernel attempts to grant $c$ jump/write access to a
+    -- part of $d$, it won't have permission, as the kernel will no longer own
+    -- those addresses!  If there are cycles, they can be broken by granting the
+    -- kernel explicit jump/write access.
+    --
+    -- The only case where this produces a slightly counterintuitive order here
+    -- is that the second user compartment, for the multiply-by-two process,
+    -- must be set up before the first user compartment, for the add-one
+    -- process; this is because the add-one process holds the shared address.
     let applyAllTo x = ($ x) . sequence
         runSyscalls  = sequence . applyAllTo argSpace . applyAllTo (freeRegK 0)
         start        = join (,) . fst
@@ -486,12 +497,12 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
       , isolate          [schedulerYieldCompartment]
                          [userAdd1Compartment, userMul2Compartment]
                          []
-      , isolate          [userAdd1Compartment]
-                         []
-                         []
       , isolate          [userMul2Compartment]
                          []
-                         (singleAddrs [userSharedAddr]) ]
+                         (singleAddrs [userSharedAddr])
+      , isolate          [userAdd1Compartment]
+                         []
+                         [] ]
       
     -- Clear registers; first the monadic ones, and then the pure ones :-)
     mapM_ (const_ i0) [oneR, serviceR, ktempR, freeRegK 0]
