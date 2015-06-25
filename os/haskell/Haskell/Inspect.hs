@@ -8,11 +8,10 @@ import Haskell.Types
 import Haskell.Word
 import Haskell.Machine
 import Haskell.Pretty
+import Haskell.OS
 
 import Data.Map (Map)
 import qualified Data.Map as M
-
-import qualified Os
 
 inspectWord :: MWord -> Doc
 inspectWord w =
@@ -92,4 +91,4 @@ inspectRegs s rs = vcat . map (hcat . map text)
           rs
 
 inspectRegFile :: State -> Doc
-inspectRegFile = flip inspectRegs [0 .. reg Os.user_reg_max]
+inspectRegFile = flip inspectRegs [0..userRegMax]
