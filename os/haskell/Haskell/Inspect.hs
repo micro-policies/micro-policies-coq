@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Haskell.Inspect where
 
 import Data.List

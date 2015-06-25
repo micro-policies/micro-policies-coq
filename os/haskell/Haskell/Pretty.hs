@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE TypeSynonymInstances, OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Haskell.Pretty (module Haskell.Pretty, module PrettyExports) where
 
