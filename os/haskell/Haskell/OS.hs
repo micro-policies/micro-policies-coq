@@ -208,17 +208,20 @@ userCode :: [eff|MonadSymAssembler m => !Imm -> m UserCodeInfo|]
 userCode yieldAddrE = program $ mdo
   _yieldAddrVal <- effectful yieldAddrE
   let _yieldRVal : _sharedPtrRVal : _loopbackRVal : _tempRVal : _ = calleeSaveRegs
-      _sharedAddrVal = userSharedAddr info
       userParams = UserCodeParameters
                      { _userOSParameters      = OSParameters{..}
                      , _userProcessParameters = ProcessParameters{..} }
   
-  info <- flip runReaderT userParams $ do
-    (userSharedAddr, userAdd1Compartment) <-
-      withAddrsAround . program $ add1Process *> reserveImm 1
-    userMul2Compartment <-
-      addrsAround mul2Process
-    pure UserCodeInfo{..}
+  let -- The add-1 process contains the shared address; the multiply-by-2
+      -- process is simply the code
+      buildAdd1 = withAddrsAround . program $ add1Process *> reserveImm 1
+      buildMul2 = addrsAround mul2Process
+  
+  info@UserCodeInfo{userSharedAddr = _sharedAddrVal}
+    <- flip runReaderT userParams $ do
+         (userSharedAddr, userAdd1Compartment) <- buildAdd1
+         userMul2Compartment                   <- buildMul2
+         pure UserCodeInfo{..}
   pure info
 
 --------------------------------------------------------------------------------
