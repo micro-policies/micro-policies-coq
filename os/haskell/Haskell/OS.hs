@@ -319,7 +319,7 @@ data SchedulerInfo = SchedulerInfo { schedulerInitCompartment  :: (Imm,Imm)
 
 -- The complete scheduler: initialization code and the @yield@ system call.
 scheduler :: [eff|MonadSymAssembler m => !Imm -> !Imm -> m SchedulerInfo|]
-scheduler proc1E proc2E = program $ do
+scheduler proc1E proc2E = mdo
   -- We want to use @proc1@ and @proc2@ in a different monad
   -- (@ReaderT SchedulerParameters m@), so we get a pure value out of @proc1@
   -- and @proc2@.  I don't quite get why we need to give them type
@@ -327,25 +327,35 @@ scheduler proc1E proc2E = program $ do
   (proc1 :: Imm) <- effectful proc1E
   (proc2 :: Imm) <- effectful proc2E
 
-  -- These names get bound in both the 'SchedulerParameters' and the
-  -- 'SchedulerInfo', so....  (I'm sorry.)
-  _pidAddrVal   @ schedulerPIDAddr   <- reserveImm 1
-  _proc1AddrVal @ schedulerProc1Addr <- reserveImm pinfoSize
-  _proc2AddrVal @ schedulerProc2Addr <- reserveImm pinfoSize
+  let -- First, we initialize the scheduler, and then jump away to the first
+      -- process.
+      buildInit = addrsAround . program $ do
+        schedulerInit proc1 proc2              -- Initialization
+        mapM_ (const_ i0) [stempR, stempR + 1] -- Clear registers
+        const_ proc1 ra                        -- Prepare to jump...
+        jump   ra                              -- Jump!
+      
+      -- Later, we may come back to @yield@; it lives here, at the end of the OS
+      -- code block.  We need to nest the reservations within the same @program@
+      -- as the yielding code itself so that the compartment bounds are correct.
+      buildYield = withAddrsAround . program $ do
+        pid   <- reserveImm 1
+        proc1 <- reserveImm pinfoSize
+        proc2 <- reserveImm pinfoSize
+        schedulerYield
+        pure (pid,proc1,proc2)
   
-  flip runReaderT SchedulerParameters{..} $ do
-    schedulerInitCompartment <- addrsAround . program $ do
-      -- At boot-time, we start the scheduler...
-      schedulerInit proc1 proc2
-      -- ...clear out our registers...
-      mapM_ (const_ i0) [stempR, stempR + 1]
-      -- ...and then we jump to the first process.
-      const_ proc1 ra
-      jump   ra
-    -- Later, we may come back to @yield@; it lives here, at the end of the OS
-    -- code block.
-    schedulerYieldCompartment <- addrsAround schedulerYield
-    pure SchedulerInfo{..}
+  info@SchedulerInfo{ schedulerPIDAddr   = _pidAddrVal
+                    , schedulerProc1Addr = _proc1AddrVal
+                    , schedulerProc2Addr = _proc2AddrVal }
+    <- flip runReaderT SchedulerParameters{..} $ do
+         schedulerInitCompartment     <- buildInit
+         ( (schedulerPIDAddr,
+            schedulerProc1Addr,
+            schedulerProc2Addr),
+           schedulerYieldCompartment) <- buildYield
+         pure SchedulerInfo{..}
+  pure info
 
 --------------------------------------------------------------------------------
 -- THE BOOT-TIME TAGGING KERNEL
