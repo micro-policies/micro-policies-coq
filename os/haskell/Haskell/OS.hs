@@ -503,7 +503,9 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
       , isolate          [userMul2Compartment]
                          []
                          (singleAddrs [userSharedAddr]) ]
-    mapM_ (const_ i0) [oneR, serviceR, ktempR, freeRegK 0] -- Clear registers
+    -- Clear registers
+    mapM_ (const_ i0) [ oneR, serviceR, ktempR, freeRegK 0
+                      , syscallRet, syscallArg1, syscallArg2, syscallArg3 ]
     const_ i0 ra
     jump ra
 
