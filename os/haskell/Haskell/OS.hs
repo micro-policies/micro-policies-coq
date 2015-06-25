@@ -477,10 +477,17 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
     -- those addresses!  If there are cycles, they can be broken by granting the
     -- kernel explicit jump/write access.
     --
-    -- The only case where this produces a slightly counterintuitive order here
-    -- is that the second user compartment, for the multiply-by-two process,
-    -- must be set up before the first user compartment, for the add-one
-    -- process; this is because the add-one process holds the shared address.
+    -- This shows up twice in the kernel
+    --
+    --   1. The kernel must claim the start of the @yield@ service as a jump
+    --      target, even though it does not jump to it, to break a cycle:
+    --      @yield@ must have jump access to all of the userland code, and all
+    --      of the userland code must have access to the start of @yield@.
+    --
+    --   2. The second user compartment, for the multiply-by-two process, must
+    --      be set up before the first user compartment, for the add-one
+    --      process; this is because the add-one process holds the shared
+    --      address.
     let applyAllTo x = ($ x) . sequence
         runSyscalls  = sequence . applyAllTo argSpace . applyAllTo (freeRegK 0)
         start        = join (,) . fst
@@ -489,7 +496,8 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
           -- performs the dreaded computation on values from the future.
           -- Luckily, these doesn't cost us very much.
 
-    addToJumpTargets (fst schedulerInitCompartment)
+    addToJumpTargets (fst schedulerInitCompartment)  -- We take this jump
+    addToJumpTargets (fst schedulerYieldCompartment) -- Isolation dependency
     argSpace <- reserveImm . widenImm . maximum =<< runSyscalls
       [ isolate          [schedulerInitCompartment]
                          [start userAdd1Compartment]
@@ -498,10 +506,10 @@ kernel _kernelSyscallAddrs ~SchedulerInfo{..} ~UserCodeInfo{..} = program $ do
                          [userAdd1Compartment, userMul2Compartment]
                          []
       , isolate          [userMul2Compartment]
-                         []
+                         [start schedulerYieldCompartment]
                          (singleAddrs [userSharedAddr])
       , isolate          [userAdd1Compartment]
-                         []
+                         [start schedulerYieldCompartment]
                          [] ]
       
     -- Clear registers; first the monadic ones, and then the pure ones :-)
