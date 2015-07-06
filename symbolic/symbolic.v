@@ -125,9 +125,14 @@ Lemma mvec_eq_inv op tpc tpc' ti ti' ts ts'
   [/\ tpc = tpc', ti = ti' & ts = ts'].
 Proof. by case: p. Qed.
 
+Definition mvec' : Type := sigT mvec.
+Definition MVec' (op : vopcode) (tpc : tag_type P) (ti : instr_tag op) (ts : hseq tag_type (vinputs op)) : mvec'
+  := existT _ op (MVec tpc ti ts).
+
 End WithTagTypes.
 
-Arguments MVec {_} _ _ _ _.
+Arguments MVec  {_} _ _ _ _.
+Arguments MVec' {_} _ _ _ _.
 
 Open Scope bool_scope.
 
@@ -369,5 +374,7 @@ Arguments Symbolic.state mt {_}.
 Arguments Symbolic.State {_ _} _ _ _ _.
 Arguments Symbolic.syscall mt {_}.
 Arguments Symbolic.syscall_table mt {_}.
-Arguments Symbolic.MVec {tty} op _ _ _.
-Arguments Symbolic.LVec {mt sp} opL _ _ _.
+Arguments Symbolic.MVec  {tty} op _ _ _.
+Arguments Symbolic.mvec' / tty.
+Arguments Symbolic.MVec' / {tty} op _ _ _.
+Arguments Symbolic.LVec  {mt sp} opL _ _ _.

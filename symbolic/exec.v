@@ -113,9 +113,7 @@ Proof.
       s_econstructor (solve [eauto]).
   - inversion 1; subst; rewrite /= PC; try (subst lv); simpl;
       repeat match goal with [EQ : ?Expr = _ |- context[?Expr]] => rewrite EQ /= end;
-      try reflexivity.
-    (* STORE is not *quite* so trivial, but still... *)
-    by case: (next_state_pc _ _ _) NEXT => [[]|].
+      reflexivity.
 Qed.
 
 Lemma stepP' :
@@ -126,14 +124,14 @@ Proof.
   apply (iffP eqP); by move => /stepP.
 Qed.
 
-Definition build_ivec (st : state mt) : option (sigT (mvec ttypes)) :=
+Definition build_ivec (st : state mt) : option (mvec' ttypes) :=
   match mem st (pcv st) with
     | Some i =>
       match decode_instr (vala i) with
         | Some op =>
-          let part ts := (existT _ _ (MVec (opcode_of op) (pct st) (taga i) ts)) in
+          let part ts := MVec' (opcode_of op) (pct st) (taga i) ts in
           match op return (hseq (tag_type ttypes) (inputs (opcode_of op)) ->
-                           sigT (mvec ttypes)) -> option (sigT (mvec ttypes)) with
+                           mvec' ttypes) -> option (mvec' ttypes) with
             | Nop => fun part => Some (part [hseq])
             | Const n r => fun part =>
               do! old <- regs st r;
@@ -178,7 +176,7 @@ Definition build_ivec (st : state mt) : option (sigT (mvec ttypes)) :=
     | None =>
       match table (pcv st) with
         | Some sc =>
-          Some (existT _ _ (MVec SERVICE (pct st) (entry_tag sc) [hseq]))
+          Some (MVec' SERVICE (pct st) (entry_tag sc) [hseq])
         | None => None
       end
   end.
