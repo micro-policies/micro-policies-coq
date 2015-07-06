@@ -5,6 +5,7 @@ Require Import lib.utils common.types symbolic.symbolic.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
+Set Bullet Behavior "Strict Subproofs".
 
 Import DoNotation.
 
@@ -22,75 +23,55 @@ Local Open Scope word_scope.
 Local Notation "x .+1" := (x + 1).
 
 Definition stepf (st : state mt) : option (state mt) :=
-  let 'State mem reg pc@tpc extra := st in
+  let: State mem reg pc@tpc extra := st in
+  let regv := omap vala ∘ reg in
+  let memv := omap vala ∘ mem in
   match mem pc with
   | Some iti =>
     let: i@ti := iti in
     do! instr <- decode_instr i;
     match instr with
     | Nop =>
-      let mvec := IVec NOP tpc ti [hseq] in
-      next_state_pc st mvec (pc.+1)
+      let lv := LVec NOP tpc ti [hseq] in
+      next_state_pc st lv (pc.+1)
     | Const n r =>
-      do! old <- reg r;
-      let: _@told := old in
-      let ivec := IVec CONST tpc ti [hseq told] in
-      next_state_reg st ivec r (swcast n)
+      let lv := LVec CONST tpc ti [hseq r] in
+      next_state_reg st lv r (swcast n)
     | Mov r1 r2 =>
-      do! a1 <- reg r1;
-      let: w1@t1 := a1 in
-      do! a2 <- reg r2;
-      let: _@told := a2 in
-      let mvec := IVec MOV tpc ti [hseq t1;told] in
+      do! w1 <- regv r1;
+      let mvec := LVec MOV tpc ti [hseq r1; r2] in
       next_state_reg st mvec r2 w1
     | Binop op r1 r2 r3 =>
-      do! a1 <- reg r1;
-      let: w1@t1 := a1 in
-      do! a2 <- reg r2;
-      let: w2@t2 := a2 in
-      do! a3 <- reg r3;
-      let: _@told := a3 in
-      let mvec := IVec (BINOP op) tpc ti [hseq t1;t2;told] in
-      next_state_reg st mvec r3 (binop_denote op w1 w2)
+      do! w1 <- regv r1;
+      do! w2 <- regv r2;
+      let lv := LVec (BINOP op) tpc ti [hseq r1; r2; r3] in
+      next_state_reg st lv r3 (binop_denote op w1 w2)
     | Load r1 r2 =>
-      do! a1 <- reg r1;
-      let: w1@t1 := a1 in
-      do! amem <- mem w1;
-      let: w2@t2 := amem in
-      do! a2 <- reg r2;
-      let: _@told := a2 in
-      let mvec := IVec LOAD tpc ti [hseq t1;t2;told] in
-      next_state_reg st mvec r2 w2
+      do! w1 <- regv r1;
+      do! w2 <- memv w1;
+      let lv := LVec LOAD tpc ti [hseq r1; w1; r2] in
+      next_state_reg st lv r2 w2
     | Store r1 r2 =>
-      do! a1 <- reg r1;
-      let: w1@t1 := a1 in
-      do! amem <- mem w1;
-      let: _@told := amem in
-      do! a2 <- reg r2;
-      let: w2@t2 := a2 in
-      let mvec := IVec STORE tpc ti [hseq t1;t2;told] in
-      @next_state _ _ st mvec (fun ov =>
-         do! mem' <- updm mem w1 w2@(tr ov);
-         Some (State mem' reg (pc.+1)@(trpc ov) extra))
+      do! w1 <- regv r1;
+      do! w2 <- regv r2;
+      let lv := LVec STORE tpc ti [hseq r1; r2; w1] in
+      do! st'  <- next_state_pc st lv (pc.+1);
+      let: State _ reg' pc' extra' := st' in
+      do! mem' <- repm mem w1 (fun a => w2@(taga a));
+      Some (State mem' reg' pc' extra')
     | Jump r =>
-      do! a <- reg r;
-      let: w@t1 := a in
-      let mvec := IVec JUMP tpc ti [hseq t1] in
-      next_state_pc st mvec w
+      do! w <- regv r;
+      let lv := LVec JUMP tpc ti [hseq r] in
+      next_state_pc st lv w
     | Bnz r n =>
-      do! a <- reg r;
-      let: w@t1 := a in
-      let pc' := pc + (if w == 0
-                       then 1 else swcast n) in
-      let ivec := IVec BNZ tpc ti [hseq t1] in
-      next_state_pc st ivec pc'
+      do! w <- regv r;
+      let pc' := pc + (if w == 0 then 1 else swcast n) in
+      let lv := LVec BNZ tpc ti [hseq r] in
+      next_state_pc st lv pc'
     | Jal r =>
-      do! a <- reg r;
-      let: w@t1 := a in
-      do! oldtold <- reg ra;
-      let: _@told := oldtold in
-      let mvec := IVec JAL tpc ti [hseq t1; told] in
-      next_state_reg_and_pc st mvec ra (pc.+1) w
+      do! w <- regv r;
+      let lv := LVec JAL tpc ti [hseq r; ra] in
+      next_state_reg_and_pc st lv ra (pc.+1) w
     | JumpEpc | AddRule | GetTag _ _ | PutTag _ _ _ | Halt =>
       None
     end
@@ -104,40 +85,37 @@ Definition stepf (st : state mt) : option (state mt) :=
     end
   end.
 
-Lemma stepP :
-  forall st st',
-    stepf st = Some st' <->
-    step table st st'.
-Proof.
-  intros st st'. split; intros STEP.
-  { destruct st as [mem reg [pc tpc] int].
-    move: STEP => /=; case GET: (mem pc) => [[i ti]|] //= STEP;
-    apply obind_inv in STEP.
-    - destruct STEP as (instr & INSTR & STEP).
-      destruct instr; try discriminate;
-          repeat match goal with
-             | STEP : (do! x <- ?t; _) = Some _ |- _ =>
-               destruct t eqn:?; simpl in STEP; try discriminate
-             | x : atom _ _ |- _ =>
-               destruct x; simpl in *
-             | rv : ovec _ |- _ =>
-               destruct rv; simpl in *
-             | H : Some _ = Some _ |- _ =>
-               inversion H; subst; clear H
-           end;
-      s_econstructor (solve [eauto]).
+Ltac unfold_next_states :=
+  rewrite /next_state_pc /next_state_reg /next_state_reg_and_pc /next_state /=.
 
-    - destruct STEP as (sc & GETCALL & STEP).
+Lemma stepP st st' :
+  stepf st = Some st' <-> step table st st'.
+Proof.
+  split.
+  - case: st => [mem reg [pc tpc] int] /=.
+    case GET: (mem pc) => [[i ti]|] /=.
+    + case INSTR: (decode_instr i) => [[]|] //=; unfold_next_states => STEP;
+        repeat match goal with
+                 | STEP : (do! x <- ?t; _) = Some _ |- _ =>
+                   destruct t eqn:?; simpl in STEP; try discriminate
+                 | a : atom _ _ |- _ =>
+                   destruct a; simpl in *
+                 | lv : lvec |- _ =>
+                   destruct lv; simpl in *
+                 | EQ : Some _ = Some _ |- _ =>
+                   inversion EQ; subst; clear EQ
+               end;
+        s_econstructor (solve [
+          unfold_next_states;
+          repeat match goal with EQ : _ = _ |- _ => rewrite EQ /= end;
+          eauto]).
+    + case GETCALL: (table pc) => [sc|] //= STEP.
       s_econstructor (solve [eauto]).
-  }
-  { unfold stepf.
-    inversion STEP; subst; rewrite PC; try (subst mv);
-    simpl;
-    repeat match goal with
-             | [H: ?Expr = _ |- context[?Expr]] =>
-               rewrite H; simpl
-           end; by reflexivity.
-  }
+  - inversion 1; subst; rewrite /= PC; try (subst lv); simpl;
+      repeat match goal with [EQ : ?Expr = _ |- context[?Expr]] => rewrite EQ /= end;
+      try reflexivity.
+    (* STORE is not *quite* so trivial, but still... *)
+    by case: (next_state_pc _ _ _) NEXT => [[]|].
 Qed.
 
 Lemma stepP' :
@@ -148,18 +126,18 @@ Proof.
   apply (iffP eqP); by move => /stepP.
 Qed.
 
-Definition build_ivec st : option (ivec ttypes)  :=
+Definition build_ivec (st : state mt) : option (sigT (mvec ttypes)) :=
   match mem st (pcv st) with
     | Some i =>
       match decode_instr (vala i) with
         | Some op =>
-          let part := @IVec ttypes (opcode_of op) (pct st) (taga i) in
+          let part ts := (existT _ _ (MVec (opcode_of op) (pct st) (taga i) ts)) in
           match op return (hseq (tag_type ttypes) (inputs (opcode_of op)) ->
-                           ivec ttypes) -> option (ivec ttypes) with
+                           sigT (mvec ttypes)) -> option (sigT (mvec ttypes)) with
             | Nop => fun part => Some (part [hseq])
             | Const n r => fun part =>
-                do! old <- regs st r;
-                Some (part [hseq taga old])
+              do! old <- regs st r;
+              Some (part [hseq taga old])
             | Mov r1 r2 => fun part =>
               do! v1 <- regs st r1;
               do! v2 <- regs st r2;
@@ -200,27 +178,40 @@ Definition build_ivec st : option (ivec ttypes)  :=
     | None =>
       match table (pcv st) with
         | Some sc =>
-          Some (IVec SERVICE (pct st) (entry_tag sc) [hseq])
+          Some (existT _ _ (MVec SERVICE (pct st) (entry_tag sc) [hseq]))
         | None => None
       end
   end.
 
 Lemma step_build_ivec st st' :
   step table st st' ->
-  exists ivec ovec,
-    build_ivec st = Some ivec /\
+  exists iop ivec ovec,
+    build_ivec st = Some (existT _ iop ivec) /\
     transfer ivec = Some ovec.
 Proof.
   move/stepP.
   rewrite {1}(state_eta st) /= /build_ivec.
   case: (getm _ _) => [[i ti]|] //=; last first.
-    case: (getm _ _) => [sc|] //=.
+  - case: (getm _ _) => [sc|] //=.
     rewrite /run_syscall /=.
     case TRANS: (transfer _) => [ovec|] //= _.
     by eauto.
-  case: (decode_instr i) => [instr|] //=.
-  rewrite /next_state_pc /next_state_reg /next_state_reg_and_pc /next_state.
-  by destruct instr; move=> STEP; match_inv; first [ eauto | discriminate ].
+  - case: (decode_instr i) => [instr|] //=.
+    unfold_next_states; destruct instr; unfold_next_states => STEP;
+      match_inv; try discriminate;
+      repeat match goal with
+        |- context[do! _ <- getm ?pmap ?k; _] =>
+        repeat match goal with
+          H : context[getm pmap k] |- _ => move: H
+        end;
+        let w    := fresh "w"    in
+        let t    := fresh "t"    in
+        case ?: (pmap k) => [[? ?]|//] /=;
+        repeat match goal with
+          |- Some _ = Some _ -> _ => case=> ?
+        end;
+        subst
+      end; eauto.
 Qed.
 
 End WithClasses.

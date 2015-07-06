@@ -71,10 +71,6 @@ Export DoNotation.
 
 Notation REG := tt.
 
-Notation "'do!' ( X , Y ) <- A ; B" :=
-  (obind (fun XY => let '(X,Y) := XY in B) A)
-  (at level 200, X ident, Y ident, A at level 100, B at level 200).
-
 Notation "'do!' X @ L <- A ; B" :=
   (obind (fun XL => let '(X @ L) := XL in B) A)
   (at level 200, X ident, L ident, A at level 100, B at level 200).

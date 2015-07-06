@@ -147,6 +147,26 @@ Notation "'do!' X : T <- A ; B" :=
   (obind (fun X : T => B) A)
   (at level 200, X ident, A at level 100, B at level 200).
 
+Notation "'do!' ( X , Y ) <- A ; B" :=
+  (obind (fun XY => let '(X,Y) := XY in B) A)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200).
+
+Notation "'do!' ( X : TX , Y ) <- A ; B" :=
+  (obind (fun XY => let '(X, Y) := XY : TX * _ in B) A)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200).
+
+Notation "'do!' ( X , Y : TY ) <- A ; B" :=
+  (obind (fun XY => let '(X, Y) := XY : _ * TY in B) A)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200).
+
+Notation "'do!' ( X : TX , Y : TY ) <- A ; B" :=
+  (obind (fun XY => let '(X, Y) := XY : TX * TY in B) A)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200).
+
+Notation "'do!' ( X , Y ) : TXY <- A ; B" :=
+  (obind (fun XY => let '(X, Y) := XY : TXY in B) A)
+  (at level 200, X ident, Y ident, A at level 100, B at level 200).
+
 Notation "'do!' 'guard' cond ; rest" :=
   (if cond then rest else None)
   (at level 200, cond at level 100, rest at level 200).
