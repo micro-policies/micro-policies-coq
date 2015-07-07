@@ -390,9 +390,9 @@ Inductive step (st st' : state) : Prop :=
     forall (REG2 : omap vala (reg r2) = Some w2),
     let lv := LVec STORE tpc ti (LReg r1) (LReg r2) (LMem w1) in
     forall (NEXT : (do! st'  <- next_state_pc st lv (pc.+1);
-                    let: State _ reg' cache' pc' epc' := st' in
-                    do! mem' <- repm mem w1 (fun v => w2@(taga v));
-                    Some (State mem' reg' cache' pc' epc'))
+                    let: State mem' reg' cache' pc' epc' := st' in
+                    do! mem'' <- repm mem' w1 (fun v => w2@(taga v));
+                    Some (State mem'' reg' cache' pc' epc'))
                    = Some st'),
       step st st'
 | step_jump :

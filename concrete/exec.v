@@ -9,6 +9,7 @@ Import Concrete. Import DoNotation.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
+Set Bullet Behavior "Strict Subproofs".
 
 Section Masks.
 
@@ -45,7 +46,7 @@ Definition step (st : state mt) : option (state mt) :=
   | Load r1 r2 =>
     do! w1 <- omap vala (reg r1);
     do! w2 <- omap vala (mem w1);
-    let lvec := lvec (LReg r1) (LMem w2) (LReg r2) in
+    let lvec := lvec (LReg r1) (LMem w1) (LReg r2) in
     next_state_reg masks st lvec r2 w2
   | Store r1 r2 =>
     do! w1 <- omap vala (reg r1);
@@ -53,7 +54,7 @@ Definition step (st : state mt) : option (state mt) :=
     let lvec := lvec (LReg r1) (LReg r2) (LMem w1) in
     do! st' <- next_state_pc masks st lvec (pc.+1);
     let: State mem' reg' cache' pc' epc' := st' in
-    do! mem'' <- repm mem' w2 (fun v => w2@(taga v));
+    do! mem'' <- repm mem' w1 (fun v => w2@(taga v));
     Some (State mem'' reg' cache' pc' epc')
   | Jump r =>
     do! w <- omap vala (reg r);
@@ -73,7 +74,7 @@ Definition step (st : state mt) : option (state mt) :=
     next_state_pc masks st lvec (vala epc)
   | AddRule =>
     let lvec := lvec LNone LNone LNone in
-    do! st' <- next_state masks st lvec;
+    do! st' <- next_state_pc masks st lvec (pc.+1);
     let: State mem' reg' cache' pc' epc' := st' in
     do! cache'' <- add_rule cache' masks mem';
     Some (State mem' reg' cache'' pc' epc')
@@ -85,9 +86,9 @@ Definition step (st : state mt) : option (state mt) :=
     do! w <- omap vala (reg r1);
     do! t <- omap vala (reg r2);
     let lvec := lvec (LReg r1) (LReg r2) (LReg r3) in
-    do! st' <- next_state masks st lvec;
+    do! st' <- next_state_pc masks st lvec (pc.+1);
     let: State mem' reg' cache' pc' epc' := st' in
-    do! reg'' <- updm reg r3 w@t;
+    do! reg'' <- updm reg' r3 w@t;
     Some (State mem' reg'' cache' pc' epc')
   | Halt => None
 end.
@@ -99,6 +100,9 @@ Ltac atom_eta :=
   match goal with
   | |- ?t = _ => apply (eq_trans (atom_eta t) (erefl _))
   end.
+
+Local Ltac rewrite_eqns :=
+  repeat match goal with EQ : ?e = _ |- context[?e] => rewrite EQ /= end.
 
 Lemma stepP : forall st st', step st = Some st' <->
   Concrete.step _ masks st st'.
@@ -122,18 +126,15 @@ Proof.
              | H : Some _ = Some _ |- _ =>
                inv H
            end;
-
-    s_econstructor solve [eauto | atom_eta].
-
+    
+    s_econstructor (rewrite_eqns; solve [eauto | atom_eta]).
   - unfold step.
     inv STEP; rewrite PC; clear PC; simpl;
-    rewrite INST; clear INST; simpl; subst mv; try subst lookup; simpl; try congruence;
+    rewrite INST; clear INST; simpl; subst lv; try subst lookup; simpl; try congruence;
     repeat match goal with
     | H : ?X = _ |- context[?X] =>
       rewrite H; trivial
-    end; simpl; trivial.
-    + rewrite M1. simpl. trivial.
-    + rewrite M1. simpl. trivial.
+    end; simpl; rewrite_eqns; trivial.
 Qed.
 
 Lemma stepP' : forall s1 s2, reflect (Concrete.step _ masks s1 s2) (step s1 == Some s2).
