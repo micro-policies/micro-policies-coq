@@ -230,37 +230,27 @@ Proof.
   inv STEP; subst; rewrite /pct /=;
   repeat match goal with
   | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
-  end.
-  -
-  eexists; (split; first by reflexivity);
+  end;
   subst lv;
   unfold next_state_reg, next_state_pc, next_state_reg_and_pc, next_state,
          miss_state,
-         set_lvec,
+         get_lvec, set_lvec,
          pcv, pct in *;
-  simpl in *. match_inv; simpl in *.
-  reflexivity.
-  f_equal.
+  simpl in *; match_inv;
   repeat match goal with
-  | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
-  end. reflexivity.
-  simpl in *.
-Qed.
-
-  move => STEP.
-  rewrite /build_cmvec.
-  inv STEP; subst; rewrite /pct /=;
+    | a : atom _ _ |- _ =>
+      destruct a; simpl in *
+    | H : Some _ = Some _ |- _ =>
+      inv H
+    | |- context[do! _ <- getm ?m ?k; _] =>
+      repeat match goal with H : context[getm m k] |- _ => move: H end;
+      case: (getm m k) => //= *
+  end;
+  eexists; (split; first by reflexivity);
   repeat match goal with
   | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
   end;
-  eexists; (split; first by reflexivity);
-  subst mv;
-  unfold next_state_reg, next_state_pc,
-         next_state_reg_and_pc, next_state, miss_state, pct in *;
-  simpl in *; match_inv;
-  repeat match goal with
-  | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
-  end; reflexivity.
+  reflexivity.
 Qed.
 
 Lemma lookup_none_step cst cmvec :
@@ -280,8 +270,8 @@ Proof.
   case: (getm _ _) => [[i ti]|] //=.
   case: (decode_instr i) => [instr|] //= CMVEC;
   destruct instr; simpl in *; match_inv;
-  by rewrite /next_state_reg /next_state_pc /next_state_reg_and_pc /next_state /miss_state //=
-             LOOKUP.
+  rewrite /next_state_reg /next_state_pc /next_state_reg_and_pc /next_state /miss_state /get_lvec /set_lvec //=;
+  by rewrite_eqns. (* Including LOOKUP *)
 Qed.
 
 Lemma step_build_cmvec cst cst' :
