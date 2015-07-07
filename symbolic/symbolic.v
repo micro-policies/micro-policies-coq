@@ -255,7 +255,7 @@ Definition next_state_reg_and_pc (st : state) (lv : lvec)
                                  (r : reg mt) (x : word) (pc' : word) : option state :=
   do! st'   <- next_state_pc st lv pc';
   do! regs' <- repm (regs st') r (fun v => x@(taga v));
-  Some (State (mem st') regs' pc'@(pct st') (internal st')).
+  Some (State (mem st') regs' (pc st') (internal st')).
 
 Definition next_state_reg (st : state) (lv : lvec) (r : reg mt) (x : word) : option state :=
   next_state_reg_and_pc st lv r x (vala (pc st)).+1.
