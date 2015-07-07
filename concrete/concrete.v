@@ -44,6 +44,12 @@ Definition mvec_eqMixin mt := EqMixin (@mvec_eqbP mt).
 Canonical mvec_eqType mt :=
   Eval hnf in EqType (mvec mt) (@mvec_eqMixin mt).
 
+Inductive tag_loc (mt : machine_types) := LReg of reg mt | LMem of mword mt | LEPC | LNone.
+Arguments LReg  {mt} r.
+Arguments LMem  {mt} a.
+Arguments LEPC  {mt}.
+Arguments LNone {mt}.
+
 Section MVecOrdType.
 
 Variable mt : machine_types.
@@ -68,21 +74,31 @@ Canonical mvec_ordType := Eval hnf in OrdType (mvec mt) mvec_ordMixin.
 
 End MVecOrdType.
 
+(* TODO: This has 3 indistinguishable slots for the arguments.  Should it
+  instead have separate slots for things to write to registers vs. things to
+  write to memory? *)
 Record rvec (mt : machine_types) : Type := RVec {
   ctrpc : mword mt;
-  ctr   : mword mt
+  ctri  : mword mt;
+  ctr1  : mword mt;
+  ctr2  : mword mt;
+  ctr3  : mword mt
 }.
 
 Definition rvec_eqb mt (r1 r2 : rvec mt) : bool :=
-  [&& ctrpc r1 == ctrpc r2 & ctr r1 == ctr r2].
+  [&& ctrpc r1 == ctrpc r2 ,
+      ctri  r1 == ctri  r2 ,
+      ctr1  r1 == ctr1  r2 ,
+      ctr2  r1 == ctr2  r2 &
+      ctr3  r1 == ctr3  r2 ].
 
 Lemma rvec_eqbP mt : Equality.axiom (@rvec_eqb mt).
 Proof.
   move => r1 r2.
   case: r1 => *. case: r2 => *.
-  apply (iffP andP); simpl.
-  - by move => [/eqP -> /eqP ->].
-  - move => [-> ->]. by rewrite !eqxx.
+  apply (iffP and5P); simpl.
+  - by move => [/eqP -> /eqP -> /eqP -> /eqP -> /eqP ->].
+  - move => [-> -> -> -> ->]. by rewrite !eqxx.
 Qed.
 
 Definition rvec_eqMixin mt := EqMixin (@rvec_eqbP mt).
@@ -104,7 +120,7 @@ Let atom := atom (mword mt) (mword mt).
 (* If we were doing good modularization, these would be abstract! *)
 Definition cache_line_addr : mword mt := 0%w.
 (* BCP: Call it fault_handler_addr? *)
-Definition fault_handler_start : mword mt := as_word 8.
+Definition fault_handler_start : mword mt := as_word 11.
 Definition TNone   : mword mt := as_word 8.
 Definition TMonitor : mword mt := 0.
 
@@ -117,10 +133,13 @@ Definition Mt1 : mword mt := (cache_line_addr + as_word 3)%w.
 Definition Mt2 : mword mt := (cache_line_addr + as_word 4)%w.
 Definition Mt3 : mword mt := (cache_line_addr + as_word 5)%w.
 Definition Mtrpc : mword mt := (cache_line_addr + as_word 6)%w.
-Definition Mtr : mword mt := (cache_line_addr + as_word 7)%w.
+Definition Mtri : mword mt := (cache_line_addr + as_word 7)%w.
+Definition Mtr1 : mword mt := (cache_line_addr + as_word 8)%w.
+Definition Mtr2 : mword mt := (cache_line_addr + as_word 9)%w.
+Definition Mtr3 : mword mt := (cache_line_addr + as_word 10)%w.
 
 Definition mvec_fields := [:: Mop; Mtpc; Mti; Mt1; Mt2; Mt3].
-Definition rvec_fields := [:: Mtrpc; Mtr].
+Definition rvec_fields := [:: Mtrpc; Mtri; Mtr1; Mtr2; Mtr3].
 Definition mvec_and_rvec_fields := mvec_fields ++ rvec_fields.
 
 Inductive mvec_part : Set :=
@@ -134,7 +153,10 @@ Definition DCMask := mvec_part -> bool.
 
 Record CTMask : Set := mkCTMask {
   ct_trpc : option mvec_part;
-  ct_tr   : option mvec_part
+  ct_tri  : option mvec_part;
+  ct_tr1  : option mvec_part;
+  ct_tr2  : option mvec_part;
+  ct_tr3  : option mvec_part
 }.
 
 Record Mask : Set := {
@@ -166,7 +188,10 @@ Definition copy_mvec_part (mv : mvec) (tag : mword mt)
 
 Definition copy (mv : mvec) (rv : rvec) (ctm : CTMask) : rvec :=
   RVec (copy_mvec_part mv (ctrpc rv) (ct_trpc ctm))
-         (copy_mvec_part mv (ctr   rv) (ct_tr   ctm)).
+       (copy_mvec_part mv (ctri  rv) (ct_tri  ctm))
+       (copy_mvec_part mv (ctr1  rv) (ct_tr1  ctm))
+       (copy_mvec_part mv (ctr2  rv) (ct_tr2  ctm))
+       (copy_mvec_part mv (ctr3  rv) (ct_tr3  ctm)).
 
 Definition is_monitor_tag (tpc:mword mt) : bool := tpc == TMonitor.
 
@@ -209,12 +234,15 @@ Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rule
   do! at2   <- mem Mt2;
   do! at3   <- mem Mt3;
   do! atrpc <- mem Mtrpc;
-  do! atr   <- mem Mtr;
+  do! atri  <- mem Mtri;
+  do! atr1  <- mem Mtr1;
+  do! atr2  <- mem Mtr2;
+  do! atr3  <- mem Mtr3;
   do! op    <- op_of_word (vala aop);
   let dcm := dc (masks false op) in
   let mv := mask_dc dcm (MVec op (vala atpc)
                               (vala ati) (vala at1) (vala at2) (vala at3)) in
-  Some (setm cache mv (RVec (vala atrpc) (vala atr))).
+  Some (setm cache mv (RVec (vala atrpc) (vala atri) (vala atr1) (vala atr2) (vala atr3))).
 
 Definition store_mvec (mem : memory) (mv : mvec) : memory :=
   unionm [partmap (Mop, (word_of_op (cop mv))@TMonitor);
@@ -231,13 +259,52 @@ Variable masks : Masks.
 
 Local Notation "x .+1" := (x + 1)%w.
 
+Definition get_tag_loc (st : state) (l : tag_loc mt) : option (mword mt) :=
+  match l with
+    | LReg r => omap taga ((regs st) r)
+    | LMem a => omap taga ((mem  st) a)
+    | LEPC   => Some (taga (epc st))
+    | LNone  => Some TNone
+  end.
+
+Definition upd_tag_loc (st : state) (l : tag_loc mt) (t : mword mt) : option state :=
+  match l with
+    | LReg r => do! regs' <- repm (regs st) r (fun v => vala v @ t);
+                Some (State (mem st) regs' (cache st) (pc st) (epc st))
+    | LMem a => do! mem' <- repm (mem st) a (fun v => vala v @ t);
+                Some (State mem' (regs st) (cache st) (pc st) (epc st))
+    | LEPC   => Some (State (mem st) (regs st) (cache st) (pc st) (vala (epc st))@t)
+    | LNone  => Some st
+  end.
+
+Record lvec : Type := LVec {
+  copL  : opcode;
+  ctpcL : mword mt;
+  ctiL  : mword mt;
+  ct1L  : tag_loc mt;
+  ct2L  : tag_loc mt;
+  ct3L  : tag_loc mt
+}.
+
+Definition get_lvec (st : state) (lv : lvec) : option mvec :=
+  do! ct1 <- get_tag_loc st (ct1L lv);
+  do! ct2 <- get_tag_loc st (ct2L lv);
+  do! ct3 <- get_tag_loc st (ct3L lv);
+  Some (MVec (copL lv) (ctpcL lv) (ctiL lv) ct1 ct2 ct3).
+
+Definition set_lvec (st0 : state) (lv : lvec) (rv : rvec) : option state :=
+  do! st1 <- upd_tag_loc st0 (LMem (pcv st0)) (ctri rv);
+  do! st2 <- upd_tag_loc st1 (ct1L lv)        (ctr1 rv);
+  do! st3 <- upd_tag_loc st2 (ct2L lv)        (ctr2 rv);
+  do! st4 <- upd_tag_loc st3 (ct3L lv)        (ctr3 rv);
+  Some (State (mem st4) (regs st4) (cache st4) (pcv st4)@(ctrpc rv) (epc st4)).
+
 (* The mvector is written at fixed locations in monitor memory where
    the fault handler can access them (using the same addresses as for
    add_rule: Mop, Mtpc, etc.) *)
 Definition miss_state (st : state) (mvec : mvec) : state :=
   let mem' := store_mvec (mem st) mvec in
   State mem' (regs st) (cache st) fault_handler_start@TMonitor (pc st).
-
 
 (* The next functions build the next state by looking up on the cache,
    finding the appropriate tag values for the results and using those
@@ -246,25 +313,26 @@ Definition miss_state (st : state) (mvec : mvec) : state :=
 (* TODO: find better name for these ... lookup? *)
 (* BCP: check? *)
 
-Definition next_state (st : state) (mvec : mvec)
-                      (k : rvec -> option state) : option state :=
-  let lookup := cache_lookup (cache st) masks mvec in
+Definition next_state (st : state) (lv : lvec) : option state :=
+  do! mv <- get_lvec st lv;
+  let lookup := cache_lookup (cache st) masks mv in
   match lookup with
-  | Some rvec => k rvec
-  | None => Some (miss_state st mvec)
+  | Some rv => set_lvec st lv rv
+  | None    => Some (miss_state st mv)
   end.
 
-Definition next_state_reg_and_pc (st : state) (mvec : mvec) (r : reg mt) x pc' : option state :=
-  next_state st mvec (fun rvec =>
-    do! reg' <- updm (regs st) r x@(ctr rvec);
-    Some (State (mem st) reg' (cache st) pc'@(ctrpc rvec) (epc st))).
+Definition next_state_pc (st : state) (lv : lvec) (pc' : mword mt) : option state :=
+  do! st' <- next_state st lv;
+  Some (State (mem st') (regs st') (cache st') pc'@(pct st') (epc st')).
 
-Definition next_state_reg (st : state) (mvec : mvec) r x : option state :=
-  next_state_reg_and_pc st mvec r x (vala (pc st)).+1.
+Definition next_state_reg_and_pc (st : state) (lv : lvec)
+                                 (r : reg mt) (x : mword mt) (pc' : mword mt) : option state :=
+  do! st'   <- next_state_pc st lv pc';
+  do! regs' <- repm (regs st') r (fun v => x@(taga v));
+  Some (State (mem st') regs' (cache st') (pc st') (epc st')).
 
-Definition next_state_pc (st : state) (mvec : mvec) x : option state :=
-  next_state st mvec (fun rvec =>
-    Some (State (mem st) (regs st) (cache st) x@(ctrpc rvec) (epc st))).
+Definition next_state_reg (st : state) (lv : lvec) (r : reg mt) (x : mword mt) : option state :=
+  next_state_reg_and_pc st lv r x (vala (pc st)).+1.
 
 Inductive step (st st' : state) : Prop :=
 | step_nop :
@@ -272,136 +340,131 @@ Inductive step (st st' : state) : Prop :=
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Nop _)),
-    let mv := MVec NOP tpc ti TNone TNone TNone in
-    forall (NEXT : next_state_pc st mv (pc.+1) = Some st'),
+    let lv := LVec NOP tpc ti LNone LNone LNone in
+    forall (NEXT : next_state_pc st lv (pc.+1) = Some st'),
       step st st'
 | step_const :
-    forall mem reg cache pc epc n r tpc i ti old told,
+    forall mem reg cache pc epc n r tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Const n r)),
-    forall (OLD : reg r = Some old@told),
-    let mv := MVec CONST tpc ti told TNone TNone in
-    forall (NEXT : next_state_reg st mv r (swcast n) = Some st'),
+    let lv := LVec CONST tpc ti (LReg r) LNone LNone in
+    forall (NEXT : next_state_reg st lv r (swcast n) = Some st'),
       step st st'
 | step_mov :
-    forall mem reg cache pc epc r1 w1 r2 tpc i ti t1 old told,
+    forall mem reg cache pc epc r1 w1 r2 tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Mov r1 r2)),
-    forall (REG1 : reg r1 = Some w1@t1),
-    forall (OLD : reg r2 = Some old@told),
-    let mv := MVec MOV tpc ti t1 told TNone in
-    forall (NEXT : next_state_reg st mv r2 w1 = Some st'),
+    forall (REG1 : omap vala (reg r1) = Some w1),
+    let lv := LVec MOV tpc ti (LReg r1) (LReg r2) LNone in
+    forall (NEXT : next_state_reg st lv r2 w1 = Some st'),
       step st st'
 | step_binop :
-    forall mem reg cache pc epc op r1 r2 r3 w1 w2 tpc i ti t1 t2 old told,
+    forall mem reg cache pc epc op r1 r2 r3 w1 w2 tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Binop op r1 r2 r3)),
-    forall (REG1 : reg r1 = Some w1@t1),
-    forall (REG2 : reg r2 = Some w2@t2),
-    forall (OLD : reg r3 = Some old@told),
-    let mv := MVec (BINOP op) tpc ti t1 t2 told in
-    forall (NEXT : next_state_reg st mv r3 (binop_denote op w1 w2) =
+    forall (REG1 : omap vala (reg r1) = Some w1),
+    forall (REG2 : omap vala (reg r2) = Some w2),
+    let lv := LVec (BINOP op) tpc ti (LReg r1) (LReg r2) (LReg r3) in
+    forall (NEXT : next_state_reg st lv r3 (binop_denote op w1 w2) =
                    Some st'),
       step st st'
 | step_load :
-    forall mem reg cache pc epc r1 r2 w1 w2 tpc i ti t1 t2 old told,
+    forall mem reg cache pc epc r1 r2 w1 w2 tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Load r1 r2)),
-    forall (REG1 : reg r1 = Some w1@t1),
-    forall (M1 : mem w1 = Some w2@t2),
-    forall (OLD : reg r2 = Some old@told),
-    let mv := MVec LOAD tpc ti t1 t2 told in
-    forall (NEXT : next_state_reg st mv r2 w2 = Some st'),
+    forall (REG1 : omap vala (reg r1) = Some w1),
+    forall (M1   : omap vala (mem w1) = Some w2),
+    let lv := LVec LOAD tpc ti (LReg r1) (LMem w1) (LReg r2) in
+    forall (NEXT : next_state_reg st lv r2 w2 = Some st'),
       step st st'
 | step_store :
-    forall mem reg cache pc epc r1 r2 w1 w2 w3 tpc i ti t1 t2 t3,
+    forall mem reg cache pc epc r1 r2 w1 w2 tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Store r1 r2)),
-    forall (REG1 : reg r1 = Some w1@t1),
-    forall (REG2 : reg r2 = Some w2@t2),
-    forall (M1 : mem w1 = Some w3@t3),
-    let mv := MVec STORE tpc ti t1 t2 t3 in
-    forall (NEXT :
-      next_state st mv (fun rvec =>
-        do! mem' <- updm mem w1 w2@(ctr rvec);
-        Some (State mem' reg cache (pc.+1)@(ctrpc rvec) epc)) = Some st'),
+    forall (REG1 : omap vala (reg r1) = Some w1),
+    forall (REG2 : omap vala (reg r2) = Some w2),
+    let lv := LVec STORE tpc ti (LReg r1) (LReg r2) (LMem w1) in
+    forall (NEXT : (do! st'  <- next_state_pc st lv (pc.+1);
+                    let: State _ reg' cache' pc' epc' := st' in
+                    do! mem' <- repm mem w1 (fun v => w2@(taga v));
+                    Some (State mem' reg' cache' pc' epc'))
+                   = Some st'),
       step st st'
 | step_jump :
-    forall mem reg cache pc epc r w tpc i ti t1,
+    forall mem reg cache pc epc r w tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Jump r)),
-    forall (REG : reg r = Some w@t1),
-    let mv := MVec JUMP tpc ti t1 TNone TNone in
-    forall (NEXT : next_state_pc st mv w = Some st'),
+    forall (REG : omap vala (reg r) = Some w),
+    let lv := LVec JUMP tpc ti (LReg r) LNone LNone in
+    forall (NEXT : next_state_pc st lv w = Some st'),
       step st st'
 | step_bnz :
-    forall mem reg cache pc epc r n w tpc i ti t1,
+    forall mem reg cache pc epc r n w tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Bnz r n)),
-    forall (REG : reg r = Some w@t1),
-    let mv := MVec BNZ tpc ti t1 TNone TNone in
+    forall (REG : omap vala (reg r) = Some w),
+    let lv := LVec BNZ tpc ti (LReg r) LNone LNone in
     let pc' := pc + if w == 0 then 1 else swcast n in
-    forall (NEXT : next_state_pc st mv pc' = Some st'),
+    forall (NEXT : next_state_pc st lv pc' = Some st'),
       step st st'
 | step_jal :
-    forall mem reg cache pc epc r w tpc i ti t1 old told,
+    forall mem reg cache pc epc r w tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (Jal r)),
-    forall (REG : reg r = Some w@t1),
-    forall (OLD: reg ra = Some old@told),
-    let mv := MVec JAL tpc ti t1 told TNone in
-    forall (NEXT : next_state_reg_and_pc st mv ra (pc.+1) w = Some st'),
+    forall (REG : omap vala (reg r) = Some w),
+    let lv := LVec JAL tpc ti (LReg r) (LReg ra) LNone in
+    forall (NEXT : next_state_reg_and_pc st lv ra (pc.+1) w = Some st'),
       step st st'
 | step_jumpepc :
     forall mem reg cache pc tpc w tepc i ti,
     forall (ST : st = State mem reg cache pc@tpc w@tepc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (JumpEpc _)),
-    let mv := MVec JUMPEPC tpc ti tepc TNone TNone in
-    forall (NEXT : next_state_pc st mv w = Some st'),
+    let lv := LVec JUMPEPC tpc ti LEPC LNone LNone in
+    forall (NEXT : next_state_pc st lv w = Some st'),
       step st st'
 | step_addrule :
     forall mem reg cache pc epc tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (AddRule _)),
-    let mv := MVec ADDRULE tpc ti TNone TNone TNone in
-    forall (NEXT :
-      next_state st mv (fun rvec =>
-        do! cache' <- add_rule cache masks mem;
-        Some (State mem reg cache' (pc.+1)@(ctrpc rvec) epc)) = Some st'),
+    let lv := LVec ADDRULE tpc ti LNone LNone LNone in
+    forall (NEXT : (do! st' <- next_state_pc st lv (pc.+1);
+                    let: State mem' reg' cache' pc' epc' := st' in
+                    do! cache'' <- add_rule cache' masks mem';
+                    Some (State mem' reg' cache'' pc' epc'))
+                   = Some st'),
       step st st'
 | step_gettag :
-    forall mem reg cache pc epc r1 r2 w tpc i ti t1 old told,
+    forall mem reg cache pc epc r1 r2 tpc i ti t1,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (GetTag r1 r2)),
-    forall (REG : reg r1 = Some w@t1),
-    forall (OLD : reg r2 = Some old@told),
-    let mv := MVec GETTAG tpc ti t1 told TNone in
-    forall (NEXT : next_state_reg st mv r2 t1 = Some st'),
+    forall (REG : omap taga (reg r1) = Some t1),
+    let lv := LVec GETTAG tpc ti (LReg r1) (LReg r2) LNone in
+    forall (NEXT : next_state_reg st lv r2 t1 = Some st'),
       step st st'
 | step_puttag :
-    forall mem reg cache pc epc r1 r2 r3 w t tpc i ti t1 t2 old told,
+    forall mem reg cache pc epc r1 r2 r3 w t tpc i ti,
     forall (ST : st = State mem reg cache pc@tpc epc),
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (PutTag r1 r2 r3)),
-    forall (REG1 : reg r1 = Some w@t1),
-    forall (REG2 : reg r2 = Some t@t2),
-    forall (OLD: reg r3 = Some old@told),
-    let mv := MVec PUTTAG tpc ti t1 t2 told in
-    forall (NEXT :
-      next_state st mv (fun rvec =>
-        do! reg' <- updm reg r3 w@t;
-        Some (State mem reg' cache (pc.+1@(ctrpc rvec)) epc)) = Some st'),
+    forall (REG1 : omap vala (reg r1) = Some w),
+    forall (REG2 : omap vala (reg r2) = Some t),
+    let lv := LVec PUTTAG tpc ti (LReg r1) (LReg r2) (LReg r3) in
+    forall (NEXT : (do! st' <- next_state_pc st lv (pc.+1);
+                    let: State mem' reg' cache' pc' epc' := st' in
+                    do! reg'' <- updm reg' r3 w@t;
+                    Some (State mem' reg'' cache' pc' epc'))
+                   = Some st'),
       step st st'.
 
 End ConcreteSection.
