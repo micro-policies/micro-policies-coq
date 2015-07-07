@@ -305,9 +305,9 @@ Inductive step (st st' : state) : Prop :=
     (R2W  : omap vala (reg r2) = Some w2),
     let lv := LVec STORE tpc ti [hseq r1; r2; w1] in forall
     (NEXT : (do! st'  <- next_state_pc st lv (pc.+1);
-             let: State _ reg' pc' extra' := st' in
-             do! mem' <- repm mem w1 (fun v => w2@(taga v));
-             Some (State mem' reg' pc' extra')) = Some st'),  step st st'
+             let: State mem' reg' pc' extra' := st' in
+             do! mem'' <- repm mem' w1 (fun v => w2@(taga v));
+             Some (State mem'' reg' pc' extra')) = Some st'),  step st st'
 | step_jump : forall mem reg pc tpc i ti r w extra
     (ST   : st = State mem reg pc@tpc extra)
     (PC   : mem pc = Some i@ti)

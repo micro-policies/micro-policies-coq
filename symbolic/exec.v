@@ -56,9 +56,9 @@ Definition stepf (st : state mt) : option (state mt) :=
       do! w2 <- regv r2;
       let lv := LVec STORE tpc ti [hseq r1; r2; w1] in
       do! st'  <- next_state_pc st lv (pc.+1);
-      let: State _ reg' pc' extra' := st' in
-      do! mem' <- repm mem w1 (fun a => w2@(taga a));
-      Some (State mem' reg' pc' extra')
+      let: State mem' reg' pc' extra' := st' in
+      do! mem'' <- repm mem' w1 (fun a => w2@(taga a));
+      Some (State mem'' reg' pc' extra')
     | Jump r =>
       do! w <- regv r;
       let lv := LVec JUMP tpc ti [hseq r] in
