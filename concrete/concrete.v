@@ -313,23 +313,24 @@ Definition miss_state (st : state) (mvec : mvec) : state :=
 (* TODO: find better name for these ... lookup? *)
 (* BCP: check? *)
 
-Definition next_state (st : state) (lv : lvec) : option state :=
+Definition next_state (st : state) (lv : lvec) (k : state -> option state) : option state :=
   do! mv <- get_lvec st lv;
   let lookup := cache_lookup (cache st) masks mv in
   match lookup with
-  | Some rv => set_lvec st lv rv
+  | Some rv => do! st <- set_lvec st lv rv;
+               k st
   | None    => Some (miss_state st mv)
   end.
 
 Definition next_state_pc (st : state) (lv : lvec) (pc' : mword mt) : option state :=
-  do! st' <- next_state st lv;
-  Some (State (mem st') (regs st') (cache st') pc'@(pct st') (epc st')).
+  next_state st lv (fun st' =>
+    Some (State (mem st') (regs st') (cache st') pc'@(pct st') (epc st'))).
 
 Definition next_state_reg_and_pc (st : state) (lv : lvec)
                                  (r : reg mt) (x : mword mt) (pc' : mword mt) : option state :=
-  do! st'   <- next_state_pc st lv pc';
-  do! regs' <- repm (regs st') r (fun v => x@(taga v));
-  Some (State (mem st') regs' (cache st') (pc st') (epc st')).
+  next_state st lv (fun st' =>
+    do! regs' <- repm (regs st') r (fun v => x@(taga v));
+    Some (State (mem st') regs' (cache st') pc'@(pct st') (epc st'))).
 
 Definition next_state_reg (st : state) (lv : lvec) (r : reg mt) (x : mword mt) : option state :=
   next_state_reg_and_pc st lv r x (vala (pc st)).+1.
@@ -389,10 +390,10 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : omap vala (reg r1) = Some w1),
     forall (REG2 : omap vala (reg r2) = Some w2),
     let lv := LVec STORE tpc ti (LReg r1) (LReg r2) (LMem w1) in
-    forall (NEXT : (do! st'  <- next_state_pc st lv (pc.+1);
-                    let: State mem' reg' cache' pc' epc' := st' in
+    forall (NEXT : next_state st lv (fun st_ =>
+                    let: State mem' reg' cache' pcv'@pct' epc' := st_ in
                     do! mem'' <- repm mem' w1 (fun v => w2@(taga v));
-                    Some (State mem'' reg' cache' pc' epc'))
+                    Some (State mem'' reg' cache' (pcv'.+1)@pct' epc'))
                    = Some st'),
       step st st'
 | step_jump :
@@ -437,10 +438,10 @@ Inductive step (st st' : state) : Prop :=
     forall (PC : mem pc = Some i@ti),
     forall (INST : decode_instr i = Some (AddRule _)),
     let lv := LVec ADDRULE tpc ti LNone LNone LNone in
-    forall (NEXT : (do! st' <- next_state_pc st lv (pc.+1);
-                    let: State mem' reg' cache' pc' epc' := st' in
+    forall (NEXT : next_state st lv (fun st_ =>
+                    let: State mem' reg' cache' pcv'@pct' epc' := st_ in
                     do! cache'' <- add_rule cache' masks mem';
-                    Some (State mem' reg' cache'' pc' epc'))
+                    Some (State mem' reg' cache'' (pcv'.+1)@pct' epc'))
                    = Some st'),
       step st st'
 | step_gettag :
@@ -460,10 +461,10 @@ Inductive step (st st' : state) : Prop :=
     forall (REG1 : omap vala (reg r1) = Some w),
     forall (REG2 : omap vala (reg r2) = Some t),
     let lv := LVec PUTTAG tpc ti (LReg r1) (LReg r2) (LReg r3) in
-    forall (NEXT : (do! st' <- next_state_pc st lv (pc.+1);
-                    let: State mem' reg' cache' pc' epc' := st' in
+    forall (NEXT : next_state st lv (fun st_ =>
+                    let: State mem' reg' cache' pcv'@pct' epc' := st_ in
                     do! reg'' <- updm reg' r3 w@t;
-                    Some (State mem' reg'' cache' pc' epc'))
+                    Some (State mem' reg'' cache' (pcv'.+1)@pct' epc'))
                    = Some st'),
       step st st'.
 

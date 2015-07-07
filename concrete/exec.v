@@ -52,10 +52,10 @@ Definition step (st : state mt) : option (state mt) :=
     do! w1 <- omap vala (reg r1);
     do! w2 <- omap vala (reg r2);
     let lvec := lvec (LReg r1) (LReg r2) (LMem w1) in
-    do! st' <- next_state_pc masks st lvec (pc.+1);
-    let: State mem' reg' cache' pc' epc' := st' in
-    do! mem'' <- repm mem' w1 (fun v => w2@(taga v));
-    Some (State mem'' reg' cache' pc' epc')
+    next_state masks st lvec (fun st' =>
+      let: State mem' reg' cache' pcv'@pct' epc' := st' in
+      do! mem'' <- repm mem' w1 (fun v => w2@(taga v));
+      Some (State mem'' reg' cache' (pcv'.+1)@pct' epc'))
   | Jump r =>
     do! w <- omap vala (reg r);
     let lvec := lvec (LReg r) LNone LNone in
@@ -74,10 +74,10 @@ Definition step (st : state mt) : option (state mt) :=
     next_state_pc masks st lvec (vala epc)
   | AddRule =>
     let lvec := lvec LNone LNone LNone in
-    do! st' <- next_state_pc masks st lvec (pc.+1);
-    let: State mem' reg' cache' pc' epc' := st' in
-    do! cache'' <- add_rule cache' masks mem';
-    Some (State mem' reg' cache'' pc' epc')
+    next_state masks st lvec (fun st' =>
+      let: State mem' reg' cache' pcv'@pct' epc' := st' in
+      do! cache'' <- add_rule cache' masks mem';
+      Some (State mem' reg' cache'' (pcv'.+1)@pct' epc'))
   | GetTag r1 r2 =>
     do! t1 <- omap taga (reg r1);
     let lvec := lvec (LReg r1) (LReg r2) LNone in
@@ -86,10 +86,10 @@ Definition step (st : state mt) : option (state mt) :=
     do! w <- omap vala (reg r1);
     do! t <- omap vala (reg r2);
     let lvec := lvec (LReg r1) (LReg r2) (LReg r3) in
-    do! st' <- next_state_pc masks st lvec (pc.+1);
-    let: State mem' reg' cache' pc' epc' := st' in
-    do! reg'' <- updm reg' r3 w@t;
-    Some (State mem' reg'' cache' pc' epc')
+    next_state masks st lvec (fun st' =>
+      let: State mem' reg' cache' pcv'@pct' epc' := st' in
+      do! reg'' <- updm reg' r3 w@t;
+      Some (State mem' reg'' cache' (pcv'.+1)@pct' epc'))
   | Halt => None
 end.
 
@@ -225,6 +225,28 @@ Lemma step_lookup_success_or_fault cst cst' :
                      (pc cst)
     end.
 Proof.
+  move => STEP.
+  rewrite /build_cmvec.
+  inv STEP; subst; rewrite /pct /=;
+  repeat match goal with
+  | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
+  end.
+  -
+  eexists; (split; first by reflexivity);
+  subst lv;
+  unfold next_state_reg, next_state_pc, next_state_reg_and_pc, next_state,
+         miss_state,
+         set_lvec,
+         pcv, pct in *;
+  simpl in *. match_inv; simpl in *.
+  reflexivity.
+  f_equal.
+  repeat match goal with
+  | E : ?x = _ |- context[?x] => rewrite E; clear E; simpl
+  end. reflexivity.
+  simpl in *.
+Qed.
+
   move => STEP.
   rewrite /build_cmvec.
   inv STEP; subst; rewrite /pct /=;
