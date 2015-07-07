@@ -25,75 +25,70 @@ Definition step (st : state mt) : option (state mt) :=
   let 'State mem reg cache pc@tpc epc := st in
   do! i <- mem pc;
   do! instr <- decode_instr (vala i);
-  let mvec := MVec (opcode_of instr) tpc (taga i) in
+  let lvec := LVec (opcode_of instr) tpc (taga i) in
   match instr with
   | Nop =>
-    let mvec := mvec TNone TNone TNone in
-    next_state_pc masks st mvec (pc.+1)
+    let lvec := lvec LNone LNone LNone in
+    next_state_pc masks st lvec (pc.+1)
   | Const n r =>
-    do! old <- reg r;
-    let mvec := mvec (taga old) TNone TNone in
-    next_state_reg masks st mvec r (swcast n)
+    let lvec := lvec (LReg r) LNone LNone in
+    next_state_reg masks st lvec r (swcast n)
   | Mov r1 r2 =>
-    do! v1 <- reg r1;
-    do! old <- reg r2;
-    let mvec := mvec (taga v1) (taga old) TNone in
-    next_state_reg masks st mvec r2 (vala v1)
+    do! w1 <- omap vala (reg r1);
+    let lvec := lvec (LReg r1) (LReg r2) LNone in
+    next_state_reg masks st lvec r2 w1
   | Binop f r1 r2 r3 =>
-    do! v1 <- reg r1;
-    do! v2 <- reg r2;
-    do! old <- reg r3;
-    let mvec := mvec (taga v1) (taga v2) (taga old) in
-    next_state_reg masks st mvec r3 (binop_denote f (vala v1) (vala v2))
+    do! w1 <- omap vala (reg r1);
+    do! w2 <- omap vala (reg r2);
+    let lvec := lvec (LReg r1) (LReg r2) (LReg r3) in
+    next_state_reg masks st lvec r3 (binop_denote f w1 w2)
   | Load r1 r2 =>
-    do! v1 <- reg r1;
-    do! v2 <- mem (vala v1);
-    do! old <- reg r2;
-    let mvec := mvec (taga v1) (taga v2) (taga old) in
-    next_state_reg masks st mvec r2 (vala v2)
+    do! w1 <- omap vala (reg r1);
+    do! w2 <- omap vala (mem w1);
+    let lvec := lvec (LReg r1) (LMem w2) (LReg r2) in
+    next_state_reg masks st lvec r2 w2
   | Store r1 r2 =>
-    do! v1 <- reg r1;
-    do! v2 <- reg r2;
-    do! v3 <- mem (vala v1);
-    let mvec := mvec (taga v1) (taga v2) (taga v3) in
-    next_state masks st mvec (fun rvec =>
-      do! mem' <- updm mem (vala v1) (vala v2)@(ctr rvec);
-      Some (State mem' reg cache (pc.+1)@(ctrpc rvec) epc))
+    do! w1 <- omap vala (reg r1);
+    do! w2 <- omap vala (reg r2);
+    let lvec := lvec (LReg r1) (LReg r2) (LMem w1) in
+    do! st' <- next_state_pc masks st lvec (pc.+1);
+    let: State mem' reg' cache' pc' epc' := st' in
+    do! mem'' <- repm mem' w2 (fun v => w2@(taga v));
+    Some (State mem'' reg' cache' pc' epc')
   | Jump r =>
-    do! v <- reg r;
-    let mvec := mvec (taga v) TNone TNone in
-    next_state_pc masks st mvec (vala v)
+    do! w <- omap vala (reg r);
+    let lvec := lvec (LReg r) LNone LNone in
+    next_state_pc masks st lvec w
   | Bnz r n =>
-    do! v <- reg r;
-    let mvec := mvec (taga v) TNone TNone in
-    let pc' := pc + if (vala v) == 0%w then 1%w else swcast n in
-    next_state_pc masks st mvec pc'
+    do! w <- omap vala (reg r);
+    let lvec := lvec (LReg r) LNone LNone in
+    let pc' := pc + if w == 0%w then 1%w else swcast n in
+    next_state_pc masks st lvec pc'
   | Jal r =>
-    do! v <- reg r;
-    do! old <- reg ra;
-    let mvec := mvec (taga v) (taga old) TNone in
-    next_state_reg_and_pc masks st mvec ra (pc.+1) (vala v)
+    do! w <- omap vala (reg r);
+    let lvec := lvec (LReg r) (LReg ra) LNone in
+    next_state_reg_and_pc masks st lvec ra (pc.+1) w
   | JumpEpc =>
-    let mvec := mvec (taga epc) TNone TNone in
-    next_state_pc masks st mvec (vala epc)
+    let lvec := lvec LEPC LNone LNone in
+    next_state_pc masks st lvec (vala epc)
   | AddRule =>
-    let mvec := mvec TNone TNone TNone in
-    next_state masks st mvec (fun rvec =>
-      do! cache' <- add_rule cache masks mem;
-      Some (State mem reg cache' (pc.+1)@(ctrpc rvec) epc))
+    let lvec := lvec LNone LNone LNone in
+    do! st' <- next_state masks st lvec;
+    let: State mem' reg' cache' pc' epc' := st' in
+    do! cache'' <- add_rule cache' masks mem';
+    Some (State mem' reg' cache'' pc' epc')
   | GetTag r1 r2 =>
-    do! v1 <- reg r1;
-    do! old <- reg r2;
-    let mvec := mvec (taga v1) (taga old) TNone in
-    next_state_reg masks st mvec r2 (taga v1)
+    do! t1 <- omap taga (reg r1);
+    let lvec := lvec (LReg r1) (LReg r2) LNone in
+    next_state_reg masks st lvec r2 t1
   | PutTag r1 r2 r3 =>
-    do! v1 <- reg r1;
-    do! v2 <- reg r2;
-    do! old <- reg r3;
-    let mvec := mvec (taga v1) (taga v2) (taga old) in
-    next_state masks st mvec (fun rvec =>
-      do! reg' <- updm reg r3 (vala v1)@(vala v2);
-      Some (State mem reg' cache (pc.+1)@(ctrpc rvec) epc))
+    do! w <- omap vala (reg r1);
+    do! t <- omap vala (reg r2);
+    let lvec := lvec (LReg r1) (LReg r2) (LReg r3) in
+    do! st' <- next_state masks st lvec;
+    let: State mem' reg' cache' pc' epc' := st' in
+    do! reg'' <- updm reg r3 w@t;
+    Some (State mem' reg'' cache' pc' epc')
   | Halt => None
 end.
 
