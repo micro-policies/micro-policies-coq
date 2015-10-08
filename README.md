@@ -3,7 +3,7 @@
 ### Description
 
 Coq formalization accompanying the paper:
-- Micro-Policies: A Framework for Verified, Tag-Based Security Monitors. Arthur Azevedo de Amorim, Maxime Dénès, Nick Giannarakis, Cătălin Hriţcu, Benjamin C. Pierce, Antal Spector-Zabusky, Andrew Tolmach. Submitted. November 2014. (http://prosecco.gforge.inria.fr/personal/hritcu/publications/micropolicies-draft.pdf)
+- Micro-Policies: A Framework for Verified, Tag-Based Security Monitors. Arthur Azevedo de Amorim, Maxime Dénès, Nick Giannarakis, Cătălin Hriţcu, Benjamin C. Pierce, Antal Spector-Zabusky, Andrew Tolmach. In 36th IEEE Symposium on Security and Privacy (Oakland S&P), May 2015. (http://prosecco.gforge.inria.fr/personal/hritcu/publications/micro-policies.pdf)
 
 ### Prerequisites
 
