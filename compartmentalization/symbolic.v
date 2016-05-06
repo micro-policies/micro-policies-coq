@@ -1,6 +1,7 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype MathComp.finset.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
-Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
+From CoqUtils Require Import ord hseq word partmap fset.
 
 Require Import lib.utils lib.word_utils common.types.
 Require Import symbolic.symbolic.
@@ -496,7 +497,7 @@ Proof.
   rewrite /supd /= /repm /sget.
   case GET: (getm m p) => [[x L']|] /=.
   - move=> {r' pc' ni'} [<- _ _ _ <- <- <-] p' /=.
-    rewrite getm_set.
+    rewrite setmE.
     by have [{p'} _|NE] := (p' =P p).
   - move: GET; have [{p} ->|NE1] := (p =P _).
     { move=> GET {r' pc' ni'} [<- _ _ _ <- <- <-] p'.
@@ -536,7 +537,7 @@ Proof.
   rewrite /supd /= /repm /sget.
   case GET: (getm m p) => [[v tg]|] /=.
   - move=> [<- _ _ _ <- <- <-].
-    rewrite getm_set.
+    rewrite setmE.
     by have [{p'} ->|NE] := (p' =P p); first by rewrite GET.
   - do !case: (p =P _) => ? //; subst.
     + move=> [<- _ _ _ <- <- <-].
@@ -557,7 +558,7 @@ Theorem get_supd_eq s s' p x L L' :
 Proof.
   case: s => m r pc [ni it atjt atst]; case: s' => m' r' pc' [ni' it' atjt' atst'] /=.
   rewrite /supd /repm => -> /= [<- _ _ _ _ _ _].
-  by rewrite getm_set eqxx.
+  by rewrite setmE eqxx.
 Qed.
 
 Theorem get_supd_neq s s' p p' v :
@@ -569,7 +570,7 @@ Proof.
   rewrite /supd.
   case REP: (repm _ _ _) => [m''|].
   - move=> [<- _ _ _ _ _ _].
-    by rewrite (getm_rep REP) (introF (_ =P _) NE).
+    by rewrite (repmE REP) (introF (_ =P _) NE).
   - repeat case: (p =P _) => _ //=; congruence.
 Qed.
 
@@ -582,7 +583,7 @@ Proof.
   rewrite /supd.
   case REP: (repm _ _ _) => [m''|].
   - move=> [<- _ _ _ _ _ _].
-    rewrite (getm_rep REP) NONE.
+    rewrite (repmE REP) NONE.
     move: REP. rewrite /repm.
     have [{p'} <-|//] := (p =P p').
     by rewrite NONE.
@@ -598,7 +599,7 @@ Proof.
   rewrite /supd.
   case REP: (repm m p _) => [m''|].
   - move=> [<- _ _ _ _ _ _] p' /=.
-    rewrite (getm_rep REP).
+    rewrite (repmE REP).
     have [->|_] := (p' =P p) => //.
     by case: (getm m p) => [[? ?]|].
   - repeat case: (p =P _) => _; congruence.
@@ -702,12 +703,12 @@ Qed.
 
 Lemma retag_one_preserves_get_definedness ok retag s p s' :
   retag_one ok retag s p ?= s' ->
-  forall p, Symbolic.mem s p = Symbolic.mem s' p :> bool.
+  domm (Symbolic.mem s) =i domm (Symbolic.mem s').
 Proof.
   rewrite /retag_one.
   case GET: (sget _ _) => [[cid I W]|] //=.
   case: (ok _ _ _ _) => //=.
-  case: (retag _ _ _ _) => [cid' I' W'] //= UPD p'.
+  case: (retag _ _ _ _) => [cid' I' W'] //= UPD p'; rewrite !mem_domm.
   have [{p'} ->|NEQ] := (p' =P p).
   - case GET': (Symbolic.mem s p) => [[x L]|].
     + by rewrite (get_supd_eq GET' UPD).
@@ -717,11 +718,11 @@ Qed.
 
 Lemma retag_set_preserves_get_definedness ok retag ps s s' :
   retag_set ok retag ps s ?= s' ->
-  Symbolic.mem s =i Symbolic.mem s'.
+  domm (Symbolic.mem s) =i domm (Symbolic.mem s').
 Proof.
 move=> H.
 have := (@ofoldl_preserve _ _ _ _ _ _ _ (@retag_one_preserves_get_definedness ok retag) _ _ H).
-by apply; eauto.
+by apply=> // ??? e1 e2 p; rewrite (e1 p).
 Qed.
 
 Lemma retag_one_preserves_registers ok retag s p s' :
@@ -1024,7 +1025,7 @@ Proof.
   { move=> sc cid I W sc_is_sc Hsget.
     apply/negP=> /eqP ?. subst cid.
     move: (Hbounds sc cnew I W Hsget cnew).
-    by rewrite -setUA in_setU1 eqxx /= Ord.leqxx => /(_ erefl). }
+    by rewrite -setUA in_setU1 eqxx /= Ord.ltxx => /(_ erefl). }
   elim: ps s Hpreserved Hisolated Hretag
         => [ s _ _ [<-] //
            | p ps IH ] s Hpreserved Hisolated.

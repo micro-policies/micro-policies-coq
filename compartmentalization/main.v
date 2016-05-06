@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.fintype Ssreflect.seq MathComp.ssrint MathComp.finset.
-Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype fintype seq ssrint finset.
+From CoqUtils Require Import ord hseq word partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -43,7 +43,7 @@ Lemma read_kernel_word_monotonic mem addr x ct x' ct' :
   read_kernel_word (setm mem addr x'@ct') =1 read_kernel_word mem.
 Proof.
   move=> Hget Hnk Hnk' addr'.
-  rewrite /read_kernel_word getm_set.
+  rewrite /read_kernel_word setmE.
   have [-> {addr'} /=|//] := altP (addr' =P addr).
   by rewrite Hget /= (negbTE Hnk) (negbTE Hnk').
 Qed.
@@ -83,7 +83,7 @@ Lemma read_set_monotonic mem addr x ct x' ct' :
   read_set mem =1 read_set (setm mem addr x'@ct').
 Proof.
   move=> Hget Hnk Hnk' addr'.
-  rewrite /read_set getm_set.
+  rewrite /read_set setmE.
   have [-> {addr'} /=|_] := altP (addr' =P addr).
     by rewrite Hget /= (negbTE Hnk) (negbTE Hnk').
   case: (mem addr') => [count|] //=.

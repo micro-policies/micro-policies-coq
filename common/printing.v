@@ -3,7 +3,7 @@ Require Import String.
 Require Import Ascii.
 Require Import ZArith.
 Require Import NPeano.
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 
 Import String.
 

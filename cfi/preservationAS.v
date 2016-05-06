@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import ord word partmap.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -96,9 +96,9 @@ Proof.
   intros RTG r v.
   split.
   - intros GET.
-    by rewrite getm_map /= GET.
+    by rewrite mapmE /= GET.
   - intros GET.
-    rewrite getm_map /= in GET.
+    rewrite mapmE /= in GET.
     destruct (reg r) eqn:GET'.
     + destruct a. simpl in GET.
       assert (taga = DATA)
@@ -111,13 +111,13 @@ Qed.
 
 Lemma untag_data_implies_dmem_refinement mem :
   RefinementAS.refine_dmemory
-    (mapm RefinementAS.untag_atom (filterm RefinementAS.is_data mem)) mem.
+    (mapm RefinementAS.untag_atom (filterm [fun _ => RefinementAS.is_data] mem)) mem.
 Proof.
    intros addr v.
    split.
    - intros GET.
-     by rewrite getm_map /= getm_filter /= GET.
-   - rewrite getm_map /= getm_filter /= => GET.
+     by rewrite mapmE /= filtermE /= GET.
+   - rewrite mapmE /= filtermE /= => GET.
      destruct (getm mem addr) eqn:GET'.
      + destruct a as [val tg].
        simpl in GET.
@@ -136,13 +136,13 @@ Definition is_instr (a : atom (mword mt) cfi_tag) :=
 
 Lemma untag_instr_implies_imem_refinement mem :
   RefinementAS.refine_imemory
-    (mapm RefinementAS.untag_atom (filterm is_instr mem)) mem.
+    (mapm RefinementAS.untag_atom (filterm [fun _ => is_instr] mem)) mem.
 Proof.
    intros addr v.
    split.
    - intros (ut & GET).
-     by rewrite getm_map /= getm_filter /= GET.
-   - rewrite getm_map /= getm_filter /=.
+     by rewrite mapmE /= filtermE /= GET.
+   - rewrite mapmE /= filtermE /=.
      case GET': (getm mem addr) => [[val tg]|] //=.
      by case: tg GET' => [[id|]|] //= _ [<-]; simpl; eauto.
 Qed.
@@ -329,8 +329,8 @@ Qed.
 Next Obligation. (*initial state*)
   destruct H as [TPC [ITG [VTG [ETG [RTG ?]]]]].
   destruct cst as [mem reg [pc tpc] int].
-  exists (Abs.State (mapm RefinementAS.untag_atom (filterm is_instr mem))
-                    (mapm RefinementAS.untag_atom (filterm RefinementAS.is_data mem))
+  exists (Abs.State (mapm RefinementAS.untag_atom (filterm [fun _ => is_instr] mem))
+                    (mapm RefinementAS.untag_atom (filterm [fun _ => RefinementAS.is_data] mem))
                     (mapm RefinementAS.untag_atom reg) pc true).
   split.
   - unfold Abs.initial. reflexivity.

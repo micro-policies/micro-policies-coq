@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype MathComp.ssrint.
-Require Import CoqUtils.hseq CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssrint.
+From CoqUtils Require Import hseq ord word partmap.
 Require Import lib.utils common.types.
 Require Import symbolic.symbolic memory_safety.classes.
 

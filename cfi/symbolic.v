@@ -1,6 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import ord word partmap fset.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -80,7 +79,7 @@ Inductive step_a : Symbolic.state mt ->
 Lemma equiv_same_domain (T : ordType)
            (m m' : {partmap T -> atom (mword mt) cfi_tag}) :
   equiv m m' ->
-  m =i m'.
+  domm m =i domm m'.
 Proof. exact: pointwise_same_domain. Qed.
 
 Local Notation "x .+1" := (x + 1)%w.
@@ -236,12 +235,12 @@ Proof.
         end); match_inv; subst; try (simpl; assumption).
   + simpl in E. simpl. unfold instructions_tagged.
     intros addr i0 id GET.
-    move: E GET; rewrite /updm OLD /= => - [<-]; rewrite getm_set.
+    move: E GET; rewrite /updm OLD /= => - [<-]; rewrite setmE.
     have [EQ //|/eqP NEQ GET] := altP (addr =P w1); simpl in NEQ; subst.
     specialize (INVARIANT _ _ _ GET); assumption.
   + simpl in E. simpl. unfold instructions_tagged.
     move=> addr i0 id; move: E; rewrite /updm OLD /= => - [<-].
-    rewrite getm_set.
+    rewrite setmE.
     have [EQ //|/eqP NEQ GET] := altP (addr =P w1); simpl in NEQ; subst.
     specialize (INVARIANT _ _ _ GET); assumption.
    + unfold Symbolic.run_syscall in CALL. simpl in CALL.

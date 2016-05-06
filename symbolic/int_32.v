@@ -7,9 +7,9 @@ Require Import concrete.concrete.
 Require Import symbolic.rules.
 Require Import symbolic.fault_handler.
 Require Import symbolic.symbolic.
-Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.seq MathComp.ssrint.
+From mathcomp Require Import ssrnat eqtype seq ssrint.
 
-Require Import CoqUtils.word CoqUtils.partmap.
+From CoqUtils Require Import word partmap.
 
 Import DoNotation.
 Import Concrete.

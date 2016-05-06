@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import hseq word partmap fset.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -76,12 +76,11 @@ Definition mvec_in_kernel (cmem : Concrete.memory mt) :=
 Lemma store_mvec_mvec_in_kernel cmem mvec :
   mvec_in_kernel (Concrete.store_mvec cmem mvec).
 Proof.
-move=> k; rewrite /Concrete.store_mvec getm_union.
+move=> k; rewrite /Concrete.store_mvec unionmE.
 set m := mkpartmap _.
-rewrite -[isSome (m k)]/(k \in m) mem_mkpartmap /in_mvec /Concrete.mvec_fields.
-move=> E; rewrite E; have: k \in m by rewrite mem_mkpartmap.
-rewrite inE {E}; case E: (m k) => [v|] // _.
-move/getm_mkpartmap': E; rewrite !inE.
+rewrite -mem_domm domm_mkpartmap /in_mvec /Concrete.mvec_fields.
+move=> E; rewrite E; have: k \in domm m by rewrite domm_mkpartmap.
+case/dommP => v E'; rewrite E'; move/mkpartmap_Some: E'; rewrite !inE.
 do !(case/orP=> [/eqP [_ ->]|]; eauto).
 by move/eqP => [_ ->]; eauto.
 Qed.
@@ -262,11 +261,11 @@ Proof.
   - split.
     + move=> w x ct'' st'' Hdec_ct' Hget''.
       rewrite Hdec_eq in Hdec_ct'.
-      move: Hget''; rewrite !getm_set.
+      move: Hget''; rewrite !setmE.
       have [Heq|Hneq] := w =P addr.
       * subst w; move=> [? ?]; subst; congruence.
       * by eapply (proj1 Hmem); eauto.
-    + move=> w x st Hget''; move: Hget'' Hdec_eq; rewrite /updm !getm_set.
+    + move=> w x st Hget''; move: Hget'' Hdec_eq; rewrite /updm !setmE.
       have [_ {w}|Hneq] := altP (w =P addr).
         move => [-> Ht]; eexists ct'=> //.
         by rewrite Hdec_eq Hdec' Ht.
@@ -287,7 +286,7 @@ Proof.
 move=> Hwf Hget Hdec Hupd Hdec' addr' t''; rewrite Hwf.
 have := decode_monotonic _ _ Hget Hdec Hdec'.
 move: Hupd; rewrite /updm Hget /= => - [<-] {cmem'} Hmono.
-rewrite getm_set.
+rewrite setmE.
 have [-> {addr'}|_] := altP (addr' =P addr).
   by rewrite Hget !Hmono Hdec Hdec' !andbF.
 case: (cmem addr') => [[i ti]|] //.
@@ -310,7 +309,7 @@ Proof.
     have CONTRA : Concrete.TKernel = ct by congruence. subst ct.
     by rewrite decode_kernel_tag in DEC. }
   move: UPD; rewrite /updm GET /= => - [<-].
-  by rewrite getm_set (introF eqP NEQ) KER; eauto.
+  by rewrite setmE (introF eqP NEQ) KER; eauto.
 Qed.
 
 Lemma mvec_in_kernel_kernel_upd cmem cmem' addr w :
@@ -320,7 +319,7 @@ Lemma mvec_in_kernel_kernel_upd cmem cmem' addr w :
 Proof.
 intros MVEC UPD addr' IN.
 move: UPD; rewrite /updm; case: (cmem _) => //= _ [<-].
-rewrite getm_set.
+rewrite setmE.
 by have [?|/eqP NEQ] := altP (addr' =P addr); simpl in *; subst; eauto.
 Qed.
 
@@ -359,13 +358,13 @@ Proof.
       by eauto.
   - move: Hupd; rewrite /updm Hget=> - [<-] {amem'}; split.
     + move=> w x'' ct'' st''.
-      rewrite Hdec_eq !getm_set.
+      rewrite Hdec_eq !setmE.
       have [_ {w}|_] := altP (w =P addr).
         move=> Hdec_ct'' [Hv Hct]. move: Hv Hct Hdec_ct'' => <- <- {x'' ct''}.
         by rewrite Hdec; move => [->].
       by apply (proj1 Hmem).
     + move=> w x' st'.
-      rewrite !getm_set.
+      rewrite !setmE.
       case: (w == addr) => [{w} [<- <-] {x' st'}|].
         exists ct=> //.
         by rewrite Hdec_eq.
@@ -391,13 +390,13 @@ Proof.
   move: Hupd; rewrite {1}/updm Hget /= => - [<-].
   rewrite Hupd'; eexists => //; split.
   - move=> r' x ct'' st''.
-    rewrite !getm_set.
+    rewrite !setmE.
     case: (r' == r) => [Hdec'' [Hx Hct'']|].
       move: Hx Hct'' Hdec'' => <- <-.
       by rewrite Hdec'=> [[->]].
     by apply (proj1 Hregs).
   - move=> r' x st''.
-    rewrite !getm_set.
+    rewrite !setmE.
     case: (r' == r) => [[<- <-] {x st''}|]; first by eauto.
     by apply (proj2 Hregs).
 Qed.
@@ -414,12 +413,12 @@ Proof.
   have [ct0 Hdec' Hget'] := proj2 Hregs _ _ _ Hget.
   rewrite Hget' /=.
   eexists=> //; split.
-  - move=> r' x ct' st'; rewrite !getm_set.
+  - move=> r' x ct' st'; rewrite !setmE.
     case: (r' == r) => [Hdec_ct' [Hx Hct']|].
       move: Hx Hct' Hdec_ct' => <- <- {x ct'}.
       by rewrite Hdec => [[<-]].
     by apply (proj1 Hregs).
-  - move=> r' x st'; rewrite !getm_set.
+  - move=> r' x st'; rewrite !setmE.
     case: (r' == r) => [[<- <-] {x st'}|]; first by rewrite -Hdec; eauto.
     by apply (proj2 Hregs).
 Qed.

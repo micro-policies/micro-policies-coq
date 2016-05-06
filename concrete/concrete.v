@@ -1,5 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq MathComp.ssrint.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq choice ssrint.
+From CoqUtils Require Import ord word partmap.
 
 Require Import lib.utils common.types.
 
@@ -56,6 +57,8 @@ Definition mvec_of_tuple tup : mvec mt :=
 Lemma tuple_of_mvecK : cancel tuple_of_mvec mvec_of_tuple.
 Proof. by case. Qed.
 
+Definition mvec_choiceMixin := CanChoiceMixin tuple_of_mvecK.
+Canonical mvec_choiceType := Eval hnf in ChoiceType (mvec mt) mvec_choiceMixin.
 Definition mvec_ordMixin := CanOrdMixin tuple_of_mvecK.
 Canonical mvec_ordType := Eval hnf in OrdType (mvec mt) mvec_ordMixin.
 

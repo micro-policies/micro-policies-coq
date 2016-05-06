@@ -1,4 +1,4 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun.
+From mathcomp Require Import ssreflect ssrfun.
 
 Require Import lib.utils.
 

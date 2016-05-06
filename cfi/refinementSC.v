@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import ord word partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -100,15 +100,15 @@ Lemma mem_refinement_equiv :
     Sym.equiv smem smem'.
 Proof.
   intros smem cmem cmem' REF EQUIV.
-  exists (mapm (coerce Symbolic.M) (filterm (is_user Symbolic.M) cmem')).
+  exists (mapm (coerce Symbolic.M) (filterm [fun _ => is_user Symbolic.M] cmem')).
   split.
   { (*refinement proof*)
     split.
     { move=> addr v ct t /= DEC CGET.
-      rewrite getm_map /= getm_filter /=.
+      rewrite mapmE /= filtermE /=.
       by rewrite CGET /is_user /= DEC /= /coerce DEC. }
     { move=> addr v t /=.
-      rewrite getm_map /= getm_filter /=.
+      rewrite mapmE /= filtermE /=.
       case CGET: (getm cmem' addr) => [[cv ctg]|] //=.
       rewrite /is_user /=.
       case DEC: (rules.fdecode _ _) => [[t'|]|] //=.
@@ -129,7 +129,7 @@ Proof.
         destruct EQUIV
           as [v0 v'' ct ut ct' ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
         * inv EQ1. inv EQ2.
-          rewrite getm_map /= getm_filter /= CGET' /=
+          rewrite mapmE /= filtermE /= CGET' /=
                   /is_user /= DEC2 /= /coerce /= DEC2.
           rewrite /= DEC1 in DEC.
           move: DEC => [?]. by subst.
@@ -141,7 +141,7 @@ Proof.
       + by destruct EQUIV.
     - destruct (getm cmem addr) eqn:CGET.
       + destruct a as [v ctg]. unfold refinement_common.refine_memory in REF.
-        rewrite getm_map /= getm_filter /=.
+        rewrite mapmE /= filtermE /=.
         case CGET': (getm cmem' addr) EQUIV => [a|] //= EQUIV.
         rewrite /is_user /=.
         destruct EQUIV
@@ -153,7 +153,7 @@ Proof.
           by rewrite DEC; eauto. }
      + destruct (getm cmem' addr) eqn:CGET'.
        * destruct EQUIV.
-       * rewrite getm_map /= getm_filter /=.
+       * rewrite mapmE /= filtermE /=.
          rewrite CGET'. simpl. constructor.
   }
 Qed.
@@ -167,15 +167,15 @@ Lemma reg_refinement_equiv :
     Sym.equiv sregs sregs'.
 Proof.
   intros sreg creg creg' cmem REF EQUIV.
-  exists (mapm (coerce Symbolic.R) (filterm (is_user Symbolic.R) creg')).
+  exists (mapm (coerce Symbolic.R) (filterm [fun _ => is_user Symbolic.R] creg')).
   split.
   { (*Refinement proof*)
     split.
     { move=> n v ctg tg /= DEC CGET'.
-      by rewrite getm_map /= getm_filter /=
+      by rewrite mapmE /= filtermE /=
                  CGET' /= /is_user /= DEC /= /coerce /= DEC. }
     { move=> n v tg.
-      rewrite getm_map /= getm_filter /=.
+      rewrite mapmE /= filtermE /=.
       case CGET': (creg' n)=> [[v' t']|] //=.
       rewrite /is_user /= /coerce /=.
       case CTG: (rules.fdecode _ _) => [[ut|?]|] //=.
@@ -192,7 +192,7 @@ Proof.
     - destruct a as [v utg].
       move: (proj2 REF n v utg SGET) => [ctg DEC CGET].
       rewrite CGET in E1. inversion E1; subst v1 t1; clear E1.
-      rewrite getm_map /= getm_filter /=.
+      rewrite mapmE /= filtermE /=.
       destruct EQUIV
         as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
       * inv EQ1. inv EQ2. rewrite /= DEC1 in DEC. inv DEC.
@@ -201,7 +201,7 @@ Proof.
       * inv EQ. simpl in NEQ.
         suff: False by [].
         by apply: NEQ; eexists; eauto.
-    - rewrite getm_map /= getm_filter /=.
+    - rewrite mapmE /= filtermE /=.
       rewrite E2. simpl.
       destruct EQUIV
         as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.

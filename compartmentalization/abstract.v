@@ -1,5 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq MathComp.bigop Ssreflect.choice Ssreflect.fintype MathComp.finset.
-Require Import CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
+From CoqUtils Require Import word partmap.
 Require Import lib.utils common.types.
 Require Import lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
@@ -1256,7 +1257,7 @@ Proof.
         [clear GET; rename GET' into GET | discriminate].
       move: GET UPDR; rewrite /updm.
       case: (M p) => [m'|] //= GET [<-].
-      rewrite getm_set GET.
+      rewrite setmE GET.
       by case: (_ == _).
     + unfold syscall_address_space in *; cbv [address_space] in *.
       move: SAS => /existsP [sc /and3P [NGET TABLED /eqP ->]].
@@ -1264,7 +1265,7 @@ Proof.
       move: (UPDR); rewrite /updm /= => SET.
       destruct (M p) as [old|] eqn:GET; [|discriminate].
       assert (NEQ : sc <> p) by by intro; subst; rewrite GET in NGET.
-      by move: SET => /= [<-]; rewrite getm_set (introF eqP NEQ).
+      by move: SET => /= [<-]; rewrite setmE (introF eqP NEQ).
   - (* Syscall *)
     assert (GOOD' : good_state MM') by
       (apply syscall_step_preserves_good with MM sc; subst; assumption);
@@ -1448,7 +1449,7 @@ Proof.
         in STEP; eauto 3.
       by rewrite inE in VALID; replace c0 with c in * by eauto 3; apply/orP.
     + move: UPDR DIFF; rewrite /updm; case: (M p) => [?|] //= [<-].
-      by rewrite getm_set (negbTE NE).
+      by rewrite setmE (negbTE NE).
   - (* Syscall *)
     unfold get_syscall,table in *; simpl in *.
     repeat match type of GETSC with

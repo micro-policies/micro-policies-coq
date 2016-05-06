@@ -1,7 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype.
 
-Require Import CoqUtils.ord CoqUtils.partmap.
+From CoqUtils Require Import ord partmap fset.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -41,9 +40,9 @@ Qed.
 
 Lemma pointwise_same_domain P m1 m2 :
   pointwise P m1 m2 ->
-  m1 =i m2.
+  domm m1 =i domm m2.
 Proof.
-move=> H k; move: {H} (H k); rewrite !inE.
+move=> H k; move: {H} (H k); rewrite !mem_domm.
 destruct (getm m1 k) eqn:?; destruct (getm m2 k) eqn:?; tauto.
 Qed.
 
@@ -56,7 +55,7 @@ Lemma refine_upd_pointwise2 P m1 m1' m2 m2' k v1 v2 :
 Proof.
 rewrite /updm; move=> pm1m2; move: (pm1m2 k).
 case: (m1 k) => [v1'|] //; case: (m2 k) => [v2'|] //= _ pv1v2 [<-] [<-] k'.
-move/(_ k'): pm1m2; rewrite !getm_set.
+move/(_ k'): pm1m2; rewrite !setmE.
 by case: (_ == _).
 Qed.
 
@@ -70,7 +69,7 @@ Proof.
 rewrite /updm; move=> pm1m2; move: (pm1m2 k).
 case: (m2 k) => [v2'|] //; case: (m1 k) => [v1'|] //= _ pv1v2 [<-].
 eexists; split; eauto=> k'.
-by move/(_ k'): pm1m2; rewrite !getm_set; case: (_ == _).
+by move/(_ k'): pm1m2; rewrite !setmE; case: (_ == _).
 Qed.
 
 End Pointwise.
@@ -80,13 +79,13 @@ Section SameDomain.
 Variables (T : ordType) (S1 S2 S3 : Type).
 
 Lemma same_domain_trans (m : {partmap T -> S1}) (m' : {partmap T -> S2}) (m'' : {partmap T -> S3}) :
-  m =i m' ->
-  m' =i m'' ->
-  m =i m''.
+  domm m =i domm m' ->
+  domm m' =i domm m'' ->
+  domm m =i domm m''.
 Proof. by move=> h1 h2 k; rewrite -h2. Qed.
 
 Lemma same_domain_comm (m : {partmap T -> S1}) (m' : {partmap T -> S2}) :
-  m =i m' -> m' =i m.
+  domm m =i domm m' -> domm m' =i domm m.
 Proof. by move=> h k; rewrite h. Qed.
 
 End SameDomain.
@@ -144,7 +143,7 @@ Lemma getm_upd_eq m m' key val :
   m' key = Some val.
 Proof.
 rewrite /updm; case: (m key) => [val' [<-]|//].
-by rewrite getm_set eqxx.
+by rewrite setmE eqxx.
 Qed.
 
 Lemma getm_upd_neq m m' (key key' : T) (val : S) :
@@ -153,7 +152,7 @@ Lemma getm_upd_neq m m' (key key' : T) (val : S) :
   m' key' = m key'.
 Proof.
 rewrite /updm; case: (m key) => [val'|] //= NEQ [<-].
-by rewrite getm_set (introF eqP NEQ).
+by rewrite setmE (introF eqP NEQ).
 Qed.
 
 Lemma getm_upd m m' k v :
@@ -167,15 +166,16 @@ by rewrite (getm_upd_neq Hneq Hupd).
 Qed.
 
 Lemma filter_domains (f : S -> bool) m m' :
-  m =i m' ->
+  domm m =i domm m' ->
   (forall k, match getm m k, getm m' k with
                | Some v, Some v' => f v = f v'
                | None, None => True
                | _, _ => False
              end) ->
-  (filterm f m : {partmap T -> S}) =i (filterm f m' : {partmap T -> S}).
+  domm (filterm [fun _ => f] m : {partmap T -> S}) =i
+  domm (filterm [fun _ => f] m' : {partmap T -> S}).
 Proof.
-move => SAME E k; rewrite !inE; do! rewrite getm_filter /=.
+move => SAME E k; do! rewrite mem_domm filtermE /=.
 case GET: (getm m k) (E k) => [v|] {E} E;
 case GET': (getm m' k) E => [v'|] E //=.
 rewrite E.

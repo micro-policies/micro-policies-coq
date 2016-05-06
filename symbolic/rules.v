@@ -1,8 +1,8 @@
 (* Definition of symbolic rules and tags used for kernel protection,
    along with conversion functions towards concrete integer tags. *)
 
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import hseq word partmap.
 
 Require Import lib.utils.
 Require Import common.types concrete.concrete symbolic.symbolic.
