@@ -1,8 +1,8 @@
 (* Instantiate the concrete machine with 32-bit integers *)
 
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.choice Ssreflect.fintype.
-Require Import MathComp.ssrint MathComp.tuple.
-Require Import CoqUtils.hseq CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype ssrint tuple.
+From CoqUtils Require Import hseq ord word partmap.
 
 Require Import lib.utils.
 Require Import common.types common.printing.

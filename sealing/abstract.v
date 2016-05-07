@@ -1,7 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.choice Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
-Require Import CoqUtils.nominal.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype choice seq.
+From CoqUtils Require Import ord word fset partmap nominal.
 Require Import lib.utils common.types common.segment sealing.classes.
 
 Import DoNotation.
@@ -65,9 +63,6 @@ Proof. do 3![case=>//]. Qed.
 
 Definition value_choiceMixin := CanChoiceMixin sum_of_valueK.
 Canonical value_choiceType := Eval hnf in ChoiceType value value_choiceMixin.
-Definition value_partOrdMixin := CanPartOrdMixin sum_of_valueK.
-Canonical value_partOrdType :=
-  Eval hnf in PartOrdType value value_partOrdMixin.
 Definition value_ordMixin := CanOrdMixin sum_of_valueK.
 Canonical value_ordType := Eval hnf in OrdType value value_ordMixin.
 Definition value_nominalMixin := BijNominalMixin sum_of_valueK value_of_sumK.
@@ -111,9 +106,6 @@ Proof. by do 2!case. Qed.
 
 Definition state_choiceMixin := CanChoiceMixin tuple_of_stateK.
 Canonical state_choiceType := Eval hnf in ChoiceType state state_choiceMixin.
-Definition state_partOrdMixin := CanPartOrdMixin tuple_of_stateK.
-Canonical state_partOrdType :=
-  Eval hnf in PartOrdType state state_partOrdMixin.
 Definition state_ordMixin := CanOrdMixin tuple_of_stateK.
 Canonical state_ordType := Eval hnf in OrdType state state_ordMixin.
 Definition state_nominalMixin :=

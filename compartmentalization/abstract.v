@@ -1,5 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq MathComp.bigop Ssreflect.choice Ssreflect.fintype MathComp.finset.
-Require Import CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
+From CoqUtils Require Import word partmap.
 Require Import lib.utils common.types.
 Require Import lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.

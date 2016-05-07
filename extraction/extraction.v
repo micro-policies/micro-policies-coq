@@ -1,8 +1,7 @@
-Require Import Ssreflect.ssreflect.
-Require Import Ssreflect.eqtype Ssreflect.fintype.
-Require Import Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.ssrnat Ssreflect.seq.
-Require Import MathComp.ssrint MathComp.ssrnum MathComp.ssralg MathComp.finset.
-Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect eqtype fintype ssrfun ssrbool ssrnat seq ssrint ssrnum ssralg
+  finset generic_quotient.
+From CoqUtils Require Import ord hseq word partmap.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -618,10 +617,8 @@ Extract Constant rules.mtag_eqMixin => "\tty ->
          (unsafeCoerce (sum_of_mtag tty))
          (unsafeCoerce (mtag_of_sum tty)))".
 
-(* The following functions, when extracted, fail to typecheck and I don't
+(* The following function, when extracted, fail to typecheck and I don't
    understand why -- or much care. *)
-Extract Constant generic_quotient.encModRel_rect =>
-  "GHC.Stack.errorWithStackTrace ""encModRel_rect: failed to compile with a type error""".
 Extract Constant generic_quotient.enc_mod_rel =>
   "GHC.Stack.errorWithStackTrace ""enc_mod_rel: failed to compile with a type error""".
 

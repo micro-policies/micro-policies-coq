@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import ord word fset partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -788,10 +788,10 @@ Lemma dmem_domain_preserved_by_equiv :
     refine_dmemory dmem' mem' ->
     domm dmem = domm dmem'.
 Proof.
-move=> dmem dmem' mem mem' REF EQUIV REF'; apply/eq_fset.
-have /eq_fset DOMAINMM' := Sym.equiv_same_domain EQUIV.
+move=> dmem dmem' mem mem' REF EQUIV REF'.
+have DOMAINMM' := Sym.equiv_same_domain EQUIV.
 rewrite (refine_dmemory_domains REF') (refine_dmemory_domains REF).
-apply/eq_fset/filter_domains=> // addr; move: (EQUIV addr).
+apply/filter_domains=> // addr; move: (EQUIV addr).
 by case E: (mem addr) => [[v [o|]]|];
 case E': (mem' addr) => [[v' [o'|]]|] //=; case.
 Qed.

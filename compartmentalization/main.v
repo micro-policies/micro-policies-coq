@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.fintype Ssreflect.seq MathComp.ssrint MathComp.finset.
-Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype fintype seq ssrint finset.
+From CoqUtils Require Import ord hseq word partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -137,7 +137,7 @@ Definition decode_pc_tag (mem : Concrete.memory mt) (tg : mword mt) : option (Sy
 
 Instance encodable_stags : encodable mt (@Sym.stags mt) := {
   decode tk :=
-    match tk return Concrete.memory mt -> mword mt -> option (wtag _ tk) with
+    match tk return Concrete.memory mt -> mword mt -> option (wtag (@Sym.stags mt) tk) with
     | Symbolic.R => decode_reg_tag
     | Symbolic.M => decode_data_tag
     | Symbolic.P => decode_pc_tag

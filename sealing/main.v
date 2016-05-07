@@ -1,6 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.ssrbool Ssreflect.seq Ssreflect.choice Ssreflect.fintype.
-Require Import MathComp.ssrint.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.hseq.
+From mathcomp Require Import
+  ssreflect ssrfun eqtype ssrnat ssrbool seq choice fintype ssrint.
+From CoqUtils Require Import ord word partmap hseq.
 Require Import lib.utils lib.word_utils common.types common.segment.
 Require Import concrete.concrete.
 Require Import concrete.int_32.

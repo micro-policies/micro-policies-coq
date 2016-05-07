@@ -1,5 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype MathComp.finset.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
+From CoqUtils Require Import ord word fset partmap.
 
 Require Import lib.utils lib.partmap_utils common.types.
 Require Import symbolic.symbolic.
@@ -597,8 +598,8 @@ Proof.
   by rewrite (Sym.get_supd_none E UPD).
 Qed.
 
-Lemma sget_supd_good_internal (sst sst' : sstate) p c I1 W1 I2 W2 :
-  (forall c' : word, c' \in I2 :|: W2 -> (c' < Sym.next_id (Symbolic.internal sst))%ord) ->
+Lemma sget_supd_good_internal (sst sst' : sstate) p (c : mword mt) I1 W1 I2 W2 :
+  (forall c' : mword mt, c' \in I2 :|: W2 -> (c' < Sym.next_id (Symbolic.internal sst))%ord) ->
   Sym.sget sst p ?= Sym.DATA c I1 W1 ->
   Sym.supd sst p (Sym.DATA c I2 W2) ?= sst' ->
   Sym.good_internal sst ->
@@ -1835,7 +1836,9 @@ Proof.
       case: OR_Is => [-> // | <-{I2}].
       rewrite inE in_set1.
       suff: cid != Snext by move=> /negbTE-> //.
-      suff: (cid < Snext)%ord by rewrite Ord.ltNge; apply: contra => /eqP ->; rewrite Ord.leqxx.
+      suff: (cid < Snext)%ord.
+        rewrite Ord.ltNge.
+        by apply: contra => /eqP ->; rewrite Ord.leqxx.
       move: RPREV; rewrite /get_compartment_id.
       case: pickP => // x /eqP cid_set []?; subst x.
       have: Some cid == Some cid by apply eq_refl.
@@ -1886,7 +1889,9 @@ Proof.
       case: OR_Is => [-> // | <-{I2}].
       rewrite inE in_set1.
       suff: cid' != Snext by move=> /negbTE-> //.
-      suff: (cid' < Snext)%ord by rewrite Ord.ltNge; apply: contra => /eqP ->; rewrite Ord.leqxx.
+      suff: (cid' < Snext)%ord.
+        rewrite Ord.ltNge.
+        by apply: contra => /eqP ->; rewrite Ord.leqxx.
       move: GCI_cid'; rewrite /get_compartment_id.
       case: pickP => // x /eqP cid'_set []?; subst x.
       have: Some cid' == Some cid' by apply eq_refl.
@@ -1987,7 +1992,7 @@ Proof.
     case/and3P: RSC => ? Hs ?.
     apply/and3P.
     split=> //; apply/allP=> x /(allP Hs).
-    by rewrite -(Sym.retag_set_preserves_get_definedness def_s') /=.
+    by rewrite -!mem_domm -(Sym.retag_set_preserves_get_definedness def_s') /=.
   - have := (Sym.retag_set_preserves_good_internal _ RINT def_s').
     apply => //.
     + move=> sc cid' I' W' sc_is_sc.

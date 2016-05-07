@@ -1,6 +1,7 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.fintype MathComp.finset.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
-Require Import CoqUtils.ord CoqUtils.hseq CoqUtils.word CoqUtils.partmap.
+From CoqUtils Require Import ord hseq word partmap fset.
 
 Require Import lib.utils lib.word_utils lib.ssr_set_utils common.types.
 Require Import symbolic.symbolic.
@@ -391,7 +392,7 @@ Definition isolate (s : Symbolic.state mt) : option (Symbolic.state mt) :=
     do! s' <- retag_set (do_ok c A' J' S')
                         (do_retag c c' A' J' S')
                         (enum_set (A' :|: J' :|: S')) s;
-    
+
     do! pc' @ _              <- RR ra;
     do! DATA c_next I_next _ <- sget s' pc';
     do! guard c == c_next;
@@ -702,12 +703,12 @@ Qed.
 
 Lemma retag_one_preserves_get_definedness ok retag s p s' :
   retag_one ok retag s p ?= s' ->
-  forall p, Symbolic.mem s p = Symbolic.mem s' p :> bool.
+  domm (Symbolic.mem s) = domm (Symbolic.mem s').
 Proof.
   rewrite /retag_one.
   case GET: (sget _ _) => [[cid I W]|] //=.
   case: (ok _ _ _ _) => //=.
-  case: (retag _ _ _ _) => [cid' I' W'] //= UPD p'.
+  case: (retag _ _ _ _) => [cid' I' W'] //= UPD; apply/eq_fset=> p'; rewrite !mem_domm.
   have [{p'} ->|NEQ] := (p' =P p).
   - case GET': (Symbolic.mem s p) => [[x L]|].
     + by rewrite (get_supd_eq GET' UPD).
@@ -717,11 +718,11 @@ Qed.
 
 Lemma retag_set_preserves_get_definedness ok retag ps s s' :
   retag_set ok retag ps s ?= s' ->
-  forall p, Symbolic.mem s p = Symbolic.mem s' p :> bool.
+  domm (Symbolic.mem s) = domm (Symbolic.mem s').
 Proof.
 move=> H.
 have := (@ofoldl_preserve _ _ _ _ _ _ _ (@retag_one_preserves_get_definedness ok retag) _ _ H).
-by apply; eauto.
+apply=> // *; congruence.
 Qed.
 
 Lemma retag_one_preserves_registers ok retag s p s' :

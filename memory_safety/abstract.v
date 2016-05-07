@@ -1,10 +1,8 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.choice.
-Require Import Ssreflect.seq Ssreflect.fintype.
-Require Import MathComp.tuple MathComp.ssrint MathComp.bigop.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
-Require Import CoqUtils.nominal.
-Require Import lib.utils common.types memory_safety.classes.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype ssrint.
+From CoqUtils Require Import ord word fset partmap nominal.
+Require Import lib.utils.
+Require Import common.types memory_safety.classes.
 
 Import DoNotation.
 
@@ -63,9 +61,6 @@ Definition value_eqMixin := EqMixin value_eqP.
 Canonical value_eqType := Eval hnf in EqType value value_eqMixin.
 Definition value_choiceMixin := CanChoiceMixin sum_of_valueK.
 Canonical value_choiceType := Eval hnf in ChoiceType value value_choiceMixin.
-Definition value_partOrdMixin := CanPartOrdMixin sum_of_valueK.
-Canonical value_partOrdType :=
-  Eval hnf in PartOrdType value value_partOrdMixin.
 Definition value_ordMixin := CanOrdMixin sum_of_valueK.
 Canonical value_ordType := Eval hnf in OrdType value value_ordMixin.
 Definition value_nominalMixin :=
@@ -116,9 +111,6 @@ Definition state_eqMixin := EqMixin state_eqP.
 Canonical state_eqType := Eval hnf in EqType state state_eqMixin.
 Definition state_choiceMixin := CanChoiceMixin tuple_of_stateK.
 Canonical state_choiceType := Eval hnf in ChoiceType state state_choiceMixin.
-Definition state_partOrdMixin := CanPartOrdMixin tuple_of_stateK.
-Canonical state_partOrdType :=
-  Eval hnf in PartOrdType state state_partOrdMixin.
 Definition state_ordMixin := CanOrdMixin tuple_of_stateK.
 Canonical state_ordType := Eval hnf in OrdType state state_ordMixin.
 Definition state_nominalMixin :=
@@ -145,6 +137,7 @@ case: s => [m rs p]; apply/(iffP idP).
        b' fr m_b' /namessP [[w|ptr] in_fr]].
     + by subst b'; apply: BlocksFrame; rewrite /= mem_domm m_b'.
     + by rewrite in_fset0.
+    rewrite in_fsetU namesT in_fset0 orbF.
     by move=> /namesnP ?; subst b; eapply BlocksMem; eauto.
   - case/namesmP=> [//|r [w|ptr] //= rs_r free].
     eapply BlocksReg; eauto.
@@ -388,10 +381,8 @@ Arguments Abstract.memory mt.
 Arguments Abstract.registers mt.
 
 Canonical Abstract.value_eqType.
-Canonical Abstract.value_partOrdType.
 Canonical Abstract.value_ordType.
 Canonical Abstract.value_nominalType.
 Canonical Abstract.state_eqType.
-Canonical Abstract.state_partOrdType.
 Canonical Abstract.state_ordType.
 Canonical Abstract.state_nominalType.

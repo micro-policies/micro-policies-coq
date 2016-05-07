@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import ord word partmap.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -101,7 +101,7 @@ Lemma mem_refinement_equiv :
     Sym.equiv smem smem'.
 Proof.
   intros smem cmem cmem' REF EQUIV.
-  exists (mapm (coerce Symbolic.M) (filterm (fun _ => is_user Symbolic.M) cmem')).
+  exists (mapm (coerce Symbolic.M) (filterm [fun _ => is_user Symbolic.M] cmem')).
   split.
   { (*refinement proof*)
     split.
@@ -168,7 +168,7 @@ Lemma reg_refinement_equiv :
     Sym.equiv sregs sregs'.
 Proof.
   intros sreg creg creg' cmem REF EQUIV.
-  exists (mapm (coerce Symbolic.R) (filterm (fun _ => is_user Symbolic.R) creg')).
+  exists (mapm (coerce Symbolic.R) (filterm [fun _ => is_user Symbolic.R] creg')).
   split.
   { (*Refinement proof*)
     split.

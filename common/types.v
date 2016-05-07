@@ -1,6 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq Ssreflect.choice Ssreflect.fintype.
-Require Import MathComp.div MathComp.ssrint MathComp.ssralg MathComp.intdiv.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype div ssrint ssralg intdiv.
+From CoqUtils Require Import ord word partmap.
 
 Require Import lib.utils.
 
@@ -176,15 +176,10 @@ Proof. by do !case. Qed.
 Definition opcode_choiceMixin := PcanChoiceMixin pickle_opcodeK.
 Canonical opcode_choiceType :=
   Eval hnf in ChoiceType opcode opcode_choiceMixin.
-
-Definition opcode_partOrdMixin := PcanPartOrdMixin pickle_opcodeK.
-Canonical opcode_partOrdType :=
-  Eval hnf in PartOrdType opcode opcode_partOrdMixin.
-Definition opcode_ordMixin := PcanOrdMixin pickle_opcodeK.
-Canonical opcode_ordType := Eval hnf in OrdType opcode opcode_ordMixin.
-
 Definition opcode_countMixin := CountMixin pickle_opcodeK.
 Canonical opcode_countType := Eval hnf in CountType opcode opcode_countMixin.
+Definition opcode_ordMixin := PcanOrdMixin pickle_opcodeK.
+Canonical opcode_ordType := Eval hnf in OrdType opcode opcode_ordMixin.
 
 Definition max_opcode := 24.
 

@@ -1,6 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.word CoqUtils.fset CoqUtils.partmap.
-Require Import lib.utils common.types.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import word fset partmap.
+Require Import lib.utils lib.ssr_list_utils common.types.
 Require Import cfi.property cfi.classes.
 
 Set Implicit Arguments.

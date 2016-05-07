@@ -1,7 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.fset CoqUtils.partmap.
-Require Import CoqUtils.nominal CoqUtils.word.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype seq.
+From CoqUtils Require Import ord word fset partmap nominal.
 Require Import lib.utils.
 Require Import lib.partmap_utils.
 Require Import common.types symbolic.symbolic.
@@ -202,7 +200,7 @@ case: av sv ea es=> [w1|k1|w1 k1] [w2 [|k2|k2]] //= ea es.
 case=> [e ref]; move: es; rewrite -{}e {w2}=> es; split=> //.
 rewrite /refine_key filtermE ref /= Abs.mem_names_state /=.
 suff ->: k1 \in names am by [].
-by apply/namesmP; eright; eauto; rewrite in_fset1.
+by apply/namesmP; eright; eauto; rewrite in_fsetU in_fset0 in_fset1 /=.
 Qed.
 
 Lemma refine_reg_weaken km am ars apc srs :
@@ -218,7 +216,7 @@ case: av sv ea es=> [w1|k1|w1 k1] [w2 [|k2|k2]] //= ea es.
 move=> [e ref]; move: es; rewrite -{}e {w2}=> es; split=> //.
 rewrite /refine_key filtermE ref /= Abs.mem_names_state /=.
 suff ->: k1 \in names ars by rewrite orbT.
-by apply/namesmP; eright; eauto; rewrite in_fset1.
+by apply/namesmP; eright; eauto; apply/fsetUP; right; rewrite in_fset1.
 Qed.
 
 Hint Resolve keymap_weaken_ok.

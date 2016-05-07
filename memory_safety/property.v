@@ -1,5 +1,4 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.seq Ssreflect.eqtype.
+From mathcomp Require Import ssreflect ssrfun ssrbool seq eqtype.
 
 Require Import lib.utils.
 

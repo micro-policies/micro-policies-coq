@@ -1,5 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq MathComp.bigop Ssreflect.fintype MathComp.finset.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat eqtype ssrnat seq bigop fintype finset.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

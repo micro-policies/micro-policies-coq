@@ -23,7 +23,7 @@ executable postprocess
                      , Postprocess.Constraints
                      , Postprocess.Clean
                      , Postprocess
-  build-depends:       base             ==4.7.*
+  build-depends:       base             ==4.6.*
                      , text             ==1.1.*
                      , text-icu         ==0.7.*
                      , containers       ==0.5.*

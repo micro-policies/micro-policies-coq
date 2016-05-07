@@ -1,10 +1,7 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.ssrnat Ssreflect.seq Ssreflect.eqtype Ssreflect.fintype.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat seq eqtype fintype path fingraph.
 
-Require Import MathComp.path MathComp.fingraph.
-
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
-Require Import CoqUtils.fperm CoqUtils.nominal.
+From CoqUtils Require Import ord word fset partmap fperm nominal.
 
 Require Import lib.utils lib.partmap_utils common.types.
 Require Import memory_safety.property memory_safety.abstract.

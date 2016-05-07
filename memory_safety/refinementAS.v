@@ -1,11 +1,8 @@
 Ltac type_of x := type of x.
 
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import Ssreflect.fintype.
-Require Import MathComp.ssrint MathComp.ssralg.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap CoqUtils.fset.
-Require Import CoqUtils.nominal.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype
+  ssrint ssralg.
+From CoqUtils Require Import ord word fset partmap nominal.
 Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
 Require Import memory_safety.abstract memory_safety.symbolic.
 Require Import memory_safety.classes.
@@ -24,6 +21,7 @@ Ltac done :=
 
 Section refinement.
 
+Open Scope fset_scope.
 Open Scope word_scope.
 
 Import Sym.Notations.

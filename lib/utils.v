@@ -1,5 +1,4 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrbool Ssreflect.ssrfun.
-Require Import Ssreflect.eqtype Ssreflect.seq.
+From mathcomp Require Import ssreflect ssrbool ssrfun eqtype seq.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -41,10 +40,10 @@ Ltac move_to_top x :=
 changed between 8.4 and 8.5 *)
 
 Tactic Notation "s_constructor" tactic(t) :=
-  constructor (t).
+  [> once (constructor; t) ..].
 
 Tactic Notation "s_econstructor" tactic(t) :=
-  econstructor (t).
+  [> once (econstructor; t) ..].
 
 Tactic Notation "assert_eq" ident(x) constr(v) :=
   let H := fresh in

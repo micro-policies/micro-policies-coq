@@ -1,10 +1,8 @@
 (* Fault handler implementation for concrete realization of symbolic machine *)
 
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.ssrnat Ssreflect.eqtype Ssreflect.seq.
-Require Import Ssreflect.choice Ssreflect.fintype.
-Require Import MathComp.tuple MathComp.ssrint.
-Require Import CoqUtils.word CoqUtils.fset CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype tuple ssrint.
+From CoqUtils Require Import word fset partmap.
 
 Require Import lib.utils.
 Require Import common.types.

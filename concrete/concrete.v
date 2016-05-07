@@ -1,7 +1,6 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.choice.
-Require Import Ssreflect.seq MathComp.ssrint.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.partmap.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool eqtype ssrnat seq choice ssrint.
+From CoqUtils Require Import ord word partmap.
 
 Require Import lib.utils common.types.
 
@@ -60,9 +59,6 @@ Proof. by case. Qed.
 
 Definition mvec_choiceMixin := CanChoiceMixin tuple_of_mvecK.
 Canonical mvec_choiceType := Eval hnf in ChoiceType (mvec mt) mvec_choiceMixin.
-Definition mvec_partOrdMixin := CanPartOrdMixin tuple_of_mvecK.
-Canonical mvec_partOrdType :=
-  Eval hnf in PartOrdType (mvec mt) mvec_partOrdMixin.
 Definition mvec_ordMixin := CanOrdMixin tuple_of_mvecK.
 Canonical mvec_ordType := Eval hnf in OrdType (mvec mt) mvec_ordMixin.
 

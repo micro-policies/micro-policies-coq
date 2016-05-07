@@ -1,6 +1,5 @@
-Require Import Ssreflect.ssreflect Ssreflect.ssrfun Ssreflect.ssrbool.
-Require Import Ssreflect.eqtype Ssreflect.ssrnat Ssreflect.seq.
-Require Import CoqUtils.ord CoqUtils.word CoqUtils.fset CoqUtils.partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From CoqUtils Require Import ord word partmap fset.
 
 Require Import lib.utils lib.partmap_utils.
 Require Import common.types.
@@ -80,8 +79,8 @@ Inductive step_a : Symbolic.state mt ->
 Lemma equiv_same_domain (T : ordType)
            (m m' : {partmap T -> atom (mword mt) cfi_tag}) :
   equiv m m' ->
-  domm m =i domm m'.
-Proof. move=> h; apply/eq_fset; move: h; exact: pointwise_same_domain. Qed.
+  domm m = domm m'.
+Proof. exact: pointwise_same_domain. Qed.
 
 Local Notation "x .+1" := (x + 1)%w.
 
