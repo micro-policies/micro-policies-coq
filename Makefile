@@ -94,7 +94,7 @@ dist-anon: clean
 	perl -0777 -i -pe 's/Copyright.*Permission/Copyright Anonymized\n\nPermission/igs' $(DIR)/LICENSE
 	perl -0777 -i -pe 's/Description.*Prerequisites/Prerequisites/igs' $(DIR)/README.md
 	perl -0777 -i -pe 's/The CoqUtils library \(https.*coq-utils\)/The CoqUtils library \(included in coq-utils subdir\)/igs' $(DIR)/README.md
-        # Next command doesn't work for nested comments, please don't add any
+	# Next command doesn't work for nested comments, please don't add any
 	find $(DIR) -name '*.v' -exec perl -0777 -i -pe 's/\(\*.*?\*\)//igs' {} \;
 	cd $(DIR); tar czvf ../micropolicies-coq-anon.tar.gz . --transform 's/^\./micropolicies-coq-anon/' $(EXCLUDE)
 
@@ -103,7 +103,7 @@ coqide:
 
 # The target `extract-DIR' extracts the Coq code in `DIR' to Haskell code in
 # `DIR/extracted/', using the file `DIR/extraction.v' and any extra code in
-# `DIR/extra'.  The `DIR/extracted.v' file should probably just imports
+# `DIR/extra'.  The `DIR/extracted.v' file should probably just import
 # `extraction/extraction.v' and another library `LIB', and then `Recursive
 # Extraction Library LIB'.  Don't pass `extract-DIR' `DIR's that are nested
 # (i.e., that aren't exactly one level deep) or that contain "weird" characters
@@ -126,7 +126,7 @@ coqide:
 #   5. Delete $(TEMP) and the results of compiling the extraction file.
 #   6. Postprocesses the extracted files into an `extracted' subdirectory of
 #      `DIR', using extra code from an `extra' subdirectory.
-extract-%: TEMP:=$(shell mktemp -t extraction)
+extract-%: TEMP:=$(shell mktemp --tmpdir extraction.XXX)
 extract-%: coq
 	$(MAKE) -C extraction/postprocess
 	rm -f $*/extraction.vo $*/extraction.glob
