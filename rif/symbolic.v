@@ -36,6 +36,9 @@ Record rifAutomaton := RifAutomaton {
   rif_prins : {ffun 'I_rif_states -> {fset nat}}
 }.
 
+Definition ra_bot :=
+  @RifAutomaton 1 [ffun _ => Sub 0 erefl] [ffun _ => fset0].
+
 Implicit Types r : rifAutomaton.
 
 Definition tag_of_rifAutomaton r : { n : nat &
@@ -108,7 +111,22 @@ Record rifLabel := RifLabel {
   rif_state : 'I_(rif_states rif_rules)
 }.
 
+Definition rl_bot :=
+  @RifLabel ra_bot (@Ordinal 1 0 erefl).
+
 Implicit Types l : rifLabel.
+
+Definition tag_of_rifLabel l :=
+  Tagged (fun ra => 'I_(rif_states ra)) (rif_state l).
+
+Definition rifLabel_of_tag (x : {ra : rifAutomaton & 'I_(rif_states ra)}) :=
+  RifLabel (tagged x).
+
+Lemma tag_of_rifLabelK : cancel tag_of_rifLabel rifLabel_of_tag.
+Proof. by case. Qed.
+
+Definition rifLabel_eqMixin := CanEqMixin tag_of_rifLabelK.
+Canonical rifLabel_eqType := EqType rifLabel rifLabel_eqMixin.
 
 Definition rl_leq l1 l2 : Prop :=
   forall Fs, fsubset (rif_prins _ (rif_run (rif_state l1) Fs))
@@ -137,5 +155,63 @@ apply/rl_leqbP/andP; rewrite /rl_leq.
 case=> /rl_leqbP H1 /rl_leqbP H2 Fs; move/(_ Fs) in H1; move/(_ Fs) in H2.
 by rewrite /rl_join (lock rif_prins) /= -lock ra_join_min H1.
 Qed.
+
+Inductive mem_tag :=
+| MemInstr of Σ
+| MemData  of rifLabel.
+
+Definition sum_of_mem_tag t :=
+  match t with
+  | MemInstr F => inl F
+  | MemData l => inr l
+  end.
+
+Definition mem_tag_of_sum t :=
+  match t with
+  | inl F => MemInstr F
+  | inr l => MemData l
+  end.
+
+Lemma sum_of_mem_tagK : cancel sum_of_mem_tag mem_tag_of_sum.
+Proof. by case. Qed.
+
+Definition mem_tag_eqMixin := CanEqMixin sum_of_mem_tagK.
+Canonical mem_tag_eqType := EqType mem_tag mem_tag_eqMixin.
+
+Import Symbolic.
+
+Definition rif_tags := {|
+  pc_tag_type    := rifLabel_eqType;
+  reg_tag_type   := rifLabel_eqType;
+  mem_tag_type   := mem_tag_eqType;
+  entry_tag_type := unit_eqType
+|}.
+
+Definition instr_rules
+  (op : opcode) (tpc : rifLabel) (ti : Σ) (ts : hseq (tag_type rif_tags) (inputs op)) :
+  option (ovec rif_tags op) :=
+  let ret  := fun rtpc (rt : type_of_result rif_tags (outputs op)) => Some (@OVec rif_tags op rtpc rt) in
+  match op, ts, ret with
+  | NOP, _, ret => ret tpc tt
+  | CONST, [hseq lold], ret => ret tpc rl_bot
+  | MOV, [hseq l; lold], ret => None
+  | BINOP b, [hseq l1; l2; lold], ret => None
+  | LOAD, [hseq l1; MemData l2; lold], ret => None
+  | STORE, [hseq l1; l2; MemData lold], ret => None
+  | JUMP, [hseq l], ret => None
+  | BNZ, [hseq l], ret => None
+  | JAL, [hseq l1; lold], ret => None
+  | _, _, _ => None
+  end.
+
+Definition rules (iv : ivec rif_tags) : option (vovec rif_tags (op iv)) :=
+  match iv with
+  | IVec (OP op) tpc ti ts =>
+    match ti with
+    | MemInstr F => @instr_rules op tpc F ts
+    | MemData _ => None
+    end
+  | IVec SERVICE _ _ _ => None
+  end.
 
 End Dev.
