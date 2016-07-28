@@ -8,6 +8,8 @@ Unset Printing Implicit Defensive.
 
 Section Ord.
 
+(* Basic lemmas about pairing ordinals *)
+
 Variables m n : nat.
 
 Lemma ord_pair_proof : #|{:'I_m * 'I_n}| = (m * n)%N.
@@ -114,6 +116,8 @@ Record rifLabel := RifLabel {
 Definition rl_bot :=
   @RifLabel ra_bot (@Ordinal 1 0 erefl).
 
+Local Notation "⊥" := rl_bot.
+
 Implicit Types l : rifLabel.
 
 Definition tag_of_rifLabel l :=
@@ -138,15 +142,18 @@ Axiom rl_leqbP : forall l1 l2, reflect (rl_leq l1 l2) (rl_leqb l1 l2).
 Definition rl_join l1 l2 :=
   @RifLabel (ra_join l1 l2) (ord_pair (rif_state l1) (rif_state l2)).
 
-Lemma rl_joinPl l1 l2 : rl_leqb l1 (rl_join l1 l2).
+Infix "⊑" := rl_leqb (at level 50).
+Infix "⊔" := rl_join (at level 40, left associativity).
+
+Lemma rl_joinPl l1 l2 : l1 ⊑ l1 ⊔ l2.
 Proof. by apply/rl_leqbP=> Fs; apply/ra_joinPl. Qed.
 
-Lemma rl_joinPr l1 l2 : rl_leqb l2 (rl_join l1 l2).
+Lemma rl_joinPr l1 l2 : l2 ⊑ l1 ⊔ l2.
 Proof. by apply/rl_leqbP=> Fs; apply/ra_joinPr. Qed.
 
 Lemma rl_join_min l1 l2 l3 :
-  rl_leqb (rl_join l1 l2) l3 =
-  rl_leqb l1 l3 && rl_leqb l2 l3.
+  l1 ⊔ l2 ⊑ l3 =
+  (l1 ⊑ l3) && (l2 ⊑ l3).
 Proof.
 apply/rl_leqbP/andP; rewrite /rl_leq.
   move=> H; split; apply/rl_leqbP; rewrite /rl_leq=> Fs; move/(_ Fs) in H.
@@ -154,6 +161,18 @@ apply/rl_leqbP/andP; rewrite /rl_leq.
   exact: (fsubset_trans (ra_joinPr (rif_state l1) (rif_state l2) Fs)).
 case=> /rl_leqbP H1 /rl_leqbP H2 Fs; move/(_ Fs) in H1; move/(_ Fs) in H2.
 by rewrite /rl_join (lock rif_prins) /= -lock ra_join_min H1.
+Qed.
+
+Lemma rl_leq_refl : reflexive rl_leqb.
+Proof.
+by move=> l; apply/rl_leqbP=> Fs; rewrite fsubsetxx.
+Qed.
+
+Lemma rl_leq_trans : transitive rl_leqb.
+Proof.
+move=> l2 l1 l3 /rl_leqbP H12 /rl_leqbP H23.
+apply/rl_leqbP=> Fs; move/(_ Fs) in H12; move/(_ Fs) in H23.
+exact: fsubset_trans H23.
 Qed.
 
 Inductive mem_tag :=
@@ -190,21 +209,22 @@ Definition rif_tags := {|
 Definition instr_rules
   (op : opcode) (tpc : rifLabel) (ti : Σ) (ts : hseq (tag_type rif_tags) (inputs op)) :
   option (ovec rif_tags op) :=
-  let ret  := fun rtpc (rt : type_of_result rif_tags (outputs op)) => Some (@OVec rif_tags op rtpc rt) in
+  let ret := fun rtpc (rt : type_of_result rif_tags (outputs op)) => Some (@OVec rif_tags op rtpc rt) in
   match op, ts, ret with
-  | NOP, _, ret => ret tpc tt
-  | CONST, [hseq lold], ret => ret tpc rl_bot
-  | MOV, [hseq l; lold], ret => None
-  | BINOP b, [hseq l1; l2; lold], ret => None
-  | LOAD, [hseq l1; MemData l2; lold], ret => None
-  | STORE, [hseq l1; l2; MemData lold], ret => None
-  | JUMP, [hseq l], ret => None
-  | BNZ, [hseq l], ret => None
-  | JAL, [hseq l1; lold], ret => None
-  | _, _, _ => None
+  | NOP, _, ret                             => ret tpc tt
+  | CONST, [hseq lold], ret                 => ret tpc ⊥
+  | MOV, [hseq l; lold], ret                => ret tpc l
+  | BINOP b, [hseq l1; l2; lold], ret       => ret tpc (l1 ⊔ l2)
+  | LOAD, [hseq l1; MemData l2; lold], ret  => ret tpc (l1 ⊔ l2)
+  | STORE, [hseq l1; l2; MemData lold], ret => if l1 ⊔ tpc ⊑ lold then ret tpc (MemData (l1 ⊔ l2 ⊔ tpc))
+                                               else None
+  | JUMP, [hseq l], ret                     => ret (l ⊔ tpc) tt
+  | BNZ, [hseq l], ret                      => ret (l ⊔ tpc) tt
+  | JAL, [hseq l1; lold], ret               => None
+  | _, _, _                                 => None
   end.
 
-Definition rules (iv : ivec rif_tags) : option (vovec rif_tags (op iv)) :=
+Definition transfer (iv : ivec rif_tags) : option (vovec rif_tags (op iv)) :=
   match iv with
   | IVec (OP op) tpc ti ts =>
     match ti with
@@ -213,5 +233,13 @@ Definition rules (iv : ivec rif_tags) : option (vovec rif_tags (op iv)) :=
     end
   | IVec SERVICE _ _ _ => None
   end.
+
+Global Instance sym_rif : params := {
+  ttypes := rif_tags;
+
+  transfer := transfer;
+
+  internal_state := unit_eqType
+}.
 
 End Dev.
