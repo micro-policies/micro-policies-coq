@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq fintype finfun.
-From CoqUtils Require Import hseq ord fset partmap.
+From CoqUtils Require Import hseq ord fset partmap word.
 From MicroPolicies Require Import common.types symbolic.symbolic.
 
 Set Implicit Arguments.
@@ -188,7 +188,7 @@ Record rifLabel := RifLabel {
 Definition rl_bot :=
   @RifLabel ra_bot (@Ordinal 1 0 erefl).
 
-Local Notation "⊥" := rl_bot.
+Local Notation "⊥ₗ" := rl_bot.
 
 Implicit Types l : rifLabel.
 
@@ -214,18 +214,18 @@ Axiom rl_leqbP : forall l1 l2, reflect (rl_leq l1 l2) (rl_leqb l1 l2).
 Definition rl_join l1 l2 :=
   @RifLabel (ra_join l1 l2) (ord_pair (rif_state l1) (rif_state l2)).
 
-Infix "⊑" := rl_leqb (at level 50).
-Infix "⊔" := rl_join (at level 40, left associativity).
+Infix "⊑ₗ" := rl_leqb (at level 50).
+Infix "⊔ₗ" := rl_join (at level 40, left associativity).
 
-Lemma rl_joinPl l1 l2 : l1 ⊑ l1 ⊔ l2.
+Lemma rl_joinPl l1 l2 : l1 ⊑ₗ l1 ⊔ₗ l2.
 Proof. by apply/rl_leqbP=> Fs; apply/ra_joinPl. Qed.
 
-Lemma rl_joinPr l1 l2 : l2 ⊑ l1 ⊔ l2.
+Lemma rl_joinPr l1 l2 : l2 ⊑ₗ l1 ⊔ₗ l2.
 Proof. by apply/rl_leqbP=> Fs; apply/ra_joinPr. Qed.
 
 Lemma rl_join_min l1 l2 l3 :
-  l1 ⊔ l2 ⊑ l3 =
-  (l1 ⊑ l3) && (l2 ⊑ l3).
+  l1 ⊔ₗ l2 ⊑ₗ l3 =
+  (l1 ⊑ₗ l3) && (l2 ⊑ₗ l3).
 Proof.
 apply/rl_leqbP/andP; rewrite /rl_leq.
   move=> H; split; apply/rl_leqbP; rewrite /rl_leq=> Fs; move/(_ Fs) in H.
@@ -287,14 +287,14 @@ Definition instr_rules
   let ret := fun rtpc (rt : type_of_result rif_tags (outputs op)) => Some (@OVec rif_tags op rtpc rt) in
   match op, ts, ret with
   | NOP, _, ret                             => ret tpc tt
-  | CONST, [hseq lold], ret                 => ret tpc ⊥
+  | CONST, [hseq lold], ret                 => ret tpc ⊥ₗ
   | MOV, [hseq l; lold], ret                => ret tpc l
-  | BINOP b, [hseq l1; l2; lold], ret       => ret tpc (l1 ⊔ l2)
-  | LOAD, [hseq l1; MemData l2; lold], ret  => ret tpc (l1 ⊔ l2)
-  | STORE, [hseq l1; l2; MemData lold], ret => if l1 ⊔ tpc ⊑ lold then ret tpc (MemData (l1 ⊔ l2 ⊔ tpc))
+  | BINOP b, [hseq l1; l2; lold], ret       => ret tpc (rl_trans (l1 ⊔ₗ l2) ti)
+  | LOAD, [hseq l1; MemData l2; lold], ret  => ret tpc (rl_trans (l1 ⊔ₗ l2) ti)
+  | STORE, [hseq l1; l2; MemData lold], ret => if l1 ⊔ₗ tpc ⊑ₗ lold then ret tpc (MemData (l1 ⊔ₗ l2 ⊔ₗ tpc))
                                                else None
-  | JUMP, [hseq l], ret                     => ret (rl_trans (l ⊔ tpc) ti) tt
-  | BNZ, [hseq l], ret                      => ret (rl_trans (l ⊔ tpc) ti) tt
+  | JUMP, [hseq l], ret                     => ret (rl_trans (l ⊔ₗ tpc) ti) tt
+  | BNZ, [hseq l], ret                      => ret (rl_trans (l ⊔ₗ tpc) ti) tt
   | JAL, [hseq l1; lold], ret               => None
   | _, _, _                                 => None
   end.
@@ -316,5 +316,46 @@ Global Instance sym_rif : params := {
 
   internal_state := unit_eqType
 }.
+
+Variable mt : machine_types.
+Variable mops : machine_ops mt.
+
+Local Notation state := (@Symbolic.state mt sym_rif).
+Local Notation step  := (@Symbolic.step mt mops sym_rif emptym).
+Local Notation ratom := (atom (mword mt) (tag_type rif_tags R)).
+Local Notation matom := (atom (mword mt) (tag_type rif_tags M)).
+
+Implicit Types st : state.
+
+Section Indist.
+
+Context {T : eqType}.
+Variable t : T -> rifLabel.
+
+Definition indist rl (ra1 ra2 : T) :=
+  (t ra1 ⊑ₗ rl) || (t ra2 ⊑ₗ rl) ==> (ra1 == ra2).
+
+Lemma indist_refl rl : reflexive (indist rl).
+Proof. by move=> ra; rewrite /indist eqxx implybT. Qed.
+
+Lemma indist_sym rl : symmetric (indist rl).
+Proof. by move=> ra1 ra2; rewrite /indist orbC eq_sym. Qed.
+
+Lemma indist_trans rl : transitive (indist rl).
+Proof.
+move=> ra2 ra1 ra3; rewrite /indist => e1 e2.
+apply/implyP=> /orP [e|e].
+  by move: e1 e2; rewrite e /= => /eqP <-; rewrite e => /eqP ->.
+by move: e2 e1; rewrite e orbT /= => /eqP ->; rewrite e orbT /= => /eqP ->.
+Qed.
+
+End Indist.
+
+Definition s_indist rl st1 st2 :=
+  all (fun rg => indist (oapp taga ⊥ₗ) rl (regs st1 rg) (regs st2 rg))
+      (domm (regs st1) :|: domm (regs st2)) &&
+  all (fun x  => indist (oapp (fun t => if taga t is MemData rl' then rl' else ⊥ₗ) ⊥ₗ) rl
+                        (mem st1 x) (mem st2 x))
+      (domm (mem st1)  :|: domm (mem st2)).
 
 End Dev.
