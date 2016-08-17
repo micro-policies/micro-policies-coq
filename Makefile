@@ -3,8 +3,8 @@
 coq: Makefile.coq
 	$(MAKE) -f Makefile.coq
 
-Makefile.coq: Makefile.source
-	coq_makefile -f Makefile.source -o Makefile.coq
+Makefile.coq: _CoqProject
+	coq_makefile -f _CoqProject -o Makefile.coq
 
 clean:
 	rm -f */*.vo */*.v.d */*.glob */*~ */.#* Makefile.coq
