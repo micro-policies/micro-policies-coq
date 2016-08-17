@@ -32,25 +32,100 @@ Parameter Σ : finType.
 
 Local Open Scope fset_scope.
 
+(** The [readers] type encodes who is allowed to observe a piece of
+    data. [Anybody] means that there are no restrictions, while
+    [Readers r] means that only principals in the finite set [r] are
+    allowed to see the data. *)
+
+CoInductive readers :=
+| Readers of {fset nat}
+| Anybody.
+
+Implicit Types rs : readers.
+
+Definition option_of_readers rs :=
+  if rs is Readers rs then Some rs else None.
+
+Definition readers_of_option o :=
+  if o is Some rs then Readers rs else Anybody.
+
+Lemma option_of_readersK : cancel option_of_readers readers_of_option.
+Proof. by case. Qed.
+
+Definition readers_eqMixin := CanEqMixin option_of_readersK.
+Canonical readers_eqType := Eval hnf in EqType readers readers_eqMixin.
+
+(** We order readers by restrictiveness; the higher a set, the more
+    restrictions it imposes. *)
+
+Definition readers_leq rs1 rs2 :=
+  match rs1, rs2 with
+  | Anybody, _ => true
+  | Readers rs1, Readers rs2 => fsubset rs1 rs2
+  | _, _ => false
+  end.
+
+Lemma readers_leq_refl : reflexive readers_leq.
+Proof. case=> //= rs; by rewrite fsubsetxx. Qed.
+
+Lemma readers_leq_trans : transitive readers_leq.
+Proof.
+move=> rs2 [rs1|] //=; case: rs2=> //= rs2 [rs3|] //=.
+exact: fsubset_trans.
+Qed.
+
+Lemma readers_leq_antisym : antisymmetric readers_leq.
+Proof.
+by case=> [rs1|] [rs2|] //=; rewrite -eqEfsubset => /eqP ->.
+Qed.
+
+Infix "⊑ᵣ" := readers_leq (at level 50).
+
+Definition readers_join rs1 rs2 :=
+  match rs1, rs2 with
+  | Anybody, rs | rs, Anybody => rs
+  | Readers rs1, Readers rs2 => Readers (rs1 :|: rs2)
+  end.
+
+Infix "⊔ᵣ" := readers_join (at level 40, left associativity).
+
+Lemma readers_joinC : commutative readers_join.
+Proof. by case=> [rs1|] [rs2|] //=; rewrite fsetUC. Qed.
+
+Lemma readers_joinL rs1 rs2 : rs1 ⊑ᵣ rs1 ⊔ᵣ rs2.
+Proof.
+by case: rs1 rs2 => //= rs1 [rs2|]; [rewrite fsubsetUl|rewrite fsubsetxx].
+Qed.
+
+Lemma readers_joinR rs1 rs2 : rs2 ⊑ᵣ rs1 ⊔ᵣ rs2.
+Proof. by rewrite readers_joinC readers_joinL. Qed.
+
+Lemma readers_join_min rs1 rs2 rs3 :
+  rs1 ⊔ᵣ rs2 ⊑ᵣ rs3 = (rs1 ⊑ᵣ rs3) && (rs2 ⊑ᵣ rs3).
+Proof.
+case: rs1 rs2 rs3=> //= rs1 [rs2|] [rs3|] //=; last by rewrite andbT.
+by rewrite fsubUset.
+Qed.
+
 Record rifAutomaton := RifAutomaton {
   rif_states : nat;
   rif_trans : {ffun 'I_rif_states * Σ -> 'I_rif_states};
-  rif_prins : {ffun 'I_rif_states -> {fset nat}}
+  rif_prins : {ffun 'I_rif_states -> readers}
 }.
 
 Definition ra_bot :=
-  @RifAutomaton 1 [ffun _ => Sub 0 erefl] [ffun _ => fset0].
+  @RifAutomaton 1 [ffun _ => Sub 0 erefl] [ffun _ => Anybody].
 
 Implicit Types r : rifAutomaton.
 
 Definition tag_of_rifAutomaton r : { n : nat &
                                      ({ffun 'I_n * Σ -> 'I_n} *
-                                      {ffun 'I_n -> {fset nat}})%type } :=
+                                      {ffun 'I_n -> readers})%type } :=
   @Tagged nat (rif_states r) _ (rif_trans r, rif_prins r).
 
 Definition rifAutomaton_of_tag (r : { n : nat &
                                       ({ffun 'I_n * Σ -> 'I_n} *
-                                       {ffun 'I_n -> {fset nat}})%type }) : rifAutomaton :=
+                                       {ffun 'I_n -> readers})%type }) : rifAutomaton :=
   RifAutomaton (tagged r).1 (tagged r).2.
 
 Lemma tag_of_rifAutomatonK : cancel tag_of_rifAutomaton rifAutomaton_of_tag.
@@ -67,7 +142,9 @@ Definition ra_join r1 r2 :=
        ord_pair (rif_trans r1 (ix.1, p.2)) (rif_trans r2 (ix.2, p.2))]
     [ffun ix =>
        let ix := ord_unpair ix in
-       rif_prins r1 ix.1 :|: rif_prins r2 ix.2].
+       rif_prins r1 ix.1 ⊔ᵣ rif_prins r2 ix.2].
+
+Infix "⊔ₐ" := ra_join (at level 40, left associativity).
 
 Definition rif_run r (i : 'I_(rif_states r)) (Fs : seq Σ) :=
   foldl (fun i F => rif_trans r (i, F)) i Fs.
@@ -81,31 +158,26 @@ by rewrite ffunE /= ord_pairK /= IH.
 Qed.
 
 Lemma ra_joinPl r1 r2 i1 i2 Fs :
-  fsubset (rif_prins r1 (rif_run i1 Fs))
-          (rif_prins (ra_join r1 r2)
-                     (@rif_run (ra_join r1 r2) (ord_pair i1 i2) Fs)).
+  rif_prins r1 (rif_run i1 Fs) ⊑ᵣ
+  rif_prins (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs).
 Proof.
-by rewrite rif_run_join /= ffunE ord_pairK /= fsubsetUl.
+by rewrite rif_run_join /= ffunE ord_pairK /= readers_joinL.
 Qed.
 
 Lemma ra_joinPr r1 r2 i1 i2 Fs :
-  fsubset (rif_prins r2 (rif_run i2 Fs))
-          (rif_prins (ra_join r1 r2)
-                     (@rif_run (ra_join r1 r2) (ord_pair i1 i2) Fs)).
+  rif_prins r2 (rif_run i2 Fs) ⊑ᵣ
+  rif_prins (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs).
 Proof.
-by rewrite rif_run_join /= ffunE ord_pairK /= fsubsetUr.
+by rewrite rif_run_join /= ffunE ord_pairK /= readers_joinR.
 Qed.
 
 Lemma ra_join_min r1 r2 r3 i1 i2 i3 Fs :
-  fsubset (rif_prins (ra_join r1 r2)
-                     (@rif_run (ra_join r1 r2) (ord_pair i1 i2) Fs))
-          (rif_prins r3 (rif_run i3 Fs))
-  = fsubset (rif_prins r1 (rif_run i1 Fs))
-            (rif_prins r3 (rif_run i3 Fs)) &&
-    fsubset (rif_prins r2 (rif_run i2 Fs))
-            (rif_prins r3 (rif_run i3 Fs)).
+  rif_prins (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs) ⊑ᵣ
+  rif_prins r3 (rif_run i3 Fs)
+  = (rif_prins r1 (rif_run i1 Fs) ⊑ᵣ rif_prins r3 (rif_run i3 Fs)) &&
+    (rif_prins r2 (rif_run i2 Fs) ⊑ᵣ rif_prins r3 (rif_run i3 Fs)).
 Proof.
-by rewrite rif_run_join /= ffunE ord_pairK fsubUset.
+by rewrite rif_run_join /= ffunE ord_pairK readers_join_min.
 Qed.
 
 Record rifLabel := RifLabel {
@@ -133,8 +205,8 @@ Definition rifLabel_eqMixin := CanEqMixin tag_of_rifLabelK.
 Canonical rifLabel_eqType := EqType rifLabel rifLabel_eqMixin.
 
 Definition rl_leq l1 l2 : Prop :=
-  forall Fs, fsubset (rif_prins _ (rif_run (rif_state l1) Fs))
-                     (rif_prins _ (rif_run (rif_state l2) Fs)).
+  forall Fs, rif_prins _ (rif_run (rif_state l1) Fs) ⊑ᵣ
+             rif_prins _ (rif_run (rif_state l2) Fs).
 
 Axiom rl_leqb : rel rifLabel.
 Axiom rl_leqbP : forall l1 l2, reflect (rl_leq l1 l2) (rl_leqb l1 l2).
@@ -157,23 +229,26 @@ Lemma rl_join_min l1 l2 l3 :
 Proof.
 apply/rl_leqbP/andP; rewrite /rl_leq.
   move=> H; split; apply/rl_leqbP; rewrite /rl_leq=> Fs; move/(_ Fs) in H.
-    exact: (fsubset_trans (ra_joinPl (rif_state l1) (rif_state l2) Fs)).
-  exact: (fsubset_trans (ra_joinPr (rif_state l1) (rif_state l2) Fs)).
+    exact: (readers_leq_trans (ra_joinPl (rif_state l1) (rif_state l2) Fs)).
+  exact: (readers_leq_trans (ra_joinPr (rif_state l1) (rif_state l2) Fs)).
 case=> /rl_leqbP H1 /rl_leqbP H2 Fs; move/(_ Fs) in H1; move/(_ Fs) in H2.
 by rewrite /rl_join (lock rif_prins) /= -lock ra_join_min H1.
 Qed.
 
 Lemma rl_leq_refl : reflexive rl_leqb.
 Proof.
-by move=> l; apply/rl_leqbP=> Fs; rewrite fsubsetxx.
+by move=> l; apply/rl_leqbP=> Fs; rewrite readers_leq_refl.
 Qed.
 
 Lemma rl_leq_trans : transitive rl_leqb.
 Proof.
 move=> l2 l1 l3 /rl_leqbP H12 /rl_leqbP H23.
 apply/rl_leqbP=> Fs; move/(_ Fs) in H12; move/(_ Fs) in H23.
-exact: fsubset_trans H23.
+exact: readers_leq_trans H23.
 Qed.
+
+Definition rl_trans l F :=
+  @RifLabel l (rif_trans l (rif_state l, F)).
 
 Inductive mem_tag :=
 | MemInstr of Σ
@@ -218,8 +293,8 @@ Definition instr_rules
   | LOAD, [hseq l1; MemData l2; lold], ret  => ret tpc (l1 ⊔ l2)
   | STORE, [hseq l1; l2; MemData lold], ret => if l1 ⊔ tpc ⊑ lold then ret tpc (MemData (l1 ⊔ l2 ⊔ tpc))
                                                else None
-  | JUMP, [hseq l], ret                     => ret (l ⊔ tpc) tt
-  | BNZ, [hseq l], ret                      => ret (l ⊔ tpc) tt
+  | JUMP, [hseq l], ret                     => ret (rl_trans (l ⊔ tpc) ti) tt
+  | BNZ, [hseq l], ret                      => ret (rl_trans (l ⊔ tpc) ti) tt
   | JAL, [hseq l1; lold], ret               => None
   | _, _, _                                 => None
   end.
