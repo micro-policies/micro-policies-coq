@@ -1,10 +1,12 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq fintype finfun.
 From CoqUtils Require Import hseq ord fset partmap word.
-From MicroPolicies Require Import common.types symbolic.symbolic.
+From MicroPolicies Require Import lib.utils common.types symbolic.symbolic.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
+
+Import DoNotation.
 
 Section Ord.
 
@@ -27,8 +29,6 @@ Proof. by rewrite /ord_pair /ord_unpair cast_ordK enum_rankK. Qed.
 End Ord.
 
 Section Dev.
-
-Parameter Σ : finType.
 
 Local Open Scope fset_scope.
 
@@ -107,14 +107,27 @@ case: rs1 rs2 rs3=> //= rs1 [rs2|] [rs3|] //=; last by rewrite andbT.
 by rewrite fsubUset.
 Qed.
 
-Record rifAutomaton := RifAutomaton {
-  rif_states : nat;
-  rif_trans : {ffun 'I_rif_states * Σ -> 'I_rif_states};
-  rif_prins : {ffun 'I_rif_states -> readers}
-}.
+(** A RIF automaton describes which principals are allowed to read a
+    value after a sequence of operations. These operations are given
+    in the type [Σ], which forms the alphabet of the automaton. Each
+    state of the automaton describes who is allowed to read a value at
+    a particular moment. *)
 
-Definition ra_bot :=
-  @RifAutomaton 1 [ffun _ => Sub 0 erefl] [ffun _ => Anybody].
+Parameter Σ : finType.
+
+Record rifAutomaton := RifAutomaton {
+
+  (* The number of states of the automaton. *)
+  rif_states : nat;
+
+  (* The transition function. *)
+  rif_trans : {ffun 'I_rif_states * Σ -> 'I_rif_states};
+
+  (* The interpretation function, which lists who is allowed to read a
+     value on each state. *)
+  rif_prins : {ffun 'I_rif_states -> readers}
+
+}.
 
 Implicit Types r : rifAutomaton.
 
@@ -133,6 +146,16 @@ Proof. by case. Qed.
 
 Definition rifAutomaton_eqMixin := CanEqMixin tag_of_rifAutomatonK.
 Canonical rifAutomaton_eqType := EqType rifAutomaton rifAutomaton_eqMixin.
+
+(** We order RIF automata by how restrictive they are: if [r1] always
+    allows more readers than [r2] for any sequence of operations, then
+    [r1] is below [r2]. (Note that we just give the join operation of
+    this poset for now.) *)
+
+Definition ra_bot :=
+  @RifAutomaton 1 [ffun _ => Sub 0 erefl] [ffun _ => Anybody].
+
+Notation "⊥ₐ" := ra_bot.
 
 Definition ra_join r1 r2 :=
   @RifAutomaton
@@ -179,6 +202,9 @@ Lemma ra_join_min r1 r2 r3 i1 i2 i3 Fs :
 Proof.
 by rewrite rif_run_join /= ffunE ord_pairK readers_join_min.
 Qed.
+
+(** A RIF label packs an automaton with a current state. We lift the
+    order relation on RIF automata to labels. *)
 
 Record rifLabel := RifLabel {
   rif_rules :> rifAutomaton;
@@ -309,23 +335,37 @@ Definition transfer (iv : ivec rif_tags) : option (vovec rif_tags (op iv)) :=
   | IVec SERVICE _ _ _ => None
   end.
 
+Variable mt : machine_types.
+Variable mops : machine_ops mt.
+
 Global Instance sym_rif : params := {
   ttypes := rif_tags;
 
   transfer := transfer;
 
-  internal_state := unit_eqType
+  internal_state := [eqType of seq (mword mt * readers)]
 }.
 
-Variable mt : machine_types.
-Variable mops : machine_ops mt.
-
 Local Notation state := (@Symbolic.state mt sym_rif).
-Local Notation step  := (@Symbolic.step mt mops sym_rif emptym).
-Local Notation ratom := (atom (mword mt) (tag_type rif_tags R)).
-Local Notation matom := (atom (mword mt) (tag_type rif_tags M)).
 
 Implicit Types st : state.
+
+Variable output_addr : mword mt.
+Variable r_output : reg mt.
+
+Definition output_fun st : option state :=
+  do! raddr <- regs st ra;
+  do! out   <- regs st r_output;
+  let r_pc  := rif_prins _ (rif_state (taga raddr)) in
+  let r_out := rif_prins _ (rif_state (taga out)) in
+  Some (State (mem st) (regs st) raddr (rcons (internal st) (vala out, r_pc ⊔ᵣ r_out))).
+
+Definition rif_syscalls : syscall_table mt :=
+  [partmap (output_addr, Syscall tt output_fun)].
+
+Local Notation step  := (@Symbolic.step mt mops sym_rif rif_syscalls).
+Local Notation ratom := (atom (mword mt) (tag_type rif_tags R)).
+Local Notation matom := (atom (mword mt) (tag_type rif_tags M)).
 
 Section Indist.
 
