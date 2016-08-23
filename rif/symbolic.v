@@ -125,7 +125,7 @@ Record rifAutomaton := RifAutomaton {
 
   (* The interpretation function, which lists who is allowed to read a
      value on each state. *)
-  rif_prins : {ffun 'I_rif_states -> readers}
+  rif_readers : {ffun 'I_rif_states -> readers}
 
 }.
 
@@ -134,7 +134,7 @@ Implicit Types r : rifAutomaton.
 Definition tag_of_rifAutomaton r : { n : nat &
                                      ({ffun 'I_n * Σ -> 'I_n} *
                                       {ffun 'I_n -> readers})%type } :=
-  @Tagged nat (rif_states r) _ (rif_trans r, rif_prins r).
+  @Tagged nat (rif_states r) _ (rif_trans r, rif_readers r).
 
 Definition rifAutomaton_of_tag (r : { n : nat &
                                       ({ffun 'I_n * Σ -> 'I_n} *
@@ -165,7 +165,7 @@ Definition ra_join r1 r2 :=
        ord_pair (rif_trans r1 (ix.1, p.2)) (rif_trans r2 (ix.2, p.2))]
     [ffun ix =>
        let ix := ord_unpair ix in
-       rif_prins r1 ix.1 ⊔ᵣ rif_prins r2 ix.2].
+       rif_readers r1 ix.1 ⊔ᵣ rif_readers r2 ix.2].
 
 Infix "⊔ₐ" := ra_join (at level 40, left associativity).
 
@@ -181,24 +181,24 @@ by rewrite ffunE /= ord_pairK /= IH.
 Qed.
 
 Lemma ra_joinPl r1 r2 i1 i2 Fs :
-  rif_prins r1 (rif_run i1 Fs) ⊑ᵣ
-  rif_prins (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs).
+  rif_readers r1 (rif_run i1 Fs) ⊑ᵣ
+  rif_readers (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs).
 Proof.
 by rewrite rif_run_join /= ffunE ord_pairK /= readers_joinL.
 Qed.
 
 Lemma ra_joinPr r1 r2 i1 i2 Fs :
-  rif_prins r2 (rif_run i2 Fs) ⊑ᵣ
-  rif_prins (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs).
+  rif_readers r2 (rif_run i2 Fs) ⊑ᵣ
+  rif_readers (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs).
 Proof.
 by rewrite rif_run_join /= ffunE ord_pairK /= readers_joinR.
 Qed.
 
 Lemma ra_join_min r1 r2 r3 i1 i2 i3 Fs :
-  rif_prins (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs) ⊑ᵣ
-  rif_prins r3 (rif_run i3 Fs)
-  = (rif_prins r1 (rif_run i1 Fs) ⊑ᵣ rif_prins r3 (rif_run i3 Fs)) &&
-    (rif_prins r2 (rif_run i2 Fs) ⊑ᵣ rif_prins r3 (rif_run i3 Fs)).
+  rif_readers (r1 ⊔ₐ r2) (@rif_run (r1 ⊔ₐ r2) (ord_pair i1 i2) Fs) ⊑ᵣ
+  rif_readers r3 (rif_run i3 Fs)
+  = (rif_readers r1 (rif_run i1 Fs) ⊑ᵣ rif_readers r3 (rif_run i3 Fs)) &&
+    (rif_readers r2 (rif_run i2 Fs) ⊑ᵣ rif_readers r3 (rif_run i3 Fs)).
 Proof.
 by rewrite rif_run_join /= ffunE ord_pairK readers_join_min.
 Qed.
@@ -231,8 +231,8 @@ Definition rifLabel_eqMixin := CanEqMixin tag_of_rifLabelK.
 Canonical rifLabel_eqType := EqType rifLabel rifLabel_eqMixin.
 
 Definition rl_leq l1 l2 : Prop :=
-  forall Fs, rif_prins _ (rif_run (rif_state l1) Fs) ⊑ᵣ
-             rif_prins _ (rif_run (rif_state l2) Fs).
+  forall Fs, rif_readers _ (rif_run (rif_state l1) Fs) ⊑ᵣ
+             rif_readers _ (rif_run (rif_state l2) Fs).
 
 Axiom rl_leqb : rel rifLabel.
 Axiom rl_leqbP : forall l1 l2, reflect (rl_leq l1 l2) (rl_leqb l1 l2).
@@ -258,7 +258,7 @@ apply/rl_leqbP/andP; rewrite /rl_leq.
     exact: (readers_leq_trans (ra_joinPl (rif_state l1) (rif_state l2) Fs)).
   exact: (readers_leq_trans (ra_joinPr (rif_state l1) (rif_state l2) Fs)).
 case=> /rl_leqbP H1 /rl_leqbP H2 Fs; move/(_ Fs) in H1; move/(_ Fs) in H2.
-by rewrite /rl_join (lock rif_prins) /= -lock ra_join_min H1.
+by rewrite /rl_join (lock rif_readers) /= -lock ra_join_min H1.
 Qed.
 
 Lemma rl_leq_refl : reflexive rl_leqb.
@@ -275,6 +275,9 @@ Qed.
 
 Definition rl_trans l F :=
   @RifLabel l (rif_trans l (rif_state l, F)).
+
+Definition rl_readers l :=
+  rif_readers l (rif_state l).
 
 Inductive mem_tag :=
 | MemInstr of Σ
@@ -314,13 +317,13 @@ Definition instr_rules
   match op, ts, ret with
   | NOP, _, ret                             => ret tpc tt
   | CONST, [hseq lold], ret                 => ret tpc ⊥ₗ
-  | MOV, [hseq l; lold], ret                => ret tpc l
-  | BINOP b, [hseq l1; l2; lold], ret       => ret tpc (rl_trans (l1 ⊔ₗ l2) ti)
-  | LOAD, [hseq l1; MemData l2; lold], ret  => ret tpc (rl_trans (l1 ⊔ₗ l2) ti)
+  | MOV, [hseq l; lold], ret                => ret tpc (rl_trans l ti)
+  | BINOP b, [hseq l1; l2; lold], ret       => ret tpc (l1 ⊔ₗ l2)
+  | LOAD, [hseq l1; MemData l2; lold], ret  => ret tpc (l1 ⊔ₗ l2)
   | STORE, [hseq l1; l2; MemData lold], ret => if l1 ⊔ₗ tpc ⊑ₗ lold then ret tpc (MemData (l1 ⊔ₗ l2 ⊔ₗ tpc))
                                                else None
-  | JUMP, [hseq l], ret                     => ret (rl_trans (l ⊔ₗ tpc) ti) tt
-  | BNZ, [hseq l], ret                      => ret (rl_trans (l ⊔ₗ tpc) ti) tt
+  | JUMP, [hseq l], ret                     => ret (l ⊔ₗ tpc) tt
+  | BNZ, [hseq l], ret                      => ret (l ⊔ₗ tpc) tt
   | JAL, [hseq l1; lold], ret               => None
   | _, _, _                                 => None
   end.
@@ -356,8 +359,8 @@ Variable r_output : reg mt.
 Definition output_fun st : option state :=
   do! raddr <- regs st ra;
   do! out   <- regs st r_output;
-  let r_pc  := rif_prins _ (rif_state (taga raddr)) in
-  let r_out := rif_prins _ (rif_state (taga out)) in
+  let r_pc  := rif_readers _ (rif_state (taga raddr)) in
+  let r_out := rif_readers _ (rif_state (taga out)) in
   Some (State (mem st) (regs st) raddr (rcons (internal st) (vala out, r_pc ⊔ᵣ r_out))).
 
 Definition rif_syscalls : syscall_table mt :=
@@ -370,10 +373,10 @@ Local Notation matom := (atom (mword mt) (tag_type rif_tags M)).
 Section Indist.
 
 Context {T : eqType}.
-Variable t : T -> rifLabel.
+Variable t : T -> readers.
 
-Definition indist rl (ra1 ra2 : T) :=
-  (t ra1 ⊑ₗ rl) || (t ra2 ⊑ₗ rl) ==> (ra1 == ra2).
+Definition indist rs (ra1 ra2 : T) :=
+  (t ra1 ⊑ᵣ rs) || (t ra2 ⊑ᵣ rs) ==> (ra1 == ra2).
 
 Lemma indist_refl rl : reflexive (indist rl).
 Proof. by move=> ra; rewrite /indist eqxx implybT. Qed.
@@ -391,11 +394,15 @@ Qed.
 
 End Indist.
 
-Definition s_indist rl st1 st2 :=
-  all (fun rg => indist (oapp taga ⊥ₗ) rl (regs st1 rg) (regs st2 rg))
-      (domm (regs st1) :|: domm (regs st2)) &&
-  all (fun x  => indist (oapp (fun t => if taga t is MemData rl' then rl' else ⊥ₗ) ⊥ₗ) rl
-                        (mem st1 x) (mem st2 x))
-      (domm (mem st1)  :|: domm (mem st2)).
+Definition s_indist rs st1 st2 :=
+  [&& all (fun rg => indist (oapp (rl_readers \o taga) Anybody)
+                            rs (regs st1 rg) (regs st2 rg))
+      (domm (regs st1) :|: domm (regs st2)),
+      all (fun x  => indist (oapp (fun t => if taga t is MemData rl'
+                                            then rl_readers rl'
+                                            else Anybody) Anybody)
+                            rs (mem st1 x) (mem st2 x))
+          (domm (mem st1)  :|: domm (mem st2)),
+      nilp (internal st1) & nilp (internal st2)].
 
 End Dev.
