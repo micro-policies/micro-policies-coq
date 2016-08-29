@@ -1,6 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq fintype finfun.
 From CoqUtils Require Import hseq ord fset partmap word.
-From MicroPolicies Require Import lib.utils common.types symbolic.symbolic.
+From MicroPolicies Require Import lib.utils common.types symbolic.symbolic symbolic.exec.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -346,7 +346,7 @@ Definition instr_rules
                                                else None
   | JUMP, [hseq l], ret                     => ret (l ⊔ₗ tpc, None) tt
   | BNZ, [hseq l], ret                      => ret (l ⊔ₗ tpc, None) tt
-  | JAL, [hseq l1; lold], ret               => ret (l1 ⊔ₗ tpc, ti) (l1 ⊔ₗ tpc)
+  | JAL, [hseq l1; lold], ret               => ret (l1 ⊔ₗ tpc, ti) tpc
   | _, _, _                                 => None
   end.
 
@@ -434,11 +434,36 @@ Definition reclassify_fun st : option state :=
   else None.
 
 Definition rif_syscalls : syscall_table mt :=
-  [partmap (output_addr, Syscall tt output_fun)].
+  [partmap (output_addr, Syscall tt output_fun);
+           (reclassify_addr, Syscall tt reclassify_fun)].
 
 Local Notation step  := (@Symbolic.step mt mops sym_rif rif_syscalls).
 Local Notation ratom := (atom (mword mt) (tag_type rif_tags R)).
 Local Notation matom := (atom (mword mt) (tag_type rif_tags M)).
+
+Ltac step_event_app :=
+  simpl in *;
+  rewrite /next_state_pc /next_state_reg /next_state_reg_and_pc /next_state;
+  intros; subst; simpl in *;
+  repeat match goal with
+  | t : (_ * _)%type |- _ => destruct t; simpl in *
+  end;
+  match_inv; simpl; exists [::]; rewrite cats0.
+
+Lemma step_event_app s s' :
+  step s s' ->
+  exists t, internal s' = internal s ++ t.
+Proof.
+  case; try by step_event_app.
+  move=> /= m rs pc sc [rl [oF|]] t -> {s} _;
+  rewrite /rif_syscalls /run_syscall mkpartmapE //=.
+  case: ifP=> [_ [<-] {sc}|_] /=.
+    rewrite /output_fun /= => e; match_inv=> /=.
+    rewrite -cats1; eexists; eauto.
+  case: ifP=> [_ [<-] {sc}|_] //=.
+  rewrite /reclassify_fun /= => e; match_inv=> /=.
+  by rewrite -cats1; eexists; eauto.
+Qed.
 
 Section Indist.
 
@@ -464,7 +489,20 @@ Qed.
 
 End Indist.
 
-CoInductive s_indist rs st1 st2 :=
+Fixpoint observe rs es :=
+  if es is e :: es' then
+    match e with
+      | Output out rs' =>
+        if ~~ (rs ⊑ᵣ rs' ) then out :: observe rs es'
+        else observe rs es'
+    | Reclassify rl F =>
+      if (rs ⊑ᵣ rl_readers rl) && ~~ (rs ⊑ᵣ rl_readers (rl_trans rl F)) then
+        [::]
+      else observe rs es'
+    end
+  else [::].
+
+CoInductive s_indist rs st1 st2 : Prop :=
 | SIndistLow of rl_readers (taga (pc st1)).1 ⊑ᵣ rs
              &  rl_readers (taga (pc st2)).1 ⊑ᵣ rs
              &  pc st1 = pc st2
@@ -475,7 +513,38 @@ CoInductive s_indist rs st1 st2 :=
                                            then rl_readers rl'
                                            else Anybody) Anybody)
                                   rs (mem st1 a) (mem st2 a))
+             &  observe rs (internal st1) = observe rs (internal st2)
 | SIndistHigh of ~~ (rl_readers (taga (pc st1)).1 ⊑ᵣ rs)
               &  ~~ (rl_readers (taga (pc st2)).1 ⊑ᵣ rs).
+
+Lemma high_step rs st1 st2 st1' :
+  s_indist rs st1 st2 ->
+  rl_readers (taga (pc st1)).1 ⊑ᵣ rs ->
+  step st1 st1' ->
+  exists2 st2',
+    s_indist rs st1' st2' &
+    step st2 st2'.
+Proof.
+move=> h_indist h_low1 h_step1.
+suff h : match @stepf _ mops _ rif_syscalls st2 return Prop with
+         | Some st2' => s_indist rs st1' st2'
+         | None => False
+         end.
+  case h_step2: stepf h => [st2'|] // h_indist'; move/stepP in h_step2; eauto.
+case: h_indist; last by rewrite h_low1.
+move=> _ h_low2 h_pc.
+(*case: h_step1 h_low1 h_pc.
+- (* Nop *)
+  move=> /= m r pc [rl oF] i ti t -> {st1}.
+  rewrite /stepf.*)
+Admitted.
+
+Lemma noninterference rs st1 st2 st1' st2' :
+  s_indist rs st1 st2 ->
+  exec step st1 st1' ->
+  exec step st2 st2' ->
+  observe rs (internal st1') = observe rs (internal st2').
+Proof.
+Admitted.
 
 End Dev.
