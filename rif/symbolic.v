@@ -279,8 +279,27 @@ Definition rl_trans l F :=
 Definition rl_readers l :=
   rif_readers l (rif_state l).
 
+(** Definition of tags for locations (cf. [rif_tags] below). The data
+    are tagged as follows:
+
+    - The program counter is tagged with a current label and a
+      possible reclassifier, which is only present if the last
+      executed instruction was a JAL. This is used to make sure that
+      the reclassification system service can only be invoked after a
+      JAL.
+
+    - Registers are tagged with labels, as usual.
+
+    - Memory is split among data and instructions. Instructions are
+      immutable and cannot be inspected as data. They may be tagged
+      with a reclassifier, which is only relevant when invoking the
+      reclassify system service with a JAL. Data is tagged with labels
+      as usual.
+
+    - Service entry points don't carry tags. *)
+
 Inductive mem_tag :=
-| MemInstr of Σ
+| MemInstr of option Σ
 | MemData  of rifLabel.
 
 Definition sum_of_mem_tag t :=
@@ -304,49 +323,88 @@ Canonical mem_tag_eqType := EqType mem_tag mem_tag_eqMixin.
 Import Symbolic.
 
 Definition rif_tags := {|
-  pc_tag_type    := rifLabel_eqType;
+  pc_tag_type    := [eqType of rifLabel * option Σ];
   reg_tag_type   := rifLabel_eqType;
   mem_tag_type   := mem_tag_eqType;
   entry_tag_type := unit_eqType
 |}.
 
+(** Tag propagation rules. *)
+
 Definition instr_rules
-  (op : opcode) (tpc : rifLabel) (ti : Σ) (ts : hseq (tag_type rif_tags) (inputs op)) :
+  (op : opcode) (tpc : rifLabel) (ti : option Σ) (ts : hseq (tag_type rif_tags) (inputs op)) :
   option (ovec rif_tags op) :=
   let ret := fun rtpc (rt : type_of_result rif_tags (outputs op)) => Some (@OVec rif_tags op rtpc rt) in
   match op, ts, ret with
-  | NOP, _, ret                             => ret tpc tt
-  | CONST, [hseq lold], ret                 => ret tpc ⊥ₗ
-  | MOV, [hseq l; lold], ret                => ret tpc (rl_trans l ti)
-  | BINOP b, [hseq l1; l2; lold], ret       => ret tpc (l1 ⊔ₗ l2)
-  | LOAD, [hseq l1; MemData l2; lold], ret  => ret tpc (l1 ⊔ₗ l2)
-  | STORE, [hseq l1; l2; MemData lold], ret => if l1 ⊔ₗ tpc ⊑ₗ lold then ret tpc (MemData (l1 ⊔ₗ l2 ⊔ₗ tpc))
+  | NOP, _, ret                             => ret (tpc, None) tt
+  | CONST, [hseq lold], ret                 => ret (tpc, None) ⊥ₗ
+  | MOV, [hseq l; lold], ret                => ret (tpc, None) l
+  | BINOP b, [hseq l1; l2; lold], ret       => ret (tpc, None) (l1 ⊔ₗ l2)
+  | LOAD, [hseq l1; MemData l2; lold], ret  => ret (tpc, None) (l1 ⊔ₗ l2)
+  | STORE, [hseq l1; l2; MemData lold], ret => if l1 ⊔ₗ tpc ⊑ₗ lold then
+                                                 ret (tpc, None) (MemData (l1 ⊔ₗ l2 ⊔ₗ tpc))
                                                else None
-  | JUMP, [hseq l], ret                     => ret (l ⊔ₗ tpc) tt
-  | BNZ, [hseq l], ret                      => ret (l ⊔ₗ tpc) tt
-  | JAL, [hseq l1; lold], ret               => None
+  | JUMP, [hseq l], ret                     => ret (l ⊔ₗ tpc, None) tt
+  | BNZ, [hseq l], ret                      => ret (l ⊔ₗ tpc, None) tt
+  | JAL, [hseq l1; lold], ret               => ret (l1 ⊔ₗ tpc, ti) (l1 ⊔ₗ tpc)
   | _, _, _                                 => None
   end.
 
 Definition transfer (iv : ivec rif_tags) : option (vovec rif_tags (op iv)) :=
   match iv with
-  | IVec (OP op) tpc ti ts =>
+  | IVec (OP op) (tpc, _) ti ts =>
     match ti with
     | MemInstr F => @instr_rules op tpc F ts
     | MemData _ => None
     end
-  | IVec SERVICE _ _ _ => None
+  | IVec SERVICE (tpc, b) _ _ =>
+    if b then Some tt else None
   end.
 
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
+
+(** We model the machine's observable behavior using a trace of events
+    stored in the internal state. This trace can only be accessed
+    through the output and reclassify system services, as described below. *)
+
+CoInductive event :=
+
+(** [Output out rs] corresponds to sending the word [out] through an
+    output channel. The set of readers [rs] marks which principals are
+    capable of observing that output. *)
+
+| Output of mword mt & readers
+
+(** [Reclassify rl F] represents the reclassification of a piece of
+    data tagged with label [rl] according to reclassifier [F]. *)
+
+| Reclassify of rifLabel & Σ.
+
+Definition sum_of_event e :=
+  match e with
+  | Output x rs => inl (x, rs)
+  | Reclassify rl F => inr (rl, F)
+  end.
+
+Definition event_of_sum x :=
+  match x with
+  | inl (x, rs) => Output x rs
+  | inr (rl, F) => Reclassify rl F
+  end.
+
+Lemma sum_of_eventK : cancel sum_of_event event_of_sum.
+Proof. by case. Qed.
+
+Definition event_eqMixin := CanEqMixin sum_of_eventK.
+Canonical event_eqType := Eval hnf in EqType event event_eqMixin.
 
 Global Instance sym_rif : params := {
   ttypes := rif_tags;
 
   transfer := transfer;
 
-  internal_state := [eqType of seq (mword mt * readers)]
+  internal_state := [eqType of seq event]
 }.
 
 Local Notation state := (@Symbolic.state mt sym_rif).
@@ -354,14 +412,26 @@ Local Notation state := (@Symbolic.state mt sym_rif).
 Implicit Types st : state.
 
 Variable output_addr : mword mt.
-Variable r_output : reg mt.
+Variable reclassify_addr : mword mt.
+Variable r_arg : reg mt.
 
 Definition output_fun st : option state :=
   do! raddr <- regs st ra;
-  do! out   <- regs st r_output;
+  do! out   <- regs st r_arg;
   let r_pc  := rif_readers _ (rif_state (taga raddr)) in
   let r_out := rif_readers _ (rif_state (taga out)) in
-  Some (State (mem st) (regs st) raddr (rcons (internal st) (vala out, r_pc ⊔ᵣ r_out))).
+  Some (State (mem st) (regs st) (Atom (vala raddr) (taga raddr, None))
+              (rcons (internal st) (Output (vala out) (r_pc ⊔ᵣ r_out)))).
+
+Definition reclassify_fun st : option state :=
+  do! raddr <- regs st ra;
+  do! arg   <- regs st r_arg;
+  if (taga (pc st)).2 is Some F then
+    Some (State (mem st)
+                (setm (regs st) r_arg (Atom (vala arg) (rl_trans (taga arg) F)))
+                (Atom (vala raddr) (taga raddr, None))
+                (rcons (internal st) (Reclassify (taga arg) F)))
+  else None.
 
 Definition rif_syscalls : syscall_table mt :=
   [partmap (output_addr, Syscall tt output_fun)].
@@ -394,15 +464,18 @@ Qed.
 
 End Indist.
 
-Definition s_indist rs st1 st2 :=
-  [&& all (fun rg => indist (oapp (rl_readers \o taga) Anybody)
-                            rs (regs st1 rg) (regs st2 rg))
-      (domm (regs st1) :|: domm (regs st2)),
-      all (fun x  => indist (oapp (fun t => if taga t is MemData rl'
-                                            then rl_readers rl'
-                                            else Anybody) Anybody)
-                            rs (mem st1 x) (mem st2 x))
-          (domm (mem st1)  :|: domm (mem st2)),
-      nilp (internal st1) & nilp (internal st2)].
+CoInductive s_indist rs st1 st2 :=
+| SIndistLow of rl_readers (taga (pc st1)).1 ⊑ᵣ rs
+             &  rl_readers (taga (pc st2)).1 ⊑ᵣ rs
+             &  pc st1 = pc st2
+             &  (forall rg, indist (oapp (rl_readers \o taga) Anybody)
+                                   rs (regs st1 rg) (regs st2 rg))
+             &  (forall a, indist (oapp (fun t =>
+                                           if taga t is MemData rl'
+                                           then rl_readers rl'
+                                           else Anybody) Anybody)
+                                  rs (mem st1 a) (mem st2 a))
+| SIndistHigh of ~~ (rl_readers (taga (pc st1)).1 ⊑ᵣ rs)
+              &  ~~ (rl_readers (taga (pc st2)).1 ⊑ᵣ rs).
 
 End Dev.
