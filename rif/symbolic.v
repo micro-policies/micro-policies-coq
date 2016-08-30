@@ -134,9 +134,9 @@ Definition reclassify_fun st : option state :=
   do! raddr <- regs st ra;
   do! arg   <- regs st r_arg;
   if (taga (pc st)).2 is Some F then
-    Some (State (mem st)
-                (setm (regs st) r_arg (Atom (vala arg) (rl_trans (taga arg) F)))
-                (Atom (vala raddr) (taga raddr, None))
+    do! regs  <- updm (regs st) r_arg (vala arg)@(rl_trans (taga arg) F);
+    Some (State (mem st) regs
+                (vala raddr)@(taga raddr, None)
                 (rcons (internal st) (Reclassify _ (taga arg) F)))
   else None.
 
