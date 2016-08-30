@@ -58,6 +58,9 @@ sealing/symbolic.v
 sealing/refinementSA.v
 sealing/main.v
 
+rif/common.v
+rif/symbolic.v
+
 os/os.v
 
 extraction/extraction.v

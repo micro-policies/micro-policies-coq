@@ -1,9 +1,8 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype seq.
 From CoqUtils Require Import ord word fset partmap nominal.
-Require Import lib.utils.
-Require Import lib.partmap_utils.
-Require Import common.types symbolic.symbolic.
-Require Import sealing.classes sealing.symbolic sealing.abstract.
+From MicroPolicies
+Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic
+               sealing.classes sealing.symbolic sealing.abstract.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
