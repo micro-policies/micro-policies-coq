@@ -91,7 +91,7 @@ Definition instr_rules
                                                else None
   | JUMP, [hseq l], ret                     => ret (l ⊔ₗ tpc, None) tt
   | BNZ, [hseq l], ret                      => ret (l ⊔ₗ tpc, None) tt
-  | JAL, [hseq l1; lold], ret               => ret (l1 ⊔ₗ tpc, ti) tpc
+  | JAL, [hseq l1; lold], ret               => ret (l1 ⊔ₗ tpc, ti) (l1 ⊔ₗ tpc)
   | _, _, _                                 => None
   end.
 

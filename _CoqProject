@@ -60,6 +60,7 @@ sealing/main.v
 
 rif/common.v
 rif/symbolic.v
+rif/abstract.v
 
 os/os.v
 
