@@ -348,15 +348,15 @@ Lemma interm_in2_step : forall xs s s' si sj,
   In2 si sj xs ->
   R si sj.
 Proof.
-  intros xs s s' si sj INTERM In2.
+  intros xs s s' si sj INTERM HIn2.
   induction INTERM.
-  - destruct In2 as [[EQ1 EQ2] | CONTRA]; subst. assumption.
+  - destruct HIn2 as [[EQ1 EQ2] | CONTRA]; subst. assumption.
     destruct CONTRA.
   - destruct xs. inversion INTERM.
     inversion INTERM; subst.
-    + destruct In3 as [[EQ1 EQ2] | CONTRA]; subst. assumption.
+    + destruct HIn2 as [[EQ1 EQ2] | CONTRA]; subst. assumption.
       auto.
-    + destruct In3 as [[EQ1 EQ2] | CONTRA]; subst. assumption.
+    + destruct HIn2 as [[EQ1 EQ2] | CONTRA]; subst. assumption.
       auto.
 Qed.
 
