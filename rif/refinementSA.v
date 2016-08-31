@@ -92,7 +92,7 @@ move: sr ref_r=> regs <- {ar}.
 move: spc slpc src => pc lpc rc <- <- <- {apc alpc arc}.
 rewrite -lock /=.
 move: (ref_m pc).
-case: (sm pc) => [[si [oF|sti]]|]; case aget_pc: (am pc) => [[ai|?]|] //=.
+case: (sm pc) => [[si [oF|sti]]|]; case aget_pc: (am pc) => [[ai|a]|] //=.
 - (* Instruction *)
   rewrite /abs_instr.
   case: decode_instr => [i|] ref_i //=.
@@ -163,10 +163,26 @@ case: (sm pc) => [[si [oF|sti]]|]; case aget_pc: (am pc) => [[ai|?]|] //=.
   case upd_ra: updm => [regs'|] //= [<-] {sst'}.
   by rewrite -lock /= aget_pc /= get_r /= upd_ra /= cats0; split.
 - (* Fetch data in memory instead of instruction; contradiction *)
-  admit.
+  move=> e; move: e aget_pc => <- aget_pc {a}.
+  by case: decode_instr => [[]|] /= *;
+  repeat autounfold in *; simpl in *; match_inv.
 (* System service *)
 move=> _ /=.
-admit.
-Admitted.
+rewrite -lock /= aget_pc /rif_syscalls mkpartmapE /= /Symbolic.run_syscall.
+case: ifP=> _ /=.
+  (* Output *)
+  rewrite /output_fun /=.
+  case get_ra: (regs ra) => [raddr|] //=.
+  case get_arg: (regs r_arg) => [out|] //= [<-] {sst'} /=.
+  by rewrite cats1; split.
+case: ifP=> _ //=.
+(* Reclassify *)
+case: rc=> [F|] //=.
+rewrite /reclassify_fun /=.
+case get_ra: (regs ra) => [raddr|] //=.
+case get_arg: (regs r_arg) => [arg|] //=.
+case upd_r: updm => [regs'|] //= [<-] {sst'} /=.
+by rewrite cats1; split.
+Qed.
 
 End Abstract.
