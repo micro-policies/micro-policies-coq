@@ -1,4 +1,5 @@
-From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq fintype finfun.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype finfun.
 From CoqUtils Require Import hseq ord fset partmap word.
 From MicroPolicies Require Import
   lib.utils lib.partmap_utils common.types symbolic.symbolic symbolic.exec
@@ -8,7 +9,7 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Section Abstract.
+Section Refinement.
 
 Import DoNotation.
 
@@ -80,7 +81,7 @@ Lemma refinement sst sst' ast :
   | Some (ast', oe) =>
     refine_state sst' ast'
     /\ Symbolic.internal sst' =
-       Symbolic.internal sst ++ oapp (cons ^~ [::]) [::] oe
+       Symbolic.internal sst ++ seq_of_opt oe
   | None => False
   end.
 Proof.
@@ -185,4 +186,4 @@ case upd_r: updm => [regs'|] //= [<-] {sst'} /=.
 by rewrite cats1; split.
 Qed.
 
-End Abstract.
+End Refinement.

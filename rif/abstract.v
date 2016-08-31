@@ -1,4 +1,5 @@
-From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq fintype finfun.
+From mathcomp Require Import
+  ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype finfun.
 From CoqUtils Require Import hseq ord fset partmap word.
 From MicroPolicies Require Import lib.utils common.types rif.common.
 
