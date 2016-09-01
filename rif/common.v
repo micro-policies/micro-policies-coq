@@ -277,6 +277,12 @@ Definition rl_trans l F :=
 Definition rl_readers l :=
   rif_readers l (rif_state l).
 
+Lemma rl_readers_join l1 l2 :
+  rl_readers (l1 ⊔ₗ l2) = rl_readers l1 ⊔ᵣ rl_readers l2.
+Proof.
+by rewrite /rl_join /rl_readers /= ffunE /= ord_pairK /=.
+Qed.
+
 Variable mt : machine_types.
 
 (** We model the machine's observable behavior using a trace of events
@@ -321,6 +327,22 @@ Variable t : T -> readers.
 
 Definition indist rs (ra1 ra2 : T) :=
   (t ra1 ⊑ᵣ rs) || (t ra2 ⊑ᵣ rs) ==> (ra1 == ra2).
+
+CoInductive indist_spec rs ra1 ra2 : Prop :=
+| IndistLow of t ra1 ⊑ᵣ rs & t ra2 ⊑ᵣ rs & ra1 = ra2
+| IndistHigh of ~~ (t ra1 ⊑ᵣ rs) & ~~ (t ra2 ⊑ᵣ rs).
+
+Lemma indistP rs ra1 ra2 :
+  reflect (indist_spec rs ra1 ra2) (indist rs ra1 ra2).
+Proof.
+rewrite /indist; apply/(iffP idP).
+  have [hi /eqP <-|lo1] /= := boolP (t ra1 ⊑ᵣ rs); first by constructor.
+  have [hi /eqP e|lo2 _] /= := boolP (t ra2 ⊑ᵣ rs).
+    by rewrite e hi in lo1.
+  by apply: IndistHigh.
+case=> [-> -> -> //=|hi1 hi2].
+by rewrite -[X in X ==> _]negbK negb_or hi1 hi2.
+Qed.
 
 Lemma indist_refl rl : reflexive (indist rl).
 Proof. by move=> ra; rewrite /indist eqxx implybT. Qed.

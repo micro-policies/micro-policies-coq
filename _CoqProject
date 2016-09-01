@@ -62,6 +62,7 @@ rif/common.v
 rif/symbolic.v
 rif/abstract.v
 rif/refinementSA.v
+rif/noninterference.v
 
 os/os.v
 

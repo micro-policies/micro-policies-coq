@@ -35,6 +35,35 @@ Inductive ainstr : Type :=
 | AJal of reg mt & option Σ
 | AHalt.
 
+Definition ainstr_eq i1 i2 :=
+  match i1, i2 with
+  | ANop, ANop => true
+  | AConst i1 r1, AConst i2 r2 => (i1 == i2) && (r1 == r2)
+  | AMov r11 r12, AMov r21 r22 => (r11 == r21) && (r12 == r22)
+  | ABinop b1 r11 r12 r13, ABinop b2 r21 r22 r23 =>
+    [&& b1 == b2, r11 == r21, r12 == r22 & r13 == r23]
+  | ALoad r11 r12, ALoad r21 r22 => (r11 == r21) && (r12 == r22)
+  | AStore r11 r12, AStore r21 r22 => (r11 == r21) && (r12 == r22)
+  | AJump r1, AJump r2 => r1 == r2
+  | ABnz r1 i1, ABnz r2 i2 => (r1 == r2) && (i1 == i2)
+  | AJal r1 oF1, AJal r2 oF2 => (r1 == r2) && (oF1 == oF2)
+  | AHalt, AHalt => true
+  | _, _ => false
+  end.
+
+Lemma ainstr_eqP : Equality.axiom ainstr_eq.
+Proof.
+move=> i1 i2; case: i1=> *; case: i2=> * /=;
+by [
+  constructor; congruence |
+  by apply/(iffP idP)=> [/eqP ->|[->]] |
+  by apply/(iffP and4P)=> [[/eqP -> /eqP -> /eqP -> /eqP ->]|[-> -> -> ->]] |
+  by apply/(iffP andP)=> [[/eqP -> /eqP ->]|[-> ->]] ].
+Qed.
+
+Definition ainstr_eqMixin := EqMixin ainstr_eqP.
+Canonical ainstr_eqType := Eval hnf in EqType ainstr ainstr_eqMixin.
+
 Record state := State {
   mem     : {partmap mword mt -> ainstr + atom};
   regs    : {partmap reg mt -> atom};
@@ -114,6 +143,15 @@ Definition step s : option (state * option event) :=
             Some (Reclassify _ (taga arg) F))
     else None
   else None.
+
+Fixpoint stepn n s :=
+  if n is S n' then
+    if step s is Some (s', oe) then
+      if stepn n' s' is Some (s'', t) then
+        Some (s'', t ++ seq_of_opt oe)
+      else None
+    else None
+  else Some (s, [::]).
 
 End Abstract.
 
