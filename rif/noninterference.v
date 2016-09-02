@@ -68,7 +68,7 @@ Lemma low_step rs st1 st2 st1' oe1 :
     | None, None => s_indist rs st1' st2'
     | _, _ => False
     end
-  | None => False
+  | None => True
   end.
 Proof.
 move=> h_indist h_low1; case: h_indist; last by rewrite h_low1.
@@ -125,8 +125,39 @@ rewrite /indist /=.
     move: (ind_r r1).
     case get_r1: (reg1 r1) => [[v1 l1]|] //=.
     case get_r2: (reg2 r1) => [[v2 l2]|] //= ind_v.
-    move: (ind_m v1).
-    admit.
+    case/indistP: ind_v get_r1 get_r2=> [/= lo _ [<- <-] {v2 l2}|/= hi1 hi2].
+      (* Both pointers are low *)
+      move: v1 l1 lo => v l lo get_r1 get_r2.
+      move: (ind_m v).
+      case getm_v1: (mem1 v)=> [[|[v1 l1]]|] //=.
+      case getm_v2: (mem2 v)=> [[|[v2 l2]]|] //=.
+        by rewrite {1}/indist orbT implybF.
+      move=> ind_v.
+      case upd1: updm => [reg1'|] //= [<- <-] {st1' oe1}.
+      rewrite -lock /= get_pc2 get_r2 /= getm_v2 /=.
+      match_upd reg1.
+        move: ind_v; rewrite /indist /= -sum_eqE /=.
+        rewrite !rl_readers_join !readers_join_min.
+        case: (rl_readers l1 ⊑ᵣ rs)=> //=.
+          by move=> /eqP [-> ->]; rewrite eqxx implybT.
+        rewrite andbF /=.
+        case: (rl_readers l2 ⊑ᵣ rs)=> //= [|_].
+          by move=> /eqP [-> ->]; rewrite eqxx implybT.
+        by rewrite andbF.
+      case=> reg2' [upd2 ind_r'].
+      rewrite upd2 /=.
+      by constructor.
+    (* Both pointers are high *)
+    move=> get_r1 get_r2.
+    case getm_v1: (mem1 v1)=> [[|[v1' l1']]|] //=.
+    case upd1: updm => [reg1'|] //= [<- <-] {st1' oe1}.
+    rewrite -lock /= get_pc2 get_r2 /=.
+    case getm_v2: (mem2 v2)=> [[|[v2' l2']]|] //=.
+    match_upd reg1.
+      rewrite /indist /= !rl_readers_join !readers_join_min.
+      by rewrite implybE negb_or !negb_and hi1 hi2 /=.
+    case=> reg2' [upd2 ind_r'].
+    by rewrite upd2 /=; constructor.
   - (* Store *)
     move=> r1 r2 get_pc1 get_pc2.
     move: (ind_r r1).
@@ -165,7 +196,17 @@ rewrite /indist /=.
   case get_r2: (reg2 r) => [[v2 l2]|] //= ind_v.
   case upd1: updm => [reg1'|] //= [<- <-] {st1' oe1}.
   rewrite -lock /= get_pc2 get_r2 /=.
-  admit.
+  match_upd reg1.
+    rewrite /indist /= !rl_readers_join !readers_join_min !h_pc !andbT.
+    case/indistP: ind_v=> [-> -> [_ ->]//=|/= hi1 hi2].
+      by rewrite -[X in X ==> _]negbK negb_or hi1 hi2.
+  case=> reg2' [upd2 ind_r'].
+  rewrite upd2 /=.
+  case/indistP: ind_v upd1 upd2=> [/= lo1 lo2 [<- <-]|/= hi1 hi2] upd1 upd2.
+    constructor=> //=.
+    by rewrite rl_readers_join readers_join_min lo1 /=.
+  by apply: SIndistHigh=> //=;
+  rewrite rl_readers_join readers_join_min negb_and ?hi1 ?hi2.
 (* System services *)
 admit.
 Admitted.
