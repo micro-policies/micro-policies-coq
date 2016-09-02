@@ -59,7 +59,7 @@ Canonical readers_eqType := Eval hnf in EqType readers readers_eqMixin.
 Definition readers_leq rs1 rs2 :=
   match rs1, rs2 with
   | Anybody, _ => true
-  | Readers rs1, Readers rs2 => fsubset rs1 rs2
+  | Readers rs1, Readers rs2 => fsubset rs2 rs1
   | _, _ => false
   end.
 
@@ -69,7 +69,7 @@ Proof. case=> //= rs; by rewrite fsubsetxx. Qed.
 Lemma readers_leq_trans : transitive readers_leq.
 Proof.
 move=> rs2 [rs1|] //=; case: rs2=> //= rs2 [rs3|] //=.
-exact: fsubset_trans.
+by move=> h1 h2; apply: fsubset_trans h2 h1.
 Qed.
 
 Lemma readers_leq_antisym : antisymmetric readers_leq.
@@ -82,17 +82,17 @@ Infix "⊑ᵣ" := readers_leq (at level 50).
 Definition readers_join rs1 rs2 :=
   match rs1, rs2 with
   | Anybody, rs | rs, Anybody => rs
-  | Readers rs1, Readers rs2 => Readers (rs1 :|: rs2)
+  | Readers rs1, Readers rs2 => Readers (rs1 :&: rs2)
   end.
 
 Infix "⊔ᵣ" := readers_join (at level 40, left associativity).
 
 Lemma readers_joinC : commutative readers_join.
-Proof. by case=> [rs1|] [rs2|] //=; rewrite fsetUC. Qed.
+Proof. by case=> [rs1|] [rs2|] //=; rewrite fsetIC. Qed.
 
 Lemma readers_joinL rs1 rs2 : rs1 ⊑ᵣ rs1 ⊔ᵣ rs2.
 Proof.
-by case: rs1 rs2 => //= rs1 [rs2|]; [rewrite fsubsetUl|rewrite fsubsetxx].
+by case: rs1 rs2 => //= rs1 [rs2|]; [rewrite fsubsetIl|rewrite fsubsetxx].
 Qed.
 
 Lemma readers_joinR rs1 rs2 : rs2 ⊑ᵣ rs1 ⊔ᵣ rs2.
@@ -102,7 +102,7 @@ Lemma readers_join_min rs1 rs2 rs3 :
   rs1 ⊔ᵣ rs2 ⊑ᵣ rs3 = (rs1 ⊑ᵣ rs3) && (rs2 ⊑ᵣ rs3).
 Proof.
 case: rs1 rs2 rs3=> //= rs1 [rs2|] [rs3|] //=; last by rewrite andbT.
-by rewrite fsubUset.
+by rewrite fsubsetI.
 Qed.
 
 (** A RIF automaton describes which principals are allowed to read a

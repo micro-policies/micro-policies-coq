@@ -63,7 +63,9 @@ Definition refine_m_atom (x : atom word (mem_tag Σ)) (y : ainstr + d_atom) :=
   end.
 
 Inductive refine_state sst ast : Prop :=
-| RefineState of pointwise refine_m_atom (Symbolic.mem sst) (rif.abstract.mem ast)
+| RefineState of pointwise refine_m_atom
+                           (Symbolic.mem sst)
+                           (rif.abstract.mem ast)
               &  Symbolic.regs sst = rif.abstract.regs ast
               &  vala (Symbolic.pc sst) = vala (rif.abstract.pc ast)
               &  (taga (Symbolic.pc sst)).1 = taga (rif.abstract.pc ast)
