@@ -130,8 +130,8 @@ Definition step s : option (state * option event) :=
   else if pc == output_addr then
     do! raddr <- regs ra;
     do! out   <- regs r_arg;
-    let r_pc  := rif_readers _ (rif_state (taga raddr)) in
-    let r_out := rif_readers _ (rif_state (taga out)) in
+    let r_pc  := rl_readers (taga raddr) in
+    let r_out := rl_readers (taga out) in
     Some (State mem regs raddr None,
           Some (Output _ (vala out) (r_pc ⊔ᵣ r_out)))
   else if pc == reclassify_addr then

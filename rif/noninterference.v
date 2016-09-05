@@ -42,6 +42,7 @@ CoInductive s_indist rs st1 st2 : Prop :=
                                      then rl_readers (taga t')
                                      else Anybody) rs)
                           (mem st1) (mem st2)
+             & reclass st1 = reclass st2
 | SIndistHigh of ~~ (rl_readers (taga (pc st1)) ⊑ᵣ rs)
               &  ~~ (rl_readers (taga (pc st2)) ⊑ᵣ rs).
 
@@ -64,7 +65,7 @@ Lemma low_step rs st1 st2 st1' oe1 :
       indist (@snd _ _) rs (w1, rs1) (w2, rs2)
       /\ s_indist rs st1' st2'
     | Some (Reclassify rl1 F1), Some (Reclassify rl2 F2) =>
-      (rl1 == rl2) && (F1 == F2)
+      (F1 == F2) (* Still need to rethink this *)
     | None, None => s_indist rs st1' st2'
     | _, _ => False
     end
@@ -75,7 +76,7 @@ move=> h_indist h_low1; case: h_indist; last by rewrite h_low1.
 rewrite (lock step).
 case: st1 {h_low1} => mem1 reg1 [pc1 rl1] oF1 /=.
 case: st2=> mem2 reg2 [pc2 rl2] oF2 /= h_pc e.
-move: pc1 rl1 e h_pc => pc rl [<- <-] h_pc {pc2 rl2} ind_r ind_m.
+move: pc1 rl1 oF1 e h_pc => pc rl oF [<- <-] h_pc {pc2 rl2 oF2} ind_r ind_m <-.
 rewrite -{1}lock /=.
 move: (ind_m pc).
 case get_pc1: (mem1 pc) => [[i1|a1]|] //=;
@@ -241,7 +242,7 @@ rewrite /indist /=.
     by apply: SIndistHigh=> //=;
     rewrite rl_readers_join readers_join_min negb_and ?hi1 ?hi2.
   (* Jal *)
-  move=> r oF get_pc1 get_pc2.
+  move=> r oF' get_pc1 get_pc2.
   move: (ind_r r).
   case get_r1: (reg1 r) => [[v1 l1]|] //=.
   case get_r2: (reg2 r) => [[v2 l2]|] //= ind_v.
@@ -259,7 +260,38 @@ rewrite /indist /=.
   by apply: SIndistHigh=> //=;
   rewrite rl_readers_join readers_join_min negb_and ?hi1 ?hi2.
 (* System services *)
-admit.
-Admitted.
+move=> _.
+have [pc_output|pc_n_output] := altP (pc =P output_addr).
+  (* Output *)
+  move: (ind_r (@ra _ mops)).
+  case get_ra1: (reg1 ra) => [[raddr1 lraddr1]|] //=.
+  case get_ra2: (reg2 ra) => [[raddr2 lraddr2]|] //= ind_raddr.
+  move: (ind_r r_arg).
+  case get_arg1: (reg1 r_arg) => [[out1 lout1]|] //=.
+  case get_arg2: (reg2 r_arg) => [[out2 lout2]|] //= ind_out [<- <-] {st1' oe1}.
+  rewrite -lock /= get_pc2 pc_output eqxx get_ra2 get_arg2 /=.
+  split.
+    move: ind_raddr ind_out; rewrite /indist /= !readers_join_min => ind_raddr ind_out.
+    apply/implyP=> /orP [|] /andP [lo_lraddr lo_lout]; move: ind_raddr ind_out.
+      by rewrite lo_lraddr lo_lout /= => /eqP [_ ->] /eqP [-> ->].
+    by rewrite lo_lraddr lo_lout /= !orbT => /eqP [_ ->] /eqP [-> ->].
+  case/indistP: ind_raddr=> /= [lo_raddr _ [<- <-] {raddr2 lraddr2 get_ra2}|].
+    by constructor.
+  move=> hi1 hi2.
+  by apply: SIndistHigh.
+have [pc_reclassify|//] := altP (pc =P reclassify_addr).
+(* Reclassify *)
+move: (ind_r (@ra _ mops)).
+case get_ra1: (reg1 ra) => [[raddr1 lraddr1]|] //=.
+case get_ra2: (reg2 ra) => [[raddr2 lraddr2]|] //= ind_raddr.
+move: (ind_r r_arg).
+case get_arg1: (reg1 r_arg) => [[arg1 larg1]|] //=.
+case get_arg2: (reg2 r_arg) => [[arg2 larg2]|] //= ind_arg.
+case: oF=> [F|] //=.
+case upd1: updm=> [reg1'|] //= [<- <-] {st1' oe1}.
+rewrite -lock /= get_pc2 (negbTE pc_n_output) pc_reclassify eqxx get_ra2 get_arg2 /=.
+case upd2: updm=> [reg2'|] //=.
+Qed.
+
 
 End Noninterference.
