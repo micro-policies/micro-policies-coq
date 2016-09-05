@@ -159,14 +159,65 @@ rewrite /indist /=.
     case=> reg2' [upd2 ind_r'].
     by rewrite upd2 /=; constructor.
   - (* Store *)
-    move=> r1 r2 get_pc1 get_pc2.
-    move: (ind_r r1).
-    case get_r11: (reg1 r1) => [[v11 l11]|] //=.
-    case get_r12: (reg2 r1) => [[v12 l12]|] //= ind_v1.
-    move: (ind_r r2).
-    case get_r21: (reg1 r2) => [[v21 l21]|] //=.
-    case get_r22: (reg2 r2) => [[v22 l22]|] //= ind_v2.
-    admit.
+    move=> rptr rv get_pc1 get_pc2.
+    move: (ind_r rptr).
+    case get_rptr1: (reg1 rptr) => [[ptr1 lptr1]|] //=.
+    case get_rptr2: (reg2 rptr) => [[ptr2 lptr2]|] //= ind_ptr.
+    move: (ind_r rv).
+    case get_rv1: (reg1 rv) => [[v1 lv1]|] //=.
+    case get_rv2: (reg2 rv) => [[v2 lv2]|] //=.
+    rewrite {1}/indist /= => ind_v.
+    case/indistP: ind_ptr get_rptr1 get_rptr2
+                  => [/= lo _ [<- <-] {ptr2 lptr2}|/= hi1 hi2].
+      (* Both pointers are low *)
+      move: ptr1 lptr1 lo => ptr lptr lo get_rptr1 get_rptr2.
+      move: (ind_m ptr).
+      case getm_ptr1: (mem1 ptr)=> [[|[vold1 lvold1]]|] //=.
+      case getm_ptr2: (mem2 ptr)=> [[|[vold2 lvold2]]|] //=.
+        by rewrite {1}/indist orbT -sum_eqE.
+      rewrite {1}/indist /= -sum_eqE /=.
+      rewrite rl_join_min; case: ifP=> //= /andP [lo_lptr1 lo_rl1].
+      case upd1: updm=> [mem1'|] //= ind_vold [<- <-] {st1' oe1}.
+      rewrite -lock /= get_pc2 get_rptr2 /= getm_ptr2 /= get_rv2 /=.
+      rewrite rl_join_min; case: ifP=> //= /andP [lo_lptr2 lo_rl2].
+      match_upd mem1.
+        rewrite /indist /= !rl_readers_join !readers_join_min h_pc !andbT.
+        rewrite -sum_eqE /= -andb_orr; apply/implyP=> /andP [lo_lptr_rs lo_lv_rs].
+        by move/implyP/(_ lo_lv_rs)/eqP: ind_v => [-> ->].
+      by case=> mem2' [upd2 ind_m']; rewrite upd2 /=; constructor.
+    (* Both pointers are high *)
+    move=> get_rptr1 get_rptr2.
+    case getm_ptr1: (mem1 ptr1)=> [[|[vold1 lvold1]]|] //=.
+    rewrite rl_join_min; case: ifP=> //= /andP [lo_lptr1 lo_rl1].
+    case upd1: updm=> [mem1'|] //= [<- <-] {st1' oe1}.
+    rewrite -lock /= get_pc2 /= get_rptr2 /= get_rv2 /=.
+    case getm_ptr2: (mem2 ptr2)=> [[|[vold2 lvold2]]|] //=.
+    rewrite rl_join_min; case: ifP=> //= /andP [lo_lptr2 lo_rl2].
+    rewrite /updm getm_ptr2 /=; constructor=> // x /=.
+    rewrite (updm_set upd1) !setmE; move: (ind_m x) {upd1}.
+    have [-> {x}|] := altP (x =P ptr1).
+      have [_ {ptr2 getm_ptr2 get_rptr2}|_] := altP (ptr1 =P ptr2).
+        rewrite /indist /= -sum_eqE /= !rl_readers_join !readers_join_min.
+        by rewrite (negbTE hi1) (negbTE hi2) /=.
+      rewrite getm_ptr1.
+      move: ptr1 lptr1 hi1 get_rptr1 lo_lptr1 getm_ptr1
+            {ptr2 lptr2 hi2 get_rptr2 getm_ptr2 vold2 lvold2 lo_lptr2 lo_rl2}
+            => ptr lptr hi1 get_rptr1 lo_lptr1 getm_ptr1.
+      case getm_ptr2: (mem2 ptr)=> [[|[vold2 lvold2]]|] //=.
+        by rewrite /indist /= orbT -sum_eqE /=.
+      rewrite /indist /= !rl_readers_join !readers_join_min -sum_eqE /=.
+      rewrite (negbTE hi1) /= => ind_vold; apply/implyP=> lo_lvold2.
+      move: ind_vold getm_ptr2.
+      rewrite lo_lvold2 orbT /=  => /eqP [evold elvold].
+      move: evold elvold lo_lvold2 => <- <- {vold2 lvold2} lo_lvold.
+      by move: hi1; rewrite (readers_leq_trans (rl_readers_leq lo_lptr1) lo_lvold).
+    have [-> {x} _|//] := altP (x =P ptr2).
+    rewrite getm_ptr2 => {ptr1 lptr1 vold1 lvold1 hi1 lo_lptr1 lo_rl1 get_rptr1 getm_ptr1}.
+    case getm_ptr1: (mem1 ptr2) => [[|[vold1 lvold1]]|] //=.
+    rewrite /indist /= !rl_readers_join !readers_join_min -sum_eqE /= (negbTE hi2) /=.
+    rewrite orbF => ind_vold; apply/implyP=> low_lvold1.
+    move: ind_vold lo_lptr2; rewrite low_lvold1 /= => /eqP [_ <-] lo_lptr2.
+    by move: hi2; rewrite (readers_leq_trans (rl_readers_leq lo_lptr2) low_lvold1).
   - (* Jump *)
     move=> r get_pc1 get_pc2.
     move: (ind_r r).

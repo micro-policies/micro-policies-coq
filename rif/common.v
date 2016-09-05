@@ -283,6 +283,10 @@ Proof.
 by rewrite /rl_join /rl_readers /= ffunE /= ord_pairK /=.
 Qed.
 
+Lemma rl_readers_leq l1 l2 :
+  l1 ⊑ₗ l2 -> rl_readers l1 ⊑ᵣ rl_readers l2.
+Proof. by move=> /rl_leqbP/(_ [::]) /=. Qed.
+
 Variable mt : machine_types.
 
 (** We model the machine's observable behavior using a trace of events
