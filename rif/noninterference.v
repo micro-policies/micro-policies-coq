@@ -65,7 +65,8 @@ Lemma low_step rs st1 st2 st1' oe1 :
       indist (@snd _ _) rs (w1, rs1) (w2, rs2)
       /\ s_indist rs st1' st2'
     | Some (Reclassify rl1 F1), Some (Reclassify rl2 F2) =>
-      (F1 == F2) (* Still need to rethink this *)
+      if is_downgrade rs rl1 F1 || is_downgrade rs rl2 F2 then True
+      else s_indist rs st1' st2'
     | None, None => s_indist rs st1' st2'
     | _, _ => False
     end
@@ -291,7 +292,27 @@ case: oF=> [F|] //=.
 case upd1: updm=> [reg1'|] //= [<- <-] {st1' oe1}.
 rewrite -lock /= get_pc2 (negbTE pc_n_output) pc_reclassify eqxx get_ra2 get_arg2 /=.
 case upd2: updm=> [reg2'|] //=.
+have [|/norP not_dg] //= := ifPn.
+case/indistP: ind_raddr => /= [lo_raddr1 _ e|hi_raddr1 hi_raddr2].
+  (* Return addresses are low *)
+  move: raddr1 lraddr1 e lo_raddr1 get_ra1 get_ra2 not_dg
+        => raddr lraddr [<- <-] lo_raddr get_ra1 get_ra2 {raddr2 lraddr2}.
+  rewrite /is_downgrade !negb_and !negbK.
+  case/indistP: ind_arg=> //=.
+    (* Reclassified data was low *)
+    move=> low_larg1 _ e.
+    move: arg1 larg1 e low_larg1 get_arg1 get_arg2 upd1 upd2
+          => arg larg [<- <-] low_larg get_arg1 get_arg2 upd1 upd2 {arg2 larg2} _.
+    constructor=> //=.
+    apply: (refine_upd_pointwise2 ind_r); eauto.
+    by rewrite /indist /= eqxx implybT.
+  (* Reclassified data has high originally *)
+  move=> /negbTE -> /negbTE -> /= [lo_larg1' lo_larg2'].
+  constructor=> //=.
+  apply: (refine_upd_pointwise2 ind_r); eauto.
+  by rewrite /indist /= (negbTE lo_larg1') (negbTE lo_larg2').
+(* Return addresses are high *)
+by apply: SIndistHigh.
 Qed.
-
 
 End Noninterference.

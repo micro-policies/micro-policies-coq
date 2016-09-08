@@ -324,6 +324,21 @@ Proof. by case. Qed.
 Definition event_eqMixin := CanEqMixin sum_of_eventK.
 Canonical event_eqType := Eval hnf in EqType event event_eqMixin.
 
+(** The predicate [is_downgrade rs rl F] indicates that the
+    reclassification operation [Reclassify rl F] is a downgrade with
+    respect to the readers [rs]; i.e., it marks as public information
+    previously considered as private by [rs].
+
+    NB: Right now, our convention is that a label [rl] is public with
+    respect to [rs] if [rl_readers rl ⊑ᵣ rs]; this means that all of
+    [rs] can read the corresponding piece of data. Another sensible
+    choice would have been to say that [rl] is secret with respect to
+    [rs] if [rs ⊑ᵣ rl_readers rl]; that is, if only principals in [rs]
+    can read the data. *)
+
+Definition is_downgrade rs rl F :=
+  ~~ (rl_readers rl ⊑ᵣ rs) && (rl_readers (rl_trans rl F) ⊑ᵣ rs).
+
 Section Indist.
 
 Context {T : eqType}.
