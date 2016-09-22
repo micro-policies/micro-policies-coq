@@ -71,7 +71,7 @@ Definition rif_tags := {|
   pc_tag_type    := [eqType of rifLabel * option Σ];
   reg_tag_type   := [eqType of rifLabel];
   mem_tag_type   := mem_tag_eqType;
-  entry_tag_type := [eqType of bool]
+  entry_tag_type := unit_eqType
 |}.
 
 (** Tag propagation rules. *)
@@ -102,8 +102,7 @@ Definition transfer (iv : ivec rif_tags) : option (vovec rif_tags (op iv)) :=
     | MemInstr F => @instr_rules op tpc F ts
     | MemData _ => None
     end
-  | IVec SERVICE (tpc, reclass) is_reclass _ =>
-    if is_reclass ==> reclass then Some tt else None
+  | IVec SERVICE (tpc, reclass) _ _ => Some tt
   end.
 
 Global Instance sym_rif : params := {
@@ -141,8 +140,8 @@ Definition reclassify_fun st : option state :=
   else None.
 
 Definition rif_syscalls : syscall_table mt :=
-  [partmap (output_addr, Syscall false output_fun);
-           (reclassify_addr, Syscall true reclassify_fun)].
+  [partmap (output_addr, Syscall tt output_fun);
+           (reclassify_addr, Syscall tt reclassify_fun)].
 
 Local Notation step  := (@Symbolic.step mt mops sym_rif rif_syscalls).
 Local Notation ratom := (atom (mword mt) (tag_type rif_tags R)).

@@ -180,10 +180,10 @@ case: ifP=> _ /=.
   by rewrite cats1; split.
 case: ifP=> _ //=.
 (* Reclassify *)
-case: rc=> [F|] //=.
 rewrite /reclassify_fun /=.
 case get_ra: (regs ra) => [raddr|] //=.
 case get_arg: (regs r_arg) => [arg|] //=.
+case: rc=> [F|] //=.
 case upd_r: updm => [regs'|] //= [<-] {sst'} /=.
 by rewrite cats1; split.
 Qed.
