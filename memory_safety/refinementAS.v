@@ -1370,7 +1370,7 @@ by solve_pc rpci.
   case: biP Heqo E0 color_bi in_bi lt_val; first by move=> *; congruence.
   move=> _ [? ?] FREE Heqo E0 color_bi in_bi lt_val.
 
-  pose ast := Abstract.State a_mem a_regs (Abstract.VData (@malloc_addr _ addrs)).
+  pose ast := Abstract.State a_mem a_regs (Abstract.VData (@addr _ addrs Malloc)).
   pose bl := Abstract.blocks ast.
   case malloc: (Abstract.malloc_fun a_mem bl vala) => [amem' newb].
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
