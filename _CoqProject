@@ -38,6 +38,7 @@ cfi/classes.v
 
 memory_safety/classes.v
 memory_safety/abstract.v
+memory_safety/executable.v
 memory_safety/symbolic.v
 memory_safety/refinementAS.v
 memory_safety/property.v
