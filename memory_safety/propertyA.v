@@ -5,7 +5,7 @@ From CoqUtils Require Import ord word fset partmap fperm nominal.
 
 Require Import lib.utils lib.partmap_utils common.types.
 Require Import memory_safety.property memory_safety.abstract.
-Require Import memory_safety.classes.
+Require Import memory_safety.classes memory_safety.executable.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -521,6 +521,14 @@ by rewrite -mem_domm (negbTE (hdis hin)) inb.
 Qed.
 Hint Resolve getv_union : separation.
 
+Lemma getv_union' m m' p :
+  fdisjoint (names m) (domm m') ->
+  p.1 \notin domm m' ->
+  getv (unionm m' m) p = getv m p.
+Proof.
+by rewrite /getv !unionmE; move=> dis1 /dommPn -> /=.
+Qed.
+
 Lemma updv_union m m' m'' p v :
   fdisjoint (names m) (domm m') ->
   updv m p v = Some m'' ->
@@ -535,6 +543,40 @@ rewrite !(setmE, unionmE); have [-> {b}|//] := altP (b =P _).
 by rewrite -mem_domm (negbTE (hdis hin)).
 Qed.
 Hint Resolve updv_union : separation.
+
+Lemma updv_union' m m' p v :
+  fdisjoint (names m) (domm m') ->
+  p.1 \notin domm m' ->
+  updv (unionm m' m) p v =
+  if updv m p v is Some m'' then Some (unionm m' m'')
+  else None.
+Proof.
+rewrite /updv unionmE => dis p_m' /=.
+rewrite (dommPn _ _  p_m'); case: getm => [fr|] //=.
+case: ifP=> //= _; congr Some; apply/eq_partmap=> b.
+rewrite !(setmE, unionmE).
+have [-> {b}|//] := altP (b =P p.1).
+by rewrite (dommPn _ _ p_m').
+Qed.
+
+Lemma free_union' m m' rs r p :
+  fdisjoint (names m) (domm m') ->
+  fdisjoint (names rs) (domm m') ->
+  rs r = Some (VPtr p) ->
+  free_fun (unionm m' m) p.1 =
+  if free_fun m p.1 is Some m'' then Some (unionm m' m'')
+  else None.
+Proof.
+rewrite /free_fun !unionmE => dis1 dis2 get_r.
+have m'_p : p.1 \notin domm m'.
+  move/fdisjointP: dis2; apply.
+  apply/namesmP/@PMFreeNamesVal; try eassumption.
+  by rewrite names_valueE in_fset1.
+rewrite (dommPn _ _ m'_p) /=; case: (m p.1)=> [fr|] //=.
+congr Some; apply/eq_partmap=> b.
+rewrite !(remmE, unionmE); have [-> {b}|//] := altP (b =P _).
+by rewrite (dommPn _ _ m'_p) /=.
+Qed.
 
 Lemma free_union m m' m'' b :
   fdisjoint (names m) (domm m') ->
@@ -797,6 +839,61 @@ apply: (@fdisjoint_trans _ _ (names (VPtr ptr))).
 solve_separation_disjoint.
 (* Last *)
 exact: (get_reg_disjoint disrs PTR).
+Qed.
+
+Lemma not_domm_rs rs r p m' :
+  fdisjoint (names rs) (domm m') ->
+  rs r = Some (VPtr p) ->
+  p.1 \notin domm m'.
+Proof.
+move/fdisjointP=> dis get_r; apply: dis.
+apply/namesmP/@PMFreeNamesVal; try eassumption.
+by rewrite names_valueE in_fset1.
+Qed.
+
+Lemma not_domm_pc p m' :
+  fdisjoint (names (VPtr p)) (domm m') ->
+  p.1 \notin domm m'.
+Proof. by rewrite names_valueE fdisjointC fdisjoints1. Qed.
+
+Ltac solve_separation_conv :=
+  unfold updm in *;
+  repeat match goal with
+  | e : (if ?pc == ?rhs then _ else _) = _ |- _ =>
+    move: e; have [->|?] := altP (pc =P rhs); move=> e //=
+  | |- context[addr _ == addr _] =>
+    rewrite (inj_eq (@uniq_addr _ addrs)) //=
+  | e : obind _ ?x = _ |- obind _ ?y = _ =>
+    match y with
+    | context[x] => destruct x eqn:?; simpl in * => //
+    end
+  | e : context[if isSome (getm ?rs ?r) then _ else _] |- _ =>
+    destruct (getm rs r) eqn:?; simpl in * => //
+  | e : ?x = _ |- context[?x] => rewrite e //=
+  | |- context[free_fun (unionm _ _) _] =>
+    erewrite free_union'; try eassumption; simpl in *
+  | |- context[getv (unionm _ _) _] =>
+    erewrite getv_union'; try eassumption; simpl in *
+  | |- context[updv (unionm _ _) _ _] =>
+    erewrite updv_union'; try eassumption; simpl in *
+  | dis : is_true (fdisjoint (names ?rs) (domm ?m')),
+    get_r : getm ?rs _ = Some (VPtr ?p) |-
+    is_true (?p.1 \notin domm ?m') =>
+    apply: not_domm_rs dis get_r
+  | dis : is_true (fdisjoint (names (VPtr ?p)) (domm ?m')) |-
+    is_true (?p.1 \notin domm ?m') =>
+    exact: not_domm_pc dis
+  | |- _ => single_match_inv; subst=> //
+  end.
+
+Lemma separation_conv m s :
+  fdisjoint (names s) (domm m) ->
+  AbstractE.step _ _ _ s = None ->
+  AbstractE.step _ _ _ (add_mem m s) = None.
+Proof.
+case: s m => m rs pc m'.
+rewrite names_state /= 2!fdisjointUl -andbA /AbstractE.step /add_mem.
+by case/and3P=> dis_m dis_rs dis_pc *; solve_separation_conv.
 Qed.
 
 End MemorySafety.

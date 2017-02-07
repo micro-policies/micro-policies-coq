@@ -14,6 +14,8 @@ Unset Printing Implicit Defensive.
 
 Module AbstractE.
 
+Section AbstractE.
+
 Local Open Scope fset_scope.
 
 Import Abstract.
@@ -161,5 +163,7 @@ by case: s s' / => /=; solve_step_forward.
 case: s=> m rs [pc|pc] /=;
 intros; solve_step_backward; [> once (econstructor; solve [eauto | reflexivity]) ..].
 Qed.
+
+End AbstractE.
 
 End AbstractE.

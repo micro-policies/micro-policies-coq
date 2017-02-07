@@ -68,6 +68,10 @@ Definition value_nominalMixin :=
 Canonical value_nominalType :=
   Eval hnf in NominalType value value_nominalMixin.
 
+Lemma names_valueE (v : value) :
+  names v = if v is VPtr p then fset1 p.1 else fset0.
+Proof. by case: v=> [w|p] //=; rewrite -[RHS]fsetU0. Qed.
+
 Definition frame := seq value.
 
 Definition memory := {partmap name -> frame}.
