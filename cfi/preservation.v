@@ -342,7 +342,7 @@ Proof.
          apply TRNormal1; eauto.
         rewrite CLST. reflexivity.
   - destruct ahd; simpl in *; inv eqaxs.
-    apply False_ind. by eapply av_no_attacker; eauto.
+    { exfalso. clear H3. by eapply av_no_attacker; eauto. }
     edestruct IHref as [chd [csi [csj [ctl [CSTEP [REFI [REFJ [RTHD [RTT CLST]]]]]]]]]; eauto.
     exists (cst :: chd); repeat eexists; eauto. simpl.
     destruct chd; destruct ahd; simpl in *; inv CLST; inv H6;

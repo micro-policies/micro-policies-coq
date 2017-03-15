@@ -88,7 +88,7 @@ Record state := State {
   pc : value
 }.
 
-Implicit Type s : state.
+Implicit Types (s : state) (b : name).
 
 Definition tuple_of_state s := (mem s, regs s, pc s).
 
@@ -221,7 +221,7 @@ move=> m bl b sz m' b'; rewrite /malloc_fun=> -[<- <-] /(introF eqP).
 by rewrite setmE => ->.
 Qed.
 
-Definition free_fun (m : memory) b :=
+Definition free_fun (m : memory) b : option memory :=
   if m b then Some (remm m b) else None.
 
 Lemma free_Some : forall (mem : memory) b fr,
@@ -376,10 +376,6 @@ Definition initial_state : state :=
 End WithClasses.
 
 End Abstract.
-
-Arguments Abstract.state mt.
-Arguments Abstract.memory mt.
-Arguments Abstract.registers mt.
 
 Canonical Abstract.value_eqType.
 Canonical Abstract.value_ordType.

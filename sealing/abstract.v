@@ -330,8 +330,6 @@ Notation registers mt := {partmap reg mt -> @value mt}.
 
 End Abs.
 
-Arguments Abs.state mt.
-
 Canonical Abs.value_eqType.
 Canonical Abs.value_nominalType.
 Canonical Abs.state_eqType.

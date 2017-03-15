@@ -945,7 +945,7 @@ Proof.
   - (* user_address_space M c_upd || syscall_address_space M c_upd *)
     subst c c_upd; simpl in *.
     apply/orP; left.
-    by eapply forall_subset; [rewrite subsetDl | exact USER_c].
+    by apply: forall_subset USER_c; rewrite subsetDl.
   - (* user_address_space M c' || syscall_address_space M c' *)
     subst c c_upd; simpl in *.
     apply/orP; left.

@@ -1,3 +1,4 @@
+-arg "-w -parsing"
 -R . MicroPolicies
 
 lib/utils.v

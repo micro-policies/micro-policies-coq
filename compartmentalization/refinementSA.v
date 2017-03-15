@@ -1553,14 +1553,14 @@ Proof.
     by have [IN /= /and3P [/eqP -> _ _] _|_ _ [-> _ _]] := boolP (pc' \in A'). }
 
   have DIFF : cid <> Snext. {
-    intros ?; subst.
-    eapply Sym.sget_lt_next in RINT; [simpl in RINT | eassumption].
+    intros ?; subst cid.
+    eapply Sym.sget_lt_next in RINT; [simpl in RINT | exact: def_cid].
     by rewrite Ord.ltxx in RINT.
   }
 
   have DIFF_sys : cid_sys <> Snext. {
-    intros ?; subst.
-    eapply Sym.sget_lt_next in RINT; [simpl in RINT | eassumption].
+    intros ?; subst cid_sys.
+    eapply Sym.sget_lt_next in RINT; [simpl in RINT | exact: def_LI].
     by rewrite Ord.ltxx in RINT.
   }
 

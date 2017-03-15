@@ -438,7 +438,6 @@ Proof.
       end); subst;
    unfold Sym.ssucc in SUCC; simpl in SUCC;
    inversion ST; try subst;
-
    try match goal with
      | [H: (?Pc + 1)%w = ?Pc |- _] =>
        rewrite H in SUCC; try subst mem' reg' int; try subst mem reg
@@ -454,6 +453,9 @@ Proof.
    try match goal with
      | [H: (?Pc + 1)%w = ?Pc |- _] =>
        rewrite H in SUCC; rewrite eqxx in SUCC; discriminate
+   end;
+   try match goal with
+   | H : context[?pc == ?pc] |- _ => rewrite eqxx in H => //
    end.
   (*jump case*)
   unfold Sym.instructions_tagged in ITG.
@@ -467,7 +469,7 @@ Proof.
       rewrite INST in SUCC.
       destruct o0;
       apply Bool.orb_false_iff in SUCC; destruct SUCC;
-      rewrite H2 in H; rewrite H2 in H; rewrite eqxx in H; by discriminate.
+      rewrite {2}H2 in H; rewrite eqxx in H; by discriminate.
     + rewrite H2 in Heqo0. rewrite Heqo0 in PC. by inversion PC.
   - subst mem' reg'. simpl in *.
     destruct a as [v [|]].
@@ -475,7 +477,7 @@ Proof.
       rewrite INST in SUCC.
       destruct o0;
       apply Bool.orb_false_iff in SUCC; destruct SUCC;
-      rewrite H2 in H0; rewrite H2 in H0; rewrite eqxx in H0; by discriminate.
+      rewrite {2}H2 in H0; rewrite eqxx in H0; by discriminate.
     + rewrite H2 in Heqo0. rewrite Heqo0 in PC. by inversion PC.
   subst mem' reg' int.
   rewrite H2 in Heqo0.
