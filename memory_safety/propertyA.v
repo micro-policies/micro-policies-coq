@@ -5,7 +5,7 @@ From CoqUtils Require Import ord word fset partmap fperm nominal.
 
 Require Import lib.utils lib.partmap_utils common.types.
 Require Import memory_safety.property memory_safety.abstract.
-Require Import memory_safety.classes.
+Require Import memory_safety.classes memory_safety.executable.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -285,7 +285,7 @@ Lemma rename_getv pm m ptr :
   getv (rename pm m) ptr =
   rename pm (getv m (rename pm^-1 ptr)).
 Proof.
-rewrite /getv !renamemE !renamepE /= !renameoE.
+rewrite /getv !renamemE fst_eqvar /= !renameoE.
 case e: (m (rename _ _)) => [fr|] //=.
 rewrite [in RHS]fun_if /= !renamewE size_map.
 case: ifP=> // in_bounds.
@@ -297,11 +297,11 @@ Lemma rename_updv pm m m' ptr v :
   updv (rename pm m) (rename pm ptr) (rename pm v) =
   Some (rename pm m').
 Proof.
-rewrite /updv !renamepE /= renamemE renameK.
+rewrite /updv -[(rename pm ptr).1]fst_eqvar -[(rename pm m) _]getm_eqvar.
 case m_ptr: (m ptr.1)=> [fr|] //=.
 rewrite renamewE size_map.
 case: ifP=> //= h_off [<-].
-by rewrite renamem_set [in RHS]renamesE map_cat /= map_take map_drop.
+by rewrite setm_eqvar [in RHS]renamesE map_cat /= map_take map_drop.
 Qed.
 
 Lemma rename_updr pm rs rs' r v :
@@ -310,14 +310,12 @@ Lemma rename_updr pm rs rs' r v :
 Proof.
 rewrite /updm renamemE renamewE.
 case rs_r: (rs r) => [v'|] //= [<-{rs'}].
-by rewrite renamem_set renamewE.
+by rewrite setm_eqvar renamewE.
 Qed.
 
-Lemma rename_lift_binop pm f v1 v2 v3 :
-  lift_binop f v1 v2 = Some v3 ->
-  lift_binop f (rename pm v1) (rename pm v2) = Some (rename pm v3).
+Global Instance lift_binop_eqvar f : {eqvar (@lift_binop mt f)}.
 Proof.
-case: f v1 v2=> [] [w1|[p1 o1]] [w2|[p2 o2]] //=;
+case: f=> [] pm [w1|[p1 o1]] _ <- [w2|[p2 o2]] _ <- //=;
 rewrite ?renamewE ?(can_eq (renameK pm));
 try match goal with
 | p1 : name, p2 : name |- context [?p1 == ?p2] =>
@@ -326,14 +324,22 @@ end;
 solve [move=> [<-]; rewrite rename_valueE //=].
 Qed.
 
+Lemma rename_lift_binop pm f v1 v2 v3 :
+  lift_binop f v1 v2 = Some v3 ->
+  lift_binop f (rename pm v1) (rename pm v2) = Some (rename pm v3).
+Proof. by move=> h; rewrite -[LHS]lift_binop_eqvar; rewrite h. Qed.
+
+(* Redeclaring instances to make type-class inference work *)
+Canonical memory_nominalType := Eval hnf in [nominalType of memory mt].
+Canonical frame_nominalType := Eval hnf in [nominalType of frame mt].
+
+Lemma free_fun_eqvar : {eqvar @free_fun mt}.
+Proof. by rewrite /free_fun /=; finsupp. Qed.
+
 Lemma rename_free pm m m' b :
   free_fun m b = Some m' ->
   free_fun (rename pm m) (pm b) = Some (rename pm m').
-Proof.
-rewrite /free_fun renamemE renamenE renameoE fpermK.
-case m_b: (m b) => [fr|] //= [<- {m'}]; congr Some.
-by rewrite renamem_rem.
-Qed.
+Proof. by move=> h; rewrite -renamenE -[LHS]free_fun_eqvar h. Qed.
 Hint Resolve rename_free : rename_step_db.
 
 Ltac rename_getv :=
@@ -489,7 +495,7 @@ case: s s' /; try rename_step_simple pm.
   + by rewrite /s /= renamemE renamewE rs_arg /= renameoE /= rename_valueE.
   + rewrite /s /= /malloc_fun.
     rewrite /b' pm'_s' /s /= in pm'_b'; rewrite -pm'_b' -renamenE.
-    rewrite renamem_set renamesE (eq_in_map _ id _).1 1?map_id; first by eauto.
+    rewrite setm_eqvar renamesE (eq_in_map _ id _).1 1?map_id; first by eauto.
     by move=> x /nseqP [-> _].
   + exact: (rename_updr _ h1).
   by rewrite /s /= renamemE renamewE h2.
@@ -512,6 +518,14 @@ by rewrite -mem_domm (negbTE (hdis hin)) inb.
 Qed.
 Hint Resolve getv_union : separation.
 
+Lemma getv_union' m m' p :
+  fdisjoint (names m) (domm m') ->
+  p.1 \notin domm m' ->
+  getv (unionm m' m) p = getv m p.
+Proof.
+by rewrite /getv !unionmE; move=> dis1 /dommPn -> /=.
+Qed.
+
 Lemma updv_union m m' m'' p v :
   fdisjoint (names m) (domm m') ->
   updv m p v = Some m'' ->
@@ -526,6 +540,40 @@ rewrite !(setmE, unionmE); have [-> {b}|//] := altP (b =P _).
 by rewrite -mem_domm (negbTE (hdis hin)).
 Qed.
 Hint Resolve updv_union : separation.
+
+Lemma updv_union' m m' p v :
+  fdisjoint (names m) (domm m') ->
+  p.1 \notin domm m' ->
+  updv (unionm m' m) p v =
+  if updv m p v is Some m'' then Some (unionm m' m'')
+  else None.
+Proof.
+rewrite /updv unionmE => dis p_m' /=.
+rewrite (dommPn _ _  p_m'); case: getm => [fr|] //=.
+case: ifP=> //= _; congr Some; apply/eq_partmap=> b.
+rewrite !(setmE, unionmE).
+have [-> {b}|//] := altP (b =P p.1).
+by rewrite (dommPn _ _ p_m').
+Qed.
+
+Lemma free_union' m m' rs r p :
+  fdisjoint (names m) (domm m') ->
+  fdisjoint (names rs) (domm m') ->
+  rs r = Some (VPtr p) ->
+  free_fun (unionm m' m) p.1 =
+  if free_fun m p.1 is Some m'' then Some (unionm m' m'')
+  else None.
+Proof.
+rewrite /free_fun !unionmE => dis1 dis2 get_r.
+have m'_p : p.1 \notin domm m'.
+  move/fdisjointP: dis2; apply.
+  apply/namesmP/@PMFreeNamesVal; try eassumption.
+  by rewrite names_valueE in_fset1.
+rewrite (dommPn _ _ m'_p) /=; case: (m p.1)=> [fr|] //=.
+congr Some; apply/eq_partmap=> b.
+rewrite !(remmE, unionmE); have [-> {b}|//] := altP (b =P _).
+by rewrite (dommPn _ _ m'_p) /=.
+Qed.
 
 Lemma free_union m m' m'' b :
   fdisjoint (names m) (domm m') ->
@@ -545,6 +593,121 @@ Hint Resolve free_union : separation.
 Definition add_mem m s :=
   State (unionm m (mem s)) (regs s) (pc s).
 
+Lemma get_reg_disjoint rs r v bs :
+  fdisjoint (names rs) bs ->
+  rs r = Some v ->
+  fdisjoint (names v) bs.
+Proof.
+move=> dis_rs get_rs; apply: fdisjoint_trans; try eassumption.
+apply/fsubsetP=> /= n n_in; apply/namesmP.
+by apply: PMFreeNamesVal; eauto.
+Qed.
+
+Lemma get_mem_disjoint m x v bs :
+  fdisjoint (names m) bs ->
+  getv m x = Some v ->
+  fdisjoint (names v) bs.
+Proof.
+rewrite /getv; case e: getm=> [fr|] //=.
+case: ifP=> // x_fr dis [<-].
+have {dis} dis : fdisjoint (names fr) bs.
+  apply: fdisjoint_trans; try eassumption.
+  apply/fsubsetP=> /= n n_in; apply/namesmP.
+  by apply: PMFreeNamesVal; eauto.
+apply: fdisjoint_trans; try eassumption.
+by eapply nom_finsuppP; finsupp.
+Qed.
+
+Lemma lift_binop_disjoint f v1 v2 v3 bs :
+  lift_binop f v1 v2 = Some v3 ->
+  fdisjoint (names v1) bs ->
+  fdisjoint (names v2) bs ->
+  fdisjoint (names v3) bs.
+Proof.
+move=> op dis1 dis2.
+suffices h: fsubset (names (Some v3)) (names v1 :|: names v2).
+  by apply: (fdisjoint_trans h); rewrite fdisjointUl dis1.
+by rewrite -op; eapply nom_finsuppP; finsupp.
+Qed.
+
+Lemma upd_reg_disjoint rs rs' r bs v :
+  updm rs r v = Some rs' ->
+  fdisjoint (names rs) bs ->
+  fdisjoint (names v) bs ->
+  fdisjoint (names rs') bs.
+Proof.
+move=> h; rewrite (updm_set h) {h rs'} => dis_rs dis_v.
+suffices: fdisjoint (names rs :|: names r :|: names v) bs.
+  by apply: fdisjoint_trans; eapply nom_finsuppP; finsupp.
+by rewrite 2!fdisjointUl dis_rs dis_v namesT fdisjoint0s.
+Qed.
+
+Lemma upd_mem_disjoint m m' x bs v :
+  updv m x v = Some m' ->
+  fdisjoint (names m) bs ->
+  fdisjoint (names v) bs ->
+  fdisjoint (names m') bs.
+Proof.
+rewrite /updv; case e: getm => [fr|] //=.
+case: ifP=> // x_fr [<-] dis_m dis_v.
+have dis_x : fdisjoint (names x.1) bs.
+  apply: fdisjoint_trans; try exact: dis_m.
+  apply/fsubsetP=> n n_x.
+  apply/namesmP.
+  by apply:PMFreeNamesKey; eauto.
+have dis_fr : fdisjoint (names fr) bs.
+  apply: fdisjoint_trans; try exact: dis_m.
+  apply/fsubsetP=> /= n n_in; apply/namesmP.
+  by apply: PMFreeNamesVal; eauto.
+suffices: fdisjoint (names m :|: names v :|: names x :|: names fr) bs.
+  apply: fdisjoint_trans.
+  eapply nom_finsuppP.
+  (* FIXME: finsupp cannot solve this by itself *)
+  move=> ??; eapply setm_eqvar.
+  eapply nomR_nominalJ. finsupp. finsupp. finsupp.
+rewrite fdisjointUl dis_fr fdisjointUl namespE namesT fsetU0 dis_x.
+by rewrite fdisjointUl dis_v dis_m.
+Qed.
+
+Lemma free_fun_disjoint m b m' bs :
+  fdisjoint (names m) bs ->
+  fdisjoint (names b) bs ->
+  free_fun m b = Some m' ->
+  fdisjoint (names m') bs.
+Proof.
+move=> dis_m dis_b e; rewrite -[names m']/(names (Some m')) -e.
+have ?: fsubset (names (free_fun m b)) (names m :|: names b).
+  eapply nom_finsuppP; finsupp.
+apply: fdisjoint_trans; first by eauto.
+by rewrite fdisjointUl /= dis_m.
+Qed.
+
+Ltac solve_separation_disjoint :=
+  match goal with
+  | UPD : updm ?rs ?r ?v = Some ?rs',
+    DIS : is_true (fdisjoint (names ?rs) ?bs) |-
+    is_true (fdisjoint (names ?rs') ?bs) =>
+    apply: (upd_reg_disjoint UPD DIS)
+  | DIS : is_true (fdisjoint (names ?rs) ?bs),
+    GET : getm ?rs ?r = Some ?v |-
+    is_true (fdisjoint (names ?v) ?bs) =>
+    apply: (get_reg_disjoint DIS GET)
+  | _ : lift_binop _ _ _ = Some ?v |-
+    is_true (fdisjoint (names ?v) _) =>
+    apply: lift_binop_disjoint; eauto
+  | _ : getv _ _ = Some ?v |-
+    is_true (fdisjoint (names ?v) _) =>
+    apply: get_mem_disjoint; eauto
+  | _ : updv _ _ _ = Some ?m' |-
+    is_true (fdisjoint (names ?m') _) =>
+    apply: upd_mem_disjoint; eauto
+  | _ : free_fun _ _ = Some ?m |-
+    is_true (fdisjoint (names ?m) _) =>
+    apply: free_fun_disjoint; try eassumption
+  | |- is_true (fdisjoint _ _) => exact: fdisjoint0s
+  | _ => done
+  end.
+
 Ltac solve_separation_simpl :=
   intros;
   match goal with
@@ -553,16 +716,18 @@ Ltac solve_separation_simpl :=
     let disrs := fresh "disrs" in
     let disp := fresh "disp" in
     case/and3P: H => [dism disrs disp];
-    exists fperm_one;
-    rewrite rename1 /add_mem /=;
-    s_econstructor solve [eauto with separation]
+    exists fperm_one; rewrite rename1; split;
+    [rewrite /add_mem /=; s_econstructor solve [eauto with separation]|
+     rewrite 2!fdisjointUl /= -andbA; apply/and3P;
+     split; repeat solve_separation_disjoint]
   end.
 
 Lemma separation m s s' :
   fdisjoint (names s) (domm m) ->
   step s s' ->
   exists pm,
-    step (add_mem m s) (add_mem m (rename pm s')).
+    step (add_mem m s) (add_mem m (rename pm s')) /\
+    fdisjoint (names (rename pm s')) (domm m).
 Proof.
 rewrite names_state 2!fdisjointUl -andbA.
 move=> dis hstep; case: s s' / hstep dis=> /=; try solve_separation_simpl.
@@ -577,7 +742,7 @@ rewrite rename_valueE /= renamenE fperm2D; first last.
   by rewrite /new; apply/in_blocks; econstructor; eauto.
 - apply/eqP=> e; move: (freshP old); rewrite -e; move/negP; apply.
   by rewrite /new; apply/in_blocks; econstructor; eauto.
-rewrite renamem_set renamenE fperm2L renamesE.
+rewrite setm_eqvar renamenE fperm2L renamesE.
 rewrite (@eq_in_map _ _ _ id _).1; last by move=> x /nseqP [-> ?] //.
 rewrite map_id namesNNE; first last.
 - apply: contra (freshP new); move: (fresh _)=> b.
@@ -600,14 +765,130 @@ rewrite rename_valueE /= renamenE fperm2L namesNNE; first last.
   by rewrite /new /s' names_state /= => hin; rewrite 2!in_fsetU hin orbT.
 - apply: contra (freshP old); move: (fresh _)=> bs.
   by rewrite /old /s names_state /= => hin; rewrite 2!in_fsetU hin orbT.
-move=> upd'; eapply step_malloc; eauto; rewrite /malloc_fun; congr pair.
-apply/eq_partmap=> x; rewrite !(setmE, unionmE) -[blocks _]/new.
-have [->{x}|hneq //] := altP (x =P _).
-rewrite -mem_domm; suff -> : fresh new \in domm m = false by [].
-apply: contraNF (freshP new); move: (fresh _)=> b /dommP [fr Hfr].
-rewrite /new /s' names_state /= 2!in_fsetU -orbA; apply/orP; left.
-apply/namesmP/(@PMFreeNamesKey _ _ _ _ b fr); first by rewrite unionmE Hfr.
-by apply/namesnP.
+move=> upd'; split.
+  eapply step_malloc; eauto; rewrite /malloc_fun; congr pair.
+  apply/eq_partmap=> x; rewrite !(setmE, unionmE) -[blocks _]/new.
+  have [->{x}|hneq //] := altP (x =P _).
+  rewrite -mem_domm; suff -> : fresh new \in domm m = false by [].
+  apply: contraNF (freshP new); move: (fresh _)=> b /dommP [fr Hfr].
+  rewrite /new /s' names_state /= 2!in_fsetU -orbA; apply/orP; left.
+  apply/namesmP/(@PMFreeNamesKey _ _ _ _ b fr); first by rewrite unionmE Hfr.
+  by apply/namesnP.
+rewrite rename_stateE /= (updm_set upd) !setm_eqvar renamenE fperm2L.
+rewrite renameT renamesE map_nseq /= 2!rename_valueE /= renamenE fperm2L.
+set pm := fperm2 _ _.
+have sub_m'_m: fsubset (domm m') (names m').
+  by apply: fsubsetU; apply/orP; left; rewrite namesfsnE fsubsetxx.
+have dis_pm : fdisjoint (names s) (supp pm).
+  rewrite names_state fdisjointC /pm /old /s /s' /=.
+  apply: fdisjoint_trans.
+  apply: fsubset_supp_fperm2.
+  rewrite !fdisjointUl fdisjointC fdisjoints1; apply/andP; split.
+    exact: freshP.
+  rewrite fdisjointC fdisjoints1 fdisjoint0s andbT.
+  apply: contra (freshP new); move: (fresh new); apply/fsubsetP.
+  rewrite /new /s' names_state /= 2!fsetU0; apply: fsetSU.
+  rewrite namesm_union_disjoint; first exact: fsubsetUr.
+  rewrite fdisjointC; apply: fdisjoint_trans; eauto.
+have dis_new : fdisjoint (names (fresh new)) (domm m).
+  rewrite namesnE fdisjointC fdisjoints1.
+  apply: contra (freshP new); move: (fresh new); apply/fsubsetP.
+  rewrite /new /s' names_state /= fsetU0 namesm_union_disjoint.
+    apply: fsubsetU; apply/orP; left.
+    apply: fsubsetU; apply/orP; left.
+    by apply: fsubsetU; apply/orP; left; rewrite namesfsnE fsubsetxx.
+  rewrite fdisjointC; apply: fdisjoint_trans; eauto.
+have -> : rename pm m' = m'.
+  apply: renameJ.
+  rewrite fdisjointC.
+  apply: fdisjoint_trans; try eassumption.
+  by rewrite /s names_state /= fsetU0 fsubsetUl.
+have dis_rs: fdisjoint (names rs) (supp pm).
+  apply: fdisjoint_trans; try eassumption.
+  by rewrite /s names_state /= fsetU0 fsubsetUr.
+have -> : rename pm rs = rs.
+  apply: renameJ.
+  by rewrite fdisjointC.
+have -> : rename pm (VPtr (bpc, opc)) = VPtr (bpc, opc).
+  apply: renameJ.
+  rewrite fdisjointC.
+  by solve_separation_disjoint.
+rewrite names_state /= 2!fdisjointUl -andbA; apply/and3P; split.
+(* FIXME: The generalizations below should not be needed to prove the set inclusions *)
+- have ?: fsubset (names (setm m' (fresh new) (nseq sz (VData 0%w))))
+                  (names m' :|: names (fresh new) :|: names (@VData mt 0%w)).
+    move: (fresh _) (VData _)=> ??.
+    by eapply nom_finsuppP; finsupp.
+  apply: fdisjoint_trans; first by eauto.
+  by rewrite 2!fdisjointUl dism dis_new /= fdisjoint0s.
+- have ?: fsubset (names (setm rs syscall_ret (@VPtr mt (fresh new, 0%w))))
+                  (names rs :|: names syscall_ret :|: names (@VPtr mt (fresh new, 0%w))).
+    move: syscall_ret (VPtr _) => ??.
+    eapply nom_finsuppP; finsupp.
+  apply: fdisjoint_trans; first by eauto.
+  by rewrite 2!fdisjointUl disr fdisjoint0s /= fdisjointUl fdisjoint0s dis_new.
+by solve_separation_disjoint.
+(* Free *)
+apply: (@fdisjoint_trans _ _ (names (VPtr ptr))).
+  exact: fsubsetUl.
+solve_separation_disjoint.
+(* Last *)
+exact: (get_reg_disjoint disrs PTR).
+Qed.
+
+Lemma not_domm_rs rs r p m' :
+  fdisjoint (names rs) (domm m') ->
+  rs r = Some (VPtr p) ->
+  p.1 \notin domm m'.
+Proof.
+move/fdisjointP=> dis get_r; apply: dis.
+apply/namesmP/@PMFreeNamesVal; try eassumption.
+by rewrite names_valueE in_fset1.
+Qed.
+
+Lemma not_domm_pc p m' :
+  fdisjoint (names (VPtr p)) (domm m') ->
+  p.1 \notin domm m'.
+Proof. by rewrite names_valueE fdisjointC fdisjoints1. Qed.
+
+Ltac solve_separation_conv :=
+  unfold updm in *;
+  repeat match goal with
+  | e : (if ?pc == ?rhs then _ else _) = _ |- _ =>
+    move: e; have [->|?] := altP (pc =P rhs); move=> e //=
+  | |- context[addr _ == addr _] =>
+    rewrite (inj_eq (@uniq_addr _ addrs)) //=
+  | e : obind _ ?x = _ |- obind _ ?y = _ =>
+    match y with
+    | context[x] => destruct x eqn:?; simpl in * => //
+    end
+  | e : context[if isSome (getm ?rs ?r) then _ else _] |- _ =>
+    destruct (getm rs r) eqn:?; simpl in * => //
+  | e : ?x = _ |- context[?x] => rewrite e //=
+  | |- context[free_fun (unionm _ _) _] =>
+    erewrite free_union'; try eassumption; simpl in *
+  | |- context[getv (unionm _ _) _] =>
+    erewrite getv_union'; try eassumption; simpl in *
+  | |- context[updv (unionm _ _) _ _] =>
+    erewrite updv_union'; try eassumption; simpl in *
+  | dis : is_true (fdisjoint (names ?rs) (domm ?m')),
+    get_r : getm ?rs _ = Some (VPtr ?p) |-
+    is_true (?p.1 \notin domm ?m') =>
+    apply: not_domm_rs dis get_r
+  | dis : is_true (fdisjoint (names (VPtr ?p)) (domm ?m')) |-
+    is_true (?p.1 \notin domm ?m') =>
+    exact: not_domm_pc dis
+  | |- _ => single_match_inv; subst=> //
+  end.
+
+Lemma separation_conv m s :
+  fdisjoint (names s) (domm m) ->
+  AbstractE.step _ _ _ s = None ->
+  AbstractE.step _ _ _ (add_mem m s) = None.
+Proof.
+case: s m => m rs pc m'.
+rewrite names_state /= 2!fdisjointUl -andbA /AbstractE.step /add_mem.
+by case/and3P=> dis_m dis_rs dis_pc *; solve_separation_conv.
 Qed.
 
 End MemorySafety.

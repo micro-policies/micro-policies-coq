@@ -305,11 +305,11 @@ Definition eqp_fun (st : state mt) : option (state mt) :=
   end.
 
 Definition memsafe_syscalls : syscall_table mt :=
-  [partmap (malloc_addr, Syscall tt malloc_fun);
-           (free_addr,   Syscall tt free_fun);
-         (*(size_addr,   Syscall tt sizeof_fun); *)
-           (base_addr,   Syscall tt basep_fun);
-           (eq_addr,     Syscall tt eqp_fun)].
+  [partmap (addr Malloc, Syscall tt malloc_fun);
+           (addr Free,   Syscall tt free_fun);
+         (*(addr Size,   Syscall tt sizeof_fun); *)
+           (addr Base,   Syscall tt basep_fun);
+           (addr Eq,     Syscall tt eqp_fun)].
 
 Definition step := step memsafe_syscalls.
 

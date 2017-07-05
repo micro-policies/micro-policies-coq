@@ -435,7 +435,6 @@ End Exports.
 
 Export Exports.
 
-Arguments Concrete.state mt.
 Arguments Concrete.State {_} _ _ _ _ _.
 Arguments Concrete.TNone {mt}.
 Arguments Concrete.TMonitor {mt}.

@@ -68,6 +68,10 @@ Definition value_nominalMixin :=
 Canonical value_nominalType :=
   Eval hnf in NominalType value value_nominalMixin.
 
+Lemma names_valueE (v : value) :
+  names v = if v is VPtr p then fset1 p.1 else fset0.
+Proof. by case: v=> [w|p] //=; rewrite -[RHS]fsetU0. Qed.
+
 Definition frame := seq value.
 
 Definition memory := {partmap name -> frame}.
@@ -84,7 +88,7 @@ Record state := State {
   pc : value
 }.
 
-Implicit Type s : state.
+Implicit Types (s : state) (b : name).
 
 Definition tuple_of_state s := (mem s, regs s, pc s).
 
@@ -217,7 +221,7 @@ move=> m bl b sz m' b'; rewrite /malloc_fun=> -[<- <-] /(introF eqP).
 by rewrite setmE => ->.
 Qed.
 
-Definition free_fun (m : memory) b :=
+Definition free_fun (m : memory) b : option memory :=
   if m b then Some (remm m b) else None.
 
 Lemma free_Some : forall (mem : memory) b fr,
@@ -242,9 +246,6 @@ Qed.
 
 Context `{syscall_regs mt} `{memory_syscall_addrs mt}.
 
-Definition syscall_addrs := [:: malloc_addr; free_addr].
-
-(* Check binop_denote. Check VData. SearchAbout [word Z]. *)
 Definition lift_binop (f : binop) (x y : value) :=
   match f with
   | ADD => match x, y with
@@ -333,15 +334,15 @@ Inductive step : state -> state -> Prop :=
              step (State mem reg (VPtr pc)) (State mem reg' v)
 | step_malloc : forall mem mem' reg reg' sz b pc'
     (SIZE  : reg syscall_arg1 = Some (VData sz))
-    (ALLOC : malloc_fun mem (blocks (State mem reg (VData malloc_addr))) sz = (mem', b))
+    (ALLOC : malloc_fun mem (blocks (State mem reg (VData (addr Malloc)))) sz = (mem', b))
     (UPD   : updm reg syscall_ret (VPtr (b,0)) = Some reg')
     (RA    : reg ra = Some (VPtr pc')),
-    step (State mem reg (VData malloc_addr)) (State mem' reg' (VPtr pc'))
+    step (State mem reg (VData (addr Malloc))) (State mem' reg' (VPtr pc'))
 | step_free : forall mem mem' reg ptr pc'
     (PTR  : reg syscall_arg1 = Some (VPtr ptr))
     (FREE : free_fun mem ptr.1 = Some mem')
     (RA   : reg ra = Some (VPtr pc')),
-    step (State mem reg (VData free_addr)) (State mem' reg (VPtr pc'))
+    step (State mem reg (VData (addr Free))) (State mem' reg (VPtr pc'))
 (*
 | step_size : forall mem reg reg' b o fr bl pc'
     (PTR  : reg syscall_arg1 = Some (VPtr (b,o)))
@@ -355,14 +356,14 @@ Inductive step : state -> state -> Prop :=
     (PTR  : reg syscall_arg1 = Some (VPtr (b,o)))
     (UPD  : updm reg syscall_ret (VPtr (b,0)) = Some reg')
     (RA   : reg ra = Some (VPtr pc')),
-    step (State mem reg (VData base_addr)) (State mem reg' (VPtr pc'))
+    step (State mem reg (VData (addr Base))) (State mem reg' (VPtr pc'))
 | step_eq : forall mem reg reg' v1 v2 pc'
     (V1   : reg syscall_arg1 = Some v1)
     (V2   : reg syscall_arg2 = Some v2),
     let v := VData (as_word (v1 == v2)) in forall
     (UPD  : updm reg syscall_ret v = Some reg')
     (RA   : reg ra = Some (VPtr pc')),
-    step (State mem reg (VData eq_addr)) (State mem reg' (VPtr pc')).
+    step (State mem reg (VData (addr Eq))) (State mem reg' (VPtr pc')).
 
 Variable initial_pc : pointer.
 Variable initial_mem  : memory.
@@ -375,10 +376,6 @@ Definition initial_state : state :=
 End WithClasses.
 
 End Abstract.
-
-Arguments Abstract.state mt.
-Arguments Abstract.memory mt.
-Arguments Abstract.registers mt.
 
 Canonical Abstract.value_eqType.
 Canonical Abstract.value_ordType.

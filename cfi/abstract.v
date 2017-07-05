@@ -398,8 +398,6 @@ Notation registers mt := {partmap reg mt -> mword mt}.
 
 End Abs.
 
-Arguments Abs.state mt.
 Arguments Abs.State {_} _ _ _ _ _.
-Arguments Abs.syscall mt.
 
 Canonical Abs.cfi_abs_state_eqType.

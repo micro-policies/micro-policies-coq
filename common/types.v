@@ -281,6 +281,8 @@ Record machine_types := {
 Definition mword (mt : machine_types) : Type :=
   word (word_size mt).
 Arguments mword mt : simpl never.
+Canonical mword_eqType mt :=
+  Eval hnf in EqType (mword mt) [eqMixin of word (word_size mt)].
 
 Definition reg (mt : machine_types) : Type :=
   word (reg_field_size mt).

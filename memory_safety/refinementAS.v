@@ -76,11 +76,6 @@ Proof. by []. Qed.
 Lemma leZ_max (w : mword mt) : w < 2 ^ word_size mt.
 Proof. exact: (valP (w : ordinal _)). Qed.
 
-(* How to make w explicit ??? *)
-(* TODO: File a bug report *)
-Arguments leZ_min.
-Arguments leZ_max.
-
 Notation inbounds base size w :=
   (base <= w < base + size).
 
@@ -659,7 +654,7 @@ Proof.
   eapply refine_extend_map with
     (P := refine_reg_val)
     (f := fun mi' col' nb' => mi = mi' /\ col = col' /\ (newb,base) = nb'); auto.
-  intros ? ? ? ? ? [E1 [E2 [R]]]. subst k1 km.
+  move=> /= km k1 k2 v1 v2 [E1 [E2 R]]. subst k1 km k2.
   unfold refine_reg_val. destruct v2; destruct taga; auto.
   eapply refine_val_malloc; eauto.
 Qed.
@@ -1370,7 +1365,7 @@ by solve_pc rpci.
   case: biP Heqo E0 color_bi in_bi lt_val; first by move=> *; congruence.
   move=> _ [? ?] FREE Heqo E0 color_bi in_bi lt_val.
 
-  pose ast := Abstract.State a_mem a_regs (Abstract.VData (@malloc_addr _ addrs)).
+  pose ast := Abstract.State a_mem a_regs (Abstract.VData (@addr _ addrs Malloc)).
   pose bl := Abstract.blocks ast.
   case malloc: (Abstract.malloc_fun a_mem bl vala) => [amem' newb].
   pose mi' := mi_malloc mi newb (Sym.block_base bi) color.
