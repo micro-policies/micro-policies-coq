@@ -2,49 +2,84 @@ From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype finfun.
 From CoqUtils Require Import hseq ord fset partmap word.
 From MicroPolicies Require Import
-  lib.utils lib.partmap_utils common.types rif.common rif.abstract.
+  lib.utils lib.partmap_utils common.types rif.labels rif.abstract.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
+Section Indist.
+
+Context {T : eqType} {L : labType}.
+Variable t : T -> L.
+
+Local Open Scope label_scope.
+
+Definition indist rs (ra1 ra2 : T) :=
+  (t ra1 ⊑ rs) || (t ra2 ⊑ rs) ==> (ra1 == ra2).
+
+CoInductive indist_spec rs ra1 ra2 : Prop :=
+| IndistLow of t ra1 ⊑ rs & t ra2 ⊑ rs & ra1 = ra2
+| IndistHigh of ~~ (t ra1 ⊑ rs) & ~~ (t ra2 ⊑ rs).
+
+Lemma indistP rs ra1 ra2 :
+  reflect (indist_spec rs ra1 ra2) (indist rs ra1 ra2).
+Proof.
+rewrite /indist; apply/(iffP idP).
+  have [hi /eqP <-|lo1] /= := boolP (t ra1 ⊑ rs); first by constructor.
+  have [hi /eqP e|lo2 _] /= := boolP (t ra2 ⊑ rs).
+    by rewrite e hi in lo1.
+  by apply: IndistHigh.
+case=> [-> -> -> //=|hi1 hi2].
+by rewrite -[X in X ==> _]negbK negb_or hi1 hi2.
+Qed.
+
+Lemma indist_refl rl : reflexive (indist rl).
+Proof. by move=> ra; rewrite /indist eqxx implybT. Qed.
+
+Lemma indist_sym rl : symmetric (indist rl).
+Proof. by move=> ra1 ra2; rewrite /indist orbC eq_sym. Qed.
+
+Lemma indist_trans rl : transitive (indist rl).
+Proof.
+move=> ra2 ra1 ra3; rewrite /indist => e1 e2.
+apply/implyP=> /orP [e|e].
+  by move: e1 e2; rewrite e /= => /eqP <-; rewrite e => /eqP ->.
+by move: e2 e1; rewrite e orbT /= => /eqP ->; rewrite e orbT /= => /eqP ->.
+Qed.
+
+End Indist.
+
 Section Noninterference.
 
 Import DoNotation.
 
-Local Open Scope rif_scope.
+Local Open Scope label_scope.
 
-Variable Σ : finType.
+Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
-Variable r_arg : reg mt.
-Variable output_addr : mword mt.
-Variable reclassify_addr : mword mt.
 
-Local Notation rifAutomaton := (rifAutomaton Σ).
-Local Notation rifLabel := (rifLabel Σ).
-Local Notation event := (event Σ mt).
-Local Notation ainstr := (ainstr Σ mt).
-Local Notation atom := (atom (mword mt) rifLabel).
-Local Notation state := (state Σ mt).
-Local Notation step := (@step Σ mt mops r_arg output_addr reclassify_addr).
-Local Notation stepn := (@stepn Σ mt mops r_arg output_addr reclassify_addr).
+Local Notation word := (mword mt).
+Local Notation atom := (atom word L).
+Local Notation state := (state L mt).
+Local Notation step := (@step L mt mops).
+Local Notation stepn := (@stepn L mt mops).
 
 Implicit Type st : state.
 
 CoInductive s_indist rs st1 st2 : Prop :=
-| SIndistLow of rl_readers (taga (pc st1)) ⊑ᵣ rs
+| SIndistLow of taga (pc st1) ⊑ rs
              &  pc st1 = pc st2
-             &  pointwise (indist (@rl_readers _ \o taga) rs)
+             &  pointwise (indist (taga) rs)
                           (regs st1) (regs st2)
              &  pointwise (indist (fun t =>
                                      if t is inr t'
-                                     then rl_readers (taga t')
-                                     else Anybody) rs)
+                                     then (taga t')
+                                     else ⊥) rs)
                           (mem st1) (mem st2)
-             & reclass st1 = reclass st2
-| SIndistHigh of ~~ (rl_readers (taga (pc st1)) ⊑ᵣ rs)
-              &  ~~ (rl_readers (taga (pc st2)) ⊑ᵣ rs).
+| SIndistHigh of ~~ (taga (pc st1) ⊑ rs)
+              &  ~~ (taga (pc st2) ⊑ rs).
 
 Ltac match_upd t1 :=
   match goal with
@@ -54,44 +89,35 @@ Ltac match_upd t1 :=
     have: P v1 v2; last move=> /(refine_upd_pointwiseL ind upd)
   end.
 
-Lemma low_step rs st1 st2 st1' oe1 :
+Lemma low_step rs st1 st2 st1' :
   s_indist rs st1 st2 ->
-  rl_readers (taga (pc st1)) ⊑ᵣ rs ->
-  step st1 = Some (st1', oe1) ->
+  taga (pc st1) ⊑ rs ->
+  step st1 = Some st1' ->
   match step st2 with
-  | Some (st2', oe2) =>
-    match oe1, oe2 with
-    | Some (Output w1 rs1), Some (Output w2 rs2) =>
-      indist (@snd _ _) rs (w1, rs1) (w2, rs2)
-      /\ s_indist rs st1' st2'
-    | Some (Reclassify rl1 F1), Some (Reclassify rl2 F2) =>
-      if is_downgrade rs rl1 F1 || is_downgrade rs rl2 F2 then True
-      else s_indist rs st1' st2'
-    | None, None => s_indist rs st1' st2'
-    | _, _ => False
-    end
+  | Some st2' => s_indist rs st1' st2'
   | None => True
   end.
 Proof.
 move=> h_indist h_low1; case: h_indist; last by rewrite h_low1.
 rewrite (lock step).
-case: st1 {h_low1} => mem1 reg1 [pc1 rl1] oF1 /=.
-case: st2=> mem2 reg2 [pc2 rl2] oF2 /= h_pc e.
-move: pc1 rl1 oF1 e h_pc => pc rl oF [<- <-] h_pc {pc2 rl2 oF2} ind_r ind_m <-.
+case: st1 {h_low1} => mem1 reg1 [pc1 rl1] /=.
+case: st2=> mem2 reg2 [pc2 rl2] /= h_pc e.
+move: pc1 rl1 e h_pc => pc rl [<- <-] h_pc {pc2 rl2} ind_r ind_m.
 rewrite -{1}lock /=.
 move: (ind_m pc).
 case get_pc1: (mem1 pc) => [[i1|a1]|] //=;
 case get_pc2: (mem2 pc) => [[i2|a2]|] //=;
 rewrite /indist /=.
   (* Instructions *)
+  rewrite !botP /=.
   move=> e; move: i1 e get_pc1 get_pc2 => i /eqP [<-] {i2}.
   case: i=> //=.
   - (* Nop *)
-    move=> get_pc1 get_pc2 [<- <-] {st1' oe1}.
+    move=> get_pc1 get_pc2 [<-] {st1'}.
     by rewrite -lock /= get_pc2; constructor.
   - (* Const *)
     move=> k r get_pc1 get_pc2.
-    case upd1: updm=> [reg1'|] //= [<- <-] {st1' oe1}.
+    case upd1: updm=> [reg1'|] //= [<-] {st1'}.
     rewrite -lock /= get_pc2.
     match_upd reg1; first exact: indist_refl.
     case=> reg2' [upd2 ind_r'].
@@ -101,7 +127,7 @@ rewrite /indist /=.
     move: (ind_r r1).
     case get1: (reg1 r1) => [v1|] //=.
     case get2: (reg2 r1) => [v2|] //= ind_v.
-    case upd1: (updm reg1) => [reg1'|] //= [<- <-] {st1' oe1}.
+    case upd1: (updm reg1) => [reg1'|] //= [<-] {st1'}.
     rewrite -lock /= get_pc2 get2 /=.
     match_upd reg1=> // - [reg2' [upd2 ind_r']].
     by rewrite upd2 /=; constructor.
@@ -113,12 +139,12 @@ rewrite /indist /=.
     move: (ind_r r2).
     case get21: (reg1 r2) => [[v21 l21]|] //=.
     case get22: (reg2 r2) => [[v22 l22]|] //= ind_v2.
-    case upd1: updm=> [reg1'|] //= [<- <-] {st1' oe1}.
+    case upd1: updm=> [reg1'|] //= [<-] {st1'}.
     rewrite -lock /= get_pc2 get12 get22 /=.
     match_upd reg1=> //=.
-      move: ind_v1 ind_v2; rewrite /indist /= !rl_readers_join !readers_join_min.
+      move: ind_v1 ind_v2; rewrite /indist /= !flows_join.
       by repeat match goal with
-      | |- context[_ ⊑ᵣ _] => case: readers_leq=> //=
+      | |- context[_ ⊑ _] => case: flows=> //=
       end; move=> /eqP [-> ->] /eqP [-> ->].
     case=> regs2' [upd2 ind_r'].
     by rewrite upd2 /=; constructor.
@@ -133,17 +159,17 @@ rewrite /indist /=.
       move: (ind_m v).
       case getm_v1: (mem1 v)=> [[|[v1 l1]]|] //=.
       case getm_v2: (mem2 v)=> [[|[v2 l2]]|] //=.
-        by rewrite {1}/indist orbT implybF.
+        by rewrite {1}/indist botP orbT implybF.
       move=> ind_v.
-      case upd1: updm => [reg1'|] //= [<- <-] {st1' oe1}.
+      case upd1: updm => [reg1'|] //= [<-] {st1'}.
       rewrite -lock /= get_pc2 get_r2 /= getm_v2 /=.
       match_upd reg1.
         move: ind_v; rewrite /indist /= -sum_eqE /=.
-        rewrite !rl_readers_join !readers_join_min.
-        case: (rl_readers l1 ⊑ᵣ rs)=> //=.
+        rewrite !flows_join.
+        case: (l1 ⊑ rs)=> //=.
           by move=> /eqP [-> ->]; rewrite eqxx implybT.
         rewrite andbF /=.
-        case: (rl_readers l2 ⊑ᵣ rs)=> //= [|_].
+        case: (l2 ⊑ rs)=> //= [|_].
           by move=> /eqP [-> ->]; rewrite eqxx implybT.
         by rewrite andbF.
       case=> reg2' [upd2 ind_r'].
@@ -152,11 +178,11 @@ rewrite /indist /=.
     (* Both pointers are high *)
     move=> get_r1 get_r2.
     case getm_v1: (mem1 v1)=> [[|[v1' l1']]|] //=.
-    case upd1: updm => [reg1'|] //= [<- <-] {st1' oe1}.
+    case upd1: updm => [reg1'|] //= [<-] {st1'}.
     rewrite -lock /= get_pc2 get_r2 /=.
     case getm_v2: (mem2 v2)=> [[|[v2' l2']]|] //=.
     match_upd reg1.
-      rewrite /indist /= !rl_readers_join !readers_join_min.
+      rewrite /indist /= !flows_join.
       by rewrite implybE negb_or !negb_and hi1 hi2 /=.
     case=> reg2' [upd2 ind_r'].
     by rewrite upd2 /=; constructor.
@@ -176,143 +202,93 @@ rewrite /indist /=.
       move: (ind_m ptr).
       case getm_ptr1: (mem1 ptr)=> [[|[vold1 lvold1]]|] //=.
       case getm_ptr2: (mem2 ptr)=> [[|[vold2 lvold2]]|] //=.
-        by rewrite {1}/indist orbT -sum_eqE.
+        by rewrite {1}/indist botP orbT -sum_eqE.
       rewrite {1}/indist /= -sum_eqE /=.
-      rewrite rl_join_min; case: ifP=> //= /andP [lo_lptr1 lo_rl1].
-      case upd1: updm=> [mem1'|] //= ind_vold [<- <-] {st1' oe1}.
+      rewrite flows_join; case: ifP=> //= /andP [lo_lptr1 lo_rl1].
+      case upd1: updm=> [mem1'|] //= ind_vold [<-] {st1'}.
       rewrite -lock /= get_pc2 get_rptr2 /= getm_ptr2 /= get_rv2 /=.
-      rewrite rl_join_min; case: ifP=> //= /andP [lo_lptr2 lo_rl2].
+      rewrite flows_join; case: ifP=> //= /andP [lo_lptr2 lo_rl2].
       match_upd mem1.
-        rewrite /indist /= !rl_readers_join !readers_join_min h_pc !andbT.
+        rewrite /indist /= !flows_join h_pc !andbT.
         rewrite -sum_eqE /= -andb_orr; apply/implyP=> /andP [lo_lptr_rs lo_lv_rs].
         by move/implyP/(_ lo_lv_rs)/eqP: ind_v => [-> ->].
       by case=> mem2' [upd2 ind_m']; rewrite upd2 /=; constructor.
     (* Both pointers are high *)
     move=> get_rptr1 get_rptr2.
     case getm_ptr1: (mem1 ptr1)=> [[|[vold1 lvold1]]|] //=.
-    rewrite rl_join_min; case: ifP=> //= /andP [lo_lptr1 lo_rl1].
-    case upd1: updm=> [mem1'|] //= [<- <-] {st1' oe1}.
+    rewrite flows_join; case: ifP=> //= /andP [lo_lptr1 lo_rl1].
+    case upd1: updm=> [mem1'|] //= [<-] {st1'}.
     rewrite -lock /= get_pc2 /= get_rptr2 /= get_rv2 /=.
     case getm_ptr2: (mem2 ptr2)=> [[|[vold2 lvold2]]|] //=.
-    rewrite rl_join_min; case: ifP=> //= /andP [lo_lptr2 lo_rl2].
+    rewrite flows_join; case: ifP=> //= /andP [lo_lptr2 lo_rl2].
     rewrite /updm getm_ptr2 /=; constructor=> // x /=.
     rewrite (updm_set upd1) !setmE; move: (ind_m x) {upd1}.
     have [-> {x}|] := altP (x =P ptr1).
       have [_ {ptr2 getm_ptr2 get_rptr2}|_] := altP (ptr1 =P ptr2).
-        rewrite /indist /= -sum_eqE /= !rl_readers_join !readers_join_min.
+        rewrite /indist /= -sum_eqE /= !flows_join.
         by rewrite (negbTE hi1) (negbTE hi2) /=.
       rewrite getm_ptr1.
       move: ptr1 lptr1 hi1 get_rptr1 lo_lptr1 getm_ptr1
             {ptr2 lptr2 hi2 get_rptr2 getm_ptr2 vold2 lvold2 lo_lptr2 lo_rl2}
             => ptr lptr hi1 get_rptr1 lo_lptr1 getm_ptr1.
       case getm_ptr2: (mem2 ptr)=> [[|[vold2 lvold2]]|] //=.
-        by rewrite /indist /= orbT -sum_eqE /=.
-      rewrite /indist /= !rl_readers_join !readers_join_min -sum_eqE /=.
+        by rewrite /indist /= botP orbT -sum_eqE /=.
+      rewrite /indist /= !flows_join -sum_eqE /=.
       rewrite (negbTE hi1) /= => ind_vold; apply/implyP=> lo_lvold2.
       move: ind_vold getm_ptr2.
       rewrite lo_lvold2 orbT /=  => /eqP [evold elvold].
       move: evold elvold lo_lvold2 => <- <- {vold2 lvold2} lo_lvold.
-      by move: hi1; rewrite (readers_leq_trans (rl_readers_leq lo_lptr1) lo_lvold).
+      by move: hi1; rewrite (flows_trans lo_lptr1 lo_lvold).
     have [-> {x} _|//] := altP (x =P ptr2).
     rewrite getm_ptr2 => {ptr1 lptr1 vold1 lvold1 hi1 lo_lptr1 lo_rl1 get_rptr1 getm_ptr1}.
-    case getm_ptr1: (mem1 ptr2) => [[|[vold1 lvold1]]|] //=.
-    rewrite /indist /= !rl_readers_join !readers_join_min -sum_eqE /= (negbTE hi2) /=.
-    rewrite orbF => ind_vold; apply/implyP=> low_lvold1.
-    move: ind_vold lo_lptr2; rewrite low_lvold1 /= => /eqP [_ <-] lo_lptr2.
-    by move: hi2; rewrite (readers_leq_trans (rl_readers_leq lo_lptr2) low_lvold1).
+    case getm_ptr1: (mem1 ptr2) => [vold|] //=.
+    rewrite /indist -sum_eqE; case vold=> [i|[vold1 lvold1]] //=.
+      by rewrite botP.
+    rewrite !flows_join /= (negbTE hi2) /= orbF.
+    case: (boolP (lvold1 ⊑ rs))=> //= ind_vold /eqP [ev el].
+    by subst lvold2; rewrite (flows_trans lo_lptr2 ind_vold) in hi2.
   - (* Jump *)
     move=> r get_pc1 get_pc2.
     move: (ind_r r).
     case get_r1: (reg1 r) => [[v1 l1]|] //=.
-    case get_r2: (reg2 r) => [[v2 l2]|] //= ind_v [<- <-] {st1' oe1}.
+    case get_r2: (reg2 r) => [[v2 l2]|] //= ind_v [<-] {st1'}.
     rewrite -lock /= get_pc2 get_r2 /=.
     case/indistP: ind_v=> /= [lo1 lo2 [<- <-]|hi1 hi2].
       constructor=> //=.
-      by rewrite rl_readers_join readers_join_min lo1.
+      by rewrite flows_join lo1.
     by apply: SIndistHigh=> //=;
-    rewrite rl_readers_join readers_join_min negb_and ?hi1 ?hi2.
+    rewrite flows_join negb_and ?hi1 ?hi2.
   - (* Bnz *)
     move=> r i get_pc1 get_pc2.
     move: (ind_r r).
     case get_r1: (reg1 r) => [[v1 l1]|] //=.
-    case get_r2: (reg2 r) => [[v2 l2]|] //= ind_v [<- <-] {st1' oe1}.
+    case get_r2: (reg2 r) => [[v2 l2]|] //= ind_v [<-] {st1'}.
     rewrite -lock /= get_pc2 get_r2 /=.
     case/indistP: ind_v=> /= [lo1 lo2 [<- <-]|hi1 hi2].
       constructor=> //=.
-      by rewrite rl_readers_join readers_join_min lo1.
+      by rewrite flows_join lo1.
     by apply: SIndistHigh=> //=;
-    rewrite rl_readers_join readers_join_min negb_and ?hi1 ?hi2.
+    rewrite flows_join negb_and ?hi1 ?hi2.
   (* Jal *)
-  move=> r oF' get_pc1 get_pc2.
+  move=> r get_pc1 get_pc2.
   move: (ind_r r).
   case get_r1: (reg1 r) => [[v1 l1]|] //=.
   case get_r2: (reg2 r) => [[v2 l2]|] //= ind_v.
-  case upd1: updm => [reg1'|] //= [<- <-] {st1' oe1}.
+  case upd1: updm => [reg1'|] //= [<-] {st1'}.
   rewrite -lock /= get_pc2 get_r2 /=.
   match_upd reg1.
-    rewrite /indist /= !rl_readers_join !readers_join_min !h_pc !andbT.
+    rewrite /indist /= !flows_join !h_pc !andbT.
     case/indistP: ind_v=> [-> -> [_ ->]//=|/= hi1 hi2].
       by rewrite -[X in X ==> _]negbK negb_or hi1 hi2.
   case=> reg2' [upd2 ind_r'].
   rewrite upd2 /=.
   case/indistP: ind_v upd1 upd2=> [/= lo1 lo2 [<- <-]|/= hi1 hi2] upd1 upd2.
     constructor=> //=.
-    by rewrite rl_readers_join readers_join_min lo1 /=.
+    by rewrite flows_join lo1 /=.
   by apply: SIndistHigh=> //=;
-  rewrite rl_readers_join readers_join_min negb_and ?hi1 ?hi2.
-(* System services *)
-move=> _.
-have [pc_output|pc_n_output] := altP (pc =P output_addr).
-  (* Output *)
-  move: (ind_r (@ra _ mops)).
-  case get_ra1: (reg1 ra) => [[raddr1 lraddr1]|] //=.
-  case get_ra2: (reg2 ra) => [[raddr2 lraddr2]|] //= ind_raddr.
-  move: (ind_r r_arg).
-  case get_arg1: (reg1 r_arg) => [[out1 lout1]|] //=.
-  case get_arg2: (reg2 r_arg) => [[out2 lout2]|] //= ind_out [<- <-] {st1' oe1}.
-  rewrite -lock /= get_pc2 pc_output eqxx get_ra2 get_arg2 /=.
-  split.
-    move: ind_raddr ind_out; rewrite /indist /= !readers_join_min => ind_raddr ind_out.
-    apply/implyP=> /orP [|] /andP [lo_lraddr lo_lout]; move: ind_raddr ind_out.
-      by rewrite lo_lraddr lo_lout /= => /eqP [_ ->] /eqP [-> ->].
-    by rewrite lo_lraddr lo_lout /= !orbT => /eqP [_ ->] /eqP [-> ->].
-  case/indistP: ind_raddr=> /= [lo_raddr _ [<- <-] {raddr2 lraddr2 get_ra2}|].
-    by constructor.
-  move=> hi1 hi2.
-  by apply: SIndistHigh.
-have [pc_reclassify|//] := altP (pc =P reclassify_addr).
-(* Reclassify *)
-move: (ind_r (@ra _ mops)).
-case get_ra1: (reg1 ra) => [[raddr1 lraddr1]|] //=.
-case get_ra2: (reg2 ra) => [[raddr2 lraddr2]|] //= ind_raddr.
-move: (ind_r r_arg).
-case get_arg1: (reg1 r_arg) => [[arg1 larg1]|] //=.
-case get_arg2: (reg2 r_arg) => [[arg2 larg2]|] //= ind_arg.
-case: oF=> [F|] //=.
-case upd1: updm=> [reg1'|] //= [<- <-] {st1' oe1}.
-rewrite -lock /= get_pc2 (negbTE pc_n_output) pc_reclassify eqxx get_ra2 get_arg2 /=.
-case upd2: updm=> [reg2'|] //=.
-have [|/norP not_dg] //= := ifPn.
-case/indistP: ind_raddr => /= [lo_raddr1 _ e|hi_raddr1 hi_raddr2].
-  (* Return addresses are low *)
-  move: raddr1 lraddr1 e lo_raddr1 get_ra1 get_ra2 not_dg
-        => raddr lraddr [<- <-] lo_raddr get_ra1 get_ra2 {raddr2 lraddr2}.
-  rewrite /is_downgrade !negb_and !negbK.
-  case/indistP: ind_arg=> //=.
-    (* Reclassified data was low *)
-    move=> low_larg1 _ e.
-    move: arg1 larg1 e low_larg1 get_arg1 get_arg2 upd1 upd2
-          => arg larg [<- <-] low_larg get_arg1 get_arg2 upd1 upd2 {arg2 larg2} _.
-    constructor=> //=.
-    apply: (refine_upd_pointwise2 ind_r); eauto.
-    by rewrite /indist /= eqxx implybT.
-  (* Reclassified data has high originally *)
-  move=> /negbTE -> /negbTE -> /= [lo_larg1' lo_larg2'].
-  constructor=> //=.
-  apply: (refine_upd_pointwise2 ind_r); eauto.
-  by rewrite /indist /= (negbTE lo_larg1') (negbTE lo_larg2').
-(* Return addresses are high *)
-by apply: SIndistHigh.
+  rewrite flows_join negb_and ?hi1 ?hi2.
+(* System services; none for now *)
+by rewrite botP.
 Qed.
 
 End Noninterference.

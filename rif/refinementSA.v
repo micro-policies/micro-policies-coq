@@ -3,7 +3,7 @@ From mathcomp Require Import
 From CoqUtils Require Import hseq ord fset partmap word.
 From MicroPolicies Require Import
   lib.utils lib.partmap_utils common.types symbolic.symbolic symbolic.exec
-  rif.common rif.symbolic rif.abstract.
+  rif.labels rif.symbolic rif.abstract.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -13,51 +13,27 @@ Section Refinement.
 
 Import DoNotation.
 
-Variable Σ : finType.
+Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
 Variable r_arg : reg mt.
 
-Local Notation rifAutomaton := (rifAutomaton Σ).
-Local Notation rifLabel := (rifLabel Σ).
-Local Notation event := (event Σ mt).
 Local Notation word := (mword mt).
-Local Notation d_atom := (atom word rifLabel).
+Local Notation d_atom := (atom word L).
 
-Variable output_addr : word.
-Variable reclassify_addr : word.
-
-Local Notation sstate := (@Symbolic.state mt (sym_rif Σ mt)).
+Local Notation sstate := (@Symbolic.state mt (sym_ifc L)).
 Local Notation sstep :=
-  (@stepf _ _ _ (@rif_syscalls Σ mt mops output_addr reclassify_addr r_arg)).
-Local Notation astate := (rif.abstract.state Σ mt).
-Local Notation astep := (@step Σ mt mops r_arg output_addr reclassify_addr).
-Local Notation ainstr := (ainstr Σ mt).
+  (@stepf _ _ _ (@ifc_syscalls L mt)).
+Local Notation astate := (rif.abstract.state L mt).
+Local Notation astep := (@step L mt mops).
 
 Implicit Types (sst : sstate) (ast : astate).
 
-Local Open Scope rif_scope.
+Local Open Scope label_scope.
 
-Definition abs_instr (i : word) (oF : option Σ) : option ainstr :=
-  if decode_instr i is Some i then
-    match i with
-    | Nop => Some ANop
-    | Const i r => Some (AConst i r)
-    | Mov r1 r2 => Some (AMov r1 r2)
-    | Binop o r1 r2 r3 => Some (ABinop o r1 r2 r3)
-    | Load r1 r2 => Some (ALoad r1 r2)
-    | Store r1 r2 => Some (AStore r1 r2)
-    | Jump r => Some (AJump r)
-    | Bnz r i => Some (ABnz r i)
-    | Jal r => Some (AJal r oF)
-    | Halt => Some AHalt
-    | JumpEpc | AddRule  | GetTag _ _  | PutTag _ _ _ => None
-    end
-  else None.
-
-Definition refine_m_atom (x : atom word (mem_tag Σ)) (y : ainstr + d_atom) :=
+Definition refine_m_atom (x : atom word (mem_tag L)) (y : instr mt + d_atom) :=
   match x, y with
-  | wx@(MemInstr oF), inl i => abs_instr wx oF = Some i
+  | wx@MemInstr, inl i => decode_instr wx = Some i
   | wx@(MemData rl), inr a => wx@rl = a
   | _, _ => False
   end.
@@ -68,8 +44,7 @@ Inductive refine_state sst ast : Prop :=
                            (rif.abstract.mem ast)
               &  Symbolic.regs sst = rif.abstract.regs ast
               &  vala (Symbolic.pc sst) = vala (rif.abstract.pc ast)
-              &  (taga (Symbolic.pc sst)).1 = taga (rif.abstract.pc ast)
-              &  (taga (Symbolic.pc sst)).2 = rif.abstract.reclass ast.
+              &  taga (Symbolic.pc sst) = taga (rif.abstract.pc ast).
 
 Hint Unfold Symbolic.next_state_pc.
 Hint Unfold Symbolic.next_state_reg.
@@ -80,112 +55,92 @@ Lemma refinement sst sst' ast :
   refine_state sst ast ->
   sstep sst = Some sst' ->
   match astep ast with
-  | Some (ast', oe) =>
-    refine_state sst' ast'
-    /\ Symbolic.internal sst' =
-       Symbolic.internal sst ++ seq_of_opt oe
+  | Some ast' => refine_state sst' ast'
   | None => False
   end.
 Proof.
 rewrite (lock sstep) (lock astep).
-case: sst=> /= sm sr [spc [slpc src]] t.
-case: ast=> /= am ar [apc alpc] arc.
+case: sst=> /= sm sr [spc slpc] t.
+case: ast=> /= am ar [apc alpc].
 case=> /= ref_m ref_r.
 move: sr ref_r=> regs <- {ar}.
-move: spc slpc src => pc lpc rc <- <- <- {apc alpc arc}.
+move: spc slpc => pc lpc <- <- {apc alpc}.
 rewrite -lock /=.
 move: (ref_m pc).
-case: (sm pc) => [[si [oF|sti]]|]; case aget_pc: (am pc) => [[ai|a]|] //=.
+case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[ai|a]|] //=.
 - (* Instruction *)
-  rewrite /abs_instr.
   case: decode_instr => [i|] ref_i //=.
   case: i ref_i aget_pc => //=; repeat autounfold=> /=.
   + (* Nop *)
     move=> [<-] {ai} aget_pc [<-] {sst'}.
-    by rewrite -lock /= aget_pc /= cats0; split.
+    by rewrite -lock /= aget_pc /=; split.
   + (* Const *)
     move=> i r [<-] {ai} aget_pc.
     case: (regs r)=> //= - [_ _].
     case upd_r: updm => [regs'|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc /= upd_r /= cats0; split.
+    by rewrite -lock /= aget_pc /= upd_r /=; split.
   + (* Mov *)
     move=> r1 r2 [<-] {ai} aget_pc.
     case get_r1: (regs r1)=> [[w1 rl1]|] //=.
     case: (regs r2)=> //= - [_ _].
     case upd_r2: updm => [regs'|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r1 /= upd_r2 /= cats0; split.
+    by rewrite -lock /= aget_pc get_r1 /= upd_r2 /=; split.
   + (* Binop *)
     move=> b r1 r2 r3 [<-] {ai} aget_pc.
     case get_r1: (regs r1)=> [[w1 rl1]|] //=.
     case get_r2: (regs r2)=> [[w2 rl2]|] //=.
     case: (regs r3)=> [[_ _]|] //=.
     case upd_r3: updm=> [regs'|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r1 /= get_r2 /= upd_r3 /= cats0; split.
+    by rewrite -lock /= aget_pc get_r1 /= get_r2 /= upd_r3 /=; split.
   + (* Load *)
     move=> r1 r2 [<-] {ai} aget_pc.
     case get_r1: (regs r1)=> [[w1 rl1]|] //=.
     move: (ref_m w1).
-    case sget_w1: (sm w1) => [[w1' [oF'|rl1']]|] //=;
+    case sget_w1: (sm w1) => [[w1' [|rl1']]|] //=;
     case: (regs r2)=> [[_ _]|] //=.
     case aget_w1: (am w1) => [[?|a]|] //= e.
     move: e aget_w1=> <- {a} aget_w1.
     case upd_r2: updm => [regs'|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r1 /= aget_w1 /= upd_r2 /= cats0; split.
+    by rewrite -lock /= aget_pc get_r1 /= aget_w1 /= upd_r2 /=; split.
   + (* Store *)
     move=> r1 r2 [<-] {ai} aget_pc.
     case get_r1: (regs r1)=> [[w1 rl1]|] //=.
-    case sget_w1: (sm w1) => [[wold [oF'|rlold]]|] //=;
+    case sget_w1: (sm w1) => [[wold [|rlold]]|] //=;
     case get_r2: (regs r2)=> [[w2 rl2]|] //=.
     case: ifP => // check /=.
     case supd_w1: updm => [sm'|] //= [<-] {sst'}.
     have [am' aupd_w1]:
-      exists am', updm am w1 (inr w2@(rl1 ⊔ₗ rl2 ⊔ₗ lpc)) = Some am'.
-      exists (setm am w1 (inr w2@(rl1 ⊔ₗ rl2 ⊔ₗ lpc))).
+      exists am', updm am w1 (inr w2@(rl1 ⊔ rl2 ⊔ lpc)) = Some am'.
+      exists (setm am w1 (inr w2@(rl1 ⊔ rl2 ⊔ lpc))).
       move: (ref_m w1) supd_w1; rewrite /updm.
       by case: (sm w1) (am w1) => //= sa [aa|] //= {sa aa} _ [<-].
-    have ref_a: refine_m_atom w2@(MemData (rl1 ⊔ₗ rl2 ⊔ₗ lpc))
-                              (inr w2@(rl1 ⊔ₗ rl2 ⊔ₗ lpc)) by [].
+    have ref_a: refine_m_atom w2@(MemData (rl1 ⊔ rl2 ⊔ lpc))
+                              (inr w2@(rl1 ⊔ rl2 ⊔ lpc)) by [].
     have ref_m' := refine_upd_pointwise2 ref_m ref_a supd_w1 aupd_w1.
     move: (ref_m w1); rewrite sget_w1 /=.
     case aget_w1: (am w1) => [[?|a]|] //= e.
     move: e aget_w1 => <- {a} aget_w1.
     rewrite -lock /= aget_pc get_r1 /= get_r2 /= aget_w1 /= check aupd_w1 /=.
-    by rewrite cats0; split.
+    by split.
   + (* Jump *)
     move=> r [<-] {ai} aget_pc.
     case get_r: (regs r)=> [[w1 rl1]|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r /= cats0; split.
+    by rewrite -lock /= aget_pc get_r /=; split.
   + (* Bnz *)
     move=> r i [<-] {ai} aget_pc.
     case get_r: (regs r)=> [[w1 rl1]|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r /= cats0; split.
+    by rewrite -lock /= aget_pc get_r /=; split.
   (* Jal *)
   move=> r [<-] {ai} aget_pc.
   case get_r: (regs r) => [[w1 rl1]|] //=.
   case: (regs ra)=> [[_ _]|] //=.
   case upd_ra: updm => [regs'|] //= [<-] {sst'}.
-  by rewrite -lock /= aget_pc /= get_r /= upd_ra /= cats0; split.
+  by rewrite -lock /= aget_pc /= get_r /= upd_ra /=; split.
 - (* Fetch data in memory instead of instruction; contradiction *)
   move=> e; move: e aget_pc => <- aget_pc {a}.
   by case: decode_instr => [[]|] /= *;
   repeat autounfold in *; simpl in *; match_inv.
-(* System service *)
-move=> _ /=.
-rewrite -lock /= aget_pc /rif_syscalls mkpartmapE /= /Symbolic.run_syscall.
-case: ifP=> _ /=.
-  (* Output *)
-  rewrite /output_fun /=.
-  case get_ra: (regs ra) => [raddr|] //=.
-  case get_arg: (regs r_arg) => [out|] //= [<-] {sst'} /=.
-  by rewrite cats1; split.
-case: ifP=> _ //=.
-(* Reclassify *)
-rewrite /reclassify_fun /=.
-case get_ra: (regs ra) => [raddr|] //=.
-case get_arg: (regs r_arg) => [arg|] //=.
-case: rc=> [F|] //=.
-case upd_r: updm => [regs'|] //= [<-] {sst'} /=.
-by rewrite cats1; split.
+(* System services; none for now. *)
 Qed.
 
 End Refinement.
