@@ -3,7 +3,7 @@ From mathcomp Require Import
 From CoqUtils Require Import hseq ord fset partmap word.
 From MicroPolicies Require Import
   lib.utils lib.partmap_utils common.types symbolic.symbolic symbolic.exec
-  rif.labels rif.symbolic rif.abstract.
+  ifc.labels ifc.symbolic ifc.abstract.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -24,7 +24,7 @@ Local Notation d_atom := (atom word L).
 Local Notation sstate := (@Symbolic.state mt (sym_ifc L)).
 Local Notation sstep :=
   (@stepf _ _ _ (@ifc_syscalls L mt)).
-Local Notation astate := (rif.abstract.state L mt).
+Local Notation astate := (ifc.abstract.state L mt).
 Local Notation astep := (@step L mt mops).
 
 Implicit Types (sst : sstate) (ast : astate).
@@ -41,10 +41,10 @@ Definition refine_m_atom (x : atom word (mem_tag L)) (y : instr mt + d_atom) :=
 Inductive refine_state sst ast : Prop :=
 | RefineState of pointwise refine_m_atom
                            (Symbolic.mem sst)
-                           (rif.abstract.mem ast)
-              &  Symbolic.regs sst = rif.abstract.regs ast
-              &  vala (Symbolic.pc sst) = vala (rif.abstract.pc ast)
-              &  taga (Symbolic.pc sst) = taga (rif.abstract.pc ast).
+                           (ifc.abstract.mem ast)
+              &  Symbolic.regs sst = ifc.abstract.regs ast
+              &  vala (Symbolic.pc sst) = vala (ifc.abstract.pc ast)
+              &  taga (Symbolic.pc sst) = taga (ifc.abstract.pc ast).
 
 Hint Unfold Symbolic.next_state_pc.
 Hint Unfold Symbolic.next_state_reg.

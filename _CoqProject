@@ -60,11 +60,11 @@ sealing/symbolic.v
 sealing/refinementSA.v
 sealing/main.v
 
-rif/symbolic.v
-rif/abstract.v
-rif/refinementSA.v
-rif/noninterference.v
-rif/labels.v
+ifc/symbolic.v
+ifc/abstract.v
+ifc/refinementSA.v
+ifc/noninterference.v
+ifc/labels.v
 
 os/os.v
 
