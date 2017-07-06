@@ -1,7 +1,8 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq fintype finfun.
 From CoqUtils Require Import hseq ord partmap word.
 From MicroPolicies
-Require Import lib.utils common.types symbolic.symbolic symbolic.exec ifc.labels.
+Require Import lib.utils common.types symbolic.symbolic symbolic.exec
+ifc.labels ifc.common.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -17,6 +18,7 @@ Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
 Variable r_arg : reg mt.
+Variable r_ret : reg mt.
 Variable output_addr : mword mt.
 
 Inductive mem_tag :=
@@ -85,18 +87,20 @@ Definition transfer (iv : ivec ifc_tags) : option (vovec ifc_tags (op iv)) :=
     been output during execution. *)
 
 Record int_ifc := IntIFC {
-  outputs : seq (atom (mword mt) L)
+  outputs : seq (atom (mword mt) L);
+  call_stack : seq (call_frame mt L)
 }.
 
-Definition seq_of_int_ifc (x : int_ifc) :=
-  outputs x.
+Definition tuple_of_int_ifc x :=
+  (outputs x, call_stack x).
 
-Definition int_ifc_of_seq x := IntIFC x.
+Definition int_ifc_of_tuple x :=
+  IntIFC x.1 x.2.
 
-Lemma seq_of_int_ifcK : cancel seq_of_int_ifc int_ifc_of_seq.
+Lemma tuple_of_int_ifcK : cancel tuple_of_int_ifc int_ifc_of_tuple.
 Proof. by case. Qed.
 
-Definition int_ifc_eqMixin := CanEqMixin seq_of_int_ifcK.
+Definition int_ifc_eqMixin := CanEqMixin tuple_of_int_ifcK.
 Canonical int_ifc_eqType := Eval hnf in EqType int_ifc int_ifc_eqMixin.
 
 Global Instance sym_ifc : params := {
@@ -118,7 +122,9 @@ Definition output_fun st : option state :=
   let r_out := taga out in
   Some (State (mem st) (regs st) (vala raddr)@(taga raddr)
               {| outputs := rcons (outputs (internal st))
-                                  (vala out)@(r_pc ⊔ r_out) |}).
+                                  (vala out)@(r_pc ⊔ r_out);
+                 call_stack := call_stack (internal st)
+              |}).
 
 Definition ifc_syscalls : syscall_table mt :=
   [partmap (output_addr, (Syscall tt output_fun))].

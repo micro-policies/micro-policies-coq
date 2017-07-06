@@ -2,7 +2,7 @@ From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype finfun.
 From CoqUtils Require Import hseq ord fset partmap word.
 From MicroPolicies Require Import
-  lib.utils lib.partmap_utils common.types ifc.labels ifc.abstract.
+  lib.utils lib.partmap_utils common.types ifc.labels ifc.common ifc.abstract.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -105,8 +105,8 @@ Lemma low_step rs st1 st2 st1' oe1 :
 Proof.
 move=> h_indist h_low1; case: h_indist; last by rewrite h_low1.
 rewrite (lock step).
-case: st1 {h_low1} => mem1 reg1 [pc1 rl1] /=.
-case: st2=> mem2 reg2 [pc2 rl2] /= h_pc e.
+case: st1 {h_low1} => mem1 reg1 [pc1 rl1] stk1 /=.
+case: st2=> mem2 reg2 [pc2 rl2] stk2 /= h_pc e.
 move: pc1 rl1 e h_pc => pc rl [<- <-] h_pc {pc2 rl2} ind_r ind_m.
 rewrite -{1}lock /=.
 move: (ind_m pc).

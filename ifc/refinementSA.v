@@ -45,7 +45,9 @@ Inductive refine_state sst ast : Prop :=
                            (ifc.abstract.mem ast)
               &  Symbolic.regs sst = ifc.abstract.regs ast
               &  vala (Symbolic.pc sst) = vala (ifc.abstract.pc ast)
-              &  taga (Symbolic.pc sst) = taga (ifc.abstract.pc ast).
+              &  taga (Symbolic.pc sst) = taga (ifc.abstract.pc ast)
+              &  ifc.symbolic.call_stack (Symbolic.internal sst) =
+                 ifc.abstract.call_stack ast.
 
 Hint Unfold Symbolic.next_state_pc.
 Hint Unfold Symbolic.next_state_reg.
@@ -64,11 +66,11 @@ Lemma refinement sst sst' ast :
   end.
 Proof.
 rewrite (lock sstep) (lock astep).
-case: sst=> /= sm sr [spc slpc] [os].
-case: ast=> /= am ar [apc alpc].
+case: sst=> /= sm sr [spc slpc] [os sstk].
+case: ast=> /= am ar [apc alpc] astk.
 case=> /= ref_m ref_r.
 move: sr ref_r=> regs <- {ar}.
-move: spc slpc => pc lpc <- <- {apc alpc}.
+move: spc slpc sstk => pc lpc stk <- <- <- {apc alpc astk}.
 rewrite -lock /=.
 move: (ref_m pc).
 case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[i|a]|] //=.

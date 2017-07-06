@@ -65,6 +65,7 @@ ifc/abstract.v
 ifc/refinementSA.v
 ifc/noninterference.v
 ifc/labels.v
+ifc/common.v
 
 os/os.v
 
