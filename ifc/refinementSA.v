@@ -17,15 +17,16 @@ Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
 Variable r_arg : reg mt.
+Variable output_addr : mword mt.
 
 Local Notation word := (mword mt).
 Local Notation d_atom := (atom word L).
 
-Local Notation sstate := (@Symbolic.state mt (sym_ifc L)).
+Local Notation sstate := (@Symbolic.state mt (sym_ifc L mt)).
 Local Notation sstep :=
-  (@stepf _ _ _ (@ifc_syscalls L mt)).
+  (@stepf _ _ _ (@ifc_syscalls L mt mops r_arg output_addr)).
 Local Notation astate := (ifc.abstract.state L mt).
-Local Notation astep := (@step L mt mops).
+Local Notation astep := (@step L mt mops r_arg output_addr).
 
 Implicit Types (sst : sstate) (ast : astate).
 
@@ -55,45 +56,48 @@ Lemma refinement sst sst' ast :
   refine_state sst ast ->
   sstep sst = Some sst' ->
   match astep ast with
-  | Some ast' => refine_state sst' ast'
+  | Some (ast', oe) =>
+    refine_state sst' ast'
+    /\ outputs (Symbolic.internal sst')
+       = outputs (Symbolic.internal sst) ++ seq_of_opt oe
   | None => False
   end.
 Proof.
 rewrite (lock sstep) (lock astep).
-case: sst=> /= sm sr [spc slpc] t.
+case: sst=> /= sm sr [spc slpc] [os].
 case: ast=> /= am ar [apc alpc].
 case=> /= ref_m ref_r.
 move: sr ref_r=> regs <- {ar}.
 move: spc slpc => pc lpc <- <- {apc alpc}.
 rewrite -lock /=.
 move: (ref_m pc).
-case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[ai|a]|] //=.
+case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[i|a]|] //=.
 - (* Instruction *)
-  case: decode_instr => [i|] ref_i //=.
-  case: i ref_i aget_pc => //=; repeat autounfold=> /=.
+  move=> -> /=.
+  case: i aget_pc => //=; repeat autounfold=> /=.
   + (* Nop *)
-    move=> [<-] {ai} aget_pc [<-] {sst'}.
-    by rewrite -lock /= aget_pc /=; split.
+    move=> aget_pc [<-] {sst'}.
+    by rewrite -lock /= aget_pc /= cats0; split.
   + (* Const *)
-    move=> i r [<-] {ai} aget_pc.
+    move=> i r aget_pc.
     case: (regs r)=> //= - [_ _].
     case upd_r: updm => [regs'|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc /= upd_r /=; split.
+    by rewrite -lock /= aget_pc /= upd_r /= cats0; split.
   + (* Mov *)
-    move=> r1 r2 [<-] {ai} aget_pc.
+    move=> r1 r2 aget_pc.
     case get_r1: (regs r1)=> [[w1 rl1]|] //=.
     case: (regs r2)=> //= - [_ _].
     case upd_r2: updm => [regs'|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r1 /= upd_r2 /=; split.
+    by rewrite -lock /= aget_pc get_r1 /= upd_r2 /= cats0; split.
   + (* Binop *)
-    move=> b r1 r2 r3 [<-] {ai} aget_pc.
+    move=> b r1 r2 r3 aget_pc.
     case get_r1: (regs r1)=> [[w1 rl1]|] //=.
     case get_r2: (regs r2)=> [[w2 rl2]|] //=.
     case: (regs r3)=> [[_ _]|] //=.
     case upd_r3: updm=> [regs'|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r1 /= get_r2 /= upd_r3 /=; split.
+    by rewrite -lock /= aget_pc get_r1 /= get_r2 /= upd_r3 /= cats0; split.
   + (* Load *)
-    move=> r1 r2 [<-] {ai} aget_pc.
+    move=> r1 r2 aget_pc.
     case get_r1: (regs r1)=> [[w1 rl1]|] //=.
     move: (ref_m w1).
     case sget_w1: (sm w1) => [[w1' [|rl1']]|] //=;
@@ -101,9 +105,9 @@ case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[ai|a]|] //=.
     case aget_w1: (am w1) => [[?|a]|] //= e.
     move: e aget_w1=> <- {a} aget_w1.
     case upd_r2: updm => [regs'|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r1 /= aget_w1 /= upd_r2 /=; split.
+    by rewrite -lock /= aget_pc get_r1 /= aget_w1 /= upd_r2 /= cats0; split.
   + (* Store *)
-    move=> r1 r2 [<-] {ai} aget_pc.
+    move=> r1 r2 aget_pc.
     case get_r1: (regs r1)=> [[w1 rl1]|] //=.
     case sget_w1: (sm w1) => [[wold [|rlold]]|] //=;
     case get_r2: (regs r2)=> [[w2 rl2]|] //=.
@@ -121,26 +125,34 @@ case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[ai|a]|] //=.
     case aget_w1: (am w1) => [[?|a]|] //= e.
     move: e aget_w1 => <- {a} aget_w1.
     rewrite -lock /= aget_pc get_r1 /= get_r2 /= aget_w1 /= check aupd_w1 /=.
-    by split.
+    by rewrite cats0; split.
   + (* Jump *)
-    move=> r [<-] {ai} aget_pc.
+    move=> r aget_pc.
     case get_r: (regs r)=> [[w1 rl1]|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r /=; split.
+    by rewrite -lock /= aget_pc get_r /= cats0; split.
   + (* Bnz *)
-    move=> r i [<-] {ai} aget_pc.
+    move=> r i aget_pc.
     case get_r: (regs r)=> [[w1 rl1]|] //= [<-] {sst'}.
-    by rewrite -lock /= aget_pc get_r /=; split.
+    by rewrite -lock /= aget_pc get_r /= cats0; split.
   (* Jal *)
-  move=> r [<-] {ai} aget_pc.
+  move=> r aget_pc.
   case get_r: (regs r) => [[w1 rl1]|] //=.
   case: (regs ra)=> [[_ _]|] //=.
   case upd_ra: updm => [regs'|] //= [<-] {sst'}.
-  by rewrite -lock /= aget_pc /= get_r /= upd_ra /=; split.
+  by rewrite -lock /= aget_pc /= get_r /= upd_ra /= cats0; split.
 - (* Fetch data in memory instead of instruction; contradiction *)
   move=> e; move: e aget_pc => <- aget_pc {a}.
   by case: decode_instr => [[]|] /= *;
   repeat autounfold in *; simpl in *; match_inv.
-(* System services; none for now. *)
+(* System services *)
+move=> _ /=.
+rewrite -lock /= aget_pc /ifc_syscalls mkpartmapE /= /Symbolic.run_syscall.
+case: ifP=> _ //=.
+(* Output *)
+rewrite /output_fun /=.
+case get_ra: (regs ra) => [raddr|] //=.
+case get_arg: (regs r_arg) => [out|] //= [<-] {sst'} /=.
+by rewrite cats1; split.
 Qed.
 
 End Refinement.

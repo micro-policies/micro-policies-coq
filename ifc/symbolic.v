@@ -16,6 +16,8 @@ Local Open Scope label_scope.
 Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
+Variable r_arg : reg mt.
+Variable output_addr : mword mt.
 
 Inductive mem_tag :=
 | MemInstr
@@ -79,19 +81,47 @@ Definition transfer (iv : ivec ifc_tags) : option (vovec ifc_tags (op iv)) :=
   | IVec SERVICE tpc _ _ => Some tt
   end.
 
+(** The internal state for the IFC policy is simply a sequence of atoms that has
+    been output during execution. *)
+
+Record int_ifc := IntIFC {
+  outputs : seq (atom (mword mt) L)
+}.
+
+Definition seq_of_int_ifc (x : int_ifc) :=
+  outputs x.
+
+Definition int_ifc_of_seq x := IntIFC x.
+
+Lemma seq_of_int_ifcK : cancel seq_of_int_ifc int_ifc_of_seq.
+Proof. by case. Qed.
+
+Definition int_ifc_eqMixin := CanEqMixin seq_of_int_ifcK.
+Canonical int_ifc_eqType := Eval hnf in EqType int_ifc int_ifc_eqMixin.
+
 Global Instance sym_ifc : params := {
   ttypes := ifc_tags;
 
   transfer := transfer;
 
-  internal_state := unit_eqType
+  internal_state := int_ifc_eqType
 }.
 
 Local Notation state := (@Symbolic.state mt sym_ifc).
 
 Implicit Types st : state.
 
-Definition ifc_syscalls : syscall_table mt := emptym.
+Definition output_fun st : option state :=
+  do! raddr <- regs st ra;
+  do! out   <- regs st r_arg;
+  let r_pc  := taga raddr in
+  let r_out := taga out in
+  Some (State (mem st) (regs st) (vala raddr)@(taga raddr)
+              {| outputs := rcons (outputs (internal st))
+                                  (vala out)@(r_pc ⊔ r_out) |}).
+
+Definition ifc_syscalls : syscall_table mt :=
+  [partmap (output_addr, (Syscall tt output_fun))].
 
 Local Notation step  := (@Symbolic.step mt mops sym_ifc ifc_syscalls).
 Local Notation ratom := (atom (mword mt) (tag_type ifc_tags R)).

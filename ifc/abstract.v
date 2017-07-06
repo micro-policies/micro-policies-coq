@@ -15,6 +15,7 @@ Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
 Variable r_arg : reg mt.
+Variable output_addr : mword mt.
 
 Local Notation word := (mword mt).
 Local Notation atom := (atom word L).
@@ -30,30 +31,30 @@ Local Open Scope label_scope.
 
 Implicit Type s : state.
 
-Definition step s : option state :=
+Definition step s : option (state * option atom):=
   let: State mem regs pc@lpc := s in
   if mem pc is Some i then
     if i is inl i then
       match i with
-      | Nop => Some (State mem regs (pc + 1)@lpc)
+      | Nop => Some (State mem regs (pc + 1)@lpc, None)
       | Const k r =>
         do! regs <- updm regs r (swcast k)@⊥;
-        Some (State mem regs (pc + 1)@lpc)
+        Some (State mem regs (pc + 1)@lpc, None)
       | Mov r1 r2 =>
         do! v <- regs r1;
         do! regs <- updm regs r2 v;
-        Some (State mem regs (pc + 1)@lpc)
+        Some (State mem regs (pc + 1)@lpc, None)
       | Binop o r1 r2 r3 =>
         do! v1 <- regs r1;
         do! v2 <- regs r2;
         do! regs <- updm regs r3 (binop_denote o (vala v1) (vala v2))@(taga v1 ⊔ taga v2);
-        Some (State mem regs (pc + 1)@lpc)
+        Some (State mem regs (pc + 1)@lpc, None)
       | Load r1 r2 =>
         do! v1 <- regs r1;
         do! v2 <- mem (vala v1);
         if v2 is inr v2 then
           do! regs <- updm regs r2 (vala v2)@(taga v1 ⊔ taga v2);
-          Some (State mem regs (pc + 1)@lpc)
+          Some (State mem regs (pc + 1)@lpc, None)
         else None
       | Store r1 r2 =>
         do! v1 <- regs r1;
@@ -63,21 +64,21 @@ Definition step s : option state :=
           if taga v1 ⊔ lpc ⊑ taga vold then
             do! mem <- updm mem (vala v1)
                                 (inr (vala v2)@(taga v1 ⊔ taga v2 ⊔ lpc));
-            Some (State mem regs (pc + 1)@lpc)
+            Some (State mem regs (pc + 1)@lpc, None)
           else None
         else None
       | Jump r =>
         do! v <- regs r;
-        Some (State mem regs (vala v)@(taga v ⊔ lpc))
+        Some (State mem regs (vala v)@(taga v ⊔ lpc), None)
       | Bnz r x =>
         do! v <- regs r;
         let pc' := pc + if vala v == 0 then 1
                         else swcast x in
-        Some (State mem regs pc'@(taga v ⊔ lpc))
+        Some (State mem regs pc'@(taga v ⊔ lpc), None)
       | Jal r =>
         do! v <- regs r;
         do! regs <- updm regs ra (pc + 1)@(taga v ⊔ lpc);
-        Some (State mem regs (vala v)@(taga v ⊔ lpc))
+        Some (State mem regs (vala v)@(taga v ⊔ lpc), None)
       | JumpEpc => None
       | AddRule => None
       | GetTag _ _ => None
@@ -85,6 +86,22 @@ Definition step s : option state :=
       | Halt => None
       end
     else None
+  else if pc == output_addr then
+    do! raddr <- regs ra;
+    do! out   <- regs r_arg;
+    let r_pc  := taga raddr in
+    let r_out := taga out in
+    Some (State mem regs raddr,
+          Some (vala out)@(r_pc ⊔ r_out))
   else None.
+
+Fixpoint stepn n s :=
+  if n is S n' then
+    if step s is Some (s', oe) then
+      if stepn n' s' is Some (s'', t) then
+        Some (s'', t ++ seq_of_opt oe)
+      else None
+    else None
+  else Some (s, [::]).
 
 End Abstract.
