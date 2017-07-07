@@ -131,6 +131,10 @@ Definition output_fun st : option state :=
 
 Definition call_fun st : option state :=
   do! caller_pc <- regs st ra;
+  (* We need to adjust the tag on the caller pc because it may be lower than the
+     one on the current pc; for example, if we jump to call via BNZ instead of
+     JAL. *)
+  let caller_pc := (vala caller_pc)@(taga caller_pc ⊔ taga (pc st)) in
   do! called_pc <- regs st r_arg1;
   do! ret_lab   <- regs st r_arg2;
   Some (State (mem st) (regs st)

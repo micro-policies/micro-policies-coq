@@ -35,7 +35,7 @@ End CallFrame.
 
 Fixpoint reap T p (s : seq T) : seq T :=
   if s is x :: s' then
-    if p x then s else reap p s'
+    if p x then reap p s' else s
   else [::].
 
 Section Indist.

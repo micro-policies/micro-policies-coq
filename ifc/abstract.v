@@ -100,6 +100,10 @@ Definition step s : option (state * option atom):=
           Some (vala out)@(r_pc ⊔ r_out))
   else if pc == call_addr then
     do! caller_pc <- regs ra;
+    (* We need to adjust the tag on the caller pc because it may be lower than the
+       one on the current pc; for example, if we jump to call via BNZ instead of
+       JAL. *)
+    let caller_pc := (vala caller_pc)@(taga caller_pc ⊔ lpc) in
     do! called_pc <- regs r_arg1;
     do! ret_lab   <- regs r_arg2;
     Some (State mem regs

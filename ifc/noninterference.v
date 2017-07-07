@@ -56,8 +56,8 @@ rewrite /indist_stacks /=.
 elim: stk1 stk2=> [|cf1 stk1 IH] [|cf2 stk2] //= [ind_cf ind_stk].
 case: (ind_cf)=> [ind_pc _ _].
 case/indistP: (ind_pc) => [l1 l2 e|h1 h2].
-  by rewrite l1 l2 /=; apply: IH.
-by rewrite h1 h2 /=; split.
+  by rewrite l1 l2 /=; split.
+by rewrite h1 h2 /=; apply: IH.
 Qed.
 
 CoInductive s_indist rs st1 st2 : Prop :=
@@ -73,6 +73,11 @@ CoInductive s_indist rs st1 st2 : Prop :=
              & indist_stacks false rs (call_stack st1) (call_stack st2)
 | SIndistHigh of ~~ (taga (pc st1) ⊑ rs)
               &  ~~ (taga (pc st2) ⊑ rs)
+              &  pointwise (indist (fun t =>
+                                      if t is inr t'
+                                      then (taga t')
+                                      else ⊥) rs)
+                           (mem st1) (mem st2)
               & indist_stacks true rs (call_stack st1) (call_stack st2).
 
 Ltac match_upd t1 :=
@@ -325,23 +330,24 @@ case: ifP=> [/eqP pc_call|pc_n_call] //=.
     move=> lo_calld _ [<- <-] {called2 lcalled2 get_arg12}.
     case/indistP: ind_caller => /=.
       move=> lo_callr _ [<- <-] {caller2 lcaller2 get_ra2}.
-      apply: SIndistLow=> //=; first by rewrite flows_join lo_calld.
+      apply: SIndistLow=> //=; first by rewrite !flows_join lo_calld lo_callr.
       rewrite /indist_stacks /=; split=> //; split=> //.
       exact: indist_refl.
     move=> hi_callr1 hi_callr2.
     apply: SIndistHigh=> //=;
-    try rewrite flows_join negb_and ?hi_callr1 ?hi_callr2 orbT //.
-    rewrite /indist_stacks /= hi_callr1 hi_callr2 /=; split=> //.
-    split=> //=.
-    by rewrite /indist /= (negbTE hi_callr1) (negbTE hi_callr2).
+    try rewrite !flows_join !negb_and ?hi_callr1 ?hi_callr2 orbT //.
+    rewrite /indist_stacks /= !flows_join !negb_and hi_callr1 hi_callr2 /=.
+    exact: (indist_stacks_strengthen ind_stk).
   move=> hi_calld1 hi_calld2.
   apply: SIndistHigh=> //=;
   try rewrite flows_join negb_and ?hi_calld1 ?hi_calld2 //.
   rewrite /indist_stacks /=.
   case/indistP: (ind_caller)=> //= [lo_callr _ [<- <-]|hi_callr1 hi_callr2].
-    rewrite lo_callr /=.
-    exact: (indist_stacks_strengthen ind_stk).
-  by rewrite hi_callr1 hi_callr2 /=; split.
+    rewrite !flows_join negb_and lo_callr h_pc /=; split=> //.
+    split=> //=.
+    by rewrite indist_refl.
+  rewrite !flows_join !negb_and hi_callr1 hi_callr2 /=.
+  exact: (indist_stacks_strengthen ind_stk).
 case: ifP=> [/eqP pc_return|_] //=.
 (* Return *)
 case: stk1 ind_stk=> [|cf1 stk1] //= ind_stk.
@@ -372,6 +378,108 @@ case upd_reg2: updm=> [reg2'|] //=.
 rewrite implybT; split=> //=.
 apply: SIndistHigh=> //=.
 by apply: indist_stacks_strengthen.
+Qed.
+
+Lemma high_high_step rs st1 st2 st1' oe1 :
+  s_indist rs st1 st2 ->
+  ~~ (taga (pc st1) ⊑ rs) ->
+  ~~ (taga (pc st1') ⊑ rs) ->
+  step st1 = Some (st1', oe1) ->
+  s_indist rs st1' st2
+  /\ if oe1 is Some o then ~~ (taga o ⊑ rs) else True.
+Proof.
+move=> h_indist h_low1 h_low1'; case: h_indist; first by rewrite (negbTE h_low1).
+rewrite (lock step).
+case: st1 {h_low1} => mem1 reg1 [pc1 rl1] stk1 /= h_rl1.
+case: st2=> mem2 reg2 [pc2 rl2] stk2 /= h_rl2 ind_m ind_stk ev.
+move: ev h_low1'; rewrite -lock /=.
+case get_pc1: (mem1 pc1) => [[i1|a1]|] //=; rewrite /indist ?botP //=.
+  (* Instructions *)
+  case: i1 get_pc1=> //=.
+  - (* Nop *)
+    move=> get_pc1 [<- <-] {st1' oe1} /= _.
+    by split=> //; apply: SIndistHigh.
+  - (* Const *)
+    move=> k r get_pc1.
+    case upd1: updm=> [reg1'|] //= [<- <-] {st1' oe1} _.
+    by split=> //; apply: SIndistHigh.
+  - (* Mov *)
+    move=> r1 r2 get_pc1.
+    case get1: (reg1 r1) => [v1|] //=.
+    case upd1: (updm reg1) => [reg1'|] //= [<- <-] {st1' oe1} _.
+    by split=> //; apply: SIndistHigh.
+  - (* Binop *)
+    move=> b r1 r2 r3 get_pc1.
+    case get11: (reg1 r1) => [[v11 l11]|] //=.
+    case get21: (reg1 r2) => [[v21 l21]|] //=.
+    case upd1: updm=> [reg1'|] //= [<- <-] {st1' oe1} _.
+    by split=> //; apply: SIndistHigh.
+  - (* Load *)
+    move=> r1 r2 get_pc1.
+    case get_r1: (reg1 r1) => [[v1 l1]|] //=.
+    case get_m1: (mem1 v1) => [[|[v1' l1']]|] //=.
+    case upd1: updm => [reg1'|] //= [<- <-] {st1' oe1} _.
+    by split; first apply: SIndistHigh.
+  - (* Store *)
+    move=> rptr rv get_pc1.
+    case get_rptr1: (reg1 rptr) => [[ptr1 lptr1]|] //=.
+    case get_rv1: (reg1 rv) => [[v1 lv1]|] //=.
+    case getm_ptr1: (mem1 ptr1)=> [[|[vold1 lvold1]]|] //=.
+    case: ifP=> //= check1.
+    case upd1: updm => [mem1'|] //= [<- <-] {st1' oe1} _.
+    split; [apply: SIndistHigh|]=> //=.
+    move=> ptr; move: (ind_m ptr).
+    rewrite (getm_upd upd1).
+    have [-> {ptr}|//] := ptr =P ptr1.
+    rewrite getm_ptr1.
+    case getm_ptr2: (mem2 ptr1) => [[|[vold2 lvold2]]|]; rewrite /indist //=.
+      by rewrite botP orbT.
+    rewrite !flows_join (negbTE h_rl1) !andbF /=.
+    have [low_old|] //= := boolP (lvold2 ⊑ rs).
+    rewrite orbT /= => /eqP [e1 e2].
+    rewrite -{}e2 in low_old.
+    move: (flows_trans check1 low_old).
+    by rewrite flows_join (negbTE h_rl1) andbF.
+  - (* Jump *)
+    move=> r get_pc1.
+    case get_r1: (reg1 r) => [[v1 l1]|] //= [<- <-] {st1' oe1} _.
+    split; [apply: SIndistHigh|]=> //=.
+    by rewrite flows_join negb_and (negbTE h_rl1) orbT.
+  - (* Bnz *)
+    move=> r i get_pc1.
+    case get_r1: (reg1 r) => [[v1 l1]|] //= [<- <-] {st1' oe1} _.
+    split; [apply: SIndistHigh|]=> //=.
+    by rewrite flows_join negb_and (negbTE h_rl1) orbT.
+  (* Jal *)
+  move=> r get_pc1.
+  case get_r1: (reg1 r) => [[v1 l1]|] //=.
+  case upd1: updm=> [reg1'|] //= [<- <-] {st1' oe1} _.
+  split; [apply: SIndistHigh|]=> //=.
+  by rewrite flows_join negb_and (negbTE h_rl1) orbT.
+(* System services *)
+case: ifP => [/eqP pc_output|pc_n_output].
+  (* Output *)
+  case get_ra1: (reg1 ra) => [[raddr1 lraddr1]|] //=.
+  case get_arg11: (reg1 r_arg1) => [[out1 lout1]|] //= [<- <-] {st1' oe1}.
+  move=> /= h_rl1'.
+  rewrite flows_join negb_and (negbTE h_rl1').
+  by split; first apply: SIndistHigh.
+case: ifP=> [/eqP pc_call|pc_n_call] //=.
+  (* Call *)
+  case get_ra1: (reg1 ra) => [[caller1 lcaller1]|] //=.
+  case get_arg11: (reg1 r_arg1) => [[called1 lcalled1]|] //=.
+  case get_arg21: (reg1 r_arg2) => [[lab1 llab1]|] //= [<- <-] {st1' oe1}.
+  move=> /= h_call.
+  split; [apply: SIndistHigh|]=> //=.
+  by rewrite /indist_stacks /= !flows_join !negb_and h_rl1 orbT.
+case: ifP=> [/eqP pc_return|_] //=.
+(* Return *)
+case: stk1 ind_stk=> [|cf1 stk1] //= ind_stk.
+case get_ret1: (reg1 r_ret) => [[r1 lr1]|] //=.
+case: ifP=> //= check1.
+case upd_reg1: updm=> [reg1'|] //= [<- <-] {st1' oe1} /= h_rl1'.
+split; [apply: SIndistHigh|]=> //=.
+by move: ind_stk; rewrite /indist_stacks /= h_rl1'.
 Qed.
 
 End Noninterference.
