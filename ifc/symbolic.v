@@ -118,32 +118,9 @@ Local Notation state := (@Symbolic.state mt sym_ifc).
 
 Implicit Types st : state.
 
-Definition output_fun st : option state :=
-  do! raddr <- regs st ra;
-  do! out   <- regs st r_arg1;
-  let r_pc  := taga raddr in
-  let r_out := taga out in
-  Some (State (mem st) (regs st) (vala raddr)@(taga raddr)
-              {| outputs := rcons (outputs (internal st))
-                                  (vala out)@(r_pc ⊔ r_out);
-                 call_stack := call_stack (internal st)
-              |}).
-
-Definition call_fun st : option state :=
-  do! caller_pc <- regs st ra;
-  (* We need to adjust the tag on the caller pc because it may be lower than the
-     one on the current pc; for example, if we jump to call via BNZ instead of
-     JAL. *)
-  let caller_pc := (vala caller_pc)@(taga caller_pc ⊔ taga (pc st)) in
-  do! called_pc <- regs st r_arg1;
-  do! ret_lab   <- regs st r_arg2;
-  Some (State (mem st) (regs st)
-              (vala called_pc)@(taga called_pc ⊔ taga caller_pc)
-              {| outputs := outputs (internal st);
-                 call_stack :=
-                   CallFrame caller_pc (taga ret_lab) (regs st)
-                   :: call_stack (internal st)
-              |}).
+(* Note that we often need to adjust the tag on the caller pc because it may be
+   lower than the one on the current pc; for example, if we jump to the service
+   via BNZ instead of JAL. *)
 
 Definition return_fun st : option state :=
   if call_stack (internal st) is cf :: stk then
@@ -156,11 +133,36 @@ Definition return_fun st : option state :=
     else None
   else None.
 
+Definition call_fun st : option state :=
+  do! caller_pc <- regs st ra;
+  let caller_pc := (vala caller_pc)@(taga caller_pc ⊔ taga (pc st)) in
+  do! called_pc <- regs st r_arg1;
+  do! ret_lab   <- regs st r_arg2;
+  Some (State (mem st) (regs st)
+              (vala called_pc)@(taga called_pc ⊔ taga caller_pc)
+              {| outputs := outputs (internal st);
+                 call_stack :=
+                   CallFrame caller_pc (taga ret_lab) (regs st)
+                   :: call_stack (internal st)
+              |}).
+
+Definition output_fun st : option state :=
+  do! raddr <- regs st ra;
+  let r_pc  := taga raddr ⊔ taga (pc st) in
+  let raddr := (vala raddr)@r_pc in
+  do! out   <- regs st r_arg1;
+  let r_out := taga out in
+  Some (State (mem st) (regs st) raddr
+              {| outputs := rcons (outputs (internal st))
+                                  (vala out)@(r_pc ⊔ r_out);
+                 call_stack := call_stack (internal st)
+              |}).
+
 Definition ifc_syscalls : syscall_table mt :=
   [partmap
-     (output_addr, (Syscall tt output_fun));
+     (return_addr, (Syscall tt return_fun));
      (call_addr, (Syscall tt call_fun));
-     (return_addr, (Syscall tt return_fun))
+     (output_addr, (Syscall tt output_fun))
   ].
 
 Local Notation step  := (@Symbolic.step mt mops sym_ifc ifc_syscalls).

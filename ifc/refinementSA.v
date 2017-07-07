@@ -156,11 +156,13 @@ case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[i|a]|] //=.
 move=> _ /=.
 rewrite -lock /= aget_pc /ifc_syscalls mkpartmapE /= /Symbolic.run_syscall.
 case: ifP=> _ //=.
-  (* Output *)
-  rewrite /output_fun /=.
-  case get_ra: (regs ra) => [raddr|] //=.
-  case get_arg: (regs r_arg1) => [out|] //= [<-] {sst'} /=.
-  by rewrite cats1; split.
+  (* Return *)
+  rewrite /return_fun /=.
+  case: stk=> [|cf stk'] //=.
+  case get_ret: (regs r_ret) => [retv|] //=.
+  case: ifP=> _ //=.
+  case upd_regs: updm=> [rs'|] //= [<-] {sst'} /=.
+  by rewrite cats0; split.
 case: ifP=> _ //=.
   (* Call *)
   rewrite /call_fun /=.
@@ -169,12 +171,11 @@ case: ifP=> _ //=.
   case get_lab: (regs r_arg2) => [ret_lab|] //= [<-] {sst'} /=.
   by rewrite cats0; split.
 case: ifP=> _ //=.
-rewrite /return_fun /=.
-case: stk=> [|cf stk'] //=.
-case get_ret: (regs r_ret) => [retv|] //=.
-case: ifP=> _ //=.
-case upd_regs: updm=> [rs'|] //= [<-] {sst'} /=.
-by rewrite cats0; split.
+  (* Output *)
+  rewrite /output_fun /=.
+  case get_ra: (regs ra) => [raddr|] //=.
+  case get_arg: (regs r_arg1) => [out|] //= [<-] {sst'} /=.
+  by rewrite cats1; split.
 Qed.
 
 End Refinement.

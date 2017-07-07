@@ -91,24 +91,10 @@ Definition step s : option (state * option atom):=
       | Halt => None
       end
     else None
-  else if pc == output_addr then
-    do! raddr <- regs ra;
-    do! out   <- regs r_arg1;
-    let r_pc  := taga raddr in
-    let r_out := taga out in
-    Some (State mem regs raddr stk,
-          Some (vala out)@(r_pc ⊔ r_out))
-  else if pc == call_addr then
-    do! caller_pc <- regs ra;
-    (* We need to adjust the tag on the caller pc because it may be lower than the
-       one on the current pc; for example, if we jump to call via BNZ instead of
-       JAL. *)
-    let caller_pc := (vala caller_pc)@(taga caller_pc ⊔ lpc) in
-    do! called_pc <- regs r_arg1;
-    do! ret_lab   <- regs r_arg2;
-    Some (State mem regs
-                (vala called_pc)@(taga called_pc ⊔ taga caller_pc)
-                (CallFrame caller_pc (taga ret_lab) regs :: stk), None)
+
+  (* Note that we often need to adjust the tag on the caller pc because it may be
+     lower than the one on the current pc; for example, if we jump to the service
+     via BNZ instead of JAL. *)
   else if pc == return_addr then
     if stk is cf :: stk' then
       do! retv <- regs r_ret;
@@ -117,6 +103,22 @@ Definition step s : option (state * option atom):=
         Some (State mem rs' (cf_pc cf) stk', None)
       else None
     else None
+  else if pc == call_addr then
+    do! caller_pc <- regs ra;
+    let caller_pc := (vala caller_pc)@(taga caller_pc ⊔ lpc) in
+    do! called_pc <- regs r_arg1;
+    do! ret_lab   <- regs r_arg2;
+    Some (State mem regs
+                (vala called_pc)@(taga called_pc ⊔ taga caller_pc)
+                (CallFrame caller_pc (taga ret_lab) regs :: stk), None)
+  else if pc == output_addr then
+    do! raddr <- regs ra;
+    let r_pc  := taga raddr ⊔ lpc in
+    let raddr := (vala raddr)@r_pc in
+    do! out   <- regs r_arg1;
+    let r_out := taga out in
+    Some (State mem regs raddr stk,
+          Some (vala out)@(r_pc ⊔ r_out))
   else None.
 
 Fixpoint stepn n s :=
