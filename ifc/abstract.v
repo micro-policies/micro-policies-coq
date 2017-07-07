@@ -124,10 +124,8 @@ Definition step s : option (state * option atom):=
 Fixpoint stepn n s :=
   if n is S n' then
     if step s is Some (s', oe) then
-      if stepn n' s' is Some (s'', t) then
-        Some (s'', t ++ seq_of_opt oe)
-      else None
-    else None
-  else Some (s, [::]).
+      seq_of_opt oe ++ stepn n' s'
+    else [::]
+  else [::].
 
 End Abstract.

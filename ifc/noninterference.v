@@ -40,6 +40,16 @@ Definition indist_call_frame rs (cf1 cf2 : call_frame mt L) :=
       indist id rs (cf_lab cf1) (cf_lab cf2) &
       pointwise (indist taga rs) (cf_regs cf1) (cf_regs cf2)].
 
+Lemma indist_call_frame_sym rs cf1 cf2 :
+  indist_call_frame rs cf1 cf2 ->
+  indist_call_frame rs cf2 cf1.
+Proof.
+  case; rewrite indist_sym [indist id _ _ _]indist_sym => ?? ind_regs.
+  split=> //.
+  apply: pointwise_sym ind_regs.
+  by move=> ??; rewrite indist_sym.
+Qed.
+
 Definition indist_stacks high rs (stk1 stk2 : seq (call_frame mt L)) :=
   nosimpl (if high then
     indist_seq (indist_call_frame rs)
@@ -47,6 +57,15 @@ Definition indist_stacks high rs (stk1 stk2 : seq (call_frame mt L)) :=
                (reap (fun cf => ~~ (taga (cf_pc cf) ⊑ rs)) stk2)
   else
     indist_seq (indist_call_frame rs) stk1 stk2).
+
+Lemma indist_stacks_sym high rs stk1 stk2 :
+  indist_stacks high rs stk1 stk2 ->
+  indist_stacks high rs stk2 stk1.
+Proof.
+rewrite /indist_stacks; case: high;
+apply: indist_seq_sym;
+exact: indist_call_frame_sym.
+Qed.
 
 Lemma indist_stacks_strengthen rs stk1 stk2 :
   indist_stacks false rs stk1 stk2 ->
@@ -79,6 +98,23 @@ CoInductive s_indist rs st1 st2 : Prop :=
                                       else ⊥) rs)
                            (mem st1) (mem st2)
               & indist_stacks true rs (call_stack st1) (call_stack st2).
+
+Lemma s_indist_sym rs st1 st2 :
+  s_indist rs st1 st2 -> s_indist rs st2 st1.
+Proof.
+case.
+  move=> lo epc i_r i_m i_stk.
+  apply: SIndistLow.
+  - by rewrite -epc.
+  - exact/esym.
+  - by apply: pointwise_sym=> // ??; rewrite indist_sym.
+  - by apply: pointwise_sym=> // ??; rewrite indist_sym.
+  exact: indist_stacks_sym.
+move=> hi1 hi2 i_m i_stk.
+apply: SIndistHigh=> //.
+  by apply: pointwise_sym=> // ??; rewrite indist_sym.
+exact: indist_stacks_sym.
+Qed.
 
 Ltac match_upd t1 :=
   match goal with
@@ -522,15 +558,14 @@ Lemma high_low_step rs st1 st2 st1' st2' oe1 oe2 :
   ~~ (taga (pc st1) ⊑ rs) ->
   taga (pc st1') ⊑ rs ->
   step st1 = Some (st1', oe1) ->
-  ~~ (taga (pc st2) ⊑ rs) ->
   taga (pc st2') ⊑ rs ->
   step st2 = Some (st2', oe2) ->
   [/\ s_indist rs st1' st2',
       oe1 = None & oe2 = None].
 Proof.
-move=> ind hi1 lo1 step1 hi2 lo2 step2.
+move=> ind hi1 lo1 step1 lo2 step2.
 case: ind; first by rewrite (negbTE hi1).
-move=> _ _.
+move=> _ hi2.
 case: (high_low_is_return hi1 lo1 step1) => e_pc1 get_pc1 _.
 case: (high_low_is_return hi2 lo2 step2) => e_pc2 get_pc2 _.
 case: st1 hi1 e_pc1 get_pc1 step1=> mem1 reg1 [pc1 rl1] stk1 /= h_rl1 -> ->.
@@ -564,6 +599,71 @@ move=> _ ind_reg ind_stk.
 split=> //; apply: SIndistLow=> //=.
 apply: refine_upd_pointwise2 upd1 upd2=> //.
 by rewrite /indist /= (negbTE hig1) (negbTE hig2).
+Qed.
+
+Theorem noninterference rs st1 st2 n1 n2 :
+  s_indist rs st1 st2 ->
+  indist_seq_prefix eq
+                    [seq x <- stepn n1 st1 | taga x ⊑ rs]
+                    [seq x <- stepn n2 st2 | taga x ⊑ rs].
+Proof.
+move: {2}(n1 + n2) (leqnn (n1 + n2)) => n en.
+elim: n st1 st2 n1 n2 en => [|n IH] st1 st2 n1 n2.
+  rewrite leqn0 addn_eq0.
+  by case/andP=> [/eqP -> /eqP ->].
+case: n1=> [//=|n1].
+case step1: (step st1) => [[st1' oe1]|]; last by rewrite /= step1.
+case: n2=> [|n2]; first by case: filter.
+case step2: (step st2) => [[st2' oe2]|]; last first.
+  by rewrite /= step2; case: filter.
+have [lo1|hi1] := boolP (taga (pc st1) ⊑ rs).
+  move=> /= en ind.
+  move: (low_step ind lo1 step1); rewrite step1 step2.
+  case=> [ind' ind_oe].
+  rewrite !filter_cat.
+  apply: indist_seq_cat_prefix=> //.
+    case: oe1 oe2 ind_oe {step1 step2} => [o1|] [o2|] //=;
+    rewrite /indist ?botP ?orbT //=.
+    have [check|check]:= boolP (_ || _).
+      move=> /eqP [eo].
+      move: o1 eo check => o <- {o2}.
+      rewrite orbb => check.
+      by case: ifP.
+    by move: check; rewrite negb_or => /andP [/negbTE -> /negbTE ->].
+  apply: IH=> //.
+  move: en; rewrite addSn ltnS; apply: leq_trans.
+  by rewrite addnS leqnSn.
+have [lo1'|hi1'] := boolP (taga (pc st1') ⊑ rs).
+  have [lo2'|hi2'] := boolP (taga (pc st2') ⊑ rs).
+    move=> en ind /=; rewrite step1 step2.
+    case: (high_low_step ind hi1 lo1' step1 lo2' step2)
+          => {step1 step2} [ind' -> ->] //=.
+    apply: IH=> //.
+    move: en; rewrite addSn ltnS; apply: leq_trans.
+    by rewrite addnS leqnSn.
+  move=> en ind.
+  have hi2: ~~ (taga (pc st2) ⊑ rs).
+    by case: ind; first rewrite (negbTE hi1).
+  move/s_indist_sym in ind.
+  move: (high_high_step ind hi2 hi2' step2).
+  rewrite {1}(lock stepn) /= step2.
+  case: oe2 {step2} => [o|] //=.
+    case=> [ind' /negbTE ->].
+    apply/indist_seq_prefix_sym=> //.
+    rewrite -lock; apply: IH=> //.
+    by move: en; rewrite addnC addSn ltnS.
+  case=> [ind' _].
+  apply/indist_seq_prefix_sym=> //.
+  rewrite -lock; apply: IH=> //.
+  by move: en; rewrite addnC addSn ltnS.
+move=> en ind.
+move: (high_high_step ind hi1 hi1' step1).
+rewrite {2}(lock stepn) /= step1.
+case: oe1 {step1} => [o|] //=.
+  case=> [ind' /negbTE ->].
+  by rewrite -lock; apply: IH=> //.
+case=> [ind' _].
+by rewrite -lock; apply: IH=> //.
 Qed.
 
 End Noninterference.

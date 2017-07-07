@@ -80,9 +80,57 @@ Qed.
 
 End Indist.
 
-Fixpoint indist_seq T (R : T -> T -> Prop) (s1 s2 : seq T) :=
+Section IndistSeq.
+
+Variables (T : Type) (R : T -> T -> Prop).
+
+Fixpoint indist_seq (s1 s2 : seq T) :=
   match s1, s2 with
-  | x1 :: s1', x2 :: s2' => R x1 x2 /\ indist_seq R s1' s2'
+  | x1 :: s1', x2 :: s2' => R x1 x2 /\ indist_seq s1' s2'
   | [::], [::] => True
   | _, _ => False
   end.
+
+Lemma indist_seq_sym :
+  (forall x y, R x y -> R y x) ->
+  (forall s1 s2, indist_seq s1 s2 -> indist_seq s2 s1).
+Proof.
+move=> sym.
+elim=> [|x1 s1 IH] [|x2 s2] //= [/sym ??].
+split=> //; exact: IH.
+Qed.
+
+Fixpoint indist_seq_prefix (s1 s2 : seq T) :=
+  match s1, s2 with
+  | x1 :: s1', x2 :: s2' => R x1 x2 /\ indist_seq_prefix s1' s2'
+  | _, _ => True
+  end.
+
+Lemma indist_seq_prefix_sym :
+  (forall x y, R x y -> R y x) ->
+  (forall s1 s2, indist_seq_prefix s1 s2 -> indist_seq_prefix s2 s1).
+Proof.
+move=> sym.
+elim=> [|x1 s1 IH] [|x2 s2] //= [/sym ??].
+split=> //; exact: IH.
+Qed.
+
+Lemma indist_seq_cat s1 s1' s2 s2' :
+  indist_seq s1 s2 ->
+  indist_seq s1' s2' ->
+  indist_seq (s1 ++ s1') (s2 ++ s2').
+Proof.
+elim: s1 s2 => [|x1 s1 IH] [|x2 s2] //= [hx hs hs'].
+by split; eauto.
+Qed.
+
+Lemma indist_seq_cat_prefix s1 s1' s2 s2' :
+  indist_seq s1 s2 ->
+  indist_seq_prefix s1' s2' ->
+  indist_seq_prefix (s1 ++ s1') (s2 ++ s2').
+Proof.
+elim: s1 s2 => [|x1 s1 IH] [|x2 s2] //= [hx hs hs'].
+by split; eauto.
+Qed.
+
+End IndistSeq.

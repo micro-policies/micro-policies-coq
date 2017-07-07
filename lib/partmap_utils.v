@@ -178,3 +178,13 @@ by rewrite E; case: (f v').
 Qed.
 
 End General.
+
+Lemma pointwise_sym (T : ordType) S (R : S -> S -> Prop) :
+  (forall x y, R x y -> R y x) ->
+  (forall m1 m2 : {partmap T -> S}, pointwise R m1 m2 -> pointwise R m2 m1).
+Proof.
+move=> R_sym m1 m2 m1m2 k.
+move: (m1m2 k).
+case: (m1 k) (m2 k) => [v1|] [v2|] //=.
+exact: R_sym.
+Qed.
