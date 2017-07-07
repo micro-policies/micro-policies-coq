@@ -16,17 +16,23 @@ Import DoNotation.
 Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
-Variable r_arg : reg mt.
+Variable r_arg1 : reg mt.
+Variable r_arg2 : reg mt.
+Variable r_ret : reg mt.
 Variable output_addr : mword mt.
+Variable call_addr : mword mt.
+Variable return_addr : mword mt.
 
 Local Notation word := (mword mt).
 Local Notation d_atom := (atom word L).
 
 Local Notation sstate := (@Symbolic.state mt (sym_ifc L mt)).
 Local Notation sstep :=
-  (@stepf _ _ _ (@ifc_syscalls L mt mops r_arg output_addr)).
+  (@stepf _ _ _ (@ifc_syscalls L mt mops r_arg1 r_arg2 r_ret
+                               output_addr call_addr return_addr)).
 Local Notation astate := (ifc.abstract.state L mt).
-Local Notation astep := (@step L mt mops r_arg output_addr).
+Local Notation astep := (@step L mt mops r_arg1 r_arg2 r_ret
+                               output_addr call_addr return_addr).
 
 Implicit Types (sst : sstate) (ast : astate).
 
@@ -150,11 +156,25 @@ case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[i|a]|] //=.
 move=> _ /=.
 rewrite -lock /= aget_pc /ifc_syscalls mkpartmapE /= /Symbolic.run_syscall.
 case: ifP=> _ //=.
-(* Output *)
-rewrite /output_fun /=.
-case get_ra: (regs ra) => [raddr|] //=.
-case get_arg: (regs r_arg) => [out|] //= [<-] {sst'} /=.
-by rewrite cats1; split.
+  (* Output *)
+  rewrite /output_fun /=.
+  case get_ra: (regs ra) => [raddr|] //=.
+  case get_arg: (regs r_arg1) => [out|] //= [<-] {sst'} /=.
+  by rewrite cats1; split.
+case: ifP=> _ //=.
+  (* Call *)
+  rewrite /call_fun /=.
+  case get_caller: (regs ra) => [caller_pc|] //=.
+  case get_called: (regs r_arg1) => [called_pc|] //=.
+  case get_lab: (regs r_arg2) => [ret_lab|] //= [<-] {sst'} /=.
+  by rewrite cats0; split.
+case: ifP=> _ //=.
+rewrite /return_fun /=.
+case: stk=> [|cf stk'] //=.
+case get_ret: (regs r_ret) => [retv|] //=.
+case: ifP=> _ //=.
+case upd_regs: updm=> [rs'|] //= [<-] {sst'} /=.
+by rewrite cats0; split.
 Qed.
 
 End Refinement.
