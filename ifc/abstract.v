@@ -121,10 +121,10 @@ Definition step s : option (state * option atom):=
           Some (vala out)@(r_pc ⊔ r_out))
   else None.
 
-Fixpoint stepn n s :=
+Fixpoint trace n s :=
   if n is S n' then
     if step s is Some (s', oe) then
-      seq_of_opt oe ++ stepn n' s'
+      seq_of_opt oe ++ trace n' s'
     else [::]
   else [::].
 

@@ -133,4 +133,12 @@ elim: s1 s2 => [|x1 s1 IH] [|x2 s2] //= [hx hs hs'].
 by split; eauto.
 Qed.
 
+Lemma indist_seq_prefix_sub s1 s1' s2 s2' :
+  indist_seq_prefix (s1 ++ s1') (s2 ++ s2') ->
+  indist_seq_prefix s1 s2.
+Proof.
+elim: s1 s2 => [|x1 s1 IH] [|x2 s2] //= [hx hs].
+by eauto.
+Qed.
+
 End IndistSeq.

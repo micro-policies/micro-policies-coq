@@ -30,10 +30,16 @@ Local Notation sstate := (@Symbolic.state mt (sym_ifc L mt)).
 Local Notation sstep :=
   (@stepf _ _ _ (@ifc_syscalls L mt mops r_arg1 r_arg2 r_ret
                                output_addr call_addr return_addr)).
+Local Notation strace :=
+  (@symbolic.trace _ _ _ r_arg1 r_arg2 r_ret
+                   output_addr call_addr return_addr).
 Local Notation astate := (ifc.abstract.state L mt).
 Local Notation astep := (@step L mt mops r_arg1 r_arg2 r_ret
                                output_addr call_addr return_addr).
-
+Local Notation atrace :=
+  (@abstract.trace _ _ _
+                   r_arg1 r_arg2 r_ret
+                   output_addr call_addr return_addr).
 Implicit Types (sst : sstate) (ast : astate).
 
 Local Open Scope label_scope.
@@ -60,7 +66,7 @@ Hint Unfold Symbolic.next_state_reg.
 Hint Unfold Symbolic.next_state_reg_and_pc.
 Hint Unfold Symbolic.next_state.
 
-Lemma refinement sst sst' ast :
+Lemma simulation sst sst' ast :
   refine_state sst ast ->
   sstep sst = Some sst' ->
   match astep ast with
@@ -176,6 +182,39 @@ case: ifP=> _ //=.
   case get_ra: (regs ra) => [raddr|] //=.
   case get_arg: (regs r_arg1) => [out|] //= [<-] {sst'} /=.
   by rewrite cats1; split.
+Qed.
+
+Lemma refinement n sst ast :
+  refine_state sst ast ->
+  exists t, atrace n ast = strace n sst ++ t.
+Proof.
+rewrite /strace.
+set f := fun st' => odflt st' (sstep st').
+elim: n sst ast=> [|n IH] sst ast ref.
+  by exists [::]; rewrite drop_size.
+rewrite iterSr {2}/f.
+case sev: (sstep sst) => [sst' /=|].
+  have := simulation ref sev.
+  case aev: (astep ast) => [[ast' oe]|] //= [ref' eo].
+  have [t et] := IH _ _ ref'.
+  rewrite eo in et; rewrite et.
+  have [t' et']:
+    exists t', outputs (Symbolic.internal (iter n f sst'))
+               = outputs (Symbolic.internal sst') ++ t'.
+    elim: n sst' {sev ref' eo et IH sst ref} => [|n IH] sst.
+      by exists [::]; rewrite /= cats0.
+    rewrite iterSr {2}/f.
+    case sev: (sstep sst) => [sst'|] //=.
+    move/stepP/step_event_cat: sev => [t' et'].
+    have [t'' et''] := IH sst'.
+    by rewrite et'' et' -catA; eauto.
+  rewrite et' eo drop_size_cat //.
+  exists t.
+  by rewrite -catA drop_size_cat // catA.
+exists (atrace n.+1 ast).
+rewrite /= (_ : iter n f sst = sst) 1?drop_size //.
+elim: n {IH} => [//|n IH].
+by rewrite iterSr {2}/f sev.
 Qed.
 
 End Refinement.

@@ -30,7 +30,7 @@ Variable return_addr : word.
 Local Notation state := (state L mt).
 Local Notation step := (@step L mt mops r_arg1 r_arg2 r_ret
                               output_addr call_addr return_addr).
-Local Notation stepn := (@stepn L mt mops r_arg1 r_arg2 r_ret
+Local Notation trace := (@trace L mt mops r_arg1 r_arg2 r_ret
                                 output_addr call_addr return_addr).
 
 Implicit Type st : state.
@@ -604,8 +604,8 @@ Qed.
 Theorem noninterference rs st1 st2 n1 n2 :
   s_indist rs st1 st2 ->
   indist_seq_prefix eq
-                    [seq x <- stepn n1 st1 | taga x ⊑ rs]
-                    [seq x <- stepn n2 st2 | taga x ⊑ rs].
+                    [seq x <- trace n1 st1 | taga x ⊑ rs]
+                    [seq x <- trace n2 st2 | taga x ⊑ rs].
 Proof.
 move: {2}(n1 + n2) (leqnn (n1 + n2)) => n en.
 elim: n st1 st2 n1 n2 en => [|n IH] st1 st2 n1 n2.
@@ -646,7 +646,7 @@ have [lo1'|hi1'] := boolP (taga (pc st1') ⊑ rs).
     by case: ind; first rewrite (negbTE hi1).
   move/s_indist_sym in ind.
   move: (high_high_step ind hi2 hi2' step2).
-  rewrite {1}(lock stepn) /= step2.
+  rewrite {1}(lock trace) /= step2.
   case: oe2 {step2} => [o|] //=.
     case=> [ind' /negbTE ->].
     apply/indist_seq_prefix_sym=> //.
@@ -658,7 +658,7 @@ have [lo1'|hi1'] := boolP (taga (pc st1') ⊑ rs).
   by move: en; rewrite addnC addSn ltnS.
 move=> en ind.
 move: (high_high_step ind hi1 hi1' step1).
-rewrite {2}(lock stepn) /= step1.
+rewrite {2}(lock trace) /= step1.
 case: oe1 {step1} => [o|] //=.
   case=> [ind' /negbTE ->].
   by rewrite -lock; apply: IH=> //.

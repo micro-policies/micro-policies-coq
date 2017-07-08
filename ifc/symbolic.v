@@ -165,6 +165,10 @@ Definition ifc_syscalls : syscall_table mt :=
      (output_addr, (Syscall tt output_fun))
   ].
 
+Definition trace n st :=
+  let st' := iter n (fun st' => odflt st' (stepf ifc_syscalls st')) st in
+  drop (size (outputs (internal st))) (outputs (internal st')).
+
 Local Notation step  := (@Symbolic.step mt mops sym_ifc ifc_syscalls).
 Local Notation ratom := (atom (mword mt) (tag_type ifc_tags R)).
 Local Notation matom := (atom (mword mt) (tag_type ifc_tags M)).
@@ -174,5 +178,31 @@ Hint Unfold next_state_pc.
 Hint Unfold next_state_reg.
 Hint Unfold next_state_reg_and_pc.
 Hint Unfold next_state.
+
+Ltac step_event_cat :=
+  simpl in *; repeat autounfold;
+  intros; subst; simpl in *;
+  repeat match goal with
+  | t : (_ * _)%type |- _ => destruct t; simpl in *
+  end;
+  match_inv; simpl; exists [::]; rewrite cats0.
+
+Lemma step_event_cat s s' :
+  step s s' ->
+  exists t, outputs (internal s') = outputs (internal s) ++ t.
+Proof.
+  case; try by step_event_cat.
+  move=> /= m rs pc sc rl [t stk] -> {s} _.
+  rewrite /ifc_syscalls /run_syscall mkpartmapE //=.
+  case: ifP=> [_ [<-] {sc}|_] /=.
+    rewrite /return_fun /= => e; match_inv=> /=.
+    by exists [::]; rewrite cats0.
+  case: ifP=> [_ [<-] {sc}|_] /=.
+    rewrite /call_fun /= => e; match_inv=> /=.
+    by exists [::]; rewrite cats0.
+  case: ifP=> [_ [<-] {sc}|_] //=.
+  rewrite /output_fun /= => e; match_inv=> /=.
+  by rewrite -cats1; eexists; eauto.
+Qed.
 
 End Dev.
