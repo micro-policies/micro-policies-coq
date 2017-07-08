@@ -46,7 +46,7 @@ Local Open Scope label_scope.
 
 Definition refine_m_atom (x : atom word (mem_tag L)) (y : instr mt + d_atom) :=
   match x, y with
-  | wx@MemInstr, inl i => decode_instr wx = Some i
+  | wx@MemInstr, inl i => odflt (Halt _) (decode_instr wx) = i
   | wx@(MemData rl), inr a => wx@rl = a
   | _, _ => False
   end.
@@ -60,6 +60,23 @@ Inductive refine_state sst ast : Prop :=
               &  taga (Symbolic.pc sst) = taga (ifc.abstract.pc ast)
               &  ifc.symbolic.call_stack (Symbolic.internal sst) =
                  ifc.abstract.call_stack ast.
+
+Definition abs_of_sym (sst : sstate) :=
+  abstract.State (mapm (fun x =>
+                          if taga x is MemData rl then
+                            inr (vala x)@rl
+                          else inl (odflt (Halt _) (decode_instr (vala x))))
+                       (Symbolic.mem sst))
+                 (Symbolic.regs sst)
+                 (Symbolic.pc sst)
+                 (symbolic.call_stack (Symbolic.internal sst)).
+
+Lemma abs_of_symP sst : refine_state sst (abs_of_sym sst).
+Proof.
+rewrite /abs_of_sym; constructor=> //.
+move=> ptr; rewrite mapmE /=.
+by case: (Symbolic.mem sst ptr) => [[v [|rl]]|] //=.
+Qed.
 
 Hint Unfold Symbolic.next_state_pc.
 Hint Unfold Symbolic.next_state_reg.
@@ -87,7 +104,7 @@ rewrite -lock /=.
 move: (ref_m pc).
 case: (sm pc) => [[si [|sti]]|]; case aget_pc: (am pc) => [[i|a]|] //=.
 - (* Instruction *)
-  move=> -> /=.
+  case: (decode_instr si) => [i'|] //= -> {i'}.
   case: i aget_pc => //=; repeat autounfold=> /=.
   + (* Nop *)
     move=> aget_pc [<-] {sst'}.

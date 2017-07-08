@@ -64,6 +64,7 @@ ifc/symbolic.v
 ifc/abstract.v
 ifc/refinementSA.v
 ifc/noninterference.v
+ifc/noninterferenceS.v
 ifc/labels.v
 ifc/common.v
 
