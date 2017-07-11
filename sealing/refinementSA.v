@@ -1,9 +1,8 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype seq.
 From CoqUtils Require Import ord word fset partmap nominal.
-Require Import lib.utils.
-Require Import lib.partmap_utils.
-Require Import common.types symbolic.symbolic.
-Require Import sealing.classes sealing.symbolic sealing.abstract.
+From MicroPolicies
+Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic
+               sealing.classes sealing.symbolic sealing.abstract.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -112,10 +111,10 @@ Proof.
 Qed.
 
 Definition refine_upd_reg (aregs : Abs.registers mt) (sregs : Sym.registers mt) :=
-  @refine_upd_pointwise _ _ _ refine_val_atom aregs sregs.
+  @refine_upd_pointwiseR _ _ _ refine_val_atom aregs sregs.
 
 Definition refine_upd_mem (amem : Abs.memory mt) (smem : Sym.memory mt) :=
-  @refine_upd_pointwise _ _ _ refine_val_atom amem smem.
+  @refine_upd_pointwiseR _ _ _ refine_val_atom amem smem.
 
 End WithFixedKeyMap.
 
@@ -263,7 +262,7 @@ Proof.
     REFINE_INSTR PC ti rmem rpc NEXT.
     apply obind_inv in NEXT. destruct NEXT as [sregs' [upd NEXT]].
     injection NEXT; intro H; subst; clear NEXT.
-    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | eassumption | |].
     instantiate (1:= Abs.VData (swcast n)). reflexivity.
     eexists.
     + eapply Abs.step_const; [reflexivity | | | reflexivity]. (* extra goal *)
@@ -294,7 +293,7 @@ Proof.
     apply refine_val_data in rva1; subst.
     destruct (refine_get_pointwise_inv rreg R2W) as [v2 [g2 rva2]].
     apply refine_val_data in rva2; subst.
-    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption|].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | eassumption| |].
     instantiate (1:= Abs.VData (binop_denote op w1 w2)); reflexivity.
     eexists.
     + eapply Abs.step_binop; [reflexivity | | | | | reflexivity].
@@ -379,7 +378,7 @@ Proof.
     destruct (refine_get_pointwise_inv rreg RW) as [v [g rva]].
     apply refine_val_data in rva; subst; simpl.
     (* the rest similar to CONST *)
-    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | eassumption | |].
     instantiate (1:= Abs.VData (pc + 1)%w). reflexivity.
     eexists.
     + eapply Abs.step_jal; [reflexivity | | | eassumption | reflexivity].
@@ -418,7 +417,7 @@ Proof.
     have H : getm km k' = None by move: rins.1 (freshP (names ast)); apply.
 
     (* dealing with the result -- similar to CONST *)
-    edestruct refine_upd_reg as [aregs' [G1 G2]]; [| exact rva | eassumption |].
+    edestruct refine_upd_reg as [aregs' [G1 G2]]; [| eassumption | exact rva | ].
     apply refine_reg_set_km; eassumption.
 
     eexists.
@@ -475,7 +474,7 @@ Proof.
     destruct (refine_get_pointwise_inv rreg gk) as [vk [ggk H]].
     destruct vk; try contradiction H. simpl in H.
     (* register update *)
-    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | eassumption | | ].
     instantiate (1:= Abs.VSealed p n). split; now trivial. (* extra split *)
     eexists.
     + eapply Abs.step_seal; try eassumption; [reflexivity | | reflexivity].
@@ -507,7 +506,7 @@ Proof.
     destruct (refine_get_pointwise_inv rreg gk) as [vk [ggk H]].
     destruct vk; try contradiction H. simpl in H. subst.
     (* register update *)
-    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | | eassumption |].
+    edestruct refine_upd_reg as [aregs' [H1 H2]]; [eassumption | eassumption | |].
     instantiate (1:= Abs.VData p). reflexivity.
     eexists.
     + eapply Abs.step_unseal; try eassumption; [reflexivity | | | reflexivity].

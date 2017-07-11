@@ -58,15 +58,28 @@ move/(_ k'): pm1m2; rewrite !setmE.
 by case: (_ == _).
 Qed.
 
-Lemma refine_upd_pointwise P m1 m2 m2' k v1 v2 :
+Lemma refine_upd_pointwiseL P m1 m1' m2 k v1 v2 :
   pointwise P m1 m2 ->
+  updm m1 k v1 = Some m1' ->
   P v1 v2 ->
+  exists m2', updm m2 k v2 = Some m2' /\
+              pointwise P m1' m2'.
+Proof.
+rewrite /updm; move=> pm1m2; move: (pm1m2 k).
+case: (m2 k) => [v2'|] //; case: (m1 k) => [v1'|] //= _ [<-] pv1v2 .
+eexists; split; eauto=> k'.
+by move/(_ k'): pm1m2; rewrite !setmE; case: (_ == _).
+Qed.
+
+Lemma refine_upd_pointwiseR P m1 m2 m2' k v1 v2 :
+  pointwise P m1 m2 ->
   updm m2 k v2 = Some m2' ->
+  P v1 v2 ->
   exists m1', updm m1 k v1 = Some m1' /\
               pointwise P m1' m2'.
 Proof.
 rewrite /updm; move=> pm1m2; move: (pm1m2 k).
-case: (m2 k) => [v2'|] //; case: (m1 k) => [v1'|] //= _ pv1v2 [<-].
+case: (m2 k) => [v2'|] //; case: (m1 k) => [v1'|] //= _ [<-] pv1v2.
 eexists; split; eauto=> k'.
 by move/(_ k'): pm1m2; rewrite !setmE; case: (_ == _).
 Qed.
@@ -165,3 +178,13 @@ by rewrite E; case: (f v').
 Qed.
 
 End General.
+
+Lemma pointwise_sym (T : ordType) S (R : S -> S -> Prop) :
+  (forall x y, R x y -> R y x) ->
+  (forall m1 m2 : {partmap T -> S}, pointwise R m1 m2 -> pointwise R m2 m1).
+Proof.
+move=> R_sym m1 m2 m1m2 k.
+move: (m1m2 k).
+case: (m1 k) (m2 k) => [v1|] [v2|] //=.
+exact: R_sym.
+Qed.
