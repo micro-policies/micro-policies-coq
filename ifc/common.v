@@ -13,16 +13,15 @@ Variable L : labType.
 
 Record call_frame := CallFrame {
   cf_pc   : atom (mword mt) L;
-  cf_lab  : L;
   cf_regs : {partmap reg mt -> atom (mword mt) L}
 }.
 
 Definition tuple_of_call_frame cf :=
-  (cf_pc cf, cf_lab cf, cf_regs cf).
+  (cf_pc cf, cf_regs cf).
 
 Definition call_frame_of_tuple cf :=
-  let: (pc, lab, regs) := cf in
-  CallFrame pc lab regs.
+  let: (pc, regs) := cf in
+  CallFrame pc regs.
 
 Lemma tuple_of_call_frameK : cancel tuple_of_call_frame call_frame_of_tuple.
 Proof. by case. Qed.

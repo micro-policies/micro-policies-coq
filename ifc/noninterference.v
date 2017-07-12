@@ -20,31 +20,29 @@ Variable mops : machine_ops mt.
 
 Local Notation word := (mword mt).
 Local Notation atom := (atom word L).
-Variable r_arg1 : reg mt.
-Variable r_arg2 : reg mt.
+Variable r_arg : reg mt.
 Variable r_ret : reg mt.
 Variable output_addr : word.
 Variable call_addr : word.
 Variable return_addr : word.
 
 Local Notation state := (state L mt).
-Local Notation step := (@step L mt mops r_arg1 r_arg2 r_ret
+Local Notation step := (@step L mt mops r_arg r_ret
                               output_addr call_addr return_addr).
-Local Notation trace := (@trace L mt mops r_arg1 r_arg2 r_ret
+Local Notation trace := (@trace L mt mops r_arg r_ret
                                 output_addr call_addr return_addr).
 
 Implicit Type st : state.
 
 Definition indist_call_frame rs (cf1 cf2 : call_frame mt L) :=
-  [/\ indist taga rs (cf_pc cf1) (cf_pc cf2),
-      indist id rs (cf_lab cf1) (cf_lab cf2) &
+  [/\ indist taga rs (cf_pc cf1) (cf_pc cf2) &
       pointwise (indist taga rs) (cf_regs cf1) (cf_regs cf2)].
 
 Lemma indist_call_frame_sym rs cf1 cf2 :
   indist_call_frame rs cf1 cf2 ->
   indist_call_frame rs cf2 cf1.
 Proof.
-  case; rewrite indist_sym [indist id _ _ _]indist_sym => ?? ind_regs.
+  case; rewrite indist_sym => ? ind_regs.
   split=> //.
   apply: pointwise_sym ind_regs.
   by move=> ??; rewrite indist_sym.
@@ -73,7 +71,7 @@ Lemma indist_stacks_strengthen rs stk1 stk2 :
 Proof.
 rewrite /indist_stacks /=.
 elim: stk1 stk2=> [|cf1 stk1 IH] [|cf2 stk2] //= [ind_cf ind_stk].
-case: (ind_cf)=> [ind_pc _ _].
+case: (ind_cf)=> [ind_pc _].
 case/indistP: (ind_pc) => [l1 l2 e|h1 h2].
   by rewrite l1 l2 /=; split.
 by rewrite h1 h2 /=; apply: IH.
@@ -334,23 +332,16 @@ case: ifP=> [/eqP pc_return|pc_n_return] //=.
   move: (ind_r r_ret).
   case get_ret1: (reg1 r_ret) => [[r1 lr1]|] //=.
   case get_ret2: (reg2 r_ret) => [[r2 lr2]|] //= ind_ret.
-  case: ifP=> //= check1.
   case upd_reg1: updm=> [reg1'|] //= [<- <-] {st1' oe1}.
   rewrite -lock /= get_pc2 pc_return eqxx.
   case: stk2 ind_stk => [|cf2 stk2] //= ind_stk.
   rewrite get_ret2 /=.
-  case: ifP=> //= check2.
   move: ind_stk; rewrite /indist_stacks /=.
-  case=> [[ind_pc' ind_lab ind_regs] ind_stk].
-  case/indistP: ind_pc' check2 => [lo_pc _ <-|hi_pc1 hi_pc2] check2.
+  case=> [[ind_pc' ind_regs] ind_stk].
+  case/indistP: ind_pc' (*check2*) => [lo_pc _ <-|hi_pc1 hi_pc2] (*check2*).
     match_upd (cf_regs cf1)=> //=.
-      move: ind_lab ind_ret; rewrite /indist /=.
-      case: (boolP (_ || _)) => //= lo_lab /eqP e.
-      rewrite -e orbb in lo_lab.
-      have: rl ⊔ lr1 ⊑ rs.
-        apply: (flows_trans check1).
-        by rewrite flows_join lo_pc.
-      by rewrite flows_join e; case/andP=> _ -> /= /eqP [<- _].
+      move: ind_ret; rewrite /indist /= !flows_join !h_pc /=.
+      by case: orb => //= /eqP [-> ->].
     case=> [reg2' [upd_reg2 ind_reg']].
     rewrite upd_reg2 /= implybT; split=> //.
     exact: SIndistLow.
@@ -363,16 +354,11 @@ case: ifP=> [/eqP pc_call|pc_n_call] //=.
   move: (ind_r (@ra _ mops)).
   case get_ra1: (reg1 ra) => [[caller1 lcaller1]|] //=.
   case get_ra2: (reg2 ra) => [[caller2 lcaller2]|] //= ind_caller.
-  move: (ind_r r_arg1).
-  case get_arg11: (reg1 r_arg1) => [[called1 lcalled1]|] //=.
-  case get_arg12: (reg2 r_arg1) => [[called2 lcalled2]|] //= ind_called.
-  move: (ind_r r_arg2).
-  case get_arg21: (reg1 r_arg2) => [[lab1 llab1]|] //=.
-  case get_arg22: (reg2 r_arg2) => [[lab2 llab2]|] //= ind_lab [<- <-] {st1' oe1}.
-  rewrite -lock /= get_pc2 pc_n_return pc_call eqxx get_ra2 get_arg12 get_arg22 /=.
+  move: (ind_r r_arg).
+  case get_arg11: (reg1 r_arg) => [[called1 lcalled1]|] //=.
+  case get_arg12: (reg2 r_arg) => [[called2 lcalled2]|] //= ind_called [<- <-] {st1' oe1}.
+  rewrite -lock /= get_pc2 pc_n_return pc_call eqxx get_ra2 get_arg12 /=.
   split; last by rewrite implybT.
-  have ind_lab' : indist id rs llab1 llab2.
-    by move: ind_lab; rewrite /indist /=; case: (_ || _) => //= /eqP [_ <-].
   case/indistP: ind_called => /=.
     move=> lo_calld _ [<- <-] {called2 lcalled2 get_arg12}.
     case/indistP: ind_caller => /=.
@@ -400,9 +386,9 @@ case: ifP => [/eqP pc_output|pc_n_output] //.
   move: (ind_r (@ra _ mops)).
   case get_ra1: (reg1 ra) => [[raddr1 lraddr1]|] //=.
   case get_ra2: (reg2 ra) => [[raddr2 lraddr2]|] //= ind_raddr.
-  move: (ind_r r_arg1).
-  case get_arg11: (reg1 r_arg1) => [[out1 lout1]|] //=.
-  case get_arg12: (reg2 r_arg1) => [[out2 lout2]|] //= ind_out [<- <-] {st1' oe1}.
+  move: (ind_r r_arg).
+  case get_arg11: (reg1 r_arg) => [[out1 lout1]|] //=.
+  case get_arg12: (reg2 r_arg) => [[out2 lout2]|] //= ind_out [<- <-] {st1' oe1}.
   rewrite -lock /= get_pc2 pc_n_return pc_n_call pc_output eqxx get_ra2 get_arg12 /=.
   split.
     case/indistP: ind_raddr=> /= [lo_raddr _ [<- <-] {raddr2 lraddr2 get_ra2}|].
@@ -500,22 +486,20 @@ case: ifP=> [/eqP pc_return|pc_n_return] //=.
   (* Return *)
   case: stk1 ind_stk=> [|cf1 stk1] //= ind_stk.
   case get_ret1: (reg1 r_ret) => [[r1 lr1]|] //=.
-  case: ifP=> //= check1.
   case upd_reg1: updm=> [reg1'|] //= [<- <-] {st1' oe1} /= h_rl1'.
   split; [apply: SIndistHigh|]=> //=.
   by move: ind_stk; rewrite /indist_stacks /= h_rl1'.
 case: ifP=> [/eqP pc_call|pc_n_call] //=.
   (* Call *)
   case get_ra1: (reg1 ra) => [[caller1 lcaller1]|] //=.
-  case get_arg11: (reg1 r_arg1) => [[called1 lcalled1]|] //=.
-  case get_arg21: (reg1 r_arg2) => [[lab1 llab1]|] //= [<- <-] {st1' oe1}.
+  case get_arg11: (reg1 r_arg) => [[called1 lcalled1]|] //= [<- <-] {st1' oe1}.
   move=> /= h_call.
   split; [apply: SIndistHigh|]=> //=.
   by rewrite /indist_stacks /= !flows_join !negb_and h_rl1 orbT.
 case: ifP => [/eqP pc_output|pc_n_output] //.
   (* Output *)
   case get_ra1: (reg1 ra) => [[raddr1 lraddr1]|] //=.
-  case get_arg11: (reg1 r_arg1) => [[out1 lout1]|] //= [<- <-] {st1' oe1}.
+  case get_arg11: (reg1 r_arg) => [[out1 lout1]|] //= [<- <-] {st1' oe1}.
   move=> /= h_rl1'.
   rewrite flows_join negb_and (negbTE h_rl1').
   by split; first apply: SIndistHigh.
@@ -573,32 +557,20 @@ rewrite eqxx => step1.
 case: st2 hi2 e_pc2 get_pc2 step2=> mem2 reg2 [pc2 rl2] stk2 /= h_rl2 -> ->.
 rewrite eqxx => step2 ind_m.
 case: stk1 stk2 step1 step2 lo1 lo2
-       => [|[[r1 lr1] gl1 reg1'] stk1] [|[[r2 lr2] gl2 reg2'] stk2] //=.
+       => [|[[r1 lr1] reg1'] stk1] [|[[r2 lr2] reg2'] stk2] //=.
 case get_ret1: (reg1 r_ret) => [[v1 l1]|] //=.
 case get_ret2: (reg2 r_ret) => [[v2 l2]|] //=.
-case: ifP=> [check1|] //=.
-case: ifP=> [check2|] //=.
 case upd1: updm=> [reg1''|] //= [<- <-] {st1' oe1}.
 case upd2: updm=> [reg2''|] //= [<- <-] {st2' oe2} //= lo1 lo2.
 rewrite /indist_stacks /= lo1 lo2 /=.
 case=> [[/=]].
 rewrite {1 2}/indist /= lo1 /=.
 move=> /eqP [er elr].
-move: r1 lr1 er elr lo1 {lo2} check1 check2 => r lr <- <- lo check1 check2.
-have hig1 : ~~ (gl1 ⊑ rs).
-  apply/negP=> log1.
-  have lolrg1: lr ⊔ gl1 ⊑ rs by rewrite flows_join lo.
-  move: (flows_trans check1 lolrg1).
-  by rewrite flows_join (negbTE h_rl1).
-have hig2 : ~~ (gl2 ⊑ rs).
-  apply/negP=> log2.
-  have lolrg2: lr ⊔ gl2 ⊑ rs by rewrite flows_join lo.
-  move: (flows_trans check2 lolrg2).
-  by rewrite flows_join (negbTE h_rl2).
-move=> _ ind_reg ind_stk.
+move: r1 lr1 er elr lo1 {lo2}=> r lr <- <- lo.
+move=> ind_reg ind_stk.
 split=> //; apply: SIndistLow=> //=.
 apply: refine_upd_pointwise2 upd1 upd2=> //.
-by rewrite /indist /= (negbTE hig1) (negbTE hig2).
+by rewrite /indist /= !flows_join (negbTE h_rl1) (negbTE h_rl2).
 Qed.
 
 Theorem noninterference rs st1 st2 n1 n2 :
