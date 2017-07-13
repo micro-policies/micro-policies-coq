@@ -398,11 +398,8 @@ case: ifP => [/eqP pc_output|pc_n_output] //.
     apply: SIndistHigh=> //=;
     try by rewrite flows_join negb_and (hi1, hi2).
     by apply: indist_stacks_strengthen.
-  move: ind_raddr ind_out; rewrite /indist /= !flows_join => ind_raddr ind_out.
-  apply/implyP=> /orP [|] /andP [/andP [lo_lraddr _] lo_lout];
-  move: ind_raddr ind_out.
-    by rewrite lo_lraddr lo_lout /= => /eqP [_ ->] /eqP [-> ->].
-  by rewrite lo_lraddr lo_lout /= !orbT => /eqP [_ ->] /eqP [-> ->].
+  move: ind_raddr ind_out; rewrite /indist /= !flows_join h_pc /= => ind_raddr.
+  by case: orb => //= /eqP [-> ->].
 Qed.
 
 Lemma high_high_step rs st1 st2 st1' oe1 :
@@ -501,7 +498,7 @@ case: ifP => [/eqP pc_output|pc_n_output] //.
   case get_ra1: (reg1 ra) => [[raddr1 lraddr1]|] //=.
   case get_arg11: (reg1 r_arg) => [[out1 lout1]|] //= [<- <-] {st1' oe1}.
   move=> /= h_rl1'.
-  rewrite flows_join negb_and (negbTE h_rl1').
+  rewrite flows_join negb_and h_rl1.
   by split; first apply: SIndistHigh.
 Qed.
 

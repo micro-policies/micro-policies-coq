@@ -114,7 +114,7 @@ Definition step s : option (state * option atom):=
     do! out   <- regs r_arg;
     let r_out := taga out in
     Some (State mem regs raddr stk,
-          Some (vala out)@(r_pc ⊔ r_out))
+          Some (vala out)@(lpc ⊔ r_out))
   else None.
 
 Fixpoint trace n s :=

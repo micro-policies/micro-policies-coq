@@ -150,7 +150,7 @@ Definition output_fun st : option state :=
   let r_out := taga out in
   Some (State (mem st) (regs st) raddr
               {| outputs := rcons (outputs (internal st))
-                                  (vala out)@(r_pc ⊔ r_out);
+                                  (vala out)@(taga (pc st) ⊔ r_out);
                  call_stack := call_stack (internal st)
               |}).
 
