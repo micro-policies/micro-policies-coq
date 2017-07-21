@@ -38,17 +38,16 @@ Inductive type :=
 | TypeData
 | TypePointer : color -> type.
 
-Inductive tag :=
-| TagValue : type -> tag
-| TagMemory : color -> type -> tag
+Inductive mem_tag :=
+| TagMemory : color -> type -> mem_tag
 | TagFree.
 
 Local Notation DATA := TypeData.
 Local Notation PTR := TypePointer.
-Local Notation "V( ty )" := (TagValue ty) (at level 4).
 Notation "M( n , ty )" := (TagMemory n ty) (at level 4).
 Local Notation FREE := TagFree.
-Local Notation atom := (atom word tag).
+Local Notation matom := (atom word mem_tag).
+Local Notation datom := (atom word type).
 
 Record block_info := mkBlockInfo {
   block_base : word;
@@ -86,84 +85,82 @@ Qed.
 Definition type_eqMixin := EqMixin type_eqP.
 Canonical type_eqType := Eval hnf in EqType type type_eqMixin.
 
-Definition tag_eq l1 l2 :=
+Definition mem_tag_eq l1 l2 :=
   match l1, l2 with
-    | TagValue t1, TagValue t2 => t1 == t2
     | TagMemory b1 t1, TagMemory b2 t2 => (b1 == b2) && (t1 == t2)
     | TagFree, TagFree => true
     | _, _ => false
   end.
 
-Lemma tag_eqP : Equality.axiom tag_eq.
+Lemma mem_tag_eqP : Equality.axiom mem_tag_eq.
 Proof.
-  move => [t1|b1 t1|] [t2|b2 t2|] /=; try (constructor; congruence).
-  - by have [->|/eqP NEQ] := altP (t1 =P t2); constructor; congruence.
-  - by have [->|/eqP ?] := altP (b1 =P b2); have [->|/eqP ?] := altP (t1 =P t2);
-    constructor; congruence.
+  move => [b1 t1|] [b2 t2|] /=; try (constructor; congruence).
+  by have [->|/eqP ?] := altP (b1 =P b2); have [->|/eqP ?] := altP (t1 =P t2);
+  constructor; congruence.
 Qed.
 
-Definition tag_eqMixin := EqMixin tag_eqP.
-Canonical tag_eqType := Eval hnf in EqType tag tag_eqMixin.
+Definition mem_tag_eqMixin := EqMixin mem_tag_eqP.
+Canonical mem_tag_eqType := Eval hnf in EqType mem_tag mem_tag_eqMixin.
 
 Definition ms_tags := {|
-  pc_tag_type := [eqType of tag];
-  reg_tag_type := [eqType of tag];
-  mem_tag_type := [eqType of tag];
+  pc_tag_type := [eqType of type];
+  reg_tag_type := [eqType of type];
+  mem_tag_type := [eqType of mem_tag];
   entry_tag_type := [eqType of unit]
 |}.
 
 Definition rules_normal (op : opcode) (c : color)
            (ts : hseq (tag_type ms_tags) (inputs op)) : option (ovec ms_tags op) :=
   let ret  := fun rtpc (rt : type_of_result ms_tags (outputs op)) => Some (@OVec ms_tags op rtpc rt) in
-  let retv := fun (rt : type_of_result ms_tags (outputs op)) => ret V(PTR c) rt in
+  let retv := fun (rt : type_of_result ms_tags (outputs op)) => ret (PTR c) rt in
   match op, ts, ret, retv with
   | NOP, _, ret, retv => retv tt
-  | CONST, _, ret, retv => retv V(DATA)
-  | MOV, [hseq V(ty); _], ret, retv => retv V(ty)
+  | CONST, _, ret, retv => retv DATA
+  | MOV, [hseq ty; _], ret, retv => retv ty
   | BINOP bo, [hseq t1; t2; _], ret, retv =>
     match bo with
     | ADD =>
       match t1, t2 with
-      | V(DATA), V(DATA) => retv V(DATA)
-      | V(PTR b1), V(DATA) => retv V(PTR b1)
-      | V(DATA), V(PTR b2) => retv V(PTR b2)
+      | DATA, DATA => retv DATA
+      | PTR b1, DATA => retv (PTR b1)
+      | DATA, PTR b2 => retv (PTR b2)
       | _, _ => None
       end
     | SUB =>
       match t1, t2 with
-      | V(DATA), V(DATA) => retv V(DATA)
-      | V(PTR b1), V(DATA) => retv V(PTR b1)
-      | V(PTR b1), V(PTR b2) =>
-        if b1 == b2 then retv V(DATA)
+      | DATA, DATA => retv DATA
+      | PTR b1, DATA => retv (PTR b1)
+      | PTR b1, PTR b2 =>
+        if b1 == b2 then retv DATA
         else None
       | _, _ => None
       end
     | EQ =>
       match t1, t2 with
-      | V(DATA), V(DATA) => retv V(DATA)
-      | V(PTR b1), V(PTR b2) =>
-        if b1 == b2 then retv V(DATA)
+      | DATA, DATA => retv DATA
+      | PTR b1, PTR b2 =>
+        if b1 == b2 then retv DATA
         else None
       | _, _ => None
       end
     | _ =>
       match t1, t2 with
-      | V(DATA), V(DATA) => retv V(DATA)
+      | DATA, DATA => retv DATA
       | _, _ => None
       end
     end
-  | LOAD, [hseq V(PTR b1); M(b2,ty); _], ret, retv =>
-    if b1 == b2 then retv V(ty)
+  | LOAD, [hseq PTR b1; M(b2,ty); _], ret, retv =>
+    if b1 == b2 then retv ty
     else None
-  | STORE, [hseq V(PTR b1); V(ty); M(bd,_)], ret, retv =>
+  | STORE, [hseq PTR b1; ty; M(bd,_)], ret, retv =>
     if b1 == bd then retv M(bd,ty)
     else None
-  | JUMP, [hseq V(PTR b')], ret, retv =>
-    ret V(PTR b') tt
-  | BNZ, [hseq V(DATA)], ret, retv =>
+  | JUMP, [hseq PTR b'], ret, retv =>
+    ret (PTR b') tt
+  | BNZ, [hseq DATA], ret, retv =>
     retv tt
-  | JAL, [hseq V(ty); _], ret, retv =>
-    ret V(ty) V(PTR c)
+  | JAL, [hseq ty; _], ret, retv =>
+    ret ty (PTR c)
   | _, _, _, _ => None
   end.
 
@@ -171,12 +168,12 @@ Definition rules (ivec : ivec ms_tags) : option (vovec ms_tags (op ivec)) :=
   match ivec return option (vovec ms_tags (op ivec)) with
   | IVec (OP op) tpc ti ts =>
     match tpc, ti with
-    | V(PTR b), M(b', DATA) =>
+    | PTR b, M(b', DATA) =>
       if b == b' then rules_normal b ts
       else None
     | _, _ => None
     end
-  | IVec SERVICE V(DATA) _ _ => Some tt
+  | IVec SERVICE DATA _ _ => Some tt
   | IVec SERVICE _ _ _ => None
   end.
 
@@ -185,11 +182,11 @@ Variable initial_color : color.
 (* Hypothesis: alloc never returns initial_color. *)
 
 Variable initial_pc : word.
-Variable initial_mem  : {partmap mword mt -> atom}.
-Variable initial_registers : {partmap reg mt -> atom}.
-Hypothesis initial_ra : getm initial_registers ra = Some initial_pc@V(PTR initial_color).
+Variable initial_mem  : {partmap mword mt -> matom}.
+Variable initial_registers : {partmap reg mt -> datom}.
+Hypothesis initial_ra : getm initial_registers ra = Some initial_pc@(PTR initial_color).
 
-Definition initial_state := (initial_mem, initial_registers, initial_pc@V(PTR initial_color)).
+Definition initial_state := (initial_mem, initial_registers, initial_pc@(PTR initial_color)).
 
 Global Instance sym_memory_safety : params := {
   ttypes := ms_tags;
@@ -199,14 +196,14 @@ Global Instance sym_memory_safety : params := {
   internal_state := [eqType of (color * seq block_info)%type]
 }.
 
-Fixpoint write_block_rec mem base (v : atom) n : option (Symbolic.memory mt _) :=
+Fixpoint write_block_rec mem base (v : matom) n : option (Symbolic.memory mt _) :=
   match n with
   | O => Some mem
   | S p => do! mem' <- write_block_rec mem base v p;
            updm mem' (base + as_word p) v
   end.
 
-Definition write_block init (base : word) (v : atom) (sz : word) : option (Symbolic.memory mt _) :=
+Definition write_block init (base : word) (v : matom) (sz : word) : option (Symbolic.memory mt _) :=
   if base + sz < 2 ^ (word_size mt) then
      write_block_rec init base v (val sz)
   else None.
@@ -225,14 +222,14 @@ Definition malloc_fun st : option (state mt) :=
   if (color < max_color)%ord then
   do! sz <- regs st syscall_arg1;
   match sz with
-    | sz@V(DATA) =>
+    | sz@DATA =>
       if 0 < (sz : word) then
           if ohead [seq x <- info | ((sz <= block_size x) && (block_color x == None))%ord] is Some x then
           do! mem' <- write_block (mem st) (block_base x) 0@M(color,DATA) sz;
-          do! regs' <- updm (regs st) syscall_ret ((block_base x)@V(PTR color));
+          do! regs' <- updm (regs st) syscall_ret ((block_base x)@(PTR color));
           let color' := inc_color color in
           do! raddr <- regs st ra;
-          if raddr is _@V(PTR _) then
+          if raddr is _@(PTR _) then
             Some (State mem' regs' raddr (color', update_block_info info x color sz))
           else None
           else None
@@ -250,7 +247,7 @@ Definition free_fun (st : state mt) : option (state mt) :=
   do! ptr <- regs st syscall_arg1;
     (* Removing the return clause makes Coq loop... *)
   match ptr return option (state mt) with
-  | ptr@V(PTR color) =>
+  | ptr@(PTR color) =>
     do! x <- ohead [seq x <- info | block_color x == Some color];
     let i := index x info in
     if (block_base x <= ptr < block_base x + block_size x)%ord then
@@ -258,7 +255,7 @@ Definition free_fun (st : state mt) : option (state mt) :=
       let info' := set_nth def_info info i (mkBlockInfo (block_base x) (block_size x) None)
       in
       do! raddr <- regs st ra;
-      if raddr is _@V(PTR _) then
+      if raddr is _@(PTR _) then
         Some (State mem' (regs st) raddr (next_color,info'))
       else None
     else None
@@ -267,15 +264,15 @@ Definition free_fun (st : state mt) : option (state mt) :=
 
 (* This factors out the common part of sizeof, basep, and offp *)
 Definition ptr_fun (st : state mt)
-    (f : block_info -> color -> atom) : option (state mt) :=
+    (f : block_info -> color -> datom) : option (state mt) :=
   let: (next_color,inf) := internal st in
   do! ptr <- regs st syscall_arg1;
   match ptr return option (state mt) with
-  | ptr@V(PTR color) =>
+  | ptr@(PTR color) =>
     do! x <- ohead [seq x <- inf | block_color x == Some color];
     do! regs' <- updm (regs st) syscall_ret (f x color);
     do! raddr <- regs st ra;
-    if raddr is _@V(PTR _) then
+    if raddr is _@(PTR _) then
       Some (State (mem st) regs' raddr (next_color,inf))
     else None
   | _ => None
@@ -283,26 +280,21 @@ Definition ptr_fun (st : state mt)
 
 (* Not yet used *)
 Definition sizeof_fun (st : state mt) : option (state mt) :=
-  ptr_fun st (fun x _ => (block_size x)@V(DATA)).
+  ptr_fun st (fun x _ => (block_size x)@DATA).
 
 Definition basep_fun (st : state mt) : option (state mt) :=
-  ptr_fun st (fun x color => (block_base x)@V(PTR color)).
+  ptr_fun st (fun x color => (block_base x)@(PTR color)).
 
 Definition eqp_fun (st : state mt) : option (state mt) :=
   let: (next_color,inf) := internal st in
   do! ptr1 <- regs st syscall_arg1;
   do! ptr2 <- regs st syscall_arg2;
-  match ptr1, ptr2 return option (state mt) with
-  | ptr1@V(PTR color1), ptr2@V(PTR color2) =>
-    let b := if (color1 == color2) && (ptr1 == ptr2) then 1%w
-             else 0%w in
-    do! regs' <- updm (regs st) syscall_ret b@V(DATA);
-    do! raddr <- regs st ra;
-    if raddr is _@V(PTR _) then
-      Some (State (mem st) regs' raddr (next_color,inf))
-    else None
-  | _, _ => None
-  end.
+  let b := as_word (ptr1 == ptr2) in
+  do! regs' <- updm (regs st) syscall_ret b@DATA;
+  do! raddr <- regs st ra;
+  if raddr is _@(PTR _) then
+    Some (State (mem st) regs' raddr (next_color,inf))
+  else None.
 
 Definition memsafe_syscalls : syscall_table mt :=
   [partmap (addr Malloc, Syscall tt malloc_fun);
@@ -324,7 +316,6 @@ Module Notations.
 
 Notation DATA := TypeData.
 Notation PTR := TypePointer.
-Notation "V( ty )" := (TagValue ty) (at level 4).
 Notation "M( n , ty )" := (TagMemory n ty) (at level 4).
 Notation FREE := TagFree.
 
@@ -334,4 +325,5 @@ Arguments def_info mt {_}.
 
 End Sym.
 
+Canonical Sym.type_eqType.
 Canonical Sym.block_info_eqType.

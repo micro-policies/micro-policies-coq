@@ -337,7 +337,7 @@ Qed.
 Definition mi_malloc b base col : meminj :=
   setm mi col (b,base).
 
-Lemma get_write_block_rec (base : mword mt) (v : atom (mword mt) Sym.tag) : forall n init (w : mword mt) mem',
+Lemma get_write_block_rec (base : mword mt) (v : atom (mword mt) Sym.mem_tag) : forall n init (w : mword mt) mem',
   Sym.write_block_rec init base v n = Some mem' ->
   n < 2 ^ word_size mt ->
   base + n < 2 ^ word_size mt ->
@@ -364,7 +364,7 @@ rewrite (lock addw) /= -lock valw_add !as_wordK //.
 by rewrite [in X in _ <= X <= _]leqNgt Hbn /= mul0n subn0 Hw Hw'.
 Qed.
 
-Lemma get_write_block: forall smem base (sz : mword mt) (v : atom (mword mt) Sym.tag) (w : mword mt) mem',
+Lemma get_write_block: forall smem base (sz : mword mt) (v : atom (mword mt) Sym.mem_tag) (w : mword mt) mem',
   Sym.write_block smem base v sz = Some mem' ->
   mem' w = if base <= w < base + sz then Some v else smem w.
 Proof.
@@ -530,7 +530,7 @@ by unfold bi' in *; rewrite nth_index // /overlap.
 Qed.
 
 Definition refine_reg_val v a :=
- match a with w@V(ty) => refine_val v w ty | _ => False end.
+ match a with w@ty => refine_val v w ty end.
 
 Definition refine_registers (aregs : Abstract.registers mt )
                             (qaregs : Sym.registers mt) :=
@@ -538,16 +538,16 @@ Definition refine_registers (aregs : Abstract.registers mt )
 
 Lemma refine_registers_val aregs qaregs r v : refine_registers aregs qaregs ->
   qaregs r = Some v ->
-  exists w ty, v = w@V(ty).
+  exists w ty, v = w@ty.
 Proof.
 intros rregs get_r; specialize (rregs r); revert rregs.
 rewrite get_r; destruct (aregs r); try easy.
-by destruct v as [w [ty | |]]; try easy; exists w; exists ty.
+by case: v get_r => [w [|i]] //; eauto.
 Qed.
 
 Lemma refine_registers_get aregs qaregs (n : types.reg mt) w ty :
   refine_registers aregs qaregs ->
-  qaregs n = Some w@V(ty) ->
+  qaregs n = Some w@ty ->
   exists x, refine_val x w ty /\ aregs n = Some x.
 Proof.
 intros rregs qa_get.
@@ -560,7 +560,7 @@ Qed.
 
 Lemma refine_registers_get_int aregs qaregs (n : types.reg mt) w :
   refine_registers aregs qaregs ->
-  qaregs n = Some w@V(DATA) ->
+  qaregs n = Some w@DATA ->
     refine_val (Abstract.VData w) w DATA /\
     aregs n = Some (Abstract.VData w).
 Proof.
@@ -573,7 +573,7 @@ Qed.
 
 Lemma refine_registers_get_ptr aregs qaregs (n : types.reg mt) w b :
   refine_registers aregs qaregs ->
-  qaregs n = Some w@V(PTR b) ->
+  qaregs n = Some w@(PTR b) ->
   exists pt, refine_val (Abstract.VPtr pt) w (PTR b) /\
     aregs n = Some (Abstract.VPtr pt).
 Proof.
@@ -590,7 +590,7 @@ Qed.
 Lemma refine_registers_upd aregs qaregs qaregs' r v w ty :
   refine_registers aregs qaregs ->
   refine_val v w ty ->
-  updm qaregs r w@V(ty) = Some qaregs' ->
+  updm qaregs r w@ty = Some qaregs' ->
   exists areg',
     updm aregs r v = Some areg' /\
     refine_registers areg' qaregs'.
@@ -617,13 +617,12 @@ Definition meminj_ok (bl : {fset name}) :=
 Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
   let '(Abstract.State amem aregs apc) := ast in
   match sst with
-  | Symbolic.State smem sregs w@V(ty) ist =>
+  | Symbolic.State smem sregs w@ty ist =>
     [/\ refine_memory amem smem,
         refine_registers aregs sregs,
         refine_val apc w ty,
         refine_internal_state smem ist &
         meminj_ok (Abstract.blocks ast)]
-  | _ => False
   end.
 
 End memory_injections.
@@ -656,6 +655,7 @@ Proof.
     (f := fun mi' col' nb' => mi = mi' /\ col = col' /\ (newb,base) = nb'); auto.
   move=> /= km k1 k2 v1 v2 [E1 [E2 R]]. subst k1 km k2.
   unfold refine_reg_val. destruct v2; destruct taga; auto.
+  eapply refine_val_malloc; eauto.
   eapply refine_val_malloc; eauto.
 Qed.
 
@@ -1048,31 +1048,31 @@ Ltac subst_beq :=
   | EQ : (?x == ?y) = true |- _ => (move/eqP: EQ => EQ; subst) || fail 2
   end.
 
-Definition lift_binop (f : binop) (x y : atom (mword mt) Sym.tag) :=
+Definition lift_binop (f : binop) (x y : atom (mword mt) Sym.type) :=
   match f with
   | ADD => match x, y with
-           | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
-           | w1@V(PTR b), w2@V(DATA) => Some (binop_denote f w1 w2, PTR b)
-           | w1@V(DATA), w2@V(PTR b) => Some (binop_denote f w1 w2, PTR b)
+           | w1@DATA, w2@DATA => Some (binop_denote f w1 w2, DATA)
+           | w1@(PTR b), w2@DATA => Some (binop_denote f w1 w2, PTR b)
+           | w1@DATA, w2@(PTR b) => Some (binop_denote f w1 w2, PTR b)
            | _, _ => None
            end
   | SUB => match x, y with
-           | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
-           | w1@V(PTR b), w2@V(DATA) => Some (binop_denote f w1 w2, PTR b)
-           | w1@V(PTR b1), w2@V(PTR b2) =>
+           | w1@DATA, w2@DATA => Some (binop_denote f w1 w2, DATA)
+           | w1@(PTR b), w2@DATA => Some (binop_denote f w1 w2, PTR b)
+           | w1@(PTR b1), w2@(PTR b2) =>
              if b1 == b2 then Some (binop_denote f w1 w2, DATA)
              else None
            | _, _ => None
            end
   | EQ => match x, y with
-          | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
-          | w1@V(PTR b1), w2@V(PTR b2) =>
+          | w1@DATA, w2@DATA => Some (binop_denote f w1 w2, DATA)
+          | w1@(PTR b1), w2@(PTR b2) =>
             if b1 == b2 then Some (binop_denote f w1 w2, DATA)
             else None
           | _, _ => None
           end
   | _ => match x, y with
-         | w1@V(DATA), w2@V(DATA) => Some (binop_denote f w1 w2, DATA)
+         | w1@DATA, w2@DATA => Some (binop_denote f w1 w2, DATA)
          | _, _ => None
          end
   end.
@@ -1080,7 +1080,7 @@ Definition lift_binop (f : binop) (x y : atom (mword mt) Sym.tag) :=
 Lemma refine_binop mi amem f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
   meminj_spec amem mi ->
   refine_val mi v1 w1 ty1 -> refine_val mi v2 w2 ty2 ->
-  lift_binop f w1@V(ty1) w2@V(ty2) = Some (w3,ty3) ->
+  lift_binop f w1@ty1 w2@ty2 = Some (w3,ty3) ->
   exists v3, Abstract.lift_binop f v1 v2 = Some v3 /\ refine_val mi v3 w3 ty3.
 Proof.
 Opaque binop_denote. (* Only for now... *)
@@ -1160,7 +1160,7 @@ Proof.
 move=> r_regs r.
 case aregs_r: (aregs r) => [v1|]; case sregs_r: (sregs r) => [v2|] //=.
 - move/(_ r): r_regs; rewrite aregs_r sregs_r /refine_reg_val.
-  case: v2 sregs_r => [w [ty| |]] //= sregs_r r_v1.
+  case: v2 sregs_r => [w ty] //= sregs_r r_v1.
   case: r_v1 aregs_r sregs_r => [w'|b base col off mi_col] aregs_r sregs_r.
     by constructor.
   constructor; rewrite filtermE /= mi_col /=.
@@ -1215,7 +1215,7 @@ Lemma refine_state_weaken mi amem aregs apc smem sregs w ty ist :
   refine_internal_state mi smem ist ->
   refine_state (meminj_weaken mi (Abstract.blocks (Abstract.State amem aregs apc)))
                (Abstract.State amem aregs apc)
-               (Symbolic.State smem sregs w@V(ty) ist).
+               (Symbolic.State smem sregs w@ty ist).
 Proof.
 move=> ???? /=; split;
   eauto using refine_memory_weaken, refine_registers_weaken,
@@ -1241,7 +1241,7 @@ case: sym_st => sym_mem sym_regs sym_pc // sym_ist rst.
 case: sym_st' => sym_mem' sym_regs' [spcv' spcl'] sym_ist' sym_step.
 inv sym_step;
 case: ST => *; subst;
-destruct tpc as [[|]| |] => //;
+destruct tpc as [|] => //;
 case: rst => rmem rregs rpc rist mi_ok;
 destruct a_pc as [|[pc_b pc_off]]; try (by inversion rpc);
 try subst mvec;
@@ -1273,7 +1273,7 @@ try match goal with
 end;
 
 repeat match goal with
-  | GET : getm ?reg ?r = Some ?v@V(?ty),
+  | GET : getm ?reg ?r = Some ?v@?ty,
     rregs : refine_registers _ _ ?reg |- _ =>
     match ty with
     | DATA => eapply (refine_registers_get_int rregs) in GET; destruct GET as [? ?]
@@ -1462,41 +1462,31 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
   end.
 
 (* Eq *)
-
-  (* match_inv doesn't seem to be handling the commutative cut *)
-  case: ptr1 CALL E0 => // arg1v [[|arg1b]||] // CALL E0.
-  match_inv.
-
-  case/(refine_registers_get rregs): CALL=> arg1 [rarg1 ?].
-  case/(refine_registers_get rregs): E=> arg2 [rarg2 ?].
-  case/(refine_registers_get_ptr rregs): E1=> ? [? ?].
-  eapply (refine_registers_upd rregs) in E0; last by eauto.
-  case: E0=> ? [upd_ret ?].
-
+  case: ptr1 ptr2 CALL E H2 => // arg1v arg1b // [arg2v arg2b] get_arg1 get_arg2 UPD.
+  case/(refine_registers_get rregs): get_arg1=> arg1 [rarg1 h1].
+  case/(refine_registers_get rregs): get_arg2=> arg2 [rarg2 h2].
+  move: UPD.
+  have ->: (arg1v@arg1b == arg2v@arg2b) = (arg1 == arg2).
+    rewrite /eq_op /= /atom_eqb /= {2}/eq_op /= andbC.
+    case: arg1 arg1v arg1b / rarg1 h1 => arg1;
+    case: arg2 arg2v arg2b / rarg2 h2 => arg2 //=.
+    move=> base2 col2 off2 mi2 a_regs2 base1 col1 off1 mi1 a_regs1.
+    rewrite xpair_eqE.
+    have [eq_col|neq_col] := altP (col1 =P col2).
+      move: mi1 mi2; rewrite -eq_col => -> [<- <-].
+      rewrite inj_eq; last exact: GRing.addrI.
+      by rewrite eqxx.
+    have/negbTE->//: arg1 != arg2.
+    apply/eqP=> eq_arg; rewrite eq_arg in mi1 mi2.
+    by rewrite (miIr miP mi1 mi2) eqxx in neq_col.
+  move=> UPD.
   eexists; split.
-    eapply Abstract.step_eq; eauto.
-    rewrite /Abstract.value_eq.
-    move: upd_ret.
-    inversion rarg1.
-    inversion rarg2.
-
-    have [eq_arg1b|neq_arg1b] := altP (arg1b =P s).
-      move: H3 H7; rewrite eq_arg1b => -> [-> ->].
-      have -> /= : (base0 + off == base0 + off0) = (off == off0).
-        by apply/inj_eq/GRing.addrI.
-      rewrite [in Abstract.VPtr _ == _]eqE /= xpair_eqE eqxx /=.
-      by case: (_ == _).
-    rewrite [in Abstract.VPtr _ == _]eqE /= xpair_eqE.
-    have/negbTE->//: b != b0.
-    apply/eqP=> eq_b; rewrite eq_b in H3 H7.
-    by rewrite (miIr miP H3 H7) eqxx in neq_arg1b.
-
+  eapply Abstract.step_eq; eauto.
   match goal with
   | |- exists mi', refine_state mi' ?ast' _ =>
     by exists (meminj_weaken mi (Abstract.blocks ast'));
     apply refine_state_weaken; eauto
   end.
-
 Qed.
 
 End refinement.

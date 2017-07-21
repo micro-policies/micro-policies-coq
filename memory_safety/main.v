@@ -84,16 +84,15 @@ Proof.
   by move => H [<-].
 Qed.
 
-Definition encode_mtag (tg : Sym.tag) : word 30 :=
+Definition encode_mtag (tg : Sym.mem_tag) : word 30 :=
   match tg with
       TagFree => @wpack [:: 13; 14; 3] [hseq 0; 0; 0]%w
-    | TagValue ty => @wpack [:: 13;14;3] [hseq 0; encode_type ty; 1]%w
     | TagMemory c ty => @wpack [:: 13;14;3] [hseq c; encode_type ty; as_word 2]%w
   end.
 
 Import DoNotation.
 
-Definition decode_mtag (ctg : word 30) : option Sym.tag :=
+Definition decode_mtag (ctg : word 30) : option Sym.mem_tag :=
   let: [hseq c;ty; m] := @wunpack [:: 13;14;3] ctg in
   if m == 0%w then
     if c == 0%w then
@@ -101,20 +100,14 @@ Definition decode_mtag (ctg : word 30) : option Sym.tag :=
       else None
     else None
   else
-    if m == 1%w then
-      if (c == 0%w) then
-        do! cty <- decode_type ty;
-        Some (TagValue cty)
-      else None
-    else
-      if m == as_word 2 then
-        do! cty <- decode_type ty;
-        Some (TagMemory c cty)
-      else None.
+    if m == as_word 2 then
+      do! cty <- decode_type ty;
+      Some (TagMemory c cty)
+    else None.
 
 Lemma encode_mtagK tg : decode_mtag (encode_mtag tg) = Some tg.
 Proof.
-  destruct tg as  [ty | c ty |];
+  destruct tg as  [c ty |];
   rewrite /decode_mtag /encode_mtag ?wpackK;
 
   try (remember (encode_type ty); rewrite ?wpackK;
@@ -132,12 +125,6 @@ Proof.
   { have [?|?] := altP (c =P 0%w); try subst c; last by [].
     have [?|?] := altP (cty =P 0%w); try subst cty; last by [].
     by move => H [<-].
-  }
-  have [?|?] := altP (m =P 1%w); try subst m.
-  { have [?|?] := altP (c =P 0%w); try subst c; last by [].
-    case DEC: (decode_type cty) => [ty|] //=.
-    apply decode_typeK in DEC; subst.
-      by move => H [<-].
   }
   have [?|?] := altP (m =P as_word 2); try subst m; last by [].
   case DEC: (decode_type cty) => [ty|] //=.
@@ -158,15 +145,12 @@ Instance enc: encodable mt Sym.ms_tags := {
         else if w' == as_word 2 then
           Some (@Entry Sym.ms_tags tt)
         else None
-      | Symbolic.P =>
-        if w' == 1%w then
-          do! ut <- decode_mtag ut;
-          Some ut
-        else None
+      | Symbolic.P
       | Symbolic.R =>
+        let: [hseq ty; _]%w := @wunpack [:: 14; 16] ut in
         if w' == 1%w then
-          do! ut <- decode_mtag ut;
-          Some ut
+          do! ty <- decode_type ty;
+          Some ty
         else None
       end
 }.
