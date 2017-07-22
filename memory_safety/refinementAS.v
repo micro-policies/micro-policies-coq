@@ -439,14 +439,14 @@ case: (rmem) => miP get_smem; split.
   rewrite (get_write_block _ write_block).
   case: ifP => // bounds get_w1; move/get_smem: (get_w1).
   case mi_col': (mi col') => // [[b' ?]].
-  have neq_b: b != b'.
-    apply/eqP => eq_bb'; rewrite eq_bb' in mi_col.
+  have neq_b: b' != b.
+    apply/eqP => eq_bb'; rewrite -eq_bb' in mi_col.
     have eq_col := miIr miP mi_col' mi_col.
     rewrite eq_col in get_w1.
     move/(block_color_uniq rmem rist in_bi mi_col color_bi): get_w1.
     by rewrite bounds.
   rewrite /Abstract.getv.
-  by rewrite (Abstract.free_get free_b neq_b).
+  by rewrite (Abstract.get_free _ free_b) /= (negbTE neq_b).
 set newbi := Sym.mkBlockInfo _ _ _.
 do !split=> //.
 + move=> i j def w; rewrite size_set_nth (maxn_idPr _) ?index_mem //.

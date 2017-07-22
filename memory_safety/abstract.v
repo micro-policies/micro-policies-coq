@@ -229,19 +229,12 @@ Lemma free_Some : forall (mem : memory) b fr,
   exists mem', free_fun mem b = Some mem'.
 Proof. by move=> m b fr h; rewrite /free_fun h /=; eauto. Qed.
 
-Lemma free_get_fail : forall mem mem' b,
-  free_fun mem b = Some mem' -> mem' b = None.
-Proof.
-move=> m m' b; rewrite /free_fun.
-by case: (m b) => [fr|] //= [<-]; rewrite remmE eqxx.
-Qed.
-
-Lemma free_get : forall mem mem' b b',
+Lemma get_free : forall mem mem' b b',
   free_fun mem b = Some mem' ->
-  b != b' -> mem' b' = mem b'.
+  mem' b' = if b' == b then None else mem b'.
 Proof.
 move=> m m' b b'; rewrite /free_fun.
-by case: (m b) => [fr|] //= [<-]; rewrite remmE eq_sym => /negbTE ->.
+by case: (m b) => [fr|] //= [<-]; rewrite remmE.
 Qed.
 
 Context `{syscall_regs mt} `{memory_syscall_addrs mt}.

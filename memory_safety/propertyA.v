@@ -249,9 +249,8 @@ eapply ValidFree; simpl; first by eauto.
   - by eapply ReachBaseReg; eauto.
   eapply ReachHop; eauto; apply/existsP; exists off; apply/eqP.
   move: get_b'; rewrite /getv/=.
-  have [eq_b''|neq_b''] := altP (b'' =P ptr.1).
-    by rewrite eq_b'' (free_get_fail hm').
-  by rewrite (free_get hm') // eq_sym.
+  rewrite (get_free _ hm').
+  by have [eq_b''|neq_b''] := altP (b'' =P ptr.1).
 by apply/hbs => {get_pc'}; eapply ReachBaseReg; eauto.
 Qed.
 
