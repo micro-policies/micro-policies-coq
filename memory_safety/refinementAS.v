@@ -81,34 +81,15 @@ Notation inbounds base size w :=
 
 Section memory_injections.
 
-Record meminj_spec (amem : Abstract.memory mt) (mi : meminj) := {
+Record meminj_spec (mi : meminj) := {
     miIr : forall b col col' base base',
                 mi col = Some (b, base) ->
                 mi col' = Some (b, base') ->
                 col = col'
   }.
 
-(* We could generalize updv to any size-preserving operator *)
-Lemma meminj_update mi amem amem' ptr x :
-  meminj_spec amem mi ->
-  Abstract.updv amem ptr x = Some amem' ->
-  meminj_spec amem' mi.
-Proof.
-move=> miP upd_b.
-constructor; first exact: miIr miP.
-Qed.
-
-Hint Resolve meminj_update.
-
 Variable amem : Abstract.memory mt.
 Variable mi : meminj.
-
-Definition ohrel (A B : Type) (rAB : A -> B -> Prop) sa sb : Prop :=
-  match sa, sb with
-    | None,   None   => True
-    | Some a, Some b => rAB a b
-    | _,      _      => False
-  end.
 
 Inductive refine_val : Abstract.value mt -> mword mt -> Sym.type -> Prop :=
   | RefineData : forall w, refine_val (Abstract.VData w) w DATA
@@ -116,7 +97,7 @@ Inductive refine_val : Abstract.value mt -> mword mt -> Sym.type -> Prop :=
                 refine_val (Abstract.VPtr (b,off)) (base + off) (PTR col).
 
 Lemma refine_ptr_inv w col b b' off base :
-  meminj_spec amem mi ->
+  meminj_spec mi ->
   refine_val (Abstract.VPtr (b,off)) w (PTR col) ->
   mi col = Some (b', base) ->
   w = (base + off)%w.
@@ -127,7 +108,7 @@ congruence.
 Qed.
 
 Definition refine_memory amem (smem : Sym.memory mt) :=
-  meminj_spec amem mi /\ forall w1 w2 col ty,
+  meminj_spec mi /\ forall w1 w2 col ty,
   smem w1 = Some w2@M(col,ty) ->
   if mi col is Some (b,base) then
   if Abstract.getv amem (b, w1 - base) is Some v then
@@ -261,7 +242,6 @@ rewrite /Abstract.updv /Abstract.getv.
 case get_pt: (amem pt.1) => [fr|//].
 have [gt_pt rold|//] := boolP (pt.2 < _).
 eexists; split; first by []; do!split=> //.
-- exact: miIr miP.
 - move=> w1' x' n' tx'; rewrite (getm_upd upd_w1).
   have [{w1' x' n' tx'}-> [<- <- <-]|neq_w1'] := altP (_ =P _).
     rewrite hn /Abstract.getv.
@@ -663,8 +643,8 @@ Lemma meminj_spec_malloc mi amem smem amem' info bl sz newb base col :
   refine_internal_state mi smem (col, info) ->
   meminj_ok mi bl ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
-  meminj_spec amem mi ->
-  meminj_spec amem' (mi_malloc mi newb base col).
+  meminj_spec mi ->
+  meminj_spec (mi_malloc mi newb base col).
 Proof.
 move=> [fresh_col ? ? ?] in_bl malloc miP.
 constructor => b col' col'' base' base''.
@@ -1033,7 +1013,6 @@ Qed.
 
 Hint Constructors refine_val refine_val.
 Hint Resolve get_mem_memv.
-Hint Resolve meminj_update.
 
 Lemma refine_pc_inv mi col apcb apci pc :
   refine_val mi (Abstract.VPtr (apcb, apci)) pc (PTR col) ->
@@ -1077,8 +1056,8 @@ Definition lift_binop (f : binop) (x y : atom (mword mt) Sym.type) :=
          end
   end.
 
-Lemma refine_binop mi amem f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
-  meminj_spec amem mi ->
+Lemma refine_binop mi f v1 w1 ty1 v2 w2 ty2 w3 ty3 :
+  meminj_spec mi ->
   refine_val mi v1 w1 ty1 -> refine_val mi v2 w2 ty2 ->
   lift_binop f w1@ty1 w2@ty2 = Some (w3,ty3) ->
   exists v3, Abstract.lift_binop f v1 v2 = Some v3 /\ refine_val mi v3 w3 ty3.
@@ -1325,7 +1304,7 @@ try match goal with
   (have := refine_binop (f := op) miP rw1 rw2;
   rewrite /= ?eqxx => /(_ _ _ erefl) [? [? ?]]) ||
   let op := current_instr_opcode in
-  fail 3 "refine_binop" op
+  fail 3 "refine_binop" op rw1 rw2
 end;
 
 match goal with
