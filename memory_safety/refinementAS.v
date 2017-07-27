@@ -34,6 +34,9 @@ Context {mt : machine_types}
 
 Context `{syscall_regs mt} `{addrs : @memory_syscall_addrs mt}.
 
+Local Notation sstate := (@Symbolic.state mt (Sym.sym_memory_safety mt)).
+Local Notation astate := (Abstract.state mt).
+
 Definition meminj := {partmap Sym.color -> name * mword mt (* base *)}.
 
 Lemma binop_addDl : forall x y z : mword mt,
@@ -594,7 +597,7 @@ Qed.
 Definition meminj_ok (bl : {fset name}) :=
   forall col b_base, mi col = Some b_base -> b_base.1 \in bl.
 
-Definition refine_state (ast : Abstract.state mt) (sst : @Symbolic.state mt (Sym.sym_memory_safety mt)) :=
+Definition refine_state (ast : astate) (sst : sstate) :=
   let '(Abstract.State amem aregs apc) := ast in
   match sst with
   | Symbolic.State smem sregs w@ty ist =>
