@@ -25,6 +25,7 @@ Variable addrs : memory_syscall_addrs mt.
 Local Notation state := (state mt).
 Local Notation pointer := [eqType of pointer mt].
 Local Notation value := (value mt).
+Local Notation astepf := (AbstractE.step ops sr addrs).
 
 Implicit Type m : memory mt.
 Implicit Type rs : registers mt.
@@ -882,12 +883,47 @@ Ltac solve_frame_error :=
 
 Lemma frame_error m s :
   fdisjoint (names s) (domm m) ->
-  AbstractE.step _ _ _ s = None ->
-  AbstractE.step _ _ _ (add_mem m s) = None.
+  astepf s = None ->
+  astepf (add_mem m s) = None.
 Proof.
 case: s m => m rs pc m'.
 rewrite names_state /= 2!fdisjointUl -andbA /AbstractE.step /add_mem.
 by case/and3P=> dis_m dis_rs dis_pc *; solve_frame_error.
+Qed.
+
+Lemma noninterference s pm m1 m2 n :
+  fdisjoint (names s) (domm m1) ->
+  fdisjoint (names (rename pm s)) (domm m2) ->
+  match stepn astepf n (add_mem m1 s),
+        stepn astepf n (add_mem m2 (rename pm s)) with
+  | Some s1, Some s2 =>
+    exists pm' s',
+      [/\ s1 = add_mem m1 s',
+          fdisjoint (names s') (domm m1),
+          s2 = add_mem m2 (rename pm' s') &
+          fdisjoint (names (rename pm' s')) (domm m2)]
+  | None, None => True
+  | _, _ => False
+  end.
+Proof.
+elim: n pm s => [|n IH] pm s.
+  by move=> ?? /=; exists pm, s; split.
+move=> dis1 dis2; rewrite (lock astepf) /= -lock.
+case step0: (astepf s)=> [s'|].
+  move/AbstractE.stepP in step0.
+  have [pm1 [/AbstractE.stepP step1 dis1']] := frame_ok dis1 step0.
+  have [pm' step2] := rename_step pm step0.
+  have [pm2 [/AbstractE.stepP step2' dis2']] := frame_ok dis2 step2.
+  rewrite step1 step2'.
+  move/(_ (pm2 * pm' * pm1^-1) _ dis1'): IH.
+  rewrite renameD fperm_mulsKV -renameD.
+  by move/(_ dis2').
+rewrite frame_error //.
+case step0': (astepf (rename pm s))=> [s'|].
+  move/AbstractE.stepP in step0'.
+  have [pm' {step0'} /AbstractE.stepP] := rename_step pm^-1 step0'.
+  by rewrite renameK step0.
+by rewrite frame_error.
 Qed.
 
 End MemorySafety.
