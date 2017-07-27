@@ -27,7 +27,6 @@ Open Scope word_scope.
 Import Sym.Notations.
 
 Context {mt : machine_types}
-        {cl : Sym.color_class}
         {ops : machine_ops mt}
 
         {opss : machine_ops_spec ops}.
@@ -37,7 +36,7 @@ Context `{syscall_regs mt} `{addrs : @memory_syscall_addrs mt}.
 Local Notation sstate := (@Symbolic.state mt (Sym.sym_memory_safety mt)).
 Local Notation astate := (Abstract.state mt).
 
-Definition meminj := {partmap Sym.color -> name * mword mt (* base *)}.
+Definition meminj := {partmap name -> name * mword mt (* base *)}.
 
 Lemma binop_addDl : forall x y z : mword mt,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
@@ -203,7 +202,7 @@ Definition cover (smem : Sym.memory mt) (info : seq (Sym.block_info mt)) :=
   forall w v, smem w = Some v ->
   exists bi, bi \in info /\ inbounds (Sym.block_base bi) (Sym.block_size bi) w.
 
-Record refine_internal_state smem (ist : Sym.color * seq (Sym.block_info mt)) : Prop := RIS {
+Record refine_internal_state smem (ist : name * seq (Sym.block_info mt)) : Prop := RIS {
 
   ris_fresh : fresh_color ist.1;
 
@@ -711,15 +710,14 @@ Qed.
 Lemma refine_internal_state_malloc mi amem amem' bl smem info (sz : mword mt) newb bi color smem' :
   0 < sz <= Sym.block_size bi ->
   Abstract.malloc_fun amem bl sz = (amem', newb) ->
-  (color < Sym.max_color)%ord ->
   Sym.block_color bi = None ->
   bi \in info ->
   refine_internal_state mi smem (color, info) ->
   Sym.write_block smem (Sym.block_base bi) 0@M(color, DATA) sz = Some smem' ->
   refine_internal_state (mi_malloc mi newb (Sym.block_base bi) color)
-    smem' (Sym.inc_color color, Sym.update_block_info info bi color sz).
+    smem' (Name (val color).+1, Sym.update_block_info info bi color sz).
 Proof.
-move=> /andP [nneg_sz le_sz] malloc lt_color color_bi in_bi.
+move=> /andP [nneg_sz le_sz] malloc color_bi in_bi.
 case=> [fresh_color no_overlap cover_info biP] write_bi.
 have [? ?] := block_info_bounds (biP _ in_bi).
 have ? := @leZ_min (Sym.block_base bi).
@@ -729,11 +727,13 @@ split.
   rewrite /refinement.fresh_color.
   move=> col b base.
   have [-> _|neq_col] := col =P color.
-    exact/Sym.ltb_inc.
+    rewrite /Ord.lt -val_ordE /Ord.leq /= leqnSn /=.
+    by rewrite -val_eqE /= neq_ltn ltnSn.
   rewrite setmE (introF eqP neq_col).
   move/fresh_color => lt_col.
   apply: (@Ord.lt_trans _ color col) => //=.
-  exact/Sym.ltb_inc.
+  rewrite /Ord.lt -val_ordE /Ord.leq /= leqnSn /=.
+  by rewrite -val_eqE /= neq_ltn ltnSn.
 - (* no overlap *)
   move=> i j def w.
   rewrite /Sym.update_block_info.
@@ -1333,7 +1333,7 @@ by solve_pc rpci.
 (* Syscall *)
 
 (* Malloc *)
-  move: b Heqo E0 E1 E2 => bi Heqo E0 E1 E2.
+  move: b Heqo E E0 E1 => bi Heqo E0 E1 E2.
   case: (rist)=> [fresh_color no_overlap cover /(_ bi _)].
   have: bi \in [seq x <- info
               | (vala <= Sym.block_size x)%ord
@@ -1377,8 +1377,8 @@ by solve_pc rpci.
 
   have ? := @leZ_max (Sym.block_size x).
   case: (rist)=> [fresh_color no_overlap cover /(_ x _)].
-  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s].
-    case: [seq x0 <- info | Sym.block_color x0 == Some s] E => //= ? ? [->].
+  have: x \in [seq x0 <- info | Sym.block_color x0 == Some n].
+    case: [seq x0 <- info | Sym.block_color x0 == Some n] E => //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x in_x].
   rewrite in_x => /(_ erefl) biP.
@@ -1397,8 +1397,8 @@ by solve_pc rpci.
     move/rmem.
     rewrite mi_col /Abstract.getv /=.
     by case: (a_mem b) => // fr _; exists fr.
-  have eq_col: col = s by congruence.
-  have eq_s4b: n0 = b.
+  have eq_col: col = n by congruence.
+  have eq_s4b: n2 = b.
     inversion H2.
     by rewrite eq_col H7 in mi_col; injection mi_col.
 
@@ -1418,14 +1418,14 @@ by solve_pc rpci.
 
 (* Base *)
   case: (rist)=> [fresh_color no_overlap cover /(_ x _)].
-  have: x \in [seq x0 <- info | Sym.block_color x0 == Some s].
-    case: [seq x0 <- info | Sym.block_color x0 == Some s] E=> //= ? ? [->].
+  have: x \in [seq x0 <- info | Sym.block_color x0 == Some n].
+    case: [seq x0 <- info | Sym.block_color x0 == Some n] E=> //= ? ? [->].
     by rewrite inE eqxx.
   rewrite mem_filter => /andP [/eqP color_x ->] /(_ erefl) biP.
   case: biP E E0 color_x => [|-> //].
   move=> col b color_x [? ?] mi_col get_x ? E0 ?.
-  have eq_col: col = s by congruence.
-  have eq_s4b: n0 = b.
+  have eq_col: col = n by congruence.
+  have eq_s4b: n2 = b.
     inversion H2.
     by rewrite eq_col H7 in mi_col; injection mi_col.
 

@@ -1,5 +1,5 @@
-From mathcomp Require Import ssreflect ssrbool eqtype seq ssrint.
-From CoqUtils Require Import hseq ord word partmap.
+From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype fintype seq ssrint.
+From CoqUtils Require Import hseq ord word partmap nominal.
 
 Require Import lib.utils lib.word_utils.
 Require Import common.types.
@@ -29,13 +29,6 @@ Definition color_size := 13%nat. (*2^13 colors*)
 Definition color := [ordType of word color_size].
 Definition inc_color (c : color) := (c + 1)%w.
 
-Instance col : Sym.color_class := {
-  color := color;
-  max_color := monew;
-  inc_color := inc_color;
-  ltb_inc col := @leqw_succ _ col monew
-}.
-
 (* Encoding scheme
 
   type_bits = color_bits + 1 = 14
@@ -52,8 +45,8 @@ Import Sym.
 
 Definition encode_type (ty : Sym.type) : word 14 :=
   match ty with
-      TypeData => @wpack [:: 13; 1] [hseq 0%w; 0%w]
-    | TypePointer c => @wpack [:: 13;1] [hseq c; 1%w]
+  | TypeData => @wpack [:: 13; 1] [hseq 0%w; 0%w]
+  | TypePointer c => @wpack [:: 13;1] [hseq as_word (val c); 1%w]
   end.
 
 Definition decode_type (cty : word 14) : option Sym.type :=
@@ -62,32 +55,13 @@ Definition decode_type (cty : word 14) : option Sym.type :=
     if k == 0%w then Some TypeData
     else None
   else if t == 1%w then
-         Some (TypePointer k)
+    Some (TypePointer (Name (val k)))
   else None.
-
-Lemma encode_typeK ty : decode_type (encode_type ty) = Some ty.
-Proof.
-case: ty => [|s];
-by rewrite /decode_type /encode_type wpackK.
-Qed.
-
-Lemma decode_typeK w ty : decode_type w = Some ty ->
-                          encode_type ty = w.
-Proof.
-  rewrite /decode_type /encode_type.
-  case E: (wunpack _) => [k [w' []]].
-  move: (@wunpackK [:: 13; 1] w). rewrite E.
-  have [?|?] := altP (w' =P 0%w); try subst w'.
-  { have [?|?] := altP (k =P 0%w); try subst k; last by [].
-    by move => H [<-]. }
-  have [?|?] := altP (w' =P 1%w); try subst w'; last by [].
-  by move => H [<-].
-Qed.
 
 Definition encode_mtag (tg : Sym.mem_tag) : word 30 :=
   match tg with
-      TagFree => @wpack [:: 13; 14; 3] [hseq 0; 0; 0]%w
-    | TagMemory c ty => @wpack [:: 13;14;3] [hseq c; encode_type ty; as_word 2]%w
+  | TagFree => @wpack [:: 13; 14; 3] [hseq 0; 0; 0]%w
+  | TagMemory c ty => @wpack [:: 13;14;3] [hseq as_word (val c); encode_type ty; as_word 2]%w
   end.
 
 Import DoNotation.
@@ -102,35 +76,8 @@ Definition decode_mtag (ctg : word 30) : option Sym.mem_tag :=
   else
     if m == as_word 2 then
       do! cty <- decode_type ty;
-      Some (TagMemory c cty)
+      Some (TagMemory (Name (val c)) cty)
     else None.
-
-Lemma encode_mtagK tg : decode_mtag (encode_mtag tg) = Some tg.
-Proof.
-  destruct tg as  [c ty |];
-  rewrite /decode_mtag /encode_mtag ?wpackK;
-
-  try (remember (encode_type ty); rewrite ?wpackK;
-       simpl; subst; rewrite encode_typeK);
-  try reflexivity.
-Qed.
-
-Lemma decode_mtagK w tg : decode_mtag w = Some tg ->
-                          encode_mtag tg = w.
-Proof.
-  rewrite /decode_mtag /encode_mtag.
-  case E: (wunpack _) => [c [cty [m []]]].
-  move: (@wunpackK [:: 13;14;3] w). rewrite E.
-  have [?|?] := altP (m =P 0%w); try subst m.
-  { have [?|?] := altP (c =P 0%w); try subst c; last by [].
-    have [?|?] := altP (cty =P 0%w); try subst cty; last by [].
-    by move => H [<-].
-  }
-  have [?|?] := altP (m =P as_word 2); try subst m; last by [].
-  case DEC: (decode_type cty) => [ty|] //=.
-  apply decode_typeK in DEC; subst;
-    by move => H [<-].
-Qed.
 
 Instance enc: encodable mt Sym.ms_tags := {
   decode k m := fun (w : mword mt) =>
@@ -166,24 +113,24 @@ Context {monitor_invariant : @monitor_invariant _ _ enc}
 
 Inductive refine_state (ast : Abstract.state mt) (cst : Concrete.state mt) : Prop :=
 | rs_intro : forall (sst : Symbolic.state mt) m,
-               refinement_common.refine_state monitor_invariant (@Sym.memsafe_syscalls _ _ _ _ _) sst cst ->
+               refinement_common.refine_state monitor_invariant (@Sym.memsafe_syscalls _ _ _ _) sst cst ->
                refinementAS.refine_state m ast sst ->
                refine_state ast cst.
 Hint Constructors refine_state.
 
 Hypothesis implementation_correct :
-  monitor_code_bwd_correctness monitor_invariant (@Sym.memsafe_syscalls _ _ _ _ _).
+  monitor_code_bwd_correctness monitor_invariant (@Sym.memsafe_syscalls _ _ _ _).
 
 Lemma backwards_refinement_as ast m sst sst' :
   refinementAS.refine_state m ast sst ->
-  exec (Symbolic.step (@Sym.memsafe_syscalls _ _ _ _ _)) sst sst' ->
+  exec (Symbolic.step (@Sym.memsafe_syscalls _ _ _ _)) sst sst' ->
   exists ast' m',
     exec (fun ast ast' => Abstract.step ast ast') ast ast' /\
     refinementAS.refine_state m' ast' sst'.
 Proof.
   move => REF EXEC.
   elim: EXEC m ast REF => {sst sst'} [sst _ |sst sst' sst'' _ STEPS EXEC IH] m ast REF; first by eauto 7.
-  have := @backward_simulation _ _ _ _ _ _ _ _ _ REF STEPS.
+  have := @backward_simulation _ _ _ _ _ _ _ _ REF STEPS.
   intros (ast' & STEPA & m' & REF').
   have := IH m' ast' REF'; eauto.
   intros (ast'' & m'' & EXECA & REF'').

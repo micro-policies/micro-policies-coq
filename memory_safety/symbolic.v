@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssrint.
-From CoqUtils Require Import hseq ord word partmap.
+From CoqUtils Require Import hseq ord word partmap nominal.
 Require Import lib.utils common.types.
 Require Import symbolic.symbolic memory_safety.classes.
 
@@ -25,21 +25,12 @@ Open Scope word_scope.
 Local Notation word := (mword mt).
 Local Notation "x .+1" := (addw x onew).
 
-Class color_class := {
-  color : ordType;
-  max_color : color;
-  inc_color : color -> color;
-  ltb_inc : forall col, (col < max_color -> col < inc_color col)%ord
-}.
-
-Context {cl : color_class}.
-
 Inductive type :=
 | TypeData
-| TypePointer : color -> type.
+| TypePointer : name -> type.
 
 Inductive mem_tag :=
-| TagMemory : color -> type -> mem_tag
+| TagMemory : name -> type -> mem_tag
 | TagFree.
 
 Local Notation DATA := TypeData.
@@ -52,7 +43,7 @@ Local Notation datom := (atom word type).
 Record block_info := mkBlockInfo {
   block_base : word;
   block_size : word;
-  block_color : option color
+  block_color : option name
 }.
 
 Definition block_info_eq :=
@@ -109,7 +100,7 @@ Definition ms_tags := {|
   entry_tag_type := [eqType of unit]
 |}.
 
-Definition rules_normal (op : opcode) (c : color)
+Definition rules_normal (op : opcode) (c : name)
            (ts : hseq (tag_type ms_tags) (inputs op)) : option (ovec ms_tags op) :=
   let ret  := fun rtpc (rt : type_of_result ms_tags (outputs op)) => Some (@OVec ms_tags op rtpc rt) in
   let retv := fun (rt : type_of_result ms_tags (outputs op)) => ret (PTR c) rt in
@@ -177,7 +168,7 @@ Definition rules (ivec : ivec ms_tags) : option (vovec ms_tags (op ivec)) :=
   | IVec SERVICE _ _ _ => None
   end.
 
-Variable initial_color : color.
+Variable initial_color : name.
 
 (* Hypothesis: alloc never returns initial_color. *)
 
@@ -193,7 +184,7 @@ Global Instance sym_memory_safety : params := {
 
   transfer := rules;
 
-  internal_state := [eqType of (color * seq block_info)%type]
+  internal_state := [eqType of (name * seq block_info)%type]
 }.
 
 Fixpoint write_block_rec mem base (v : matom) n : option (Symbolic.memory mt _) :=
@@ -208,7 +199,7 @@ Definition write_block init (base : word) (v : matom) (sz : word) : option (Symb
      write_block_rec init base v (val sz)
   else None.
 
-Definition update_block_info info x (color : color) sz :=
+Definition update_block_info info x (color : name) sz :=
   let i := index x info in
   let color1 := mkBlockInfo (block_base x) sz (Some color) in
   let res := set_nth color1 info i color1 in
@@ -219,7 +210,6 @@ Definition update_block_info info x (color : color) sz :=
 
 Definition malloc_fun st : option (state mt) :=
   let: (color,info) := internal st in
-  if (color < max_color)%ord then
   do! sz <- regs st syscall_arg1;
   match sz with
     | sz@DATA =>
@@ -227,7 +217,7 @@ Definition malloc_fun st : option (state mt) :=
           if ohead [seq x <- info | ((sz <= block_size x) && (block_color x == None))%ord] is Some x then
           do! mem' <- write_block (mem st) (block_base x) 0@M(color,DATA) sz;
           do! regs' <- updm (regs st) syscall_ret ((block_base x)@(PTR color));
-          let color' := inc_color color in
+          let color' := Name (val color).+1 in
           do! raddr <- regs st ra;
           if raddr is _@(PTR _) then
             Some (State mem' regs' raddr (color', update_block_info info x color sz))
@@ -235,8 +225,7 @@ Definition malloc_fun st : option (state mt) :=
           else None
       else None
     | _ => None
-  end
-  else None.
+  end.
 
 Definition def_info : block_info :=
   mkBlockInfo 0 0 None.
@@ -264,7 +253,7 @@ Definition free_fun (st : state mt) : option (state mt) :=
 
 (* This factors out the common part of sizeof, basep, and offp *)
 Definition ptr_fun (st : state mt)
-    (f : block_info -> color -> datom) : option (state mt) :=
+    (f : block_info -> name -> datom) : option (state mt) :=
   let: (next_color,inf) := internal st in
   do! ptr <- regs st syscall_arg1;
   match ptr return option (state mt) with
@@ -309,8 +298,8 @@ End WithClasses.
 
 Canonical block_info_eqType.
 
-Notation memory mt := (Symbolic.memory mt (@sym_memory_safety mt _)).
-Notation registers mt := (Symbolic.registers mt (@sym_memory_safety mt _)).
+Notation memory mt := (Symbolic.memory mt (@sym_memory_safety mt)).
+Notation registers mt := (Symbolic.registers mt (@sym_memory_safety mt)).
 
 Module Notations.
 
@@ -320,8 +309,6 @@ Notation "M( n , ty )" := (TagMemory n ty) (at level 4).
 Notation FREE := TagFree.
 
 End Notations.
-
-Arguments def_info mt {_}.
 
 End Sym.
 
