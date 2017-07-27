@@ -681,7 +681,7 @@ apply: fdisjoint_trans; first by eauto.
 by rewrite fdisjointUl /= dis_m.
 Qed.
 
-Ltac solve_separation_disjoint :=
+Ltac solve_frame_ok_disjoint :=
   match goal with
   | UPD : updm ?rs ?r ?v = Some ?rs',
     DIS : is_true (fdisjoint (names ?rs) ?bs) |-
@@ -707,7 +707,7 @@ Ltac solve_separation_disjoint :=
   | _ => done
   end.
 
-Ltac solve_separation_simpl :=
+Ltac solve_frame_ok_simpl :=
   intros;
   match goal with
   | H : is_true [&& fdisjoint _ _, fdisjoint _ _ & fdisjoint _ _] |- _ =>
@@ -718,10 +718,10 @@ Ltac solve_separation_simpl :=
     exists fperm_one; rewrite rename1; split;
     [rewrite /add_mem /=; s_econstructor solve [eauto with separation]|
      rewrite 2!fdisjointUl /= -andbA; apply/and3P;
-     split; repeat solve_separation_disjoint]
+     split; repeat solve_frame_ok_disjoint]
   end.
 
-Lemma separation m s s' :
+Lemma frame_ok m s s' :
   fdisjoint (names s) (domm m) ->
   step s s' ->
   exists pm,
@@ -729,7 +729,7 @@ Lemma separation m s s' :
     fdisjoint (names (rename pm s')) (domm m).
 Proof.
 rewrite names_state 2!fdisjointUl -andbA.
-move=> dis hstep; case: s s' / hstep dis=> /=; try solve_separation_simpl.
+move=> dis hstep; case: s s' / hstep dis=> /=; try solve_frame_ok_simpl.
 (* Malloc *)
 move=> m' m'' rs rs' sz b [bpc opc].
 rewrite /blocks /add_mem /=; set s := State _ _ _; set s' := State _ _ _.
@@ -811,7 +811,7 @@ have -> : rename pm rs = rs.
 have -> : rename pm (VPtr (bpc, opc)) = VPtr (bpc, opc).
   apply: renameJ.
   rewrite fdisjointC.
-  by solve_separation_disjoint.
+  by solve_frame_ok_disjoint.
 rewrite names_state /= 2!fdisjointUl -andbA; apply/and3P; split.
 (* FIXME: The generalizations below should not be needed to prove the set inclusions *)
 - have ?: fsubset (names (setm m' (fresh new) (nseq sz (VData 0%w))))
@@ -826,11 +826,11 @@ rewrite names_state /= 2!fdisjointUl -andbA; apply/and3P; split.
     eapply nom_finsuppP; finsupp.
   apply: fdisjoint_trans; first by eauto.
   by rewrite 2!fdisjointUl disr fdisjoint0s /= fdisjointUl fdisjoint0s dis_new.
-by solve_separation_disjoint.
+by solve_frame_ok_disjoint.
 (* Free *)
 apply: (@fdisjoint_trans _ _ (names (VPtr ptr))).
   exact: fsubsetUl.
-solve_separation_disjoint.
+solve_frame_ok_disjoint.
 (* Last *)
 exact: (get_reg_disjoint disrs PTR).
 Qed.
@@ -850,7 +850,7 @@ Lemma not_domm_pc p m' :
   p.1 \notin domm m'.
 Proof. by rewrite names_valueE fdisjointC fdisjoints1. Qed.
 
-Ltac solve_separation_conv :=
+Ltac solve_frame_error :=
   unfold updm in *;
   repeat match goal with
   | e : (if ?pc == ?rhs then _ else _) = _ |- _ =>
@@ -880,14 +880,14 @@ Ltac solve_separation_conv :=
   | |- _ => single_match_inv; subst=> //
   end.
 
-Lemma separation_conv m s :
+Lemma frame_error m s :
   fdisjoint (names s) (domm m) ->
   AbstractE.step _ _ _ s = None ->
   AbstractE.step _ _ _ (add_mem m s) = None.
 Proof.
 case: s m => m rs pc m'.
 rewrite names_state /= 2!fdisjointUl -andbA /AbstractE.step /add_mem.
-by case/and3P=> dis_m dis_rs dis_pc *; solve_separation_conv.
+by case/and3P=> dis_m dis_rs dis_pc *; solve_frame_error.
 Qed.
 
 End MemorySafety.
