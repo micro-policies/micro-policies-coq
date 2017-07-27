@@ -3,8 +3,8 @@ Ltac type_of x := type of x.
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype
   ssrint ssralg.
 From CoqUtils Require Import ord word fset partmap nominal.
-Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic.
-Require Import memory_safety.abstract memory_safety.symbolic.
+Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic symbolic.exec.
+Require Import memory_safety.abstract memory_safety.symbolic memory_safety.executable.
 Require Import memory_safety.classes.
 
 Set Implicit Arguments.
@@ -34,7 +34,10 @@ Context {mt : machine_types}
 Context `{syscall_regs mt} `{addrs : @memory_syscall_addrs mt}.
 
 Local Notation sstate := (@Symbolic.state mt (Sym.sym_memory_safety mt)).
+Local Notation sstepf :=
+  (@stepf _ ops (Sym.sym_memory_safety mt) (@Sym.memsafe_syscalls _ ops _ addrs)).
 Local Notation astate := (Abstract.state mt).
+Local Notation astepf := (AbstractE.step ops _ addrs).
 
 Definition meminj := {partmap name -> name * mword mt (* base *)}.
 
@@ -1469,6 +1472,22 @@ rewrite -eq_col -[Sym.block_base x]addw0 in E0.
     by exists (meminj_weaken mi (Abstract.blocks ast'));
     apply refine_state_weaken; eauto
   end.
+Qed.
+
+Lemma refinement mi ast sst sst' n :
+  refine_state mi ast sst ->
+  stepn sstepf n sst = Some sst' ->
+  exists mi' ast',
+    stepn astepf n ast = Some ast' /\
+    refine_state mi' ast' sst'.
+Proof.
+elim: n mi ast sst => [|n IH] mi ast sst /= ref.
+  by move=> [<-]; eauto.
+case h_sst: (sstepf sst)=> [sst''|//] h_sst''.
+move/stepP in h_sst.
+have [ast'' [/AbstractE.stepP h_ast [mi' ref']]] := backward_simulation ref h_sst.
+rewrite h_ast.
+by apply: IH; eauto.
 Qed.
 
 End refinement.
