@@ -19,9 +19,7 @@ Variable mt : machine_types.
 Variable mops : machine_ops mt.
 Variable r_arg : reg mt.
 Variable r_ret : reg mt.
-Variable output_addr : mword mt.
-Variable call_addr : mword mt.
-Variable return_addr : mword mt.
+Context {addrs : ifc_addrs mt}.
 
 Inductive mem_tag :=
 | MemInstr

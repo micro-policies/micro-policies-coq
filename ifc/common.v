@@ -6,6 +6,12 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
+Class ifc_addrs mt := IFCAddrs {
+  output_addr : mword mt;
+  call_addr : mword mt;
+  return_addr : mword mt
+}.
+
 Section CallFrame.
 
 Variable mt : machine_types.

@@ -22,15 +22,11 @@ Local Notation word := (mword mt).
 Local Notation atom := (atom word L).
 Variable r_arg : reg mt.
 Variable r_ret : reg mt.
-Variable output_addr : word.
-Variable call_addr : word.
-Variable return_addr : word.
+Context {addrs : ifc_addrs mt}.
 
 Local Notation state := (state L mt).
-Local Notation step := (@step L mt mops r_arg r_ret
-                              output_addr call_addr return_addr).
-Local Notation trace := (@trace L mt mops r_arg r_ret
-                                output_addr call_addr return_addr).
+Local Notation step := (@step L mt mops r_arg r_ret addrs).
+Local Notation trace := (@trace L mt mops r_arg r_ret addrs).
 
 Implicit Type st : state.
 
