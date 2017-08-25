@@ -16,8 +16,7 @@ Import DoNotation.
 Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
-Variable r_arg : reg mt.
-Variable r_ret : reg mt.
+Context {sregs : syscall_regs mt}.
 Context {addrs : ifc_addrs mt}.
 
 Local Notation word := (mword mt).
@@ -25,13 +24,13 @@ Local Notation d_atom := (atom word L).
 
 Local Notation sstate := (@Symbolic.state mt (sym_ifc L mt)).
 Local Notation sstep :=
-  (@stepf _ _ _ (@ifc_syscalls L mt mops r_arg r_ret addrs)).
+  (@stepf _ _ _ (@ifc_syscalls L mt mops sregs addrs)).
 Local Notation strace :=
-  (@symbolic.trace _ _ _ r_arg r_ret addrs).
+  (@symbolic.trace _ _ _ sregs addrs).
 Local Notation astate := (ifc.abstract.state L mt).
-Local Notation astep := (@step L mt mops r_arg r_ret addrs).
+Local Notation astep := (@step L mt mops sregs addrs).
 Local Notation atrace :=
-  (@abstract.trace _ _ _ r_arg r_ret addrs).
+  (@abstract.trace _ _ _ sregs addrs).
 Implicit Types (sst : sstate) (ast : astate).
 
 Local Open Scope label_scope.
@@ -174,20 +173,20 @@ case: ifP=> _ //=.
   (* Return *)
   rewrite /return_fun /=.
   case: stk=> [|cf stk'] //=.
-  case get_ret: (regs r_ret) => [retv|] //=.
+  case get_ret: (regs syscall_ret) => [retv|] //=.
   case upd_regs: updm=> [rs'|] //= [<-] {sst'} /=.
   by rewrite cats0; split.
 case: ifP=> _ //=.
   (* Call *)
   rewrite /call_fun /=.
   case get_caller: (regs ra) => [caller_pc|] //=.
-  case get_called: (regs r_arg) => [called_pc|] //= [<-] {sst'} /=.
+  case get_called: (regs syscall_arg1) => [called_pc|] //= [<-] {sst'} /=.
   by rewrite cats0; split.
 case: ifP=> _ //=.
   (* Output *)
   rewrite /output_fun /=.
   case get_ra: (regs ra) => [raddr|] //=.
-  case get_arg: (regs r_arg) => [out|] //= [<-] {sst'} /=.
+  case get_arg: (regs syscall_arg1) => [out|] //= [<-] {sst'} /=.
   by rewrite cats1; split.
 Qed.
 

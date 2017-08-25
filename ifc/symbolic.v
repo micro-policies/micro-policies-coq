@@ -17,8 +17,7 @@ Local Open Scope label_scope.
 Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
-Variable r_arg : reg mt.
-Variable r_ret : reg mt.
+Context {sregs : syscall_regs mt}.
 Context {addrs : ifc_addrs mt}.
 
 Inductive mem_tag :=
@@ -121,8 +120,8 @@ Implicit Types st : state.
 
 Definition return_fun st : option state :=
   if call_stack (internal st) is cf :: stk then
-    do! retv <- regs st r_ret;
-    do! rs' <- updm (cf_regs cf) r_ret (vala retv)@(taga (pc st) ⊔ taga retv);
+    do! retv <- regs st syscall_ret;
+    do! rs' <- updm (cf_regs cf) syscall_ret (vala retv)@(taga (pc st) ⊔ taga retv);
     Some (State (mem st) rs' (cf_pc cf)
                 {| outputs := outputs (internal st);
                    call_stack := stk |})
@@ -131,7 +130,7 @@ Definition return_fun st : option state :=
 Definition call_fun st : option state :=
   do! caller_pc <- regs st ra;
   let caller_pc := (vala caller_pc)@(taga caller_pc ⊔ taga (pc st)) in
-  do! called_pc <- regs st r_arg;
+  do! called_pc <- regs st syscall_arg1;
   Some (State (mem st) (regs st)
               (vala called_pc)@(taga called_pc ⊔ taga caller_pc)
               {| outputs := outputs (internal st);
@@ -144,7 +143,7 @@ Definition output_fun st : option state :=
   do! raddr <- regs st ra;
   let r_pc  := taga raddr ⊔ taga (pc st) in
   let raddr := (vala raddr)@r_pc in
-  do! out   <- regs st r_arg;
+  do! out   <- regs st syscall_arg1;
   let r_out := taga out in
   Some (State (mem st) (regs st) raddr
               {| outputs := rcons (outputs (internal st))

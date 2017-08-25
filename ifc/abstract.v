@@ -14,8 +14,7 @@ Import DoNotation.
 Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
-Variable r_arg : reg mt.
-Variable r_ret : reg mt.
+Context {sregs : syscall_regs mt}.
 Context {addrs : ifc_addrs mt}.
 
 Local Notation word := (mword mt).
@@ -94,14 +93,14 @@ Definition step s : option (state * option atom):=
      via BNZ instead of JAL. *)
   else if pc == return_addr then
     if stk is cf :: stk' then
-      do! retv <- regs r_ret;
-      do! rs' <- updm (cf_regs cf) r_ret (vala retv)@(lpc ⊔ taga retv);
+      do! retv <- regs syscall_ret;
+      do! rs' <- updm (cf_regs cf) syscall_ret (vala retv)@(lpc ⊔ taga retv);
       Some (State mem rs' (cf_pc cf) stk', None)
     else None
   else if pc == call_addr then
     do! caller_pc <- regs ra;
     let caller_pc := (vala caller_pc)@(taga caller_pc ⊔ lpc) in
-    do! called_pc <- regs r_arg;
+    do! called_pc <- regs syscall_arg1;
     Some (State mem regs
                 (vala called_pc)@(taga called_pc ⊔ taga caller_pc)
                 (CallFrame caller_pc regs :: stk), None)
@@ -109,7 +108,7 @@ Definition step s : option (state * option atom):=
     do! raddr <- regs ra;
     let r_pc  := taga raddr ⊔ lpc in
     let raddr := (vala raddr)@r_pc in
-    do! out   <- regs r_arg;
+    do! out   <- regs syscall_arg1;
     let r_out := taga out in
     Some (State mem regs raddr stk,
           Some (vala out)@(lpc ⊔ r_out))

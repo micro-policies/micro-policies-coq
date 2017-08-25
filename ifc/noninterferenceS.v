@@ -16,8 +16,7 @@ Import DoNotation.
 Variable L : labType.
 Variable mt : machine_types.
 Variable mops : machine_ops mt.
-Variable r_arg : reg mt.
-Variable r_ret : reg mt.
+Context {sregs : syscall_regs mt}.
 Context {addrs : ifc_addrs mt}.
 
 Local Notation word := (mword mt).
@@ -25,13 +24,13 @@ Local Notation d_atom := (atom word L).
 
 Local Notation sstate := (@Symbolic.state mt (sym_ifc L mt)).
 Local Notation sstep :=
-  (@stepf _ _ _ (@ifc_syscalls L mt mops r_arg r_ret addrs)).
+  (@stepf _ _ _ (@ifc_syscalls L mt mops sregs addrs)).
 Local Notation strace :=
-  (@symbolic.trace _ _ _ r_arg r_ret addrs).
+  (@symbolic.trace _ _ _ sregs addrs).
 Local Notation astate := (ifc.abstract.state L mt).
-Local Notation astep := (@step L mt mops r_arg r_ret addrs).
+Local Notation astep := (@step L mt mops sregs addrs).
 Local Notation atrace :=
-  (@abstract.trace _ _ _ r_arg r_ret addrs).
+  (@abstract.trace _ _ _ sregs addrs).
 Implicit Types (st : sstate).
 
 Local Open Scope label_scope.
