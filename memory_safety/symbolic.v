@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype ssrint.
-From CoqUtils Require Import hseq ord word partmap nominal.
+From CoqUtils Require Import hseq ord word fmap nominal.
 Require Import lib.utils common.types.
 Require Import symbolic.symbolic memory_safety.classes.
 
@@ -173,8 +173,8 @@ Variable initial_color : name.
 (* Hypothesis: alloc never returns initial_color. *)
 
 Variable initial_pc : word.
-Variable initial_mem  : {partmap mword mt -> matom}.
-Variable initial_registers : {partmap reg mt -> datom}.
+Variable initial_mem  : {fmap mword mt -> matom}.
+Variable initial_registers : {fmap reg mt -> datom}.
 Hypothesis initial_ra : getm initial_registers ra = Some initial_pc@(PTR initial_color).
 
 Definition initial_state := (initial_mem, initial_registers, initial_pc@(PTR initial_color)).
@@ -286,11 +286,11 @@ Definition eqp_fun (st : state mt) : option (state mt) :=
   else None.
 
 Definition memsafe_syscalls : syscall_table mt :=
-  [partmap (addr Malloc, Syscall tt malloc_fun);
-           (addr Free,   Syscall tt free_fun);
-         (*(addr Size,   Syscall tt sizeof_fun); *)
-           (addr Base,   Syscall tt basep_fun);
-           (addr Eq,     Syscall tt eqp_fun)].
+  [fmap (addr Malloc, Syscall tt malloc_fun);
+        (addr Free,   Syscall tt free_fun);
+      (*(addr Size,   Syscall tt sizeof_fun); *)
+        (addr Base,   Syscall tt basep_fun);
+        (addr Eq,     Syscall tt eqp_fun)].
 
 Definition step := step memsafe_syscalls.
 

@@ -2,7 +2,7 @@
 
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype ssrint.
-From CoqUtils Require Import ord word fset fperm partmap nominal.
+From CoqUtils Require Import ord word fset fperm fmap nominal.
 Require Import lib.utils.
 Require Import common.types memory_safety.classes memory_safety.abstract.
 

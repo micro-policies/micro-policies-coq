@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq.
-From CoqUtils Require Import hseq word partmap.
+From CoqUtils Require Import hseq word fmap.
 
 Require Import lib.utils.
 Require Import common.types.

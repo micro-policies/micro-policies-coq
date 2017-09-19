@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq.
-From CoqUtils Require Import hseq ord partmap word.
+From CoqUtils Require Import hseq ord fmap word.
 From MicroPolicies Require Import lib.utils common.types ifc.labels.
 
 Set Implicit Arguments.
@@ -19,7 +19,7 @@ Variable L : labType.
 
 Record call_frame := CallFrame {
   cf_pc   : atom (mword mt) L;
-  cf_regs : {partmap reg mt -> atom (mword mt) L}
+  cf_regs : {fmap reg mt -> atom (mword mt) L}
 }.
 
 Definition tuple_of_call_frame cf :=

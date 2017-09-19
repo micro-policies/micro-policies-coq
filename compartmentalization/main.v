@@ -1,7 +1,7 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype fintype seq ssrint finset.
-From CoqUtils Require Import ord hseq word partmap.
+From CoqUtils Require Import ord hseq word fmap.
 
-Require Import lib.utils lib.partmap_utils.
+Require Import lib.utils lib.fmap_utils.
 Require Import common.types.
 Require Import concrete.concrete.
 Require Import concrete.int_32.

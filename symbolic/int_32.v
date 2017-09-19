@@ -9,7 +9,7 @@ Require Import symbolic.fault_handler.
 Require Import symbolic.symbolic.
 From mathcomp Require Import ssrnat eqtype seq ssrint.
 
-From CoqUtils Require Import word partmap.
+From CoqUtils Require Import word fmap.
 
 Import DoNotation.
 Import Concrete.
@@ -41,14 +41,14 @@ Instance concrete_int_32_fh : fault_handler_params mt := {
 }.
 
 Fixpoint insert_from {A : Type} (i : word 32) (l : seq A)
-                     (mem : {partmap word 32 -> A}) : {partmap word 32 -> A} :=
+                     (mem : {fmap word 32 -> A}) : {fmap word 32 -> A} :=
   match l with
   | [::]    => mem
   | h :: l' => insert_from (i + 1)%w l' (setm mem i h)
   end.
 
 Fixpoint constants_from {A : Type} (i : word 32) (n : nat) (x : A)
-                        (mem : {partmap word 32 -> A}) : {partmap word 32 -> A} :=
+                        (mem : {fmap word 32 -> A}) : {fmap word 32 -> A} :=
   match n with
   | O    => mem
   | S n' => constants_from (i + 1)%w n' x (setm mem i x)

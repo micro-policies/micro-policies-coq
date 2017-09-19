@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype div ssrint ssralg
   intdiv.
-From CoqUtils Require Import ord word partmap.
+From CoqUtils Require Import ord word fmap.
 
 Require Import lib.utils common.types.
 

@@ -9,7 +9,7 @@ Require Import symbolic.exec.
 Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
 
-From CoqUtils Require Import word partmap.
+From CoqUtils Require Import word fmap.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

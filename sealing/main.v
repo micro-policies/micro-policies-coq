@@ -1,6 +1,6 @@
 From mathcomp Require Import
   ssreflect ssrfun eqtype ssrnat ssrbool seq choice fintype ssrint.
-From CoqUtils Require Import ord word partmap hseq.
+From CoqUtils Require Import ord word fmap hseq.
 Require Import lib.utils lib.word_utils common.types common.segment.
 Require Import concrete.concrete.
 Require Import concrete.int_32.
@@ -421,7 +421,7 @@ Proof.
  omega.
 Qed.
 
-(* Minor: Why do PartMaps.get and PartMaps.set take their arguments in
+(* Minor: Why do FMaps.get and FMaps.set take their arguments in
   a different order from Int32PMap.get and Int32PMap.set?? *)
 
 Definition build_abstract_sealing_machine

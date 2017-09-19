@@ -1,7 +1,7 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype seq.
-From CoqUtils Require Import ord word fset partmap nominal.
+From CoqUtils Require Import ord word fset fmap nominal.
 From MicroPolicies
-Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic
+Require Import lib.utils lib.fmap_utils common.types symbolic.symbolic
                sealing.classes sealing.symbolic sealing.abstract.
 
 Set Implicit Arguments.
@@ -26,13 +26,13 @@ Context {mt : machine_types}
 
 (* this is used in the unsealing case; if we were to show fwd
    refinement we would need bijectivity (a permutation on keys) *)
-Definition key_map_inj (km : {partmap name -> Sym.key}) := forall ak ak' sk sk',
+Definition key_map_inj (km : {fmap name -> Sym.key}) := forall ak ak' sk sk',
   km ak = Some sk ->
   km ak' = Some sk' ->
   sk = sk' ->
   ak = ak'.
 
-Lemma fresh_set_inj : forall (km : {partmap name -> Sym.key}) akey skey,
+Lemma fresh_set_inj : forall (km : {fmap name -> Sym.key}) akey skey,
   key_map_inj km ->
   (forall ak, ~ km ak = Some skey) ->
   key_map_inj (setm km akey skey).
@@ -52,10 +52,10 @@ Section WithFixedKeyMap.
 
 (* km k returns Some sk when k is allocated and sk is the
    corresponding symbolic key *)
-Variable km : {partmap name -> Sym.key}.
+Variable km : {fmap name -> Sym.key}.
 
-Local Notation smemory := {partmap mword mt -> Sym.sym_sealing}.
-Local Notation sregisters := {partmap reg mt -> Sym.sym_sealing}.
+Local Notation smemory := {fmap mword mt -> Sym.sym_sealing}.
+Local Notation sregisters := {fmap reg mt -> Sym.sym_sealing}.
 Local Notation astate := (@Abs.state mt).
 Local Notation sstate := (@Symbolic.state mt Sym.sym_sealing).
 
@@ -165,7 +165,7 @@ Proof.
   intros. by apply refine_val_atom_set_km.
 Qed.
 
-Definition keymap_weaken (km : {partmap name -> Sym.key}) (ks : {fset name}) :=
+Definition keymap_weaken (km : {fmap name -> Sym.key}) (ks : {fset name}) :=
   filterm (fun k _ => k \in ks) km.
 
 Lemma key_map_inj_weaken km ks :
@@ -224,7 +224,7 @@ Hint Resolve refine_reg_weaken.
 
 Ltac solve_refine_state :=
   match goal with
-  | km : {partmap name -> _} |-
+  | km : {fmap name -> _} |-
     exists km', refine_state km' ?ast' _ =>
     exists (keymap_weaken km (names ast')); split; eauto; try reflexivity
   end.
@@ -390,7 +390,7 @@ Proof.
     apply refine_pc_inv in rpc; symmetry in rpc; subst.
     erewrite (@pointwise_none _ _ _ _ amem smem apc rmem) in PC.
     simpl in GETCALL.
-    rewrite mkpartmapE /= !(eq_sym apc) in GETCALL. move : GETCALL.
+    rewrite mkfmapE /= !(eq_sym apc) in GETCALL. move : GETCALL.
       have [eq_mkkey | neq_mkkey] := altP (mkkey_addr =P apc); [|
       have [eq_seal | neq_seal] := altP (seal_addr =P apc); [|
       have [eq_unseal | //] := altP (unseal_addr =P apc)]];

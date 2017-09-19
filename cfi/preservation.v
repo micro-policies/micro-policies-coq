@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype seq.
-From CoqUtils Require Import word partmap.
+From CoqUtils Require Import word fmap.
 Require Import lib.utils common.types cfi.property.
 
 Set Implicit Arguments.

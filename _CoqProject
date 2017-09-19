@@ -5,7 +5,7 @@ lib/utils.v
 lib/haskell_notation.v
 lib/ssr_list_utils.v
 lib/ssr_set_utils.v
-lib/partmap_utils.v
+lib/fmap_utils.v
 lib/word_utils.v
 
 common/types.v

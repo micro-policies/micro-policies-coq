@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq fintype finfun.
-From CoqUtils Require Import hseq ord partmap word.
+From CoqUtils Require Import hseq ord fmap word.
 From MicroPolicies
 Require Import lib.utils common.types symbolic.symbolic symbolic.exec
 ifc.labels ifc.common.
@@ -152,7 +152,7 @@ Definition output_fun st : option state :=
               |}).
 
 Definition ifc_syscalls : syscall_table mt :=
-  [partmap
+  [fmap
      (return_addr, (Syscall tt return_fun));
      (call_addr, (Syscall tt call_fun));
      (output_addr, (Syscall tt output_fun))
@@ -186,7 +186,7 @@ Lemma step_event_cat s s' :
 Proof.
   case; try by step_event_cat.
   move=> /= m rs pc sc rl [t stk] -> {s} _.
-  rewrite /ifc_syscalls /run_syscall mkpartmapE //=.
+  rewrite /ifc_syscalls /run_syscall mkfmapE //=.
   case: ifP=> [_ [<-] {sc}|_] /=.
     rewrite /return_fun /= => e; match_inv=> /=.
     by exists [::]; rewrite cats0.

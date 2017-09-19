@@ -1,6 +1,6 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype finfun.
-From CoqUtils Require Import hseq ord partmap word.
+From CoqUtils Require Import hseq ord fmap word.
 From MicroPolicies Require Import lib.utils common.types ifc.labels ifc.common.
 
 Set Implicit Arguments.
@@ -21,8 +21,8 @@ Local Notation word := (mword mt).
 Local Notation atom := (atom word L).
 
 Record state := State {
-  mem        : {partmap mword mt -> instr mt + atom};
-  regs       : {partmap reg mt -> atom};
+  mem        : {fmap mword mt -> instr mt + atom};
+  regs       : {fmap reg mt -> atom};
   pc         : atom;
   call_stack : seq (call_frame mt L)
 }.

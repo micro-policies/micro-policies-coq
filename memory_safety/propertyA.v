@@ -1,9 +1,9 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat seq eqtype fintype path fingraph.
 
-From CoqUtils Require Import ord word fset partmap fperm nominal.
+From CoqUtils Require Import ord word fset fmap fperm nominal.
 
-Require Import lib.utils lib.partmap_utils common.types.
+Require Import lib.utils lib.fmap_utils common.types.
 Require Import memory_safety.property memory_safety.abstract.
 Require Import memory_safety.classes memory_safety.executable.
 
@@ -535,7 +535,7 @@ move=> /(fdisjointP _ _)/(_ p.1) hdis; rewrite /updv unionmE.
 case e: (m p.1)=> [fr|] //=; case: ifP=> inb // [<-].
 have hin: p.1 \in names m.
   by apply/namesmP/(@PMFreeNamesKey _ _ _ _ p.1 fr)=> //; apply/namesnP.
-rewrite -mem_domm (negbTE (hdis hin)) inb; congr some; apply/eq_partmap=> b.
+rewrite -mem_domm (negbTE (hdis hin)) inb; congr some; apply/eq_fmap=> b.
 rewrite !(setmE, unionmE); have [-> {b}|//] := altP (b =P _).
 by rewrite -mem_domm (negbTE (hdis hin)).
 Qed.
@@ -550,7 +550,7 @@ Lemma updv_union' m m' p v :
 Proof.
 rewrite /updv unionmE => dis p_m' /=.
 rewrite (dommPn _ _  p_m'); case: getm => [fr|] //=.
-case: ifP=> //= _; congr Some; apply/eq_partmap=> b.
+case: ifP=> //= _; congr Some; apply/eq_fmap=> b.
 rewrite !(setmE, unionmE).
 have [-> {b}|//] := altP (b =P p.1).
 by rewrite (dommPn _ _ p_m').
@@ -570,7 +570,7 @@ have m'_p : p.1 \notin domm m'.
   apply/namesmP/@PMFreeNamesVal; try eassumption.
   by rewrite names_valueE in_fset1.
 rewrite (dommPn _ _ m'_p) /=; case: (m p.1)=> [fr|] //=.
-congr Some; apply/eq_partmap=> b.
+congr Some; apply/eq_fmap=> b.
 rewrite !(remmE, unionmE); have [-> {b}|//] := altP (b =P _).
 by rewrite (dommPn _ _ m'_p) /=.
 Qed.
@@ -584,7 +584,7 @@ move=> /(fdisjointP _ _)/(_ b) hdis; rewrite /free_fun unionmE.
 case e: (m b)=> [fr|] //= [<-].
 have hin: b \in names m.
   by apply/namesmP/(@PMFreeNamesKey _ _ _ _ b fr)=> //; apply/namesnP.
-rewrite -mem_domm (negbTE (hdis hin)); congr some; apply/eq_partmap=> b'.
+rewrite -mem_domm (negbTE (hdis hin)); congr some; apply/eq_fmap=> b'.
 rewrite !(remmE, unionmE); have [-> {b'}|//] := altP (b' =P _).
 by rewrite -mem_domm (negbTE (hdis hin)).
 Qed.
@@ -767,7 +767,7 @@ rewrite rename_valueE /= renamenE fperm2L namesNNE; first last.
   by rewrite /old /s names_state /= => hin; rewrite 2!in_fsetU hin orbT.
 move=> upd'; split.
   eapply step_malloc; eauto; rewrite /malloc_fun; congr pair.
-  apply/eq_partmap=> x; rewrite !(setmE, unionmE) -[blocks _]/new.
+  apply/eq_fmap=> x; rewrite !(setmE, unionmE) -[blocks _]/new.
   have [->{x}|hneq //] := altP (x =P _).
   rewrite -mem_domm; suff -> : fresh new \in domm m = false by [].
   apply: contraNF (freshP new); move: (fresh _)=> b /dommP [fr Hfr].

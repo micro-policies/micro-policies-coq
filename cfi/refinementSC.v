@@ -1,7 +1,7 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import ord word partmap.
+From CoqUtils Require Import ord word fmap.
 
-Require Import lib.utils lib.partmap_utils.
+Require Import lib.utils lib.fmap_utils.
 Require Import common.types.
 Require Import symbolic.symbolic.
 Require Import symbolic.exec.

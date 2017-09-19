@@ -1,7 +1,7 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import ord word fset partmap.
+From CoqUtils Require Import ord word fset fmap.
 
-Require Import lib.utils lib.partmap_utils.
+Require Import lib.utils lib.fmap_utils.
 Require Import common.types.
 Require Import symbolic.symbolic.
 Require Import cfi.abstract.
@@ -1041,7 +1041,7 @@ Proof.
       | [H: upd _ ?R ?V = _ |- _] =>
         first [destruct (refine_registers_upd_fwd R V REFR H) as [? [? ?]]
          | destruct (refine_memory_upd_fwd R V REFD H) as [? [? ?]]];
-          destruct (PartMaps.upd_inv H);
+          destruct (Fmaps.upd_inv H);
           clear H
       | [H: get reg _ = _ |- _] =>
         apply REFR in H

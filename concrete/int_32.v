@@ -2,7 +2,7 @@
 
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype ssrint tuple.
-From CoqUtils Require Import hseq ord word partmap.
+From CoqUtils Require Import hseq ord word fmap.
 
 Require Import lib.utils.
 Require Import common.types common.printing.

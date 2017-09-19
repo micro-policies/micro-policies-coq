@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import ord hseq word partmap.
+From CoqUtils Require Import ord hseq word fmap.
 
 Require Import lib.utils common.types.
 Require Import symbolic.symbolic sealing.classes.
@@ -132,9 +132,9 @@ Definition unseal (s : state mt) : option (state mt) :=
   end.
 
 Definition sealing_syscalls : syscall_table mt :=
-  [partmap (mkkey_addr,  Syscall tt mkkey);
-           (seal_addr,   Syscall tt seal);
-           (unseal_addr, Syscall tt unseal)].
+  [fmap (mkkey_addr,  Syscall tt mkkey);
+        (seal_addr,   Syscall tt seal);
+        (unseal_addr, Syscall tt unseal)].
 
 Definition step := step sealing_syscalls.
 

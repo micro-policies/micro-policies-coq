@@ -1,6 +1,6 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq choice ssrint.
-From CoqUtils Require Import ord word partmap.
+From CoqUtils Require Import ord word fmap.
 
 Require Import lib.utils common.types.
 
@@ -85,7 +85,7 @@ Definition rvec_eqMixin mt := EqMixin (@rvec_eqbP mt).
 Canonical rvec_eqType mt :=
   Eval hnf in EqType (rvec mt) (rvec_eqMixin mt).
 
-Definition rules mt := {partmap mvec mt -> rvec mt}.
+Definition rules mt := {fmap mvec mt -> rvec mt}.
 
 Section WithClasses.
 
@@ -173,8 +173,8 @@ Definition cache_lookup (cache : rules)
   do! rv <- getm cache masked_mv;
   Some (copy mv rv (ct mask)).
 
-Local Notation memory := {partmap mword mt -> atom}.
-Local Notation registers := {partmap reg mt -> atom}.
+Local Notation memory := {fmap mword mt -> atom}.
+Local Notation registers := {fmap reg mt -> atom}.
 
 Record state := State {
   mem   : memory;
@@ -213,12 +213,12 @@ Definition add_rule (cache : rules) (masks : Masks) (mem : memory) : option rule
   Some (setm cache mv (RVec (vala atrpc) (vala atr))).
 
 Definition store_mvec (mem : memory) (mv : mvec) : memory :=
-  unionm [partmap (Mop, (word_of_op (cop mv))@TMonitor);
-                  (Mtpc, (ctpc mv)@TMonitor);
-                  (Mti, (cti mv)@TMonitor);
-                  (Mt1, (ct1 mv)@TMonitor);
-                  (Mt2, (ct2 mv)@TMonitor);
-                  (Mt3, (ct3 mv)@TMonitor)]
+  unionm [fmap (Mop, (word_of_op (cop mv))@TMonitor);
+               (Mtpc, (ctpc mv)@TMonitor);
+               (Mti, (cti mv)@TMonitor);
+               (Mt1, (ct1 mv)@TMonitor);
+               (Mt2, (ct2 mv)@TMonitor);
+               (Mt3, (ct3 mv)@TMonitor)]
          mem.
 
 Section ConcreteSection.
@@ -404,8 +404,8 @@ End ConcreteSection.
 
 End WithClasses.
 
-Notation memory mt := {partmap mword mt -> atom (mword mt) (mword mt)}.
-Notation registers mt := {partmap reg mt -> atom (mword mt) (mword mt)}.
+Notation memory mt := {fmap mword mt -> atom (mword mt) (mword mt)}.
+Notation registers mt := {fmap reg mt -> atom (mword mt) (mword mt)}.
 
 End Concrete.
 

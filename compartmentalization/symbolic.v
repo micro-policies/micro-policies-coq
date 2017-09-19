@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
 
-From CoqUtils Require Import ord hseq word partmap fset.
+From CoqUtils Require Import ord hseq word fmap fset.
 
 Require Import lib.utils lib.word_utils lib.ssr_set_utils common.types.
 Require Import symbolic.symbolic.
@@ -450,9 +450,9 @@ Definition add_to_store_targets (s : Symbolic.state mt)
 
 Definition syscalls : Symbolic.syscall_table mt :=
   let dummy := DATA 0%w set0 set0 in
-  [partmap (isolate_addr,              Symbolic.Syscall dummy isolate);
-           (add_to_jump_targets_addr,  Symbolic.Syscall dummy add_to_jump_targets);
-           (add_to_store_targets_addr, Symbolic.Syscall dummy add_to_store_targets)].
+  [fmap (isolate_addr,              Symbolic.Syscall dummy isolate);
+        (add_to_jump_targets_addr,  Symbolic.Syscall dummy add_to_jump_targets);
+        (add_to_store_targets_addr, Symbolic.Syscall dummy add_to_store_targets)].
 
 Definition step := Symbolic.step syscalls.
 

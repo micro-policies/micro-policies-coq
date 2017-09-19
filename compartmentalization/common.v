@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import word partmap.
+From CoqUtils Require Import word fmap.
 Require Import lib.utils common.types.
 Set Bullet Behavior "Strict Subproofs".
 

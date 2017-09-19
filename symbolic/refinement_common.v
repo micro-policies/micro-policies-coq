@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import hseq word partmap fset.
+From CoqUtils Require Import hseq word fmap fset.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -77,11 +77,11 @@ Lemma store_mvec_mvec_in_monitor cmem mvec :
   mvec_in_monitor (Concrete.store_mvec cmem mvec).
 Proof.
 move=> k; rewrite /Concrete.store_mvec unionmE.
-set m := mkpartmap _.
-rewrite -mem_domm domm_mkpartmap /in_mvec /Concrete.mvec_fields.
-move=> E; rewrite E; have: k \in domm m by rewrite domm_mkpartmap.
+set m := mkfmap _.
+rewrite -mem_domm domm_mkfmap /in_mvec /Concrete.mvec_fields.
+move=> E; rewrite E; have: k \in domm m by rewrite domm_mkfmap.
 rewrite mem_domm {E}; case E: (m k) => [v|] // _.
-move/mkpartmap_Some: E; rewrite !inE.
+move/mkfmap_Some: E; rewrite !inE.
 do !(case/orP=> [/eqP [_ ->]|]; eauto).
 by move/eqP => [_ ->]; eauto.
 Qed.

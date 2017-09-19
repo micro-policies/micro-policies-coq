@@ -1,14 +1,14 @@
 From mathcomp Require Import
   ssreflect eqtype fintype ssrfun ssrbool ssrnat seq ssrint ssrnum ssralg
   finset generic_quotient.
-From CoqUtils Require Import ord hseq word partmap.
+From CoqUtils Require Import ord hseq word fmap.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
-Require Import lib.utils lib.partmap_utils lib.ssr_set_utils.
+Require Import lib.utils lib.fmap_utils lib.ssr_set_utils.
 Require Import common.types common.segment.
 Require Import concrete.concrete concrete.int_32.
 Require Import symbolic.symbolic symbolic.int_32 symbolic.exec.

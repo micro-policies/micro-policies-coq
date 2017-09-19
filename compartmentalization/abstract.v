@@ -1,6 +1,6 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
-From CoqUtils Require Import word partmap.
+From CoqUtils Require Import word fmap.
 Require Import lib.utils common.types.
 Require Import lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
@@ -27,8 +27,8 @@ Context (mt           : machine_types)
 Open Scope word_scope.
 Local Notation word  := (mword mt).
 Local Notation value := word.
-Local Notation memory := {partmap word -> word}.
-Local Notation registers := {partmap reg mt -> word}.
+Local Notation memory := {fmap word -> word}.
+Local Notation registers := {fmap reg mt -> word}.
 
 Implicit Type pc : value.
 Implicit Type M : memory.
@@ -225,9 +225,9 @@ Definition add_to_store_targets :=
                     (fun S' c => let '<<A,J,_>> := c in <<A,J,S'>>) |}.
 
 Definition syscall_table :=
-  [partmap (isolate_addr, isolate);
-           (add_to_jump_targets_addr, add_to_jump_targets);
-           (add_to_store_targets_addr, add_to_store_targets)].
+  [fmap (isolate_addr, isolate);
+        (add_to_jump_targets_addr, add_to_jump_targets);
+        (add_to_store_targets_addr, add_to_store_targets)].
 
 Definition user_address_space (M : memory) (c : compartment) : bool :=
   [forall x in address_space c, M x].
@@ -1180,7 +1180,7 @@ Lemma syscall_step_preserves_good : forall MM MM' sc,
   good_state MM'       .
 Proof.
   intros MM MM' sc INST GETSC CALL GOOD; generalize GETSC => GETSC'.
-  rewrite /syscall_table mkpartmapE in GETSC; simpl in *.
+  rewrite /syscall_table mkfmapE in GETSC; simpl in *.
   assert (SP : syscalls_present (compartments MM)) by eauto.
   unfold syscalls_present,is_true in SP; move/allP in SP.
   move: SP GETSC GETSC' CALL => /(_ (pc MM))/=.
@@ -1293,7 +1293,7 @@ Proof.
   intros MM MM' STEP GOOD; destruct STEP; subst; simpl in *;
     try (eexists; eassumption).
   (* Syscalls *)
-  rewrite /syscall_table mkpartmapE /= in GETSC.
+  rewrite /syscall_table mkfmapE /= in GETSC.
   repeat match type of GETSC with
     | context[if ?EQ then _ else _] => destruct EQ
     | None ?= _ => discriminate
@@ -1338,7 +1338,7 @@ Proof.
         left; move/andP in IC'; tauto ].
   (* Syscalls *)
   move: (GOOD) => /and4P /= [ELEM /andP [NOL CC] SS SP].
-  rewrite /syscall_table mkpartmapE /= in GETSC.
+  rewrite /syscall_table mkfmapE /= in GETSC.
   repeat match type of GETSC with
     | context[if ?EQ then _ else _] => destruct EQ
     | None ?= _ => discriminate
@@ -1437,7 +1437,7 @@ Proof.
     + move: UPDR DIFF; rewrite /updm; case: (M p) => [?|] //= [<-].
       by rewrite setmE (negbTE NE).
   - (* Syscall *)
-    rewrite /syscall_table mkpartmapE /= in GETSC.
+    rewrite /syscall_table mkfmapE /= in GETSC.
     repeat match type of GETSC with
       | (if ?COND then Some _ else _) ?= _ =>
         destruct COND
@@ -1462,8 +1462,8 @@ End WithClasses.
 
 Module Notations.
 (* Repeated notations *)
-Notation memory mt := {partmap mword mt -> mword mt}.
-Notation registers mt := {partmap reg mt -> mword mt}.
+Notation memory mt := {fmap mword mt -> mword mt}.
+Notation registers mt := {fmap reg mt -> mword mt}.
 Notation "<< A , J , S >>" := (@Compartment _ A J S) (format "<< A , J , S >>").
 Notation "C ⊢ p ∈ c" := (in_compartment p C c) (at level 70).
 Notation "C ⊢ p1 , p2 , .. , pk ∈ c" :=

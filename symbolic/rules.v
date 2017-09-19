@@ -2,7 +2,7 @@
    along with conversion functions towards concrete integer tags. *)
 
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import hseq word partmap.
+From CoqUtils Require Import hseq word fmap.
 
 Require Import lib.utils.
 Require Import common.types concrete.concrete symbolic.symbolic.
@@ -125,8 +125,8 @@ Lemma wtag_of_tagK tk : pcancel (@wtag_of_tag tk) (@tag_of_wtag tk).
 Proof. by case: tk. Qed.
 
 Class encodable := {
-  decode : forall tk, {partmap mword mt -> atom (mword mt) (mword mt)} -> mword mt -> option (wtag tk);
-  decode_monotonic : forall (mem : {partmap mword mt -> atom (mword mt) (mword mt)})
+  decode : forall tk, {fmap mword mt -> atom (mword mt) (mword mt)} -> mword mt -> option (wtag tk);
+  decode_monotonic : forall (mem : {fmap mword mt -> atom (mword mt) (mword mt)})
                             addr x y ct st ct' st' tk,
                        mem addr = Some x@ct ->
                        decode Symbolic.M mem ct = Some (User st) ->
@@ -158,7 +158,7 @@ Context (mt : machine_types)
 Variable transfer : forall ivec : Symbolic.ivec tty, option (Symbolic.vovec tty (Symbolic.op ivec)).
 
 Definition decode_fields (fs : seq Symbolic.tag_kind)
-                         (m : {partmap mword mt -> atom (mword mt) (mword mt)})
+                         (m : {fmap mword mt -> atom (mword mt) (mword mt)})
                          (ts : mword mt * mword mt * mword mt)
                          : option (hseq (fun x => option (wtag tty x)) fs) :=
   match fs return option (hseq (fun x => option (wtag tty x)) fs) with
@@ -206,7 +206,7 @@ case E: (ensure_no_entry _) l' => [l'|] // _ [<- <-]; move/IH in E=> {IH}.
 by rewrite E Hx''.
 Qed.
 
-Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
+Definition decode_ivec (m : {fmap mword mt -> atom (mword mt) (mword mt)})
                        (mvec : Concrete.mvec mt)
                        : option (Symbolic.ivec tty) :=
   let op := Concrete.cop mvec in
@@ -231,7 +231,7 @@ Definition decode_ivec (m : {partmap mword mt -> atom (mword mt) (mword mt)})
   | _ => None
   end.
 
-Definition decode_ovec op (m : {partmap mword mt -> atom (mword mt) (mword mt)})
+Definition decode_ovec op (m : {fmap mword mt -> atom (mword mt) (mword mt)})
                        (rvec : Concrete.rvec mt)
                        : option (Symbolic.vovec tty op) :=
   match op return option (Symbolic.vovec tty op) with
@@ -259,7 +259,7 @@ Let TCopy : mword mt := TNone.
 
 Definition ground_rules : Concrete.rules mt :=
   let mk op := Concrete.MVec op TMonitor TMonitor TNone TNone TNone in
-  [partmap
+  [fmap
    (mk NOP, Concrete.RVec TCopy TNone);
    (mk CONST, Concrete.RVec TCopy TMonitor);
    (mk MOV, Concrete.RVec TCopy TCopy);
@@ -319,7 +319,7 @@ Proof.
   by constructor; eauto.
 Qed.
 
-Lemma decode_ivec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)})
+Lemma decode_ivec_monotonic (cmem : {fmap mword mt -> atom (mword mt) (mword mt)})
       addr x y ct st (ct' : mword mt) st' :
   cmem addr = Some x@ct ->
   decode Symbolic.M cmem ct = Some (User st) ->
@@ -332,7 +332,7 @@ Proof.
   by destruct cop; simpl; rewrite !Hdec_eq.
 Qed.
 
-Lemma decode_ovec_monotonic (cmem : {partmap mword mt -> atom (mword mt) (mword mt)}) op addr x y ct st ct' st' :
+Lemma decode_ovec_monotonic (cmem : {fmap mword mt -> atom (mword mt) (mword mt)}) op addr x y ct st ct' st' :
   cmem addr = Some x@ct ->
   decode Symbolic.M cmem ct = Some (User st) ->
   decode Symbolic.M cmem ct' = Some (User st') ->

@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import word fset partmap.
+From CoqUtils Require Import word fset fmap.
 Require Import lib.utils lib.ssr_list_utils common.types.
 Require Import cfi.property cfi.classes.
 
@@ -22,9 +22,9 @@ Open Scope word_scope.
 Local Notation word := (mword mt).
 Local Notation "x .+1" := (x + 1).
 
-Local Notation imemory := {partmap word -> word}.
-Local Notation dmemory := {partmap word -> word}.
-Local Notation registers := {partmap reg mt -> word}.
+Local Notation imemory := {fmap word -> word}.
+Local Notation dmemory := {fmap word -> word}.
+Local Notation registers := {fmap reg mt -> word}.
 
 Record state := State {
   imem : imemory;
@@ -59,7 +59,7 @@ Record syscall := Syscall {
   sem : state -> option state
 }.
 
-Definition syscall_table := {partmap word -> syscall}.
+Definition syscall_table := {fmap word -> syscall}.
 
 Variable table : syscall_table.
 
@@ -392,9 +392,9 @@ Qed.
 
 End WithClasses.
 
-Notation imemory mt := {partmap mword mt -> mword mt}.
-Notation dmemory mt := {partmap mword mt -> mword mt}.
-Notation registers mt := {partmap reg mt -> mword mt}.
+Notation imemory mt := {fmap mword mt -> mword mt}.
+Notation dmemory mt := {fmap mword mt -> mword mt}.
+Notation registers mt := {fmap reg mt -> mword mt}.
 
 End Abs.
 

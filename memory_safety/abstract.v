@@ -1,6 +1,6 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq choice fintype ssrint.
-From CoqUtils Require Import ord word fset partmap nominal.
+From CoqUtils Require Import ord word fset fmap nominal.
 Require Import lib.utils.
 Require Import common.types memory_safety.classes.
 
@@ -74,8 +74,8 @@ Proof. by case: v=> [w|p] //=; rewrite -[RHS]fsetU0. Qed.
 
 Definition frame := seq value.
 
-Definition memory := {partmap name -> frame}.
-Definition registers := {partmap reg mt -> value}.
+Definition memory := {fmap name -> frame}.
+Definition registers := {fmap reg mt -> value}.
 
 Open Scope word_scope.
 

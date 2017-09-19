@@ -2,8 +2,8 @@ Ltac type_of x := type of x.
 
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype
   ssrint ssralg.
-From CoqUtils Require Import ord word fset partmap nominal.
-Require Import lib.utils lib.partmap_utils common.types symbolic.symbolic symbolic.exec.
+From CoqUtils Require Import ord word fset fmap nominal.
+Require Import lib.utils lib.fmap_utils common.types symbolic.symbolic symbolic.exec.
 Require Import memory_safety.abstract memory_safety.symbolic memory_safety.executable.
 Require Import memory_safety.classes.
 
@@ -39,7 +39,7 @@ Local Notation sstepf :=
 Local Notation astate := (Abstract.state mt).
 Local Notation astepf := (AbstractE.step ops _ addrs).
 
-Definition meminj := {partmap name -> name * mword mt (* base *)}.
+Definition meminj := {fmap name -> name * mword mt (* base *)}.
 
 Lemma binop_addDl : forall x y z : mword mt,
   binop_denote ADD (x + y) z = x + (binop_denote ADD y z).
@@ -1242,7 +1242,7 @@ try match goal with
   PC : getm _ ?pc = None |- _ =>
   (move: GETCALL CALL;
   case: extra rist => color info rist;
-  rewrite mkpartmapE /Symbolic.run_syscall /=;
+  rewrite mkfmapE /Symbolic.run_syscall /=;
   match goal with
   | rpc : refine_val _ _ ?pc (PTR ?s) |- _ =>
     (have->: s = pc by inversion rpc);

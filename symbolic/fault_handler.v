@@ -2,7 +2,7 @@
 
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype tuple ssrint.
-From CoqUtils Require Import word fset partmap.
+From CoqUtils Require Import word fset fmap.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -296,14 +296,14 @@ intros (RVEC & PROG & MEM & GRULES1 & GRULES2 & REGS & INT).
 do 7 (try split; eauto).
 - move=> addr IN.
   rewrite /Concrete.store_mvec unionmE.
-  set m := mkpartmap _; case m_addr: (m addr) => [[w t]|] /=; eauto.
+  set m := mkfmap _; case m_addr: (m addr) => [[w t]|] /=; eauto.
   suff ->: t = Concrete.TMonitor by eauto.
-  apply/eqP; move/mkpartmap_Some: m_addr.
+  apply/eqP; move/mkfmap_Some: m_addr.
   rewrite -{2}[t]/(taga (addr, w@t).2); move: (addr, w@t).
   by apply/allP=> /=; rewrite !eqxx.
 - move=> addr instr Hget; rewrite unionmE.
-  set m := mkpartmap _; set addr' := (_ + _)%w.
-  rewrite -mem_domm  domm_mkpartmap /=.
+  set m := mkfmap _; set addr' := (_ + _)%w.
+  rewrite -mem_domm  domm_mkfmap /=.
   have: addr' \notin Concrete.mvec_and_rvec_fields mt by apply: MEM.
   by rewrite mem_cat=> /norP [/negbTE -> _]; eauto.
 - by eapply policy_invariant_store_mvec; eauto.

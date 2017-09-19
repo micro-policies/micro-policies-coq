@@ -1,8 +1,8 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat eqtype seq choice fintype finfun.
-From CoqUtils Require Import hseq ord fset partmap word.
+From CoqUtils Require Import hseq ord fset fmap word.
 From MicroPolicies Require Import
-  lib.utils lib.partmap_utils common.types symbolic.symbolic symbolic.exec
+  lib.utils lib.fmap_utils common.types symbolic.symbolic symbolic.exec
   ifc.labels ifc.common ifc.symbolic ifc.abstract ifc.noninterference ifc.refinementSA.
 
 Set Implicit Arguments.

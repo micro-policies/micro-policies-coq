@@ -1,8 +1,8 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
-From CoqUtils Require Import ord word fset partmap.
+From CoqUtils Require Import ord word fset fmap.
 
-Require Import lib.utils lib.partmap_utils common.types.
+Require Import lib.utils lib.fmap_utils common.types.
 Require Import symbolic.symbolic.
 Require Import lib.haskell_notation.
 Require Import lib.ssr_list_utils.
@@ -2567,7 +2567,7 @@ Proof.
       * erewrite getm_upd_neq with (m' := regs') by eauto.
         apply RREGS.
   - (* Syscall *)
-    rewrite mkpartmapE /= !(eq_sym pc) in GETCALL.
+    rewrite mkfmapE /= !(eq_sym pc) in GETCALL.
     destruct (isolate_addr == pc) eqn:EQ;
       [ move/eqP in EQ; subst
       | clear EQ; destruct (add_to_jump_targets_addr == pc) eqn:EQ;
@@ -2598,7 +2598,7 @@ Proof.
       end;
       rewrite /refine_syscall_addrs_b in RSC;
       case/and3P: RSC => /= RS1 RS2 /and3P [RS3 RS4 _];
-      rewrite mkpartmapE /= -!(eq_sym isolate_addr) eq_refl;
+      rewrite mkfmapE /= -!(eq_sym isolate_addr) eq_refl;
       rewrite !in_cons /= in RS3 RS4.
       * done.
       * by destruct (isolate_addr == add_to_jump_targets_addr).

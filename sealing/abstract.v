@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype choice seq.
-From CoqUtils Require Import ord word fset partmap nominal.
+From CoqUtils Require Import ord word fset fmap nominal.
 Require Import lib.utils common.types common.segment sealing.classes.
 
 Import DoNotation.
@@ -69,8 +69,8 @@ Definition value_nominalMixin := BijNominalMixin sum_of_valueK value_of_sumK.
 Canonical value_nominalType :=
   Eval hnf in NominalType value value_nominalMixin.
 
-Local Notation memory := {partmap mword mt -> value}.
-Local Notation registers := {partmap reg mt -> value}.
+Local Notation memory := {fmap mword mt -> value}.
+Local Notation registers := {fmap reg mt -> value}.
 
 Open Scope word_scope.
 
@@ -325,8 +325,8 @@ Program Definition abstract_initial_state
 
 End WithClasses.
 
-Notation memory mt := {partmap mword mt -> @value mt}.
-Notation registers mt := {partmap reg mt -> @value mt}.
+Notation memory mt := {fmap mword mt -> @value mt}.
+Notation registers mt := {fmap reg mt -> @value mt}.
 
 End Abs.
 

@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import hseq word partmap.
+From CoqUtils Require Import hseq word fmap.
 
 Require Import lib.utils common.types.
 
@@ -166,8 +166,8 @@ Local Notation word := (mword mt).
 Let atom := (atom word).
 Local Notation "x .+1" := (x + 1).
 
-Local Notation memory := {partmap word -> atom (tag_type ttypes M)}.
-Local Notation registers := {partmap reg mt -> atom (tag_type ttypes R)}.
+Local Notation memory := {fmap word -> atom (tag_type ttypes M)}.
+Local Notation registers := {fmap reg mt -> atom (tag_type ttypes R)}.
 
 Record state := State {
   mem : memory;
@@ -190,7 +190,7 @@ Record syscall := Syscall {
   sem : state -> option state
 }.
 
-Definition syscall_table := {partmap mword mt -> syscall}.
+Definition syscall_table := {fmap mword mt -> syscall}.
 
 Variable table : syscall_table.
 
@@ -318,8 +318,8 @@ Inductive step (st st' : state) : Prop :=
 
 End WithClasses.
 
-Notation memory mt s := {partmap mword mt -> atom (mword mt) (@tag_type (@ttypes s) M)}.
-Notation registers mt s := {partmap reg mt -> atom (mword mt) (@tag_type (@ttypes s) R)}.
+Notation memory mt s := {fmap mword mt -> atom (mword mt) (@tag_type (@ttypes s) M)}.
+Notation registers mt s := {fmap reg mt -> atom (mword mt) (@tag_type (@ttypes s) R)}.
 
 End Symbolic.
 
