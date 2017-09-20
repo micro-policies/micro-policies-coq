@@ -68,7 +68,7 @@ Definition instr_rules
                                                else None
   | JUMP, [hseq l], ret                     => ret (l ⊔ tpc) tt
   | BNZ, [hseq l], ret                      => ret (l ⊔ tpc) tt
-  | JAL, [hseq l1; lold], ret               => ret (l1 ⊔ tpc) (l1 ⊔ tpc)
+  | JAL, [hseq l1; lold], ret               => ret (l1 ⊔ tpc) ⊥
   | _, _, _                                 => None
   end.
 

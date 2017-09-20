@@ -78,7 +78,7 @@ Definition step s : option (state * option atom):=
         Some (State mem regs pc'@(taga v ⊔ lpc) stk, None)
       | Jal r =>
         do! v <- regs r;
-        do! regs <- updm regs ra (pc + 1)@(taga v ⊔ lpc);
+        do! regs <- updm regs ra (pc + 1)@⊥;
         Some (State mem regs (vala v)@(taga v ⊔ lpc) stk, None)
       | JumpEpc => None
       | AddRule => None

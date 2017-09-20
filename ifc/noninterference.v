@@ -308,10 +308,7 @@ rewrite /indist ?botP //=.
   case get_r2: (reg2 r) => [[v2 l2]|] //= ind_v.
   case upd1: updm => [reg1'|] //= [<- <-] {st1' oe1}.
   rewrite -lock /= get_pc2 get_r2 /=.
-  match_upd reg1.
-    rewrite /indist /= !flows_join !h_pc !andbT.
-    case/indistP: ind_v=> [-> -> [_ ->]//=|/= hi1 hi2].
-      by rewrite -[X in X ==> _]negbK negb_or hi1 hi2.
+  match_upd reg1; first by rewrite indist_refl.
   case=> reg2' [upd2 ind_r'].
   rewrite upd2 /= implybT; split=> //.
   case/indistP: ind_v upd1 upd2=> [/= lo1 lo2 [<- <-]|/= hi1 hi2] upd1 upd2.
