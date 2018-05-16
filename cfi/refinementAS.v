@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import ord word fset fmap.
+From extructures Require Import ord fset fmap.
+From CoqUtils Require Import word.
 
 Require Import lib.utils lib.fmap_utils.
 Require Import common.types.
@@ -29,6 +30,8 @@ Instance sym_params : Symbolic.params := Sym.sym_cfi cfg.
 
 Variable atable : Abs.syscall_table mt.
 Variable stable : Symbolic.syscall_table mt.
+
+Implicit Types (smem : Sym.memory mt ids cfg).
 
 (*Refinement related definitions*)
 Definition refine_dmemory (admem : Abs.dmemory mt)
@@ -701,15 +704,14 @@ Proof.
   - intro GET'.
     assert (MAP' := MAP r).
     rewrite /= GET' in MAP'.
-    destruct (getm reg' r) as [[v' tg]|] eqn:GET''.
-    + simpl in MAP'. inv MAP'.
-      specialize (EQUIV r).
-      rewrite GET'' in EQUIV.
-      destruct (getm reg r) as [[vold told]|] eqn:GET;
-      rewrite GET in EQUIV; try contradiction.
-      apply RTG in GET. subst.
-      by inv EQUIV; simpl in *; subst.
-    + simpl in MAP'. discriminate.
+    case GET'': (reg' r) MAP' => [[v' tg]|] //= MAP'.
+    inv MAP'.
+    specialize (EQUIV r).
+    rewrite GET'' in EQUIV.
+    destruct (getm reg r) as [[vold told]|] eqn:GET;
+    rewrite GET in EQUIV; try contradiction.
+    apply RTG in GET. subst.
+    by inv EQUIV; simpl in *; subst.
 Qed.
 
 Lemma imem_refinement_preserved_by_equiv :
@@ -725,7 +727,7 @@ Proof.
   - destruct (REF addr v) as [MEMSA MEMAS].
     intro GET.
     assert (EQUIV' := EQUIV addr). clear EQUIV.
-    destruct (getm mem addr) eqn:GET'.
+    case GET': (mem addr) EQUIV' MEMSA=> [v'|] //= EQUIV' MEMSA.
     + assert (GET'' := GET).
       destruct GET as [id GET].
       rewrite GET in EQUIV'. inversion EQUIV'; subst.
@@ -735,12 +737,12 @@ Proof.
       by rewrite GET in EQUIV'.
   - intro GET.
     assert (EQUIV' := EQUIV addr); clear EQUIV.
-    destruct (getm mem addr) eqn:GET'.
-    + destruct (getm mem' addr) eqn:GET''.
+    case GET': (mem addr) EQUIV'=> [v'|] //= EQUIV'.
+    + case GET'': (mem' addr) EQUIV'=> [v''|] EQUIV'.
       * destruct EQUIV' as [TG TG' | id' id'' TG TG' EQ].
         { unfold refine_imemory in REF. apply REF in GET.
           destruct GET as [id GET].
-          rewrite GET' in GET. destruct a as [v' tg]; subst.
+          rewrite GET' in GET. destruct v' as [v' tg]; subst.
           simpl in TG. congruence. }
         { subst. apply REF in GET.  destruct GET as [id''' GET].
           rewrite GET' in GET. exists id'''. assumption.
@@ -761,7 +763,7 @@ Lemma refine_dmemory_domains dmem mem :
 Proof.
   intros REF; apply/eq_fset=> addr.
   unfold refine_dmemory in REF; rewrite !mem_domm.
-  destruct (getm dmem addr) eqn:GET.
+  case GET: (dmem addr)=> [v|].
   + by rewrite filtermE; move/REF in GET; rewrite GET /=.
   + rewrite filtermE; case GET': (mem addr)=> [[? [|]]|] //=.
     by move/REF in GET'; rewrite GET' in GET.
@@ -803,13 +805,13 @@ Lemma refine_reg_domains areg reg :
 Proof.
 move=> REF RTG; apply/eq_fset=> n; rewrite !mem_domm.
 unfold refine_registers in REF.
-destruct (getm areg n) eqn:GET.
-+ destruct (getm reg n) eqn:GET'.
+case GET: (areg n) => [v|].
++ case GET': (reg n) => [v'|].
   * auto.
   * apply REF in GET.
     rewrite GET in GET'. congruence.
-+ destruct (getm reg n) eqn:GET'.
-  * destruct a as [v ut].
++ case GET': (reg n) => [v'|].
+  * destruct v' as [v ut].
     assert (ut = DATA)
       by (apply RTG in GET'; assumption); subst.
     apply REF in GET'.
@@ -845,14 +847,8 @@ Proof.
   }
   { destruct EQUIV'. }
   { destruct EQUIV'. }
-  { destruct (getm areg n) eqn:AGET, (getm areg' n) eqn:AGET'.
-    - constructor.
-    - apply REF in AGET.
-      rewrite AGET in GET. congruence.
-    - apply REF' in AGET'.
-      rewrite AGET' in GET'. congruence.
-    - constructor.
-  }
+  { move/dommPn: GET'; rewrite -DOMAIN' => /dommPn ->.
+    by move/dommPn: GET; rewrite -DOMAIN => /dommPn ->. }
 Qed.
 
 Theorem backwards_simulation_attacker ast sst sst' :
@@ -1013,234 +1009,6 @@ Proof.
   - apply REFD in GET.
     by congruence.
 Qed.
-
-(*Proof of forward simulation
-  - Started after POPL 2015 submission
-  - Current state : broken *)
-(*
-Theorem forward_simulation ast ast' sst :
-  refine_state ast sst ->
-  Abs.step atable cfg ast ast' ->
-  exists sst',
-    Symbolic.step stable sst sst' /\
-    refine_state ast' sst'.
-Proof.
-  intros REF ASTEP;
-  assert (REF2 : refine_state ast sst) by assumption;
-  destruct ast as [imem dmem reg pc ok];
-  destruct sst as [smem sreg [spc tpc] int];
-  destruct REF
-    as [REFI [REFD [REFR [REFPC [CORRECTNESS [SYSCORRECT [ITG [VTG [ETG
-                                                          [RTG [JUTG JATG]]]]]]]]]]];
-  destruct ok; [idtac | inversion ASTEP];
-  unfold refine_pc in REFPC;
-  inv ASTEP;
-  repeat match goal with
-      | [H: get imem _ = Some _ |- _ ] =>
-        apply REFI in H; destruct H as [? ?]
-      | [H: upd _ ?R ?V = _ |- _] =>
-        first [destruct (refine_registers_upd_fwd R V REFR H) as [? [? ?]]
-         | destruct (refine_memory_upd_fwd R V REFD H) as [? [? ?]]];
-          destruct (Fmaps.upd_inv H);
-          clear H
-      | [H: get reg _ = _ |- _] =>
-        apply REFR in H
-      | [H: get _ _ = _ \/ get _ _ = _ |- _] =>
-        destruct H
-      | [H: get dmem _ = Some _ |- _] =>
-        apply REFD in H
-      | [H1: get dmem _ = None,
-             H2: get imem _ = None |- _] =>
-        assert (SMEM := refine_memory_none _ REFI REFD H2 H1)
-      | [H: Abs.get_syscall _ ?Pc = Some _ |- _] =>
-        pose proof (refine_syscalls_correct) as CALLS;
-          unfold refine_syscalls in CALLS;
-          specialize (CALLS Pc);
-          rewrite H in CALLS
-      | [H: match ?Expr with _ => _ end |- _] =>
-        destruct Expr eqn:?;
-                 try contradiction
-      | [H: refine_syscall _ _ |- _] =>
-        unfold refine_syscall in H
-      | [H1: Abs.sem _ ?Ast = _ |- exists _, Symbolic.step _ ?Sst _ /\ _] =>
-        specialize (CALLS Ast Sst REF2);
-          rewrite H1 in CALLS
-  end;
-  destruct REFPC as [PC [DATA | INSTR]];
-    simpl in PC; try simpl in DATA;
-  try match goal with
-        | [H: exists _, _ |- _] =>
-          destruct H as [? INSTR]; simpl in INSTR
-      end;
-  (\* for jump and jal tagging *\)
-   try match goal with
-        | [H: get _ pc = Some _,
-              H1: decode_instr _ = Some (Jump _) |- _] =>
-          destruct (JUTG _ _ _ _ H H1) as [? [WID ?]]
-        | [H: get _ pc = Some _@_,
-              H1: decode_instr _ = Some (Jal _) |- _] =>
-          destruct (JATG _ _ _ _ H H1) as [? [WID ?]]
-      end;
-   try subst;
-  try (subst spc tpc);
-  eexists;
-  (\*solving the step first*\)
-  try match goal with
-      | [ |- Symbolic.step ?A ?B ?C /\ _] =>
-        assert (Symbolic.step A B C)
-  end;
-  (\*picking the correct step*\)
-  try match goal with
-      | [H : decode_instr _ = Some (Nop _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_nop
-      | [H : decode_instr _ = Some (Const _ _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_const
-      | [H : decode_instr _ = Some (Mov _ _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_mov
-      | [H : decode_instr _ = Some (Binop _ _ _ _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_binop
-      | [H : decode_instr _ = Some (Load _ _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_load
-      | [H : decode_instr _ = Some (Store _ _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_store
-      | [H : decode_instr _ = Some (Jump _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_jump
-      | [H : decode_instr _ = Some (Bnz _ _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_bnz
-      | [H : decode_instr _ = Some (Jal _) |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_jal
-      | [H : Abs.sem _ _ = _ |- Symbolic.step _ _ _] =>
-        eapply Symbolic.step_syscall
-  end; eauto;
-  (\*transfer function*\)
-  repeat match goal with
-      | [|- Symbolic.next_state_pc _ _ _ = _] =>
-        unfold Symbolic.next_state_pc;
-          simpl
-      | [|- Symbolic.next_state _ _ _ = _] =>
-        unfold Symbolic.next_state;
-          simpl
-      | [|- Symbolic.next_state_reg _ _ _ _ = _] =>
-        unfold Symbolic.next_state_reg;
-          simpl
-      | [|- Symbolic.next_state_reg_and_pc _ _ _ _ _ = _] =>
-        unfold Symbolic.next_state_reg_and_pc;
-          simpl
-      | [|- bind _ _ = _] => unfold bind
-  end; auto;
-  repeat (match goal with
-      | [H: get smem _ = Some _,
-            H': forall _ _, get smem ?PC = Some _ -> _ |- _] =>
-        apply H' in H; destruct H as [? ?]
-      | [H: true = true -> _  |- _] =>
-        specialize (H erefl _ erefl);
-        destruct H as [? [TI CFG]];
-        try (destruct x);
-        inv TI
-         end);
-  unfold default_rtag; simpl;
-  try match goal with
-      | [H: cfg _ _ = _ |- context[cfg _ _]] => rewrite H
-      end; auto;
-    try match goal with
-        | [H: upd _ _ _ = _|- context[upd _ _ _]] =>
-           simpl;
-           rewrite H
-        | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
-          rewrite H; simpl
-        | [H: ?Expr = _ |- context[match ?Expr with _ => _ end]] =>
-          rewrite H; simpl
-      end;
-  try match goal with
-        | [|- Some _ = Some _] => reflexivity
-      end;
-  (\*splitting and solving the refine_state*\)
-  split; try assumption;
-  (\*refine_state*\)
-  repeat match goal with
-    | [|- refine_state _ _] =>
-      unfold refine_state
-    | [|- _ /\ _] => split; auto
-    | [|- refine_imemory _ _] => eapply imem_upd_preservation; eauto
-    | [|- refine_pc _ _] => unfold refine_pc; auto
-    | [|- forall _, _] => simpl; intros
-    | [|- _ <-> _] => split
-    | [|- _ \/ exists _, _] =>
-      right; eexists; reflexivity
-    | [H1: get smem _ = Some _ |- _] =>
-      apply ITG in H1
-    | [ H2: forall _, _ -> exists _, _ |- _] =>
-      destruct (H2 _ erefl) as [? [? ?]]; clear H2;
-      subst
-    | [H: get smem _ = None, H1: Symbolic.get_syscall _ _ = _,
-       H2: Symbolic.entry_tag _ = _ |- _] =>
-      assert (TI' := ETG _ _ _ H H1 H2)
-    | [|- Abs.valid_jmp _ _ _ = true] =>
-      unfold Abs.valid_jmp, valid_jmp
-    | [H: ?Expr = _ |- match ?Expr with _ => _ end = _] =>
-      rewrite H
-         end;
-    try match goal with
-      | [H: INSTR _ = INSTR _ |- _] => inv H
-      | [H: DATA = INSTR _ |- _] => inv H
-    end. Focus 12.
-  try (discriminate || reflexivity || assumption);
-  (\*re-establishing invariants*\)
-  repeat  match goal with
-            | [|- Sym.invariants _ ?St'] =>
-              unfold Sym.invariants
-            | [|- _ /\ _] => split
-            | [|- Sym.instructions_tagged _] =>
-              eapply Sym.itags_preserved_by_step; eauto; simpl; auto
-            | [ |- Sym.valid_jmp_tagged _ _] =>
-              eapply Sym.valid_jmp_tagged_preserved_by_step; eauto; simpl; auto
-            | [ |- Sym.entry_points_tagged _ _] =>
-              eapply Sym.entry_point_tags_preserved_by_step; eauto; simpl; auto
-            | [ |- Sym.registers_tagged _] =>
-              eapply Sym.register_tags_preserved_by_step; eauto; simpl; auto
-            | [ |- Sym.jumps_tagged _] =>
-              eapply Sym.jump_tags_preserved_by_step; eauto; simpl; auto
-            | [ |- Sym.jals_tagged _] =>
-              eapply Sym.jal_tags_preserved_by_step; eauto; simpl; auto
-          end; simpl; trivial.
-
-  (\*if i stop the sequencing here it matches*\)
-  (\* for jumps and jals refinement *\)
-  try (inv H7); try (inv H4); try (inv H5); try (inv H8); try (inv H6);
-  try match goal with
-        | [H: Abs.valid_jmp _ _ _ = _ |- exists _, _] =>
-          destruct (VTG _ _ H);
-            destruct (valid_jmp_true _ _ _ H) as [? [? [C ?]]];
-            clear C;
-            unfold Abs.valid_jmp, valid_jmp in H
-      end;
-    repeat match goal with
-             | [H: exists _, _ = _ |- _] =>
-               destruct H; simpl in H
-             | [H: exists _, _ |- _] =>
-               destruct H; simpl in H
-             | [H: _ \/ _ |- _] => destruct H
-             | [H: get smem ?W = _, H2: get smem ?W = _ |- _] =>
-               rewrite H in H2; inv H2
-             | [H: ?Expr = _ |- context[?Expr]] =>
-               rewrite H
-             | [H: ?Expr = _, H2: match ?Expr with _ => _ end = _ |- _] =>
-               rewrite H in H2
-             | [H: _ /\ _ |- _] => simpl in H; destruct H
-             | [H: Symbolic.get_syscall _ _ = _,
-                H2: Symbolic.get_syscall _ _ = _ |- _] =>
-               rewrite H in H2; inv H2
-           end;
-  try match goal with
-        | [|- exists _, _ /\ _] =>
-          eexists;
-            eauto
-      end;
-  (\*UGLY - need to fix ltac match*\)
-  try (inv H3; eauto).
-Qed.
-*)
-
 
 End Refinement.
 

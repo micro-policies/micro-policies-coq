@@ -2,7 +2,8 @@
    along with conversion functions towards concrete integer tags. *)
 
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import hseq word fmap.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import hseq word.
 
 Require Import lib.utils.
 Require Import common.types concrete.concrete symbolic.symbolic.

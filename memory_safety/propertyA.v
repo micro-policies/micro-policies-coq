@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat seq eqtype fintype path fingraph.
-
-From CoqUtils Require Import ord word fset fmap fperm nominal.
+From extructures Require Import ord fset fmap fperm.
+From CoqUtils Require Import word nominal.
 
 Require Import lib.utils lib.fmap_utils common.types.
 Require Import memory_safety.property memory_safety.abstract.
@@ -630,6 +630,10 @@ suffices h: fsubset (names (Some v3)) (names v1 :|: names v2).
 by rewrite -op; eapply nom_finsuppP; finsupp.
 Qed.
 
+(* FIXME: These declarations shouldn't be needed *)
+Canonical registers_nominalType := Eval hnf in [nominalType of registers mt].
+Canonical reg_nominalType := Eval hnf in [nominalType of reg mt].
+
 Lemma upd_reg_disjoint rs rs' r bs v :
   updm rs r v = Some rs' ->
   fdisjoint (names rs) bs ->
@@ -638,7 +642,21 @@ Lemma upd_reg_disjoint rs rs' r bs v :
 Proof.
 move=> h; rewrite (updm_set h) {h rs'} => dis_rs dis_v.
 suffices: fdisjoint (names rs :|: names r :|: names v) bs.
-  by apply: fdisjoint_trans; eapply nom_finsuppP; finsupp.
+  apply: fdisjoint_trans; eapply nom_finsuppP.
+  (* FIXME: finsupp used to work here, but it does not anymore... *)
+  move=> s sP.
+  simple eapply nomR_app.
+  simple eapply nomR_app.
+  simple eapply nomR_app.
+  (* Weird: the typeclasses debugger claims that it is using [simple apply
+     setm_eqvar] to solve this goal.  However, adding [simple] below causes the
+     goal to fail.  *)
+  apply setm_eqvar.
+  (* finsupp. (* Does not work... *) *)
+  eapply nomR_nominalJ.
+  finsupp. (* Now it does work *)
+  finsupp.
+  by finsupp.
 by rewrite 2!fdisjointUl dis_rs dis_v namesT fdisjoint0s.
 Qed.
 
@@ -677,7 +695,8 @@ Lemma free_fun_disjoint m b m' bs :
 Proof.
 move=> dis_m dis_b e; rewrite -[names m']/(names (Some m')) -e.
 have ?: fsubset (names (free_fun m b)) (names m :|: names b).
-  eapply nom_finsuppP; finsupp.
+  (* FIXME: finsupp used to solve this until 8.7, but it can't now... *)
+  eapply nom_finsuppP=> ??; eapply free_fun_eqvar; finsupp.
 apply: fdisjoint_trans; first by eauto.
 by rewrite fdisjointUl /= dis_m.
 Qed.
@@ -818,13 +837,13 @@ rewrite names_state /= 2!fdisjointUl -andbA; apply/and3P; split.
 - have ?: fsubset (names (setm m' (fresh new) (nseq sz (VData 0%w))))
                   (names m' :|: names (fresh new) :|: names (@VData mt 0%w)).
     move: (fresh _) (VData _)=> ??.
-    by eapply nom_finsuppP; finsupp.
+    eapply nom_finsuppP=> ??; eapply setm_eqvar; finsupp.
   apply: fdisjoint_trans; first by eauto.
   by rewrite 2!fdisjointUl dism dis_new /= fdisjoint0s.
 - have ?: fsubset (names (setm rs syscall_ret (@VPtr mt (fresh new, 0%w))))
                   (names rs :|: names syscall_ret :|: names (@VPtr mt (fresh new, 0%w))).
     move: syscall_ret (VPtr _) => ??.
-    eapply nom_finsuppP; finsupp.
+    eapply nom_finsuppP=> ??; eapply setm_eqvar; finsupp.
   apply: fdisjoint_trans; first by eauto.
   by rewrite 2!fdisjointUl disr fdisjoint0s /= fdisjointUl fdisjoint0s dis_new.
 by solve_frame_ok_disjoint.
@@ -851,19 +870,20 @@ Lemma not_domm_pc p m' :
   p.1 \notin domm m'.
 Proof. by rewrite names_valueE fdisjointC fdisjoints1. Qed.
 
-Ltac solve_frame_error :=
-  unfold updm in *;
-  repeat match goal with
+Ltac solve_frame_error_step :=
+  match goal with
   | e : (if ?pc == ?rhs then _ else _) = _ |- _ =>
     move: e; have [->|?] := altP (pc =P rhs); move=> e //=
   | |- context[addr _ == addr _] =>
     rewrite (inj_eq (@uniq_addr _ addrs)) //=
+  | e : match ?x with _ => _ end = None |- _ => destruct x
   | e : obind _ ?x = _ |- obind _ ?y = _ =>
     match y with
     | context[x] => destruct x eqn:?; simpl in * => //
     end
   | e : context[if isSome (getm ?rs ?r) then _ else _] |- _ =>
-    destruct (getm rs r) eqn:?; simpl in * => //
+    let E := fresh "E" in
+    case E: (getm rs r) e => [?|] //= e
   | e : ?x = _ |- context[?x] => rewrite e //=
   | |- context[free_fun (unionm _ _) _] =>
     erewrite free_union'; try eassumption; simpl in *
@@ -880,6 +900,9 @@ Ltac solve_frame_error :=
     exact: not_domm_pc dis
   | |- _ => single_match_inv; subst=> //
   end.
+
+Ltac solve_frame_error :=
+  unfold updm in *; repeat solve_frame_error_step.
 
 Lemma frame_error m s :
   fdisjoint (names s) (domm m) ->

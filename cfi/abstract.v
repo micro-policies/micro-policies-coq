@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import word fset fmap.
+From extructures Require Import ord fset fmap.
+From CoqUtils Require Import word.
 Require Import lib.utils lib.ssr_list_utils common.types.
 Require Import cfi.property cfi.classes.
 

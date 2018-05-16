@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat.
-From CoqUtils Require Import ord word.
+From extructures Require Import ord.
+From CoqUtils Require Import word.
 Require Import common.types.
 
 Section WithClasses.

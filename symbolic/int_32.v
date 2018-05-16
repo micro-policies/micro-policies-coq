@@ -1,5 +1,9 @@
 (* Specializing protected monitor for symbolic machine to 32 bits *)
 
+From mathcomp Require Import ssrnat eqtype seq ssrint.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import word.
+
 Require Import lib.utils.
 Require Import common.types common.segment.
 Require Import concrete.int_32.
@@ -7,9 +11,6 @@ Require Import concrete.concrete.
 Require Import symbolic.rules.
 Require Import symbolic.fault_handler.
 Require Import symbolic.symbolic.
-From mathcomp Require Import ssrnat eqtype seq ssrint.
-
-From CoqUtils Require Import word fmap.
 
 Import DoNotation.
 Import Concrete.

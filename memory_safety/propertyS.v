@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat seq eqtype fintype.
-
-From CoqUtils Require Import ord word fset fmap fperm nominal.
+From extructures Require Import ord fset fmap fperm.
+From CoqUtils Require Import word nominal.
 
 Require Import lib.utils lib.fmap_utils common.types symbolic.symbolic symbolic.exec.
 Require Import memory_safety.property memory_safety.symbolic memory_safety.abstract.

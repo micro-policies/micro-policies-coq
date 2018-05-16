@@ -1,7 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
-
-From CoqUtils Require Import ord hseq word fmap fset.
+From extructures Require Import ord fset fmap.
+From CoqUtils Require Import hseq word.
 
 Require Import lib.utils lib.word_utils lib.ssr_set_utils common.types.
 Require Import symbolic.symbolic.

@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import ord word fmap.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import word.
 
 Require Import lib.utils lib.fmap_utils.
 Require Import common.types.
@@ -120,30 +121,27 @@ Proof.
     intro addr.
     unfold Conc.equiv in EQUIV. unfold pointwise in EQUIV.
     specialize (EQUIV addr). simpl.
-    destruct (getm smem addr) eqn:SGET; simpl in SGET; rewrite SGET.
-    - destruct a as [v utg].
-      unfold refinement_common.refine_memory in REF.
+    case SGET: (smem addr) => [[v utg]|] //=.
+    - unfold refinement_common.refine_memory in REF.
       have [ctg DEC CGET] := proj2 REF addr v utg SGET.
       rewrite CGET in EQUIV.
-      destruct (getm cmem' addr) eqn:CGET'.
-      + destruct a as [v' ctg'].
-        destruct EQUIV
-          as [v0 v'' ct ut ct' ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
-        * inv EQ1. inv EQ2.
-          rewrite mapmE /= filtermE /= CGET' /=
-                  /is_user /= DEC2 /= /coerce /= DEC2.
-          rewrite /= DEC1 in DEC.
-          move: DEC => [?]. by subst.
-        * inv EQ. simpl in NEQ.
-          suff: False by [].
-          apply: NEQ.
-          rewrite /= in DEC. rewrite DEC.
-          by eauto.
-      + by destruct EQUIV.
-    - destruct (getm cmem addr) eqn:CGET.
-      + destruct a as [v ctg]. unfold refinement_common.refine_memory in REF.
+      case CGET': (cmem' addr) EQUIV=> [a|] //= EQUIV.
+      destruct a as [v' ctg'].
+      destruct EQUIV
+        as [v0 v'' ct ut ct' ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
+      * inv EQ1. inv EQ2.
+        rewrite mapmE /= filtermE /= CGET' /= /is_user /= DEC2 /= /coerce /= DEC2.
+        rewrite /= DEC1 in DEC.
+        move: DEC => [?]. by subst.
+      * inv EQ. simpl in NEQ.
+        suff: False by [].
+        apply: NEQ.
+        rewrite /= in DEC. rewrite DEC.
+        by eauto.
+    - case CGET: (cmem addr) EQUIV => [[v ctg]|] EQUIV /=.
+      + unfold refinement_common.refine_memory in REF.
         rewrite mapmE /= filtermE /=.
-        case CGET': (getm cmem' addr) EQUIV => [a|] //= EQUIV.
+        case CGET': (cmem' addr) EQUIV => [a|] //= EQUIV.
         rewrite /is_user /=.
         destruct EQUIV
           as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst; simpl.
@@ -152,10 +150,9 @@ Proof.
         { case DEC: (rules.fdecode _ _) => [[ut|]|] //=.
           apply: NEQ => /=.
           by rewrite DEC; eauto. }
-     + destruct (getm cmem' addr) eqn:CGET'.
-       * destruct EQUIV.
-       * rewrite mapmE /= filtermE /=.
-         rewrite CGET'. simpl. constructor.
+     + case CGET': (cmem' addr) EQUIV => [?|] //= EQUIV.
+       rewrite mapmE /= filtermE /=.
+       rewrite CGET'. simpl. constructor.
   }
 Qed.
 
@@ -234,7 +231,7 @@ Proof.
   unfold Conc.equiv, pointwise in MEQUIV.
   specialize (MEQUIV addr).
   rewrite GET in MEQUIV.
-  destruct (getm mem' addr) eqn:GET'.
+  destruct (getm mem') eqn:GET'.
   - destruct MEQUIV
       as [v0 v'' ? ? ? ut' EQ1 DEC1 EQ2 DEC2 SEQUIV|NEQ EQ]; subst.
     + inversion EQ1; subst. eauto.

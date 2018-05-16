@@ -1,7 +1,8 @@
 From mathcomp Require Import
   ssreflect eqtype fintype ssrfun ssrbool ssrnat seq ssrint ssrnum ssralg
   finset generic_quotient.
-From CoqUtils Require Import ord hseq word fmap.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import hseq word.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -15,6 +16,8 @@ Require Import symbolic.symbolic symbolic.int_32 symbolic.exec.
 Require Import compartmentalization.common compartmentalization.symbolic.
 Require Import compartmentalization.isolate_sets.
 Require Import os.os.
+
+Require Extraction.
 
 Extraction Language Haskell.
 

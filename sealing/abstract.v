@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype choice seq.
-From CoqUtils Require Import ord word fset fmap nominal.
+From extructures Require Import ord fset fmap.
+From CoqUtils Require Import word nominal.
 Require Import lib.utils common.types common.segment sealing.classes.
 
 Import DoNotation.

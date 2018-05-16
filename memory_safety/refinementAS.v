@@ -2,7 +2,8 @@ Ltac type_of x := type of x.
 
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq fintype
   ssrint ssralg.
-From CoqUtils Require Import ord word fset fmap nominal.
+From extructures Require Import ord fset fmap.
+From CoqUtils Require Import word nominal.
 Require Import lib.utils lib.fmap_utils common.types symbolic.symbolic symbolic.exec.
 Require Import memory_safety.abstract memory_safety.symbolic memory_safety.executable.
 Require Import memory_safety.classes.
@@ -525,8 +526,8 @@ Lemma refine_registers_val aregs qaregs r v : refine_registers aregs qaregs ->
   qaregs r = Some v ->
   exists w ty, v = w@ty.
 Proof.
-intros rregs get_r; specialize (rregs r); revert rregs.
-rewrite get_r; destruct (aregs r); try easy.
+move=> rregs get_r; move/(_ r): rregs.
+rewrite get_r; case: (aregs r)=> [?|]; try easy.
 by case: v get_r => [w [|i]] //; eauto.
 Qed.
 
@@ -535,11 +536,9 @@ Lemma refine_registers_get aregs qaregs (n : types.reg mt) w ty :
   qaregs n = Some w@ty ->
   exists x, refine_val x w ty /\ aregs n = Some x.
 Proof.
-intros rregs qa_get.
-generalize (rregs n).
-rewrite qa_get.
-destruct (aregs n); try easy.
-simpl; intros rvx.
+move=> rregs qa_get; move/(_ n): rregs.
+rewrite qa_get /=.
+case: (aregs n)=> [v|] //= rvx.
 by exists v; split.
 Qed.
 
@@ -549,10 +548,8 @@ Lemma refine_registers_get_int aregs qaregs (n : types.reg mt) w :
     refine_val (Abstract.VData w) w DATA /\
     aregs n = Some (Abstract.VData w).
 Proof.
-intros rregs get_n.
-specialize (rregs n).
-rewrite get_n in rregs.
-destruct (aregs n); try contradiction.
+move=> rregs get_n; move/(_ n): rregs.
+rewrite get_n; case: (aregs n)=> [?|] //= rregs.
 by inversion rregs; split; first by constructor.
 Qed.
 
@@ -562,11 +559,8 @@ Lemma refine_registers_get_ptr aregs qaregs (n : types.reg mt) w b :
   exists pt, refine_val (Abstract.VPtr pt) w (PTR b) /\
     aregs n = Some (Abstract.VPtr pt).
 Proof.
-intros rregs qa_get.
-generalize (rregs n).
-rewrite qa_get.
-destruct (aregs n); try easy.
-simpl; intros rvx.
+move=> rregs qa_get; move/(_ n): rregs.
+rewrite qa_get /=; case: (aregs n) => [v|] //= rvx.
 destruct v as [|pt].
   by inversion rvx.
 by exists pt; split.
@@ -580,11 +574,11 @@ Lemma refine_registers_upd aregs qaregs qaregs' r v w ty :
     updm aregs r v = Some areg' /\
     refine_registers areg' qaregs'.
 Proof.
-intros rregs rvw upd_r_qa.
+move=> rregs rvw upd_r_qa.
 assert (ref_r := rregs r).
 destruct (updm_inv upd_r_qa) as [v' get_r_qa].
 rewrite get_r_qa in ref_r.
-destruct (aregs r) as [w'|] eqn:get_r_a; try contradiction.
+case get_r_a: (aregs r) ref_r=> [w'|] //= ref_r.
 destruct (updm_defined v get_r_a) as [aregs' upd_r_a].
 exists aregs'; split; try easy.
 intros r'.

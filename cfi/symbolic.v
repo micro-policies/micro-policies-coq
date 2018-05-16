@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import ord word fmap fset.
+From extructures Require Import ord fset fmap.
+From CoqUtils Require Import word.
 
 Require Import lib.utils lib.fmap_utils.
 Require Import common.types.
@@ -278,17 +279,17 @@ Proof.
         * rewrite OLD in GET'. congruence.
         * split.
           { apply getm_upd_neq with (key' := src) in E; auto.
-            rewrite <- E in GET. eexists; eauto. }
+            rewrite -E in GET. eexists; eauto. }
           { left.
             apply getm_upd_neq with (key' := dst) in E; auto.
-            rewrite <- E in GET'. eexists; eauto. }
+            rewrite -E in GET'. eexists; eauto. }
     }
     { split.
       * have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
         - rewrite GET in OLD. congruence.
         - exists isrc.
           eapply getm_upd_neq in E; eauto.
-          rewrite <- E in GET. assumption.
+          rewrite -E in GET. assumption.
       * right.
         split.
         - have [EQ|/eqP NEQ] := altP (dst =P w1); [simpl in EQ | simpl in NEQ]; subst.
@@ -309,17 +310,17 @@ Proof.
         * rewrite OLD in GET'. congruence.
         * split.
           { apply getm_upd_neq with (key' := src) in E; auto.
-            rewrite <- E in GET. eexists; eauto. }
+            rewrite -E in GET. eexists; eauto. }
           { left.
             apply getm_upd_neq with (key' := dst) in E; auto.
-            rewrite <- E in GET'. eexists; eauto. }
+            rewrite -E in GET'. eexists; eauto. }
     }
     { split.
       * have [EQ|/eqP NEQ] := altP (src =P w1); [simpl in EQ | simpl in NEQ]; subst.
         - rewrite GET in OLD. congruence.
         - exists isrc.
           eapply getm_upd_neq in E; eauto.
-          rewrite <- E in GET. assumption.
+          rewrite -E in GET. assumption.
       * right.
         split.
         - have [EQ|/eqP NEQ] := altP (dst =P w1); [simpl in EQ | simpl in NEQ]; subst.
@@ -797,20 +798,9 @@ Proof.
   inv STEP.
   split.
   - by reflexivity.
-  - specialize (MEQUIV pc).
-    unfold get_ti.
-    simpl.
-    destruct (getm mem pc) as [[i ti]|] eqn:GET.
-    { destruct (getm mem' pc) as[[i' ti']|] eqn:GET'.
-      - destruct MEQUIV as [EQ1 EQ2 EQ3 EQ4|? ? EQ1 EQ2 EQ3]; subst.
-        + simpl in EQ1, EQ2. subst. by reflexivity.
-        + inv EQ3. by reflexivity.
-      - by destruct MEQUIV.
-    }
-    { destruct (getm mem' pc) as[[i' ti']|] eqn:GET'.
-      - destruct MEQUIV.
-      - by reflexivity.
-    }
+  - move/(_ pc): MEQUIV; rewrite /get_ti /=.
+    case: (mem pc) (mem' pc)=> [[i ti]|] /= [[i' ti']|] //=.
+    by case=> /= [-> ->|?? -> -> [_ ->]].
 Qed.
 
 Lemma violation_preserved_by_step_a sst sst' :

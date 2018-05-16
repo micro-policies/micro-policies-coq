@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq fintype finfun.
-From CoqUtils Require Import hseq ord fmap word.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import hseq word.
 From MicroPolicies
 Require Import lib.utils common.types symbolic.symbolic symbolic.exec
 ifc.labels ifc.common.

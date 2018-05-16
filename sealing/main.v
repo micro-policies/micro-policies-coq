@@ -1,6 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun eqtype ssrnat ssrbool seq choice fintype ssrint.
-From CoqUtils Require Import ord word fmap hseq.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import word hseq.
 Require Import lib.utils lib.word_utils common.types common.segment.
 Require Import concrete.concrete.
 Require Import concrete.int_32.

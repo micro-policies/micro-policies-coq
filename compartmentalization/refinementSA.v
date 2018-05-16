@@ -1,6 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq fintype finset.
-From CoqUtils Require Import ord word fset fmap.
+From extructures Require Import ord fset fmap.
+From CoqUtils Require Import word.
 
 Require Import lib.utils lib.fmap_utils common.types.
 Require Import symbolic.symbolic.
@@ -516,9 +517,9 @@ Proof.
     apply IHps with (AM := AM) in RETAG; [assumption|].
     rewrite /refine_memory /refine_mem_loc_b /pointwise in REFINE *; intros a;
       specialize REFINE with a.
-    destruct (getm AM a) as [w|],
-             (getm (Symbolic.mem sst) a) as [[w' []]|] eqn:GET';
-      rewrite GET' in REFINE; try done;
+    destruct (getm AM) as [w|],
+             (getm (Symbolic.mem sst)) as [[w' []]|] eqn:GET';
+      try done;
       try (move/eqP in REFINE; subst w').
     + destruct (a == p) eqn:EQ; move/eqP in EQ; subst.
       * generalize def_sst' => SUPD.
@@ -877,7 +878,7 @@ Proof.
 
   move/(_ syscall_arg1): (RREGS).
   rewrite def_p_Lp.
-  destruct (getm AR syscall_arg1) as [Ap|]; destruct Lp; try done;
+  case: (AR syscall_arg1) => [Ap|]; destruct Lp; try done;
     move/eqP => ?; subst; simpl.
 
   destruct Aprev as [Aprev Jprev Sprev]; simpl.
@@ -899,7 +900,7 @@ Proof.
 
   move/(_ ra): (RREGS).
   rewrite def_pc'_Lpc'.
-  destruct (getm AR ra) as [Apc'|]; destruct Lpc'; try done;
+  case: (AR ra) => [Apc'|]; destruct Lpc'; try done;
     move/eqP => ?; subst Apc'; simpl.
 
   have IN_pc' : pc' \in Aprev.
@@ -1047,7 +1048,7 @@ Proof.
 
   move/(_ syscall_arg1): (RREGS).
   rewrite def_p_Lp.
-  destruct (getm AR syscall_arg1) as [Ap|]; destruct Lp; try done;
+  case: (AR syscall_arg1) => [Ap|]; destruct Lp; try done;
     move/eqP => ?; subst Ap; simpl.
 
   destruct Aprev as [Aprev Jprev Sprev]; simpl.
@@ -1069,7 +1070,7 @@ Proof.
 
   move/(_ ra): (RREGS).
   rewrite def_pc'_Lpc'.
-  destruct (getm AR ra) as [Apc'|]; destruct Lpc'; try done;
+  case: (AR ra) => [Apc'|]; destruct Lpc'; try done;
     move/eqP=> ?; subst Apc'; simpl.
 
   have IN_pc' : pc' \in Aprev.
@@ -2102,9 +2103,8 @@ Proof.
     + eapply Abs.step_nop; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; assumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS=> [?|] //= /eqP ->.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
     + constructor; simpl;
         try solve [done | eapply (prove_get_compartment_id SGOOD);
@@ -2130,9 +2130,8 @@ Proof.
     + eapply Abs.step_const; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; eassumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS=> [?|] //= /eqP ->; eassumption.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * unfold updm; rewrite /refine_registers /pointwise in RREGS;
           specialize RREGS with r.
@@ -2174,9 +2173,8 @@ Proof.
     + eapply Abs.step_mov; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; eassumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS => [?|] //= /eqP ->; eauto.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * eassumption.
       * unfold updm; rewrite GET2; reflexivity.
@@ -2218,9 +2216,8 @@ Proof.
     + eapply Abs.step_binop; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; eassumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS=> [?|] //= /eqP ->; eauto.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * eassumption.
       * eassumption.
@@ -2271,9 +2268,8 @@ Proof.
     + eapply Abs.step_load; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; eassumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS=> [?|] //= /eqP ->; eauto.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * eassumption.
       * eassumption.
@@ -2328,9 +2324,8 @@ Proof.
     + eapply Abs.step_store; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; eassumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS => [?|] //= /eqP ->; eauto.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * eassumption.
       * eassumption.
@@ -2472,9 +2467,8 @@ Proof.
     + eapply Abs.step_jump; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; eassumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS=> [?|] //= /eqP ->; eauto.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * assumption.
     + constructor; simpl;
@@ -2507,9 +2501,8 @@ Proof.
     + eapply Abs.step_bnz; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; eassumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS=> [?|] //= /eqP ->; eauto.
       * eassumption.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
     + constructor; simpl;
@@ -2544,9 +2537,8 @@ Proof.
     + eapply Abs.step_jal; try reflexivity.
       * unfold Abs.decode.
         unfold refine_memory,pointwise,refine_mem_loc_b in RMEMS;
-          specialize RMEMS with pc; rewrite PC in RMEMS;
-          destruct (getm AM pc); [simpl|contradiction].
-        move/eqP in RMEMS; subst; eassumption.
+          specialize RMEMS with pc; rewrite PC in RMEMS.
+        by case: (AM pc) RMEMS=> [?|] //= /eqP ->; eauto.
       * by apply (prove_permitted_now_in AGOOD SGOOD PC def_cid).
       * assumption.
       * unfold updm; rewrite /refine_registers /pointwise in RREGS.
@@ -2592,9 +2584,7 @@ Proof.
       try solve [reflexivity | eassumption];
       destruct tpc as []; try discriminate; move/eqP in RPC; subst;
       try match goal with |- context[getm AM ?addr] =>
-        rewrite /refine_memory /pointwise in RMEMS;
-        specialize (RMEMS addr); rewrite PC in RMEMS;
-        by destruct (getm AM addr)
+        by move/(_ addr): RMEMS; rewrite PC; case: (getm AM addr)
       end;
       rewrite /refine_syscall_addrs_b in RSC;
       case/and3P: RSC => /= RS1 RS2 /and3P [RS3 RS4 _];

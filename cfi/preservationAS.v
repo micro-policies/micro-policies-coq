@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
-From CoqUtils Require Import ord word fmap.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import word.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -110,7 +111,7 @@ Proof.
 Qed.
 
 Lemma untag_data_implies_dmem_refinement mem :
-  RefinementAS.refine_dmemory
+  @RefinementAS.refine_dmemory _ _ cfg
     (mapm RefinementAS.untag_atom (filterm [fun _ => RefinementAS.is_data] mem)) mem.
 Proof.
    intros addr v.
@@ -118,7 +119,7 @@ Proof.
    - intros GET.
      by rewrite mapmE /= filtermE /= GET.
    - rewrite mapmE /= filtermE /= => GET.
-     destruct (getm mem addr) eqn:GET'.
+     destruct (getm mem) eqn:GET'.
      + destruct a as [val tg].
        simpl in GET.
        destruct tg as [[id|]|]; simpl in GET.
@@ -135,7 +136,7 @@ Definition is_instr (a : atom (mword mt) cfi_tag) :=
   end.
 
 Lemma untag_instr_implies_imem_refinement mem :
-  RefinementAS.refine_imemory
+  @RefinementAS.refine_imemory _ _ cfg
     (mapm RefinementAS.untag_atom (filterm [fun _ => is_instr] mem)) mem.
 Proof.
    intros addr v.

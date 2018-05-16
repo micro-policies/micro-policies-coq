@@ -1,4 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import word.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -8,8 +10,6 @@ Require Import symbolic.symbolic.
 Require Import symbolic.exec.
 Require Import symbolic.rules.
 Require Import symbolic.refinement_common.
-
-From CoqUtils Require Import word fmap.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

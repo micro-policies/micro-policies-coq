@@ -1,5 +1,5 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype.
-From CoqUtils Require Import ord fset fmap.
+From extructures Require Import ord fset fmap.
 
 Set Implicit Arguments.
 Unset Strict Implicit.

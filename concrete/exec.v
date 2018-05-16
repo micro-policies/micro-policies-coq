@@ -1,7 +1,8 @@
 (* Executable formulation of concrete machine semantics *)
 
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype ssrint.
-From CoqUtils Require Import word fmap.
+From extructures Require Import ord fmap.
+From CoqUtils Require Import word.
 Require Import lib.utils common.types concrete.concrete.
 
 Import Concrete. Import DoNotation.

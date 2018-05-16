@@ -1,6 +1,7 @@
 From mathcomp Require Import
   ssreflect ssrfun ssrbool eqtype ssrnat seq bigop choice fintype finset.
-From CoqUtils Require Import word fmap.
+From extructures Require Import fmap.
+From CoqUtils Require Import word.
 Require Import lib.utils common.types.
 Require Import lib.ssr_list_utils lib.ssr_set_utils.
 Require Import compartmentalization.isolate_sets compartmentalization.common.
@@ -1248,9 +1249,9 @@ Proof.
     + unfold syscall_address_space in *; cbv [address_space] in *.
       move: SAS => /existsP [sc /and3P [NGET TABLED /eqP ->]].
       apply/existsP; exists sc; rewrite TABLED eq_refl !andbT.
-      move: (UPDR); rewrite /updm /= => SET.
-      destruct (M p) as [old|] eqn:GET; [|discriminate].
-      assert (NEQ : sc <> p) by by intro; subst; rewrite GET in NGET.
+      move: (UPDR); rewrite /updm /=.
+      case GET: (M p)=> [old|] //= SET.
+      have NEQ : sc <> p by intro; subst; rewrite GET in NGET.
       by move: SET => /= [<-]; rewrite setmE (introF eqP NEQ).
   - (* Syscall *)
     assert (GOOD' : good_state MM') by

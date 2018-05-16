@@ -1,5 +1,6 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype seq.
-From CoqUtils Require Import ord word fset fmap nominal.
+From extructures Require Import ord fset fmap.
+From CoqUtils Require Import word nominal.
 From MicroPolicies
 Require Import lib.utils lib.fmap_utils common.types symbolic.symbolic
                sealing.classes sealing.symbolic sealing.abstract.
@@ -131,7 +132,7 @@ Lemma refine_key_set_km : forall km ak sk akey skey,
   refine_key (setm km akey skey) ak sk.
 Proof.
   unfold refine_key. intros. rewrite setmE.
-  by have [eq_ak | /eqP neq_ak] := altP (ak =P akey); congruence.
+  have [eq_ak | /eqP neq_ak //] := altP (ak =P akey); congruence.
 Qed.
 
 Lemma refine_val_atom_set_km : forall km v a akey skey,
