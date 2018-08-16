@@ -15,7 +15,7 @@ Coq formalization accompanying the paper:
 - The Mathematical Components library v1.7
   (http://www.msr-inria.fr/projects/mathematical-components-2/)
 - The Extensional Structures library v0.1 (https://github.com/arthuraa/extructures)
-- The CoqUtils library (https://github.com/arthuraa/coq-utils)
+- The CoqUtils library v0.1 (https://github.com/arthuraa/coq-utils/releases/tag/v0.1)
 
 ### Compiling
 
