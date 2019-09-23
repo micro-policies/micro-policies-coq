@@ -1,6 +1,7 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool eqtype ssrnat seq.
 From extructures Require Import ord fmap.
 From CoqUtils Require Import word.
+Require Import Coq.Strings.String.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -44,6 +45,8 @@ Hint Unfold Concrete.next_state_reg_and_pc.
 Hint Unfold Concrete.next_state_pc.
 Hint Unfold Concrete.next_state.
 Hint Unfold Concrete.miss_state.
+
+Local Open Scope string_scope.
 
 Lemma user_mem_unchanged_refine_memory amem cmem cmem' :
   refine_memory amem cmem ->

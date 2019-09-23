@@ -304,8 +304,8 @@ Proof.
   rewrite /decode_ivec (lock Symbolic.privileged_op) /=.
   case: (decode _ m ctpc) => [tpc'|] //=.
   case: (decode _ m cti) => [[ti'|ti']|] //=; last first.
-    case: cop => //= E.
-    move: {E} (Symbolic.ivec_eq_inv (Some_inj E)) => [E1 E2].
+    case: cop => //= /Some_inj.
+    case/Symbolic.ivec_eq_inv=> E1 E2.
     move: ti ts; rewrite -{}E1 {}E2 {op tpc'} /= => ti [] /eqP E _.
     rewrite eq_Tagged /= in E; move/eqP: E=>->.
     by constructor; eauto.
@@ -314,7 +314,7 @@ Proof.
   rewrite -lock.
   case Hpriv: (Symbolic.privileged_op cop) => //=.
   move/ensure_no_entry_inv in ENSURE. subst ts'.
-  move=> E; move: (Symbolic.ivec_eq_inv (Some_inj E)) DEC => [] {E} E1 E2.
+  move=> E; move: (Symbolic.ivec_eq_inv (Some_inj _ _ E)) DEC => [] {E} E1 E2.
   move: Hpriv ti ts; rewrite -{}E1 {}E2 {op tpc'} => Hpriv ti ts.
   move=> /(@pair2_inj _ _ _ _ _) -> /(@pair2_inj _ _ _ _ _) -> {ti' ts''} E.
   by constructor; eauto.

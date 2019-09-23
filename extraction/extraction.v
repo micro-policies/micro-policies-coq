@@ -1,6 +1,6 @@
 From mathcomp Require Import
   ssreflect eqtype fintype ssrfun ssrbool ssrnat seq ssrint ssrnum ssralg
-  finset generic_quotient.
+  finset generic_quotient finfun.
 From extructures Require Import ord fmap.
 From CoqUtils Require Import hseq word.
 
@@ -441,7 +441,7 @@ Extract Constant sum_eqMixin => "\t1 t2 ->
 
 (* The type `finfun_type` is horribly inefficient, but I don't believe we ever
    use it, as long as we extract sets properly. *)
-Extract Constant finfun.finfun_eqMixin => "\aT rT ->
+Extract Constant finfun.eqMixin => "\aT rT ->
   Eqtype.Equality__Mixin (\x y ->
     Eqtype.eq_op
       (Tuple.tuple_eqType

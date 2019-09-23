@@ -1,6 +1,7 @@
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat eqtype seq.
 From extructures Require Import ord fmap.
 From CoqUtils Require Import hseq word.
+Require Import Coq.Strings.String.
 
 Require Import lib.utils.
 Require Import common.types.
@@ -38,6 +39,8 @@ Hint Unfold Symbolic.next_state_reg.
 Hint Resolve monitor_invariant_upd_mem.
 Hint Resolve monitor_invariant_upd_reg.
 Hint Resolve monitor_invariant_store_mvec.
+
+Local Open Scope string_scope.
 
 Ltac check_conv t1 t2 :=
   let e := constr:(erefl t1 : t1 = t2) in idtac.

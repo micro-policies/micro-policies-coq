@@ -11,11 +11,11 @@ Coq formalization accompanying the paper:
 
 ### Prerequisites
 
-- Coq version v8.8 (https://coq.inria.fr/download)
-- The Mathematical Components library v1.7
+- Coq version v8.9 (https://coq.inria.fr/download)
+- The Mathematical Components library v1.9
   (http://www.msr-inria.fr/projects/mathematical-components-2/)
-- The Extensional Structures library v0.1 (https://github.com/arthuraa/extructures)
-- The CoqUtils library v0.1 (https://github.com/arthuraa/coq-utils/releases/tag/v0.1)
+- The Extensional Structures library v0.2 (https://github.com/arthuraa/extructures)
+- The CoqUtils library, commit ce97408b (https://github.com/arthuraa/coq-utils)
 
 ### Compiling
 

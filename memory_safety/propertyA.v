@@ -2,6 +2,7 @@ From mathcomp Require Import
   ssreflect ssrfun ssrbool ssrnat seq eqtype fintype path fingraph.
 From extructures Require Import ord fset fmap fperm.
 From CoqUtils Require Import word nominal.
+Require Import Coq.Strings.String.
 
 Require Import lib.utils lib.fmap_utils common.types.
 Require Import memory_safety.property memory_safety.abstract.
@@ -12,6 +13,8 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
 Section MemorySafety.
+
+Local Open Scope string_scope.
 
 Local Open Scope fset_scope.
 
@@ -549,11 +552,11 @@ Lemma updv_union' m m' p v :
   else None.
 Proof.
 rewrite /updv unionmE => dis p_m' /=.
-rewrite (dommPn _ _  p_m'); case: getm => [fr|] //=.
+rewrite (dommPn p_m'); case: getm => [fr|] //=.
 case: ifP=> //= _; congr Some; apply/eq_fmap=> b.
 rewrite !(setmE, unionmE).
 have [-> {b}|//] := altP (b =P p.1).
-by rewrite (dommPn _ _ p_m').
+by rewrite (dommPn p_m').
 Qed.
 
 Lemma free_union' m m' rs r p :
@@ -569,10 +572,10 @@ have m'_p : p.1 \notin domm m'.
   move/fdisjointP: dis2; apply.
   apply/namesmP/@PMFreeNamesVal; try eassumption.
   by rewrite names_valueE in_fset1.
-rewrite (dommPn _ _ m'_p) /=; case: (m p.1)=> [fr|] //=.
+rewrite (dommPn m'_p) /=; case: (m p.1)=> [fr|] //=.
 congr Some; apply/eq_fmap=> b.
 rewrite !(remmE, unionmE); have [-> {b}|//] := altP (b =P _).
-by rewrite (dommPn _ _ m'_p) /=.
+by rewrite (dommPn m'_p) /=.
 Qed.
 
 Lemma free_union m m' m'' b :
@@ -939,7 +942,7 @@ case step0: (astepf s)=> [s'|].
   have [pm2 [/AbstractE.stepP step2' dis2']] := frame_ok dis2 step2.
   rewrite step1 step2'.
   move/(_ (pm2 * pm' * pm1^-1) _ dis1'): IH.
-  rewrite renameD fperm_mulsKV -renameD.
+  rewrite renameA fperm_mulsKV -renameA.
   by move/(_ dis2').
 rewrite frame_error //.
 case step0': (astepf (rename pm s))=> [s'|].
